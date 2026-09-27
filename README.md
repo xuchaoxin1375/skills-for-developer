@@ -15,10 +15,22 @@ skills-for-developer/
     link-skills.ps1             # Windows：创建 / 校验 / 移除 Junction（幂等）
     link-skills.sh              # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）
   .gitattributes                # 锁定 .sh/.ps1/.py 为 LF，防跨平台换行问题
+  LICENSE                     # MIT，宽松开源
   README.md
 ```
 
 每个 skill 目录必须包含 `SKILL.md` (及该 skill 自带的 `references/`、`scripts/` 等)。
+
+## Skill 目录（检索入口）
+
+| Skill 目录 | 一句话说明 | 关键词 / 何时用 |
+|---|---|---|
+| `skills/doc-polish-zh` | 中文技术/业务文档全面改写与质量提升：不改变原意，正式化、规范化、严谨化、清晰化，补充结构、示例、表格与 Mermaid 图 | 润色、改写、审校、优化文档、【原文】 |
+| `skills/scripting-best-practices` | Shell (Bash) 与 Python 脚本的编写、审查与重构规范，生产级健壮性要求 | 写脚本、审脚本、重构 `.sh` / `.bash` / `.py`、排查脚本健壮性 |
+| `skills/resilient-browser-fetch` | 采集受反爬保护的网站：Scrapling 过 Cloudflare 挑战、可选 CloakBrowser CDP 浏览器，保存渲染后 HTML、截图与诊断元数据，中文输出 | 反爬、Cloudflare、Turnstile、抓取、采集、代理连通性、会话复用 |
+| `skills/htmlmini` | 网页核心骨架提取：先剥离 CSS/JS/冗余（省约 97–99% token）再总结、分析、审查 HTML 或 URL | html、网页、页面、设计稿、面板、仪表盘、总结、分析、审查 |
+
+> 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
 ## Harness 映射（Win / Linux 路径同构，只是家目录写法不同）
 
@@ -78,3 +90,7 @@ cd ~/repos/skills-for-developer
 ## 迁移记录
 
 - 2026-09-27: 从本机迁入 4 个用户 skill (文件数: doc-polish-zh 1、scripting-best-practices 1、resilient-browser-fetch 21、htmlmini 1), 哈希校验一致后原位置替换为指向本仓库的 Junction。Codex `.system/` 等 harness 自带内容未纳入。
+
+## 开源许可
+
+MIT（见 `LICENSE`），可自由使用、修改、分发，保留版权声明即可。

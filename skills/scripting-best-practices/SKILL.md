@@ -21,7 +21,7 @@ description: >
 
 接到脚本任务时，按以下顺序执行：
 
-1. **确认需求**：目标环境（Linux / macOS / 跨平台）、解释器约束（Bash 可用还是仅 POSIX sh、有无第三方依赖）、参数与输入来源。
+1. **确认需求**：目标环境（Linux / macOS / 跨平台）、解释器约束（Bash 可用还是仅 POSIX sh、有无第三方依赖）、参数与输入来源、是否需要 Tab 补全（见“补全支持”节决策表）。
 2. **按骨架编写**：Shell 用 `main "$@"` 骨架，Python 用 `main() + argparse` 骨架，不从空白起稿。
 3. **对照自检**：用文末反模式清单逐项检查。
 4. **运行验证**：按“验证协议”执行工具检查与正/异常路径测试，有告警必须清零或向用户说明。
@@ -294,6 +294,84 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
 ---
 
+## 补全支持（Tab Completion）
+
+### 何时需要
+
+| 场景 | 优先级 | 说明 |
+| ---- | ------ | ---- |
+| 团队内部 CLI 工具 / 对外发布的 CLI | **强烈推荐** | 高频使用，减少查文档次数；补全是成熟 CLI 的标配 |
+| 参数复杂（多子命令/多选项）的个人脚本 | **建议提供** | 补全即“活文档”，作者本人也会忘记参数 |
+| 参数简单的一次性脚本 | 不必要 | 投入产出不成比例，做好 `--help` 即可 |
+
+### Bash 脚本
+
+推荐：为需要补全的脚本提供配套补全脚本 `<脚本名>-completion.bash`，遵循以下固定模式：
+
+```bash
+#!/usr/bin/env bash
+# deploy.sh 的 Tab 补全：source 本文件临时加载，
+# 或写入 ~/.bashrc 持久加载，或复制到 /etc/bash_completion.d/ 供所有用户使用
+_deploy_completions() {
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    case "$prev" in
+        --version)
+            # 取值型选项后补全候选值：优先动态获取
+            local versions
+            versions=$(git tag --list 'v*' 2>/dev/null)
+            COMPREPLY=( $(compgen -W "$versions" -- "$cur") )
+            return
+            ;;
+        --config)
+            COMPREPLY=( $(compgen -f -X '!*.yaml' -- "$cur") )
+            return
+            ;;
+    esac
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "--version --config --dry-run --help" -- "$cur") )
+    else
+        local envs=()
+        local f
+        for f in configs/*.yaml; do
+            [[ -e "$f" ]] || continue
+            envs+=("$(basename "$f" .yaml)")
+        done
+        COMPREPLY=( $(compgen -W "${envs[*]}" -- "$cur") )
+    fi
+}
+complete -F _deploy_completions deploy.sh
+```
+
+机制速查：`complete -F <函数> <命令>` 注册规则；用户按 Tab 时 Shell 设置
+`COMP_WORDS`（当前命令行全部词）与 `COMP_CWORD`（光标所在词的索引），
+补全函数把候选写入 `COMPREPLY` 数组。`compgen` 常用选项：
+`-W` 按词列表匹配，`-f`/`-d` 匹配文件/目录，`-X` 按模式排除，`-c` 匹配可执行命令。
+
+规则：
+
+- 必须：补全函数命名为 `_<脚本名>_completions`，避免与用户环境中的函数冲突。
+- 推荐：候选值动态获取（git tag、配置目录内容、API），而非写死静态列表。
+- 必须：`COMPREPLY=( $(compgen ...) )` 是“永远加双引号”规则的**唯一例外**——此处需要词分割生成数组元素。
+- 必须：补全脚本与主脚本同目录、纳入版本控制，并在 `usage()` 或 README 中说明安装方式。
+
+### Python 脚本
+
+| 框架 | 补全支持 | 接入方式 |
+| ---- | -------- | -------- |
+| Click（≥ 8.0） | 内建 | 零代码；在 README 告知激活命令：`eval "$(_<PROG>_COMPLETE=bash_source <prog>)"`（`<PROG>` 为可执行文件名的大写形式，短横线转下划线；zsh/fish 换用对应的 `zsh_source`/`fish_source`） |
+| argparse | 第三方库 argcomplete | 文件顶部加 `# PYTHON_ARGCOMPLETE_OK`，`parse_args()` **之前**调用 `argcomplete.autocomplete(parser)`；用户侧 `pip install argcomplete` 后运行一次 `activate-global-python-argcomplete` |
+| Typer | 内建（基于 Click） | 告知用户运行 `<prog> --install-completion` |
+
+动态值：Click 用 `shell_complete` 回调（如 `@click.argument("env", shell_complete=get_envs)`，按 `incomplete` 前缀过滤）；
+argcomplete 用自定义 Completer（如 `.completer = argcomplete.DirectoriesCompleter()`）。
+有 `choices` 的参数框架自动补全，无需额外代码。
+
+---
+
 ## 反模式自检清单
 
 ### Shell
@@ -304,6 +382,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 - [ ] `cd` 后是否检查了退出码？
 - [ ] 是否使用了 `trap ... EXIT` 清理资源？
 - [ ] 是否通过 ShellCheck 零告警？
+- [ ] 需要补全时是否有配套 `<脚本名>-completion.bash`（同目录、已纳入版本控制、安装方式已写入 `usage()` 或 README）？
 
 ### Python
 
@@ -313,6 +392,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 - [ ] 外部命令是否用了 `subprocess.run()`（列表参数）？
 - [ ] 是否有硬编码路径/密码？
 - [ ] 是否通过 Ruff 零告警？
+- [ ] 需要补全时是否已接入（Click 内建 / argcomplete / Typer）并在 README 说明激活方式？
 
 ---
 
@@ -322,3 +402,4 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 2. Python：运行 `ruff check <script>` 和 `mypy <script>`（或 `pyright`），确认无错误。
 3. 测试 `--help` 输出是否完整（用途、参数、示例缺一不可）。
 4. 测试正常路径和至少一个异常路径（如缺少参数、目标路径不存在），确认退出码与错误信息符合预期。
+5. 补全（如提供）：`source` 加载补全脚本后按 Tab 抽查候选（选项名、取值各抽一处）；Python 框架按对应激活命令验证一次。
