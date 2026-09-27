@@ -1,0 +1,9 @@
+# OS / editor junk
+Thumbs.db
+.DS_Store
+*~
+*.swp
+
+# PowerShell link script backups live next to harness dirs, not in repo;
+# keep this as a safety net in case one is ever created here.
+*.bak-*
