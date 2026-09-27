@@ -1,0 +1,23 @@
+{
+  "name": "htmlmini",
+  "version": "0.2.0",
+  "description": "Strip CSS/JS from HTML, extract the core skeleton as Markdown/JSON. Fallback chain: Defuddle -> optional Trafilatura -> semantic -> UI inventory. Works as a CLI and an MCP server for any AI harness.",
+  "type": "module",
+  "bin": {
+    "htmlmini": "src/cli.js"
+  },
+  "scripts": {
+    "cli": "node src/cli.js",
+    "mcp": "node src/mcp.js",
+    "test": "node tests/smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.14.0",
+    "defuddle": "^0.19.3",
+    "linkedom": "^0.18.9"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
