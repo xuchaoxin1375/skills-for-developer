@@ -1,7 +1,8 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  将本仓库 skills/ 下的每个 skill 通过 Junction 链接到各 agent harness 的 skills 目录。
+  [Windows 专用] 将本仓库 skills/ 下的每个 skill 通过 Junction 链接到各 harness 的 skills 目录。
+  Linux/macOS 请用 scripts/link-skills.sh（symlink）。
 
 .DESCRIPTION
   唯一真源: <repo>/skills/<name>/ (内含 SKILL.md)。

@@ -1,0 +1,5 @@
+# 跨平台换行保护：shell 脚本在 Linux 上必须 LF，带 CR 会直接报错
+* text=auto
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.py text eol=lf
