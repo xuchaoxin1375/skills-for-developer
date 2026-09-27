@@ -12,6 +12,7 @@ skills-for-developer/
     resilient-browser-fetch/    # 原 codex
     htmlmini/                   # 原 claude
     skill-authoring-sync/       # skill 新建与同步规范
+    repo-governance/            # 开源仓库治理与提交规范
   scripts/
     link-skills.ps1             # Windows：创建 / 校验 / 移除 Junction（幂等）
     link-skills.sh              # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）
@@ -31,6 +32,7 @@ skills-for-developer/
 | `skills/resilient-browser-fetch` | 采集受反爬保护的网站：Scrapling 过 Cloudflare 挑战、可选 CloakBrowser CDP 浏览器，保存渲染后 HTML、截图与诊断元数据，中文输出 | 反爬、Cloudflare、Turnstile、抓取、采集、代理连通性、会话复用 |
 | `skills/htmlmini` | 网页核心骨架提取：先剥离 CSS/JS/冗余（省约 97–99% token）再总结、分析、审查 HTML 或 URL | html、网页、页面、设计稿、面板、仪表盘、总结、分析、审查 |
 | `skills/skill-authoring-sync` | agent harness 新建自定义 skill 并同步到真源仓库：真源唯一、链接分发、跨机器 git 同步 | 新建 skill、安装 skill、同步 skill、链接校验、真源管理 |
+| `skills/repo-governance` | 开源仓库规范治理与安全提交：脚手架清单、LICENSE 选型、行尾归一化、隐私红线、提交分支门禁 | 新建仓库、规范化改造、提交检查、CONTRIBUTING、CI、审计密钥 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -93,6 +95,7 @@ cd ~/repos/skills-for-developer
 
 - 2026-09-27: 从本机迁入 4 个用户 skill (文件数: doc-polish-zh 1、scripting-best-practices 1、resilient-browser-fetch 21、htmlmini 1), 哈希校验一致后原位置替换为指向本仓库的 Junction。Codex `.system/` 等 harness 自带内容未纳入。
 - 2026-09-27: 新增 skill-authoring-sync（skill 新建与真源同步规范，链接模型），随链接脚本分发。
+- 2026-09-27: 新增 repo-governance（开源仓库治理与安全提交规范，模糊项已具体化），随链接脚本分发。
 
 ## 开源许可
 
