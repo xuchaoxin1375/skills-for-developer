@@ -7,7 +7,7 @@
 ```text
 skills-for-developer/
   skills/
-    doc-polish-zh/              # 原 opencode
+    doc-polish/                   # 文档改写与审校（原 doc-polish-zh，已去语言限定）
     scripting-best-practices/   # 原 opencode
     resilient-browser-fetch/    # 原 codex
     htmlmini/                   # 原 claude
@@ -27,7 +27,7 @@ skills-for-developer/
 
 | Skill 目录 | 一句话说明 | 关键词 / 何时用 |
 |---|---|---|
-| `skills/doc-polish-zh` | 中文技术/业务文档全面改写与质量提升：不改变原意，正式化、规范化、严谨化、清晰化，补充结构、示例、表格与 Mermaid 图 | 润色、改写、审校、优化文档、【原文】 |
+| `skills/doc-polish` | 技术/业务文档全面改写与质量提升：不改变原意，正式化、规范化、严谨化、清晰化，补充结构、示例、表格与 Mermaid 图 | 润色、改写、审校、优化文档、【原文】、polish、rewrite、proofread、edit、improve docs |
 | `skills/scripting-best-practices` | Shell (Bash) 与 Python 脚本的编写、审查与重构规范，生产级健壮性要求 | 写脚本、审脚本、重构 `.sh` / `.bash` / `.py`、排查脚本健壮性 |
 | `skills/resilient-browser-fetch` | 采集受反爬保护的网站：Scrapling 过 Cloudflare 挑战、可选 CloakBrowser CDP 浏览器，保存渲染后 HTML、截图与诊断元数据，中文输出 | 反爬、Cloudflare、Turnstile、抓取、采集、代理连通性、会话复用 |
 | `skills/htmlmini` | 网页核心骨架提取：Defuddle→Trafilatura(可选)→semantic→UI清单自动回退，省约 75–99% token；CLI+MCP双形态 | html、网页、页面、设计稿、面板、仪表盘、总结、分析、审查 |
@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1
 powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -VerifyOnly
 
 # 只处理部分 skill
-powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Include doc-polish-zh,htmlmini
+powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Include doc-polish,htmlmini
 
 # 移除本仓库创建的链接 (实体不受影响)
 powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Unlink
@@ -80,7 +80,7 @@ cd ~/repos/skills-for-developer
 
 # 只检查 / 只处理部分 / 移除
 ./scripts/link-skills.sh --verify-only
-./scripts/link-skills.sh --include doc-polish-zh,htmlmini
+./scripts/link-skills.sh --include doc-polish,htmlmini
 ./scripts/link-skills.sh --unlink
 ```
 
@@ -97,6 +97,7 @@ cd ~/repos/skills-for-developer
 - 2026-09-27: 新增 skill-authoring-sync（skill 新建与真源同步规范，链接模型），随链接脚本分发。
 - 2026-09-27: 新增 repo-governance（开源仓库治理与安全提交规范，模糊项已具体化），随链接脚本分发。
 - 2026-09-27: htmlmini v2（实现体收进 `skills/htmlmini`，MCP 工具正名 `htmlmini_*` + 旧拼写别名，UI 清单按可访问语义重写，`--mode/--extractor/--completion`，`save_page` 产物 `.meta.json` 自动利用）。
+- 2026-09-28: `doc-polish-zh` 更名 `doc-polish`（去语言限定，触发词同步放宽），harness 链接同步切换。
 
 ## 开源许可
 

@@ -31,7 +31,7 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -VerifyOnly
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Include doc-polish-zh,htmlmini
+  powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Include doc-polish,htmlmini
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
