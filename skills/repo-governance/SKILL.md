@@ -84,8 +84,8 @@ Thumbs.db
 ```
 
 - 再按检出的主语言追加对应块（Node 加 `node_modules/ dist/`；
-  Python 加 `__pycache__/ *.py[cod] .venv/`；Go 加 `bin/`；Rust 加 `target/`；
-  Java 加 `*.class target/`）。单语言仓库不堆全语言模板。
+  Python 加 `__pycache__/ *.py[cod] .venv/`；Go 加 `bin/`（用 `go mod vendor` 则保留 `vendor/`）；
+  Rust 加 `target/`；Java 加 `*.class target/`）。单语言仓库不堆全语言模板。
 - 必须：已追踪的应忽略文件须解除追踪（内容保留在本地）：
 
 ```bash
@@ -185,6 +185,10 @@ indent_style = tab
 
 ### 改造审计命令（逐条跑，有命中先修再补文件）
 
+> 以下管道在 **Git Bash** 中运行；PowerShell 下 `sort` 是别名、`head/grep` 不可用，
+> 等价写法：`... | Sort-Object -Descending { $_.Split()[2] } | Select-Object -First 20`、
+> `git diff --cached | Select-String -Pattern 'password|secret|token' -CaseSensitive:$false`。
+
 ```bash
 gitleaks detect --source .                                    # 密钥扫描（无工具则先装）
 git rev-list --objects --all | git cat-file --batch-check | sort -k3nr | head -20   # 大文件排行
@@ -202,7 +206,7 @@ git ls-files --ignored --exclude-standard                     # 应忽略却被�
   禁止 `update misc fix stuff` 等模糊词。
 - `scope` 可选，kebab-case 小写；`subject` 祈使语气、`≤ 72` 字符、不以句号结尾。
 - 破坏性变更在 footer 写 `BREAKING CHANGE:`。
-- 本地校验：`npx commitlint --from HEAD~1`（或接入 commitlint hook 后直接提交试错）。
+- 本地校验：`npx commitlint --from HEAD~1 --to HEAD`（或接入 commitlint hook 后直接提交试错）。
 
 ### 分支策略（保护规则写死）
 
@@ -226,14 +230,14 @@ git ls-files --ignored --exclude-standard                     # 应忽略却被�
 
 - 非 JS / 多语言仓库：用 `pre-commit` 框架统一管理（含 gitleaks hook），
   不为每种语言各装一套 hook runner。
-- `.commitlintrc` 最小配置：继承 `@commitment/commitlint-config-conventional`（或等价），
+- `.commitlintrc` 最小配置：继承 `@commitlint/config-conventional`，
   `type-enum` 与上节枚举一致。
 
 ### CI 与依赖（最小可用即达标）
 
 - `.github/workflows/ci.yml` 必须在 push/PR 触发 **lint + test + build** 三件套；
   缺任何一件视为未达标。
-- `.github/dependabot.yml` 最小：`schedule: weekly` + 生态（npm / pip / go / cargo）。
+- `.github/dependabot.yml` 最小：`schedule.interval: weekly` + 生态（npm / pip / go / cargo）。
 - 各语言漏洞检查进 CI：`npm audit` / `pip-audit` / `govulncheck ./...` / `cargo audit`
   四选一按栈接入。
 - Linter 选型按栈查表：JS `ESLint+Prettier`、Python `Ruff`（lint+format 二合一）、
