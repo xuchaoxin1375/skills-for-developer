@@ -110,6 +110,7 @@ cd ~/repos/skills-for-developer
 - 2026-09-28: `doc-polish` 与 `tech-learning-research` 新增英文专有名词配中文与来历说明规则（以 `ss` 为例）。
 - 2026-09-28: `markdown-style` 新增标点与括号一节，默认使用英文括号（圆括号、方括号、花括号），自检与工作流程同步。
 - 2026-09-28: `tech-learning-research` 新增成文前 Mermaid 门禁（候选图 `TODO` 清单加非线性、非重复、可承载三项），工作流程与自检同步；网络命令总览排障路径节删除与有序列表重复的线性顺序图。
+- 2026-09-28: `tech-learning-research` 取证优先级新增引用链接格式规则，须用 `[标题](url)` 行内语法（括号紧贴，空格与括号编码），自检同步。
 
 ## 开源许可
 
