@@ -14,6 +14,7 @@ skills-for-developer/
     skill-authoring-sync/       # skill 新建与同步规范
     repo-governance/            # 开源仓库治理与提交规范
     tech-learning-research/     # 技术学习·信息调研·方案探索
+    markdown-style/             # Markdown 行文风格与排版规范（风格正本）
   scripts/
     link-skills.ps1             # Windows：创建 / 校验 / 移除 Junction（幂等）
     link-skills.sh              # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）
@@ -35,6 +36,7 @@ skills-for-developer/
 | `skills/skill-authoring-sync` | agent harness 新建自定义 skill 并同步到真源仓库：真源唯一、链接分发、跨机器 git 同步 | 新建 skill、安装 skill、同步 skill、链接校验、真源管理 |
 | `skills/repo-governance` | 开源仓库规范治理与安全提交：脚手架清单、LICENSE 选型、行尾归一化、隐私红线、提交分支门禁 | 新建仓库、规范化改造、提交检查、CONTRIBUTING、CI、审计密钥 |
 | `skills/tech-learning-research` | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级 | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison |
+| `skills/markdown-style` | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法 | 排版、风格迁移、规范格式、统一标题、markdown lint、format |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -101,6 +103,7 @@ cd ~/repos/skills-for-developer
 - 2026-09-27: htmlmini v2（实现体收进 `skills/htmlmini`，MCP 工具正名 `htmlmini_*` + 旧拼写别名，UI 清单按可访问语义重写，`--mode/--extractor/--completion`，`save_page` 产物 `.meta.json` 自动利用）。
 - 2026-09-28: `doc-polish-zh` 更名 `doc-polish`（去语言限定，触发词同步放宽），harness 链接同步切换。
 - 2026-09-28: 新增 tech-learning-research（技术学习·信息调研·方案探索），随链接脚本分发。
+- 2026-09-28: 新增 markdown-style（Markdown 行文风格与排版规范，风格正本），随链接脚本分发。
 
 ## 开源许可
 
