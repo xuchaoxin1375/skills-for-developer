@@ -37,6 +37,8 @@ skills-for-developer/
 | `skills/repo-governance` | 开源仓库规范治理与安全提交：脚手架清单、LICENSE 选型、行尾归一化、隐私红线、提交分支门禁 | 新建仓库、规范化改造、提交检查、CONTRIBUTING、CI、审计密钥 |
 | `skills/tech-learning-research` | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级 | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison |
 | `skills/markdown-style` | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法 | 排版、风格迁移、规范格式、统一标题、markdown lint、format |
+| `skills/lightweight-app-builder` | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、技术选型、打包签名分发，六步流程 | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、打包分发 |
+| `skills/frontend-design` | Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、防溢出，三断点截图验收 | 界面丑、布局乱、美化、适配手机、加载动画、响应式、UI 验收 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -44,7 +46,7 @@ skills-for-developer/
 
 | Harness  | Windows skills 目录 | Linux skills 目录 | 说明 |
 |---|---|---|---|
-| OpenCode | `%USERPROFILE%\.config\opencode\skills` | `~/.config/opencode/skills` | 全量链接 4 个 skill |
+| OpenCode | `%USERPROFILE%\.config\opencode\skills` | `~/.config/opencode/skills` | 全量链接 10 个 skill |
 | Codex | `%USERPROFILE%\.codex\skills` | `~/.codex/skills` | 全量链接; 自带的 `.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude | `%USERPROFILE%\.claude\skills` | `~/.claude/skills` | 全量链接 |
 
