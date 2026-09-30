@@ -36,9 +36,9 @@ skills-for-developer/
 | `skills/skill-authoring-sync` | agent harness 新建自定义 skill 并同步到真源仓库：真源唯一、链接分发、跨机器 git 同步 | 新建 skill、安装 skill、同步 skill、链接校验、真源管理 |
 | `skills/repo-governance` | 开源仓库规范治理与安全提交：脚手架清单、LICENSE 选型、行尾归一化、隐私红线、提交分支门禁 | 新建仓库、规范化改造、提交检查、CONTRIBUTING、CI、审计密钥 |
 | `skills/tech-learning-research` | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级 | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison |
-| `skills/markdown-style` | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法 | 排版、风格迁移、规范格式、统一标题、markdown lint、format |
+| `skills/markdown-style` | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法；文档合并与多文档整合定稿后走本规范收尾 | 排版、风格迁移、规范格式、统一标题、markdown lint、format、文档合并、文档整合、章节合并、统稿 |
 | `skills/lightweight-app-builder` | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、技术选型、打包签名分发，六步流程 | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、打包分发 |
-| `skills/frontend-design` | Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、防溢出，三断点截图验收 | 界面丑、布局乱、美化、适配手机、加载动画、响应式、UI 验收 |
+| `skills/frontend-design` | Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、可用性铁律（反馈可见、可撤销、防错纠错），独立使用不依赖 builder，三断点截图验收 | 界面丑、布局乱、美化、适配手机、加载动画、响应式、UI 验收、可用性、UX |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -114,6 +114,8 @@ cd ~/repos/skills-for-developer
 - 2026-09-28: `tech-learning-research` 新增成文前 Mermaid 门禁（候选图 `TODO` 清单加非线性、非重复、可承载三项），工作流程与自检同步；网络命令总览排障路径节删除与有序列表重复的线性顺序图。
 - 2026-09-28: `tech-learning-research` 取证优先级新增引用链接格式规则，须用 `[标题](url)` 行内语法（括号紧贴，空格与括号编码），自检同步。
 - 2026-09-28: `markdown-style` 行内标记新增反引号防滥用边界（仅代码字段命令路径用反引号，普通强调一律加粗），自检同步；`doc-polish` 图文对应由四条增至五条（默认会读图、只讲重点、禁空话），反引号与自检同步；`tech-learning-research` 示意图说明与风格快照同步。
+- 2026-09-30: `markdown-style` 触发描述与适用范围纳入文档合并与多文档整合类任务（章节合并、附录并入正文、统稿后排版收尾），检索表同步。
+- 2026-09-30: `frontend-design` 与小工具开发 skill 解耦（独立使用，技术栈只作输入），新增可用性铁律一节（状态可见、可撤销、防错优先等十二条），版本升至 1.2.0，检索表同步。
 
 ## 开源许可
 

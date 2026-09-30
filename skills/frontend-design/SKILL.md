@@ -1,10 +1,10 @@
 ---
 name: frontend-design
-description: 为 Web/桌面小工具的界面做现代化、规范的设计：布局栅格与间距、信息层级、渐进式披露、响应式适配、克制的过渡与加载动效。优先采用成熟设计模式，不发明新控件。用户说界面丑、布局乱、要美化、要适配手机、要加载动画时，用本 skill 先定布局与规范再写代码。Use when the user wants UI layout, visual polish, responsive design, or motion/loading states for a web or desktop app. Not for brand identity, illustration, backend logic, or building the app itself (use lightweight-app-builder for that).
+description: 为 Web/桌面小工具的界面做现代化、规范的设计：布局栅格与间距、信息层级、渐进式披露、响应式适配、克制的过渡与加载动效，以及可用性铁律（反馈可见、可撤销、防错纠错、一致性）。优先采用成熟设计模式，不发明新控件。用户说界面丑、布局乱、要美化、要适配手机、要加载动画时，用本 skill 先定布局与规范再写代码。Use when the user wants UI layout, visual polish, responsive design, or motion/loading states for a web or desktop app. Covers UI only, not backend logic or stack choice; works standalone on any existing project.
 license: MIT
 metadata:
   language: zh-CN
-  version: "1.1.0"
+  version: "1.2.0"
   knowledge-cutoff: "2026-06"
 ---
 
@@ -14,9 +14,9 @@ metadata:
 
 ## 适用边界
 
-- 适用：Web 应用 / 本地 Web UI / 桌面 GUI 的前端界面、静态文档页；用 Tailwind/shadcn/Ant Design 等成熟组件库的项目。
-- 不适用：品牌 Logo、插画、动效大片、设计系统从零搭建；后端逻辑与工程选型（那是 `lightweight-app-builder` 的职责，两者互补：builder 定"做什么+用什么做"，本 skill 定"长什么样"）。
-- 若项目同时从零起步：先用 builder 定形态与技术栈，再用本 skill 定界面。
+- 适用：Web 应用 / 本地 Web UI / 桌面 GUI 的前端界面、静态文档页；用 Tailwind/shadcn/Ant Design 等成熟组件库的项目。本 skill 独立使用：只需要用户给出技术栈与入口文件位置，即可开始设计，不依赖任何其他 skill。
+- 不适用：品牌 Logo、插画、动效大片、设计系统从零搭建；后端逻辑、工程选型与技术栈决策（由用户或项目既有选型决定，本 skill 只将其作为输入）。
+- 若技术栈未定：先确定形态与技术栈（用户指定或另行选型），再用本 skill 定界面。
 
 ## 六条设计原则
 
@@ -92,6 +92,28 @@ flowchart TD
 | 字体、色彩、圆角、阴影、中文排版、可读性、无障碍 | `references/visual-tokens.md` |
 | 交付前验收（含自我批判与溢出专项） | `assets/design-review-checklist.md` |
 | 自动截三断点整页截图 | `scripts/screenshot.mjs` |
+
+## 可用性铁律（要做 / 不要做）
+
+设计依据以 Nielsen 十条可用性启发式为底，全部落成可检查的规则。
+
+要做：
+
+- **状态永远可见。** 当前位置（面包屑/高亮导航）、进行中操作（进度/加载态）、操作结果（成功提示/失败原因）三者缺一不可；静默失败是最差体验。
+- **给用户后悔药。** 危险操作二次确认；可撤销的优先做撤销（toast + 撤销按钮），而非事前弹窗；表单输入保留草稿，误关不丢字。
+- **防错走在纠错前。** 日期、数字、路径等输入用选择器代替手输；提交按钮在无效时禁用并说明原因；删除等不可逆操作要求输入名称或二次确认。
+- **说人话，贴现实。** 文案用用户领域的词，不用系统内部术语；时间、数量、单位按本地习惯格式化；图标配文字标签，不让用户猜。
+- **降低记忆负担。** 选项可见即可点，不考验回忆；历史记录、最近使用、默认值帮用户少填；同一概念全站只用一个词、一种样式。
+- **主次分明且克制。** 一屏只强调一个主操作；装饰元素不抢任务元素的对比度；空状态要指路（下一步点哪里），不是摆图案。
+
+不要做：
+
+- **不要用弹窗办正事。** 弹窗只做确认与速览；超过 3 个字段的表单必须整页做。
+- **不要让用户等得不明不白。** 无进度、无取消、无超时说明的等待一律返工（时长规则见 Step 4）。
+- **不要发明交互。** 右键当主入口、悬停才出现的关键按钮、自创手势，一律砍掉；触控与键鼠两套输入都要能走通主流程。
+- **不要只用颜色说话。** 错误、状态、等级必须颜色加图标加文字三重表达。
+- **不要打断用户。** 自动弹窗、强制导览、保存时整页锁定，非必要不做；通知可关闭、可稍后处理。
+- **不要堆功能。** 首屏出现与核心任务无关的区块，先砍再说；拿不准的放 L2/L3，用渐进式披露验证需求真伪。
 
 ## 高频坑位
 
