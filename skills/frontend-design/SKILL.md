@@ -1,11 +1,11 @@
 ---
 name: Frontend Design
-description: Web/桌面小工具界面设计与审查：布局栅格、渐进式披露、响应式、克制动效、可用性铁律。凡是新建/改版/美化/审查网页、组件、表单、仪表盘、落地页，或提到界面丑、布局乱、适配手机、加载动画、响应式、UI验收时使用。覆盖生成与审查两种模式。
+description: Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、可用性铁律。凡是新建/改版/美化网页、组件、表单、仪表盘、落地页，或提到界面丑、布局乱、适配手机、加载动画时使用，覆盖生成与交付验收两种模式；存量页面缺陷深查与CI门禁转frontend-ux-qa。
 ---
 
 # 前端界面设计
 
-两种模式：**生成**（按步骤1–6）与**审查**（只走验收清单）。标准依据：`prompts/前端设计合并版.md`。
+两种模式：**生成**（按步骤1–6）与**交付验收**（只走验收清单）。标准依据：`prompts/前端设计合并版.md`。分工：存量页面缺陷深查（按编号根因/复现/验收）与CI门禁转 `frontend-ux-qa`，本 skill 不重复其编号体系。
 
 ## 步骤1——任务与渐进披露
 
@@ -29,8 +29,8 @@ description: Web/桌面小工具界面设计与审查：布局栅格、渐进式
 
 ## 步骤6——审查与交付
 
-先跑 `scripts/scan.py` 扫低级违例，再按 `assets/design-review-checklist.md` 与 `references/checklist.md` 逐项打勾，顺序：任务→恢复→键盘窄屏→视觉→装饰。结论分三级：阻断（MUST/NEVER违反）/建议（SHOULD）/细节，每条注明文件与规则。交付物：线框、令牌差异、三断点截图、清单打勾、已知问题。假按钮、虚假进度、键盘陷阱、对比度失败一律不许放行。
+先跑 `scripts/scan.py` 扫低级违例，再按 `assets/design-review-checklist.md` 与 `references/checklist.md` 逐项打勾，顺序：任务→恢复→键盘窄屏→视觉→装饰。需按编号深查缺陷根因/复现/验收时，转 `frontend-ux-qa` 的 catalog（`L/C/S/V/A/F/N/I/D/P/G/H`）。结论分三级：阻断（MUST/NEVER违反）/建议（SHOULD）/细节，每条注明文件与规则。交付物：线框、令牌差异、三断点截图、清单打勾、已知问题。假按钮、虚假进度、键盘陷阱、对比度失败一律不许放行。
 
 ## NEVER（两种模式通用）
 
-无替代的`outline:none`、`div onClick`按钮、仅hover功能、`window.alert`、禁用提交代替校验、禁粘贴/禁缩放、纯装饰渐变/满屏毛玻璃/标题emoji/卡片套卡片、任何欺骗模式。详见 `references/anti-patterns.md`。
+无替代的`outline:none`、`div onClick`按钮、仅hover功能、`window.alert`、禁用提交代替校验、禁粘贴/禁缩放、纯装饰渐变/满屏毛玻璃/标题emoji/卡片套卡片、任何欺骗模式。详见 `references/anti-patterns.md`；需按编号深查时转 `frontend-ux-qa`。

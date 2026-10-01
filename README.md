@@ -38,7 +38,8 @@ skills-for-developer/
 | `skills/tech-learning-research` | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级 | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison |
 | `skills/markdown-style` | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法；文档合并与多文档整合定稿后走本规范收尾 | 排版、风格迁移、规范格式、统一标题、markdown lint、format、文档合并、文档整合、章节合并、统稿 |
 | `skills/lightweight-app-builder` | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、技术选型、打包签名分发，六步流程 | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、打包分发 |
-| `skills/frontend-design` | Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、可用性铁律（反馈可见、可撤销、防错纠错），独立使用不依赖 builder，三断点截图验收 | 界面丑、布局乱、美化、适配手机、加载动画、响应式、UI 验收、可用性、UX |
+| `skills/frontend-design` | Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、可用性铁律，独立使用不依赖 builder，三断点截图交付验收；存量缺陷深查转 frontend-ux-qa | 界面丑、布局乱、美化、适配手机、加载动画、新建改版、交付验收、可用性、UX |
+| `skills/frontend-ux-qa` | 存量前端 UI 缺陷诊断与验收门禁：`L/C/S/V/A/F/N/I/D/P/G/H` 编号体系，现象→根因→修复→验收，溢出/CLS 脚本与 DoD 可进 CI | 布局溢出、横向滚动、缺陷诊断、UI 验收门禁、axe、DoD、AGENTS.md UI 约束、CI 拦截 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -46,7 +47,7 @@ skills-for-developer/
 
 | Harness  | Windows skills 目录 | Linux skills 目录 | 说明 |
 |---|---|---|---|
-| OpenCode | `%USERPROFILE%\.config\opencode\skills` | `~/.config/opencode/skills` | 全量链接 10 个 skill |
+| OpenCode | `%USERPROFILE%\.config\opencode\skills` | `~/.config/opencode/skills` | 全量链接 11 个 skill |
 | Codex | `%USERPROFILE%\.codex\skills` | `~/.codex/skills` | 全量链接; 自带的 `.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude | `%USERPROFILE%\.claude\skills` | `~/.claude/skills` | 全量链接 |
 
