@@ -33,6 +33,30 @@ from arena_unpack import fingerprint, suggest, unwrap  # noqa: E402
 
 HEX_RE = re.compile(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b")
 MARKER = "<!-- arena-compare:generated -->"
+CHROME_NAME = "_chrome.html"
+
+# 页眉 chrome 内置默认（可移植回退）：同一应用把共用的 _chrome.html 放到对比目录或其上级，
+# 重建即自动收敛；裸用（别处目录、无约定文件）则用此默认，保证零依赖可移植。
+CHROME_DEFAULT = (
+    "<style>.crumbs{font-size:13px;color:#555;padding-top:16px}"
+    " .crumbs a{color:#5b4bff}</style>\n"
+    '<nav class="crumbs" aria-label="面包屑"><a href="/">展览首页</a> / '
+    '<span aria-current="page">项目对比</span></nav>'
+)
+
+
+def load_chrome(directory: str) -> str:
+    """页眉 chrome 单一来源：<目录>/_chrome.html → 上级目录/_chrome.html → 内置默认。"""
+    for cand in (os.path.join(directory, CHROME_NAME),
+                 os.path.join(os.path.dirname(directory), CHROME_NAME)):
+        try:
+            with open(cand, encoding="utf-8") as f:
+                frag = f.read().strip()
+        except OSError:
+            continue
+        if frag:
+            return frag
+    return CHROME_DEFAULT
 
 
 def theme_colors(root: str, fp: dict, limit: int = 6) -> list[str]:
@@ -208,7 +232,6 @@ PAGE = MARKER + """
 <style>
 body{{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;background:#f4f4f5;margin:0;padding:0 24px 24px;line-height:1.6}}
 h1{{font-size:20px;padding-top:12px;margin:0 0 8px}}p.tip{{color:#555}}
-.crumbs{{font-size:13px;color:#555;padding-top:16px}} .crumbs a{{color:#5b4bff}}
 .skip{{position:absolute;left:-9999px;top:0;background:#fff;padding:8px 12px;border-radius:8px}}
 .skip:focus{{left:8px;top:8px;z-index:99;border:2px solid #5b4bff}}
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{{outline:2px solid #5b4bff;outline-offset:2px}}
@@ -256,7 +279,7 @@ dialog::backdrop{{background:rgba(0,0,0,.35)}}
 @media (max-height:30rem){{.toolbar{{position:static}}}}
 </style></head><body>
 <a class="skip" href="#grid">跳到项目列表</a>
-<nav class="crumbs" aria-label="面包屑"><a href="/">展览首页</a> / <span aria-current="page">项目对比</span></nav>
+{chrome}
 <h1>Arena 项目对比入口（{n} 个）</h1>
 <p class="tip">● 为各端口实时状态（每 5 秒刷新，需 node 预览服务同源 /api）。在线显示品牌色“本地打开”（可点，新窗口）；离线显示灰色“未启动”（先敲卡片命令起 dev）；无 /api（file 直开/python 后端）显示“未知”，链接保持原样。列表动态渲染，上传/解压后自动刷新（file 直开显示静态基线）。Vite 系可点“构建并预览”，产物落单服务 /arena-apps/ 直接看。“预览可见项”只展开当前筛选结果，逐卡懒加载；“构建可见项”按序逐个构建。卡片勾选（复选框）即批量范围：勾了按勾选来（筛选藏起来的也算），没勾才按可见项；“全选可见”一键勾上当前结果。有产物构建过显示“重新构建”，源码新于产物显示“产物过期”；重建覆盖旧产物，弹窗会点名。</p>
 <div class="toolbar" role="search">
@@ -883,7 +906,7 @@ def main() -> int:
         ))
     # 先渲染成串再落盘：模板报错时不截断旧页
     rendered = PAGE.format(n=len(items), cards="".join(cards),
-                           fw_opts="".join(fw_opts))
+                           fw_opts="".join(fw_opts), chrome=load_chrome(directory))
     with open(idx, "w", encoding="utf-8") as f:
         f.write(rendered)
 

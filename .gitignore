@@ -1,6 +1,10 @@
 # JS / Node
 node_modules/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # OS / editor junk
 Thumbs.db
 .DS_Store
