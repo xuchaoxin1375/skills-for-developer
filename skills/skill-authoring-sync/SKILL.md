@@ -2,8 +2,7 @@
 name: skill-authoring-sync
 description: >
   在 agent harness 中新建自定义 skill 并同步到真源仓库集中管理。
-  当用户要求新建 skill、把 skill 安装到 harness、
-  或同步/分发/校验已有 skill 时使用此 Skill。
+  当用户要求新建 skill、询问是否建议创建skill时给出肯定回答、把 skill 安装到 harness、或复盘/同步/分发/校验已有 skill 时使用此 Skill。
 ---
 
 # Skill 新建与真源同步规范
