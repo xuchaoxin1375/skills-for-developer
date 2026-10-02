@@ -11,9 +11,9 @@ description: Web/桌面小工具界面设计：布局栅格、渐进式披露、
 
 用一句话说清：用户是谁、主要任务是什么、下一步操作是什么。信息不明时记下假设，绝不用装饰掩盖需求缺失。然后读 `references/progressive-disclosure.md`：首屏只做一件事、主操作不超过3个；表单超过7项必须分组或分步；危险操作远离首屏并二次确认；空状态只给一件事加一个主按钮。
 
-## 步骤2——先画线框，再写样式
+## 步骤2——先定主张，再画线框，最后写样式
 
-读 `references/layout.md`。四种布局模式四选一（仪表盘 / 表单单列480–640 / 列表+详情 / 设置页），不许自创第五种。间距组件内只用 `4、8、12、16、24、32、48`，`64`只允许页面级大间距。先出线框（每块区域写清是什么+多宽+装什么）并经确认，再写一句CSS。底线读 `references/a11y.md`（WCAG 2.2 AA：全键盘可达、焦点可见且不被遮挡、目标≥24px/触屏≥44px、文字对比4.5:1/大文字与非文字3:1、320px回流、中文`lang`、行高≥1.6、CJK不用斜体与两端对齐）。
+先读 `references/taste.md` 定主张（小工具默认一句话主张+一处记忆点+减法一遍；落地页/改版走三方向），主张链写进线框顶部；主张不落 token 的不许开画。再读 `references/layout.md`。四种布局模式四选一（仪表盘 / 表单单列480–640 / 列表+详情 / 设置页），不许自创第五种。间距组件内只用 `4、8、12、16、24、32、48`，`64`只允许页面级大间距。先出线框（每块区域写清是什么+多宽+装什么）并经确认，再写一句CSS。底线读 `references/a11y.md`（WCAG 2.2 AA：全键盘可达、焦点可见且不被遮挡、目标≥24px/触屏≥44px、文字对比4.5:1/大文字与非文字3:1、320px回流、中文`lang`、行高≥1.6、CJK不用斜体与两端对齐）。
 
 ## 步骤3——视觉先写进令牌
 
@@ -29,8 +29,8 @@ description: Web/桌面小工具界面设计：布局栅格、渐进式披露、
 
 ## 步骤6——审查与交付
 
-先跑 `scripts/scan.py` 扫低级违例，再按 `assets/design-review-checklist.md` 与 `references/checklist.md` 逐项打勾，顺序：任务→恢复→键盘窄屏→视觉→装饰。需按编号深查缺陷根因/复现/验收时，转 `frontend-ux-qa` 的 catalog（`L/C/S/V/A/F/N/I/D/P/G/H`）。结论分三级：阻断（MUST/NEVER违反）/建议（SHOULD）/细节，每条注明文件与规则。交付物：线框、令牌差异、三断点截图、清单打勾、已知问题。假按钮、虚假进度、键盘陷阱、对比度失败一律不许放行。
+先跑 `scripts/scan.py` 扫低级违例，再按 `assets/design-review-checklist.md` 与 `references/checklist.md` 逐项打勾（含 `taste.md` 主张项），顺序：任务→主张→恢复→键盘窄屏→视觉→装饰。需按编号深查缺陷根因/复现/验收时，转 `frontend-ux-qa` 的 catalog（`L/C/S/V/A/F/N/I/D/P/G/H`）。结论分三级：阻断（MUST/NEVER违反）/建议（SHOULD）/细节，每条注明文件与规则。交付物：线框、令牌差异、三断点截图、清单打勾、已知问题。假按钮、虚假进度、键盘陷阱、对比度失败一律不许放行。
 
 ## NEVER（两种模式通用）
 
-无替代的`outline:none`、`div onClick`按钮、仅hover功能、`window.alert`、禁用提交代替校验、禁粘贴/禁缩放、纯装饰渐变/满屏毛玻璃/标题emoji/卡片套卡片、任何欺骗模式。详见 `references/anti-patterns.md`；需按编号深查时转 `frontend-ux-qa`。
+无替代的`outline:none`、`div onClick`按钮、仅hover功能、`window.alert`、禁用提交代替校验、禁粘贴/禁缩放、未经主张检验的纯装饰渐变/满屏毛玻璃/标题emoji/卡片套卡片（有主张支撑且通过减法检验的见 `references/taste.md`，可用）、任何欺骗模式。详见 `references/anti-patterns.md`；需按编号深查时转 `frontend-ux-qa`。
