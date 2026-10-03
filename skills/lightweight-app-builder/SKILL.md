@@ -115,6 +115,7 @@ flowchart TD
 2. **备选方案**：各配一句"何时应换成它"。
 3. **代价说明**：直说坏处（如"需装 Rust 工具链，首次构建等 1 分钟"）。
 4. **决策记录**：写入 `docs/DECISIONS.md`（"日期 + 决定 + 为什么 + 放弃了什么"），正式确认单用 `assets/decision-record.md` 模板（一屏以内：结论 + 形态栈表格 + 3–5 条假设及"错了会怎样" + 确认话术"没问题回'开始'，改哪条说编号"）。
+5. **顺手发散**：针对本场景想 1–3 个用户没想到但好用的功能或操作（如批量、记忆上次选择、快捷键、撤销、默认值、导出），每个一句话讲清"省了什么麻烦"；用户采纳才做，不采纳记入备选不纠缠，不硬凑。
 
 ### 什么必须问，什么直接替用户定
 
@@ -125,7 +126,7 @@ flowchart TD
 | 数据是否允许离开本机 | **必须问**，涉隐私合规 |
 | 语言与框架 | **默认替用户定**，有技术背景才给选项 |
 | 目录/日志/配置文件格式 | **默认替用户定**，不问 |
-| 测试与 CI | **默认做最小集**（一条冒烟脚本），不问 |
+| 测试与 CI | **默认做到 G3**（核心单测 + 端到端成功/失败路径），不问；70% 覆盖与跨平台冒烟按需 |
 
 ### 提问的写法
 
@@ -157,7 +158,7 @@ flowchart TD
 1. **环境体检**：先跑 `./scripts/preflight.sh --form <形态> --lang <语言>`（`--mirror china` 附国内镜像提示，`--json` 机器可读），缺必需工具先装。
 2. **骨架先行**：先跑通"输入 → 处理 → 输出"最短路径，哪怕只有一个功能。
 3. **目录定型**：业务逻辑与界面分离（core/shell/adapters），内核模块禁界面代码，布局见各形态文档与 `references/hybrid-core-shell.md`。
-4. **增量补齐**：一次只加一个能力，加完立刻自测。
+4. **增量补齐**：一次只加一个能力，加完立刻自测；Step 5 开始即建 `assets/build-checklist.md` 工程开发清单（需求对照/架构/功能/测试/效率预算），每轮增量打勾。
 5. **质量闸门**：见 `references/quality-gates.md`（G1 能跑通 → G2 格式静态 → G3 关键测试 → G4 跨平台真机 → G5 文档），未通过不得打包。
 
 ### 工程红线（不可协商）
@@ -184,6 +185,7 @@ flowchart TD
 - **一键安装**：`scripts/install.sh` + `install.ps1`，支持 `--version --prefix --mirror --dry-run --uninstall`，幂等。
 - **一键开发**：`scripts/dev.sh` / `dev.ps1`，克隆后一条命令进开发。
 - **`docs/USAGE.md`**：操作说明 + 3 截图/终端录屏；**`docs/DECISIONS.md`**：Step 3 记录；卸载说明（列出所有写入位置）；验证步骤（"输出一致即装对"）。
+- **工程开发清单**：`assets/build-checklist.md` 全勾（需求无遗漏、三维效率预算内），未勾项不得打包。
 - **发布前自查**：`references/quality-gates.md` 末尾 14 项清单逐项过一遍（含干净环境安装、卸载无残留、校验和、版本标签一致、旧版升级实测）。
 
 ## 参考文档路由表
@@ -204,6 +206,7 @@ flowchart TD
 | 测试、Lint、验收标准 | `references/quality-gates.md` |
 | 提示词怎么写、怎么问用户 | `references/prompt-recipes.md`；给用户自用的模板见 `assets/prompt-templates.md` |
 | 输出方案确认单 | `assets/decision-record.md` |
+| 动工开发、按清单增量打勾 | `assets/build-checklist.md` |
 | 看三个完整案例从头到尾怎么走 | `references/case-walkthroughs.md` |
 | 动手前检查本机工具链 | `scripts/preflight.sh`；做形态初筛 | `python scripts/recommend.py` |
 
