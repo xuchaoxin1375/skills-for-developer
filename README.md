@@ -41,6 +41,10 @@ skills-for-developer/
 | `skills/frontend-design` | Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、可用性铁律，独立使用不依赖 builder，三断点截图交付验收；存量缺陷深查转 frontend-ux-qa | 界面丑、布局乱、美化、适配手机、加载动画、新建改版、交付验收、可用性、UX |
 | `skills/frontend-ux-qa` | 存量前端 UI 缺陷诊断与验收门禁：`L/C/S/V/A/F/N/I/D/P/G/H` 编号体系，现象→根因→修复→验收，溢出/CLS 脚本与 DoD 可进 CI | 布局溢出、横向滚动、缺陷诊断、UI 验收门禁、axe、DoD、AGENTS.md UI 约束、CI 拦截 |
 | `skills/arena-preview` | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告 | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看 |
+| `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味 | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique |
+| `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 常见错误排查：静默失败、退出码、编码乱码与 BOM、引号插值、别名冲突、Junction 误删 | powershell报错、pwsh报错、脚本没输出、退出码、中文乱码、BOM、引号转义、别名冲突、junction、troubleshooting |
+| `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
+| \skills/web-animation-guide\ | Web动画应用指导：选型、性能与无障碍落地，原生优先，零依赖片段与回退写法 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -119,6 +123,9 @@ cd ~/repos/skills-for-developer
 - 2026-09-30: `markdown-style` 触发描述与适用范围纳入文档合并与多文档整合类任务（章节合并、附录并入正文、统稿后排版收尾），检索表同步。
 - 2026-09-30: `frontend-design` 与小工具开发 skill 解耦（独立使用，技术栈只作输入），新增可用性铁律一节（状态可见、可撤销、防错优先等十二条），版本升至 1.2.0，检索表同步。
 - 2026-10-01: `frontend-design` 全文中文化（SKILL.md、5个新建reference、DESIGN.md模板、scan.py注释；旧文件本就是中文），description改中文触发词，与检索表对齐。
+- 2026-10-02: 新增 `distinctive-design-director`（差异化设计导演：外部种子发散、设计简报收敛、只看成品评审、删减去模板味，全中文），真源落 `skills/distinctive-design-director`，随链接脚本分发；`.agents` 侧实体副本按漂移处理（备份后替换为 Junction）。附带修复：`scripts/link-skills.ps1` 补 UTF-8 BOM——无 BOM 时 Windows PowerShell 5.1 按系统代码页解码含中文脚本会导致静默零输出（退出码 0），文档化调用方式失效；补 BOM 后 5.1/pwsh 均正常。
+- 2026-10-02: 新增 `powershell-pitfalls`（PowerShell 5.1/pwsh 踩坑速查：静默失败、退出码、编码/BOM、引号插值、别名冲突、Junction 误删；案例全部来自本仓库真实排障证据），随链接脚本分发。
+- 2026-10-03: 新增 `agentic-web-search`（智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范），由 `prompts/ai联网` 两篇指南分析整合而成，含工具参数、提示词模板与评测参考三个 reference，随链接脚本分发。
 
 ## 开源许可
 
