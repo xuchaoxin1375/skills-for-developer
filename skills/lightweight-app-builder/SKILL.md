@@ -4,7 +4,7 @@ description: 把一句模糊的"我想做个小工具/小软件"落成轻量、�
 license: MIT
 metadata:
   language: zh-CN
-  version: "2.1.0"
+  version: "2.1.1"
   knowledge-cutoff: "2026-06"
 ---
 
@@ -21,7 +21,7 @@ metadata:
 | 使用者 | 个人/小团队，互相认识 | 陌生公众用户、海量并发 |
 | 身份权限 | 无登录，或本机单用户 | 多账号登录、多租户隔离、付费鉴权 |
 | 数据 | 本机文件/SQLite，单机量级 | 多人同时写、服务端数据库、审计合规 |
-| 运行 | 单机/单进程/定时任务 | 7×24、SLA、多副本、K8s |
+| 运行 | 单机/定时任务（I/O 并发可做，如批量调 API） | 7×24、SLA、多副本、K8s |
 | 维护 | 1 人兼职维护，AI 能接手改 | 专职团队、on-call、发布审批流 |
 | 交付 | 单文件/安装包/一条命令装好 | 商店运营、经营许可、等保备案 |
 
@@ -127,6 +127,7 @@ flowchart TD
 | 语言与框架 | **默认替用户定**，有技术背景才给选项 |
 | 目录/日志/配置文件格式 | **默认替用户定**，不问 |
 | 测试与 CI | **默认做到 G3**（核心单测 + 端到端成功/失败路径），不问；70% 覆盖与跨平台冒烟按需 |
+| 改存量功能（改已有行为） | 先书面还原它为什么是现在这样，说不清原由**必须问**，不许靠猜动手 |
 
 ### 提问的写法
 
@@ -172,6 +173,7 @@ flowchart TD
 - **日志分两级**：默认简洁，`--verbose` 才详细，落标准目录；输出颜色/进度前判 TTY 与 `NO_COLOR`。
 - **退出码语义化**：0 成功、1 一般错误、2 用法错误；结果走 stdout，日志报错走 stderr。
 - **不要静默失败**：禁空 `except`；错误带码（`E_...` 集中一处），用户看到人话 + 下一步动作。
+- **界面状态同源、文案说人话**：按钮能不能点、显示成功还是失败，一律由核心状态算出来，不许界面自己猜；同一动作全文案用同一个词，按钮写动词 + 对象。详见 `references/engineering-standards.md` 的“界面状态与文案纪律”。
 - **依赖锁死版本**，提交锁文件；内部时间一律 UTC，展示转本地。
 - **最小权限**：Tauri capability 默认全拒逐条开；Electron 关 `nodeIntegration` 开 `contextIsolation` + `sandbox`；本地服务只绑 `127.0.0.1`。
 - **中文宽度**：终端中文占两列，`ratatui`/`Textual` 用 `unicode-width` 处理；图形界面用中文字体回退链、行高 1.6–1.7。
@@ -184,7 +186,7 @@ flowchart TD
 - **`README.md`**：第一屏答三问（是什么 / 怎么装 / 怎么用）+ 从零跑通的复制粘贴命令 + 国内镜像说明 + 拦截绕行说明。
 - **一键安装**：`scripts/install.sh` + `install.ps1`，支持 `--version --prefix --mirror --dry-run --uninstall`，幂等。
 - **一键开发**：`scripts/dev.sh` / `dev.ps1`，克隆后一条命令进开发。
-- **`docs/USAGE.md`**：操作说明 + 3 截图/终端录屏；**`docs/DECISIONS.md`**：Step 3 记录；卸载说明（列出所有写入位置）；验证步骤（"输出一致即装对"）。
+- **`docs/USAGE.md`**：操作说明 + 截图（全景定结构＋关键态特写）/终端录屏；**`docs/DECISIONS.md`**：Step 3 记录；卸载说明（列出所有写入位置）；验证步骤（"输出一致即装对"）。
 - **工程开发清单**：`assets/build-checklist.md` 全勾（需求无遗漏、三维效率预算内），未勾项不得打包。
 - **发布前自查**：`references/quality-gates.md` 末尾 14 项清单逐项过一遍（含干净环境安装、卸载无残留、校验和、版本标签一致、旧版升级实测）。
 
@@ -202,7 +204,7 @@ flowchart TD
 | 做窗口程序（含成本告知、框架对比、系统集成清单） | `references/desktop-hybrid.md` |
 | CLI + GUI 双形态，或预留加界面 | `references/hybrid-core-shell.md`（内核三纪律、四语言布局、错误映射、迁移成本；sidecar 进阶可跳过） |
 | 打包、签名、发版、自动更新、国内加速（含签名链实操与安装脚本骨架） | `references/packaging-distribution.md` |
-| 目录结构、配置、日志、测试、CI | `references/engineering-standards.md` |
+| 目录结构、配置、日志、错误、并发、测试、CI | `references/engineering-standards.md` |
 | 测试、Lint、验收标准 | `references/quality-gates.md` |
 | 提示词怎么写、怎么问用户 | `references/prompt-recipes.md`；给用户自用的模板见 `assets/prompt-templates.md` |
 | 输出方案确认单 | `assets/decision-record.md` |
@@ -224,6 +226,13 @@ flowchart TD
 - **Tauri WebView 系统自带**（Win WebView2 / mac WKWebView / Linux WebKitGTK）：同 CSS 渲染不同，关键样式兼容测；Linux 需装 WebKitGTK；Win10 老机器需引导装 WebView2。
 - **macOS 分发链不可拆**：签名 → 公证 → 才能静默更新；未签名报"已损坏"，交付时给右键打开 / `xattr -dr com.apple.quarantine` 说明，优先签名公证；签名与平台绑定，CI 需三平台矩阵。
 - **国内网络**：npm/pip/cargo/Go 给镜像配置；GH 释放文件可给代理前缀备选并注明需核实可用性；尊重 `HTTP(S)_PROXY`。
+- **改存量先还原理由**：每个现存设计背后有正当理由。
+  动手前先书面说出它为什么是现在这样，说不清先问用户不许猜。
+  反例：给为直连而设的探测加代理复测，路线反了还误导决策。
+- **替代路线不混淆**：同一目标有多条替代路线时（如直连/代理）。
+  测量与结论必须标明测的是哪条路，不把 A 路结论用于 B 路决策。
+- **长列表不分页**：整页长列表默认分页（筛选页码联动、换页回到顶）。
+  弹窗/面板内列表改用定高滚动，不撑窗。
 - **版本号不写死正文**，写"以官方为准 + 查询命令"（如 `npm view tauri version`）；`description` 是触发器，改 skill 时同步写清"做什么 + 何时用"。
 
 ## 依据与知识边界
