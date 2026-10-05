@@ -46,7 +46,8 @@ description: Web动画应用指导：选型、性能与无障碍落地。Wheneve
 
 ## 必查坑（详情见 references）
 
-- `animation-timeline` 写在 `animation` 简写**之后**；滚动时长 `1ms` 只是兼容写法。
+- `animation-timeline` 写在 `animation` 简写**之后**；滚动时长 `1ms` 只是兼容写法；简写两时间值第一是时长第二是延迟，写反不报错只慢半拍。
+- 状态是真相、动画只是表达：业务提交（落库/切视图/发请求）不依赖 `transitionend`/`finished`，先提交语义状态再叠视觉。
 - `fill:forwards` 长期占优先级，用完写终值+`cancel()` 或 `commitStyles()`；`Infinity` 调 `finish()` 抛错。
 - `transitionend` 每属性一次；值未变不触发。
 - `will-change` 临前加事后删；禁全局常驻、`translateZ(0)` 迷信、`setInterval 16ms`。
@@ -65,5 +66,5 @@ description: Web动画应用指导：选型、性能与无障碍落地。Wheneve
 ## References
 
 - `references/selection.md`：完整技术边界 + 库体积对比 + 决策细节
-- `references/snippets.md`：可粘贴代码（过渡/关键帧/WAAPI/rAF/FLIP/滚动/VT/SVG/Canvas/starting-style）
+- `references/snippets.md`：可粘贴代码（过渡/关键帧/WAAPI/rAF/FLIP 与反补偿/代际守卫/滚动兜底/VT 进阶/SVG/Canvas/starting-style）
 - `references/performance-a11y.md`：性能/无障碍/兼容/国内/中文清单

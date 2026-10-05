@@ -6,7 +6,7 @@
 - scroll/resize/mousemove 不直写样式，用 rAF 合批或 CSS 驱动；先读后写。
 - `will-change` 临前加事后删；禁全局常驻、`translateZ(0)`、 `setInterval 16ms`。
 - 大模糊阴影滤镜慎用；`contain: layout paint` 限范围。
-- 验证：Performance + Paint flashing + Layer borders + CPU 降速 + 120Hz + 低端机。
+- 验证：Performance + Paint flashing + Layer borders + CPU 降速 + 120Hz + 低端机；无头可复现用 Playwright 采样 rect/opacity/遮罩曲线（逐点断言飞行形状），采样与截图分跑——截图会扰动 WAAPI 读数。
 
 ## 无障碍（必须）
 
@@ -19,6 +19,13 @@
 - `.01ms` 保事件触发；精细做法：位移视差停，颜色透明保留，入场变 ≤0.3s 淡入。
 - JS `matchMedia` 监听；WAAPI/SMIL/Canvas/视频全覆盖；站内开关可覆盖系统。
 - 5s+ 自动播放给暂停；勿闪烁传信；`opacity:0` ≠ 删除（焦点/读屏同步）。
+- 站内动效开关只能 further reduce：系统已 reduce 时，页面不可重新开启动效。
+
+## 诚实进度
+
+- ≤100ms 直接完成，不造加载态；100ms~2s 轻量不确定进度；>2s 给进度 + 已用时间 + 取消/可离开。
+- 未知总量用阶段行 + 不确定条，禁伪造百分比、禁 90% 久停、禁暗示未完成事务已完成。
+- 本地计时模拟必须明示，不伪装服务端进度。
 
 ## 兼容 / 国内 / 中文
 
