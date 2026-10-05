@@ -21,7 +21,7 @@ description: >
 
 接到任务后应先确定轨道；新建与改造两条轨道顺序不同，不可混用：
 
-1. **确认轨道与语言栈**：确认任务轨道为 `新建` 还是 `改造`；确认主语言（决定 lint 与 toolchain 选型）；确认是否公开（决定社区文件是否强制）。
+1. **定位根目录，再确认轨道与语言栈**：先执行 `git rev-parse --show-toplevel` 定位仓库根目录；若当前在子目录，所有治理文件（`.gitattributes`、`.gitignore`、`LICENSE`、社区文件、CI）一律落在根目录，审计与提交命令一律在根目录执行，向用户报告时同时注明工作目录与根目录。再确认任务轨道为 `新建` 还是 `改造`；确认主语言（决定 lint 与 toolchain 选型，多包仓库按包分别确认，根治理只保留一份）；确认是否公开（决定社区文件是否强制）。
 2. **新建轨道**：按照“落地顺序”一节逐项创建文件，每创建一项即验证一项。
 3. **改造轨道**：先审计（密钥、大文件、行尾、已追踪的应忽略文件），修复历史污染，再补充文件；旧提交历史不重写风格，仅从当前节点起执行新规范。
 4. **提交前检查**：任何 `git add/commit/push` 建议提出前，应先执行“提交前验证协议”。`git commit/push` 本身必须经用户明确指示方可执行。
@@ -53,6 +53,7 @@ description: >
 
 `简介（一句话）→ 特性 → 快速开始 → 安装 → 用法示例 → 贡献（链到 CONTRIBUTING.md）→ 许可证（SPDX 名）`。
 反模式：仅含标题与一句“TODO”的 README 视为缺失。
+该 7 节要求仅适用于仓库根 `README.md`；子目录 README 为内容文档，不受此约束，但不得声明 SPDX 许可证（避免与根 `LICENSE` 冲突）。
 
 ### .gitignore：基座与按语言追加
 
@@ -171,10 +172,11 @@ indent_style = tab
 > 以下管道适用于 **Git Bash**；PowerShell 下 `sort` 为别名、`head` 与 `grep` 不可用，等价写法：`... | Sort-Object -Descending { $_.Split()[2] } | Select-Object -First 20`、`git diff --cached | Select-String -Pattern 'password|secret|token' -CaseSensitive:$false`。
 
 ```bash
+git rev-parse --show-toplevel                          # 先确认根目录，以下命令在根目录执行
 gitleaks detect --source .                                    # 密钥扫描（无工具则先装）
 git rev-list --objects --all | git cat-file --batch-check | sort -k3nr | head -20   # 大文件排行
 git log --all -p -S 'password|api_key|secret' --pickaxe-regex  # 历史密钥痕迹
-git ls-files --ignored --exclude-standard                     # 应忽略却被追踪的文件
+git ls-files -c -i --exclude-standard                     # 已追踪却应忽略的文件（原 `-c/-o` 缺失会直接报错）
 ```
 
 ---
@@ -231,7 +233,7 @@ git ls-files --ignored --exclude-standard                     # 应忽略却被�
 
 ## 提交前验证协议（每次建议提交前必跑）
 
-1. `git status --short` + `git diff --cached --stat`：确认仅含本次任务文件，无 `.env` / 密钥 / 二进制混入。
+1. `git status --short` + `git diff --cached --stat`：在根目录执行（覆盖全仓库，子目录视角会遗漏根部文件）：确认仅含本次任务文件，无 `.env` / 密钥 / 二进制混入。
 2. 密钥扫描：`gitleaks detect --source .`（无工具时至少执行 `git diff --cached | grep -nEi 'password|passwd|secret|token|api[_-]?key|BEGIN [A-Z ]*PRIVATE KEY'`）。
 3. 规范检查：提交信息须通过 commitlint 校验；分支名须全小写并使用连字符；CHANGELOG 须有未发布条目（如本次含用户可见变更）。
 4. 门禁：对应语言的 lint 与 test 须本地通过（或确认 CI 会跑）。
