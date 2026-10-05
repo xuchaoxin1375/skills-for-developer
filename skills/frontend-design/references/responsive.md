@@ -17,6 +17,9 @@
 - **表格**：手机上转为横向滚动（首列冻结）或卡片列表；超过 5 列的表必须提供列显隐。
 - **导航**：>1024 侧边展开；<640 收进汉堡抽屉，抽屉必须有关闭按钮且点遮罩可关。
 - **工具栏**：操作超过 4 个，手机上只留主操作+搜索，其余进"更多"。
+- **页眉**：sticky 优先（滚动时操作不丢失；窄屏可解 sticky 但不许遮挡内容）。窄窗口/手机端善用汉堡菜单：直接显示的按钮 ≤3 个（含状态指示器），上传/队列/设置这类次操作全收进菜单；菜单内按"上传 / 构建 / 状态"分组，一次只开一个浮层。桌面端恢复平铺时不许增减功能，只变呈现。
+- **sticky 优先级与限高**：页眉（品牌/标题行）是第一 sticky 优先级，全宽度 sticky，只在超矮横屏等极端情况解除。反模式：解掉页眉却留着又高又大的次级栏 sticky（本末倒置）；两个 sticky 叠加也不许超高。限高：手机 sticky 总高 ≤64px（一行），桌面所有 sticky 相加 ≤120px；超了就把次级的解掉（随页面滚走），不要全留着。
+- **sticky 零缝隙**：次级 sticky 的 `top` 必须等于页眉实高（`getBoundingClientRect` 量出来的，不许拍脑袋写魔法数字），和页眉下缘齐平。留缝的话滚动时内容从缝里漏过去，看着像 bug。多个 sticky 共存时共用同一基线；页眉换行变高的断点下，次级 sticky 宁可解除也不要错位吸住。
 - **弹窗**：手机上变全屏页（带顶部返回），不许出现双指缩放才能点到的按钮。
 
 ## 触控与可点
@@ -30,3 +33,11 @@
 三断点各截一屏检查：无横向滚动（表格区除外）、主任务可完成、文字无截断重叠。只测 Chrome 桌面宽度=没测。
 
 自动化（条件允许）：`node scripts/screenshot.mjs <本地地址>` 一次产出三断点整页截图再人工看；另跑 `npx @axe-core/cli <地址>` 与 Lighthouse，对比度/可访问性错误清零，修不掉的列入已知问题。
+
+## 无头截图验收坑位（实战沉淀）
+
+- **视口钳制误报（必查）**：`headless=new` 受 OS 最小窗口宽度钳制（如要 390 实得 478），截图再按请求宽度裁图——视口外的内容看起来像"被裁切/遮挡"，实为假阳性。对策：页内置探针断言真值（把 `window.innerWidth` 写进横幅里再拍），只认 innerWidth 达标的截图；<500 的真视口要真机或 CDP 设备模拟；同一媒体查询段内可用钳制以上宽度等价验证，但结论必须注明实际 innerWidth。
+- **`hidden` 被 display 覆盖**：任何显式写了 `display` 的类选择器都会打败 UA 的 `[hidden]{display:none}`（实测 `.badge{display:inline-flex}` 让隐藏徽标常显）。对策：全局加 `[hidden]{display:none!important}`。
+- **常驻调试浏览器占锁**：带 `--remote-debugging-port` 或常驻的 headless 实例占住 profile Singleton 锁，后续截图进程静默退出（无文件、无报错）。对策：调试完即杀，只杀带 `headless`/`remote-debugging` 标记的进程，勿动用户主浏览器；截图失败先查锁再查代码。本机浏览器开着就烫手时，无头进程改用独立 `--user-data-dir`（或走 Playwright 自带 profile + 每次 `browser.close()`），不碰默认 profile。
+- **溢出二分法**：一时定位不到是哪个元素撑宽时，临时 `display:none` 藏半页拍（顶栏/子顶栏/列表逐段隔离）；或插临时探针把 `getBoundingClientRect` 越界元素名写进横幅拍出来。临时 CSS/JS 拍完即删，终验前 grep 确认无残留（`tmp-`/`PROBE` 标记）。
+- **防溢出标配**：`html,body{overflow-x:clip}`（保 sticky，比 hidden 安全）；flex 容器直接子 `min-width:0`；下拉框长值 `max-width:100% + text-overflow:ellipsis`；pre/日志类内容加 `overflow-wrap:anywhere`。
