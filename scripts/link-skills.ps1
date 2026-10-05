@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   [Windows 专用] 将本仓库 skills/ 下的每个 skill 通过 Junction 链接到各 harness 的 skills 目录。
