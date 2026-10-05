@@ -18,6 +18,7 @@ skills-for-developer/
   scripts/
     link-skills.ps1             # Windows：创建 / 校验 / 移除 Junction（幂等）
     link-skills.sh              # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）
+  .workspaces/                  # 本地评估产物（git 忽略，不提交、不同步）
   .gitattributes                # 锁定 .sh/.ps1/.py 为 LF，防跨平台换行问题
   LICENSE                     # MIT，宽松开源
   README.md
@@ -45,6 +46,7 @@ skills-for-developer/
 | `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 常见错误排查：静默失败、退出码、编码乱码与 BOM、引号插值、别名冲突、Junction 误删 | powershell报错、pwsh报错、脚本没输出、退出码、中文乱码、BOM、引号转义、别名冲突、junction、troubleshooting |
 | `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
 | \skills/web-animation-guide\ | Web动画应用指导：选型、性能与无障碍落地，原生优先，零依赖片段与回退写法 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
+| `skills/adaptive-layout` | Web前端自适应布局设计与适配：操作区收纳决策、容器查询实现、交互状态与验收清单 | 自适应、响应式、按钮放不下、窄屏溢出、容器查询、触控目标、主操作菜单、选中浮层 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -103,6 +105,8 @@ cd ~/repos/skills-for-developer
 3. 删除 skill: 先运行 `-Unlink` / `--unlink` (或手工删除各 harness 下对应链接), 再删仓库目录。注意删除链接只删链接不删实体：Win 用 `Remove-Item <junction>`（不要加 `-Recurse`），Linux 用 `rm <symlink>`（不要加 `-r`，且路径末尾不要加 `/`）。
 4. 原位置的实体在首次替换为链接时会自动备份到 `~/.skills-migration-backup/<时间戳>/<harness>/<name>`（Win 下即 `%USERPROFILE%/.skills-migration-backup/...`），备份移出 skills 目录是为了避免被 harness 误扫为重复 skill，确认无误后可手工删除备份。
 
+5. 跑 skill-creator 评估时，过程产物（`outputs/`、`benchmark.json`、`review.html` 等 `*-workspace/` 目录）统一放仓库根 `.workspaces/<skill-name>-workspace/`（已在 `.gitignore` 忽略，本地独占）；**禁止**放入 `skills/` 下（链接脚本会对无 `SKILL.md` 目录告警，且过程产物不许进入真源同步）。留到 skill 稳定作回归基线，过时后整目录删除。
+
 ## 迁移记录
 
 - 2026-09-27: 从本机迁入 4 个用户 skill (文件数: doc-polish-zh 1、scripting-best-practices 1、resilient-browser-fetch 21、htmlmini 1), 哈希校验一致后原位置替换为指向本仓库的 Junction。Codex `.system/` 等 harness 自带内容未纳入。
@@ -126,6 +130,7 @@ cd ~/repos/skills-for-developer
 - 2026-10-02: 新增 `distinctive-design-director`（差异化设计导演：外部种子发散、设计简报收敛、只看成品评审、删减去模板味，全中文），真源落 `skills/distinctive-design-director`，随链接脚本分发；`.agents` 侧实体副本按漂移处理（备份后替换为 Junction）。附带修复：`scripts/link-skills.ps1` 补 UTF-8 BOM——无 BOM 时 Windows PowerShell 5.1 按系统代码页解码含中文脚本会导致静默零输出（退出码 0），文档化调用方式失效；补 BOM 后 5.1/pwsh 均正常。
 - 2026-10-02: 新增 `powershell-pitfalls`（PowerShell 5.1/pwsh 踩坑速查：静默失败、退出码、编码/BOM、引号插值、别名冲突、Junction 误删；案例全部来自本仓库真实排障证据），随链接脚本分发。
 - 2026-10-03: 新增 `agentic-web-search`（智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范），由 `prompts/ai联网` 两篇指南分析整合而成，含工具参数、提示词模板与评测参考三个 reference，随链接脚本分发。
+- 2026-10-05: 新增 `adaptive-layout`（Web前端自适应布局设计与适配：收纳决策、容器查询实现、交互状态与验收清单，由卡片操作区案例提炼泛化），随链接脚本分发；确立评估产物治理规则：`*-workspace/` 禁入 `skills/`，统一放 git 忽略的 `.workspaces/` 作回归基线（记入 `skill-authoring-sync` 规范与日常工作流）。
 
 ## 开源许可
 

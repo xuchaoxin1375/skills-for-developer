@@ -69,6 +69,17 @@ skills-for-developer/
 2. 必须：删链接只删链接不删实体——Windows 用 `Remove-Item <junction>`
   （不要加 `-Recurse`），Linux 用 `rm <symlink>`（不要加 `-r`，路径末尾不要加 `/`）。
 
+### 评估过程产物
+
+skill-creator 评估循环的过程产物（`outputs/`、`benchmark.json`、`review.html`
+等 `*-workspace/` 目录）**禁止**放入 `skills/` 下：链接脚本只处理含
+`SKILL.md` 的目录，无 `SKILL.md` 者每次运行告警；且过程产物不是 skill 实体，
+不许进入真源 git 同步。
+
+统一放仓库根 `.workspaces/<skill-name>-workspace/`（已在 `.gitignore` 忽略，
+本地独占、不提交、不跨机器同步）。留到 skill 稳定作为回归基线（改 skill 时
+以前次输出为 baseline 跑下一 iteration），结论过时后整目录删除。
+
 ### 副本漂移处理
 
 harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本会自动将其备份到
