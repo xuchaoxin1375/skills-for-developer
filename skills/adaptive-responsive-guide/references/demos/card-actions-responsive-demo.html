@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>卡片操作区响应式综合演示</title>
+<style>
+:root{
+  color-scheme:light dark;
+  --brand:#059669; --brand-dark:#047857; --brand-strong:#065f46; --brand-soft:#ecfdf5;
+  --border:#dbe3ec; --border-soft:#eaf0f5; --text:#0f172a; --sub:#5b6b82;
+  --surface:#fff; --page:#f3f6f9; --hover:#f8fafc; --code:#e2e8f0;
+  --focus:#047857;
+  --shadow:0 12px 32px rgba(15,23,42,.12);
+  --tap:44px; --gap:8px; --radius:12px;
+}
+html[data-theme="dark"]{color-scheme:dark;
+  --text:#e2e8f0; --sub:#94a3b8; --surface:#0f172a; --page:#020617;
+  --border:#334155; --border-soft:#1e293b; --hover:#1e293b; --code:#1e293b; --focus:#34d399;
+}
+@media (prefers-color-scheme:dark){
+  html:not([data-theme="light"]){color-scheme:dark;
+    --text:#e2e8f0; --sub:#94a3b8; --surface:#0f172a; --page:#020617;
+    --border:#334155; --border-soft:#1e293b; --hover:#1e293b; --code:#1e293b; --focus:#34d399;
+  }
+}
+html{scrollbar-gutter:stable}
+*{box-sizing:border-box}
+html,body{overflow-x:clip}
+body{margin:0;min-width:320px;color:var(--text);background:var(--page);line-height:1.6;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}
+button,input{font:inherit}
+button{-webkit-tap-highlight-color:transparent}
+.page{width:min(100% - 2rem,72rem);margin:0 auto;padding:28px 0 48px}
+.page-header h1{margin:0 0 8px;font-size:clamp(1.15rem,.95rem + 1cqi,1.4rem)}
+.page-header p{margin:0;color:var(--sub);font-size:14px;line-height:1.6}
+.map{margin:14px 0 0;font-size:12px;color:var(--sub);line-height:1.7}
+.map code{background:var(--code);padding:1px 6px;border-radius:6px;color:var(--text)}
+/* 控制区 */
+.controls{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;margin:18px 0;display:grid;gap:12px}
+.controls-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.controls-row .lbl{font-size:13px;font-weight:700;margin-right:4px}
+.seg{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:8px;padding:8px 12px;
+  min-height:var(--tap);cursor:pointer;font-size:13px;white-space:nowrap}
+.seg[aria-pressed="true"]{background:var(--brand-dark);border-color:var(--brand-dark);color:#fff}
+.debug{font-size:13px;color:var(--sub)}
+.debug b{color:var(--brand-dark)}
+input[type="range"]{width:min(100%,420px);accent-color:var(--brand)}
+/* 演示舞台：卡片容器（容器查询上下文） */
+.stage{width:100%;max-width:600px;container:card / inline-size} /* 直接操纵不加过渡，滑条 1:1 跟手 */
+.card{position:relative;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--brand);
+  border-radius:var(--radius);box-shadow:0 1px 2px rgba(15,23,42,.05);min-width:0}
+.card-main{padding:14px 14px 12px}
+.card-title-row{display:flex;gap:8px;align-items:center;min-width:0}
+.card-title{margin:0;font-size:14px;line-height:1.45;overflow-wrap:anywhere;min-width:0}
+.select-box{flex:0 0 auto;width:44px;height:44px;margin:0;accent-color:var(--brand);cursor:pointer;flex-shrink:0}
+.meta-row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 12px 52px}
+.tag{display:inline-flex;align-items:center;min-height:22px;padding:2px 8px;font-size:12px;white-space:nowrap;
+  color:#047857;background:var(--brand-soft);border:1px solid #a7f3d0;border-radius:999px}
+.preview{position:relative;min-height:200px;overflow:hidden;border:1px solid var(--border-soft);border-radius:10px;
+  background:linear-gradient(90deg,rgba(15,23,42,.025) 1px,transparent 1px),linear-gradient(rgba(15,23,42,.025) 1px,transparent 1px),#f8fafc;
+  background-size:16px 16px}
+.preview-inner{position:absolute;inset:20px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  box-shadow:0 6px 14px rgba(15,23,42,.06);overflow:hidden}
+.preview-icon{display:grid;width:42px;height:42px;place-items:center;margin-bottom:12px;color:#0f766e;background:#dffaf5;border-radius:12px;font-size:21px}
+.preview-title{margin-bottom:8px;font-size:17px;font-weight:800;line-height:1.45}
+.preview-desc{margin:0;color:var(--sub);font-size:13px;line-height:1.65}
+/* 预览异步态（S-01/02/04）：就绪/加载中/失败/空，局部化、可恢复 */
+.preview-state{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;background:var(--surface);border-radius:10px;padding:16px;text-align:center}
+.preview-state p{margin:0;font-size:14px;line-height:1.6}
+.preview-sub{color:var(--sub);font-size:13px}
+.spinner{width:28px;height:28px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--brand-dark);
+  animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@container card (max-width:30rem){
+  .preview{min-height:178px}
+  /* 窄容器改静态流：高度随内容长，绝不拦腰裁字（纵向长一点好过看不懂） */
+  .preview-inner{position:static;margin:14px;padding:15px}
+  .preview-title{font-size:15px}
+  .preview-desc{font-size:12px}
+}
+.modal-preview{min-height:280px;padding:28px;background:linear-gradient(90deg,rgba(15,23,42,.035) 1px,transparent 1px),linear-gradient(rgba(15,23,42,.035) 1px,transparent 1px),#f8fafc;
+  background-size:20px 20px;border:1px solid var(--border-soft);border-radius:10px}
+.modal-preview-card{max-width:560px;padding:28px;margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  box-shadow:0 8px 20px rgba(15,23,42,.08)}
+/* 操作区 */
+.card-footer{display:flex;align-items:center;gap:var(--gap);position:relative;padding:10px 14px 12px;border-top:1px solid var(--border-soft)}
+.action-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;
+  min-height:var(--tap);padding:7px 10px;font-size:13px;line-height:1;color:var(--text);background:var(--surface);
+  border:1px solid var(--border);border-radius:7px;cursor:pointer;flex-shrink:0;min-width:0}
+.action-btn:hover{background:var(--hover);border-color:#94a3b8}
+.action-btn:focus-visible,.seg:focus-visible,.menu-item:focus-visible,.dialog-input:focus-visible{
+  outline:3px solid var(--focus);outline-offset:2px}
+.action-btn svg{width:16px;height:16px;flex:0 0 auto}
+.action-btn--primary{background:var(--brand-dark);border-color:var(--brand-dark);color:#fff}
+.action-btn--primary:hover{background:var(--brand-strong);border-color:var(--brand-strong);color:#fff}
+.action-btn--compared{background:var(--brand-soft);border-color:#86efac;color:#047857}
+.btn-more{display:none;width:var(--tap);font-size:19px;font-weight:700}
+.stage[data-scheme="menu"] .btn-more{display:inline-flex}
+.label-short{display:none}
+/* 更多菜单：桌面下拉 / 移动底部面板（同一元素双形态，去重 demo1 与 demo2/3 两套实现） */
+.overflow-menu{position:absolute;right:0;bottom:calc(100% + 8px);z-index:30;min-width:150px;
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);
+  padding:6px;display:flex;flex-direction:column;gap:2px;
+  opacity:0;visibility:hidden;transform:translateY(8px);transition:opacity .18s cubic-bezier(0.2,0,0,1),transform .18s cubic-bezier(0.2,0,0,1)}
+.overflow-menu.is-open{opacity:1;visibility:visible;transform:translateY(0)}
+.menu-item{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap);padding:0 12px;
+  background:var(--surface);border:0;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;color:var(--text)}
+.menu-item:hover{background:var(--hover)}
+.menu-item svg{width:16px;height:16px;flex:0 0 auto}
+/* 四方案：同一组件切换（去重：demo2 body 类 → data-scheme） */
+.stage[data-scheme="wrap"] .card-actions{flex-wrap:wrap}
+.stage[data-scheme="icon"] .card-actions{flex-wrap:nowrap}
+.stage[data-scheme="icon"] .action-btn .btn-text,.stage[data-scheme="icon"] .label-full,.stage[data-scheme="icon"] .label-short{display:none}
+.stage[data-scheme="icon"] .action-btn{width:var(--tap);padding:0}
+.stage[data-scheme="scroll"] .card-actions{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:12px}
+.stage[data-scheme="scroll"] .card-actions::-webkit-scrollbar{display:none}
+/* 横滑对照的可发现性补偿：右侧渐隐提示还有内容（原 demo2 做法；仍判可选/过渡） */
+.stage[data-scheme="scroll"] .card::after{content:'';position:absolute;right:14px;bottom:12px;width:36px;height:36px;
+  background:linear-gradient(to right,transparent,var(--surface));pointer-events:none}
+.action-btn:active{transform:scale(.98)}
+.skip-link{position:absolute;left:12px;top:-56px;z-index:200;padding:10px 16px;min-height:var(--tap);
+  background:var(--surface);color:var(--text);border:2px solid var(--focus);border-radius:8px;font-size:14px}
+.skip-link:focus{top:12px}
+/* 底部面板 chrome：把手 + 标题 + 取消，只在移动双形态下出现 */
+.only-sheet{display:none}
+.sheet-handle{width:36px;height:4px;margin:2px auto 6px;background:#cbd5e1;border-radius:999px}
+.sheet-title{padding:2px 6px 8px;color:var(--sub);font-size:13px}
+.menu-item--cancel{justify-content:center;margin-top:6px;border-top:1px solid var(--border-soft);color:var(--sub)}
+.stage[data-scheme="menu"] .card-actions{flex-wrap:nowrap}
+/* 菜单态常驻按钮只许增长、不许收缩（flex-shrink:0），挤压由 JS 折叠进菜单解决，不靠压文字 */
+.stage[data-scheme="menu"] .btn-expand,.stage[data-scheme="menu"] .btn-compare{flex:1 0 auto}
+.stage[data-scheme="menu"] .btn-more{flex:0 0 auto}
+/* 选中后浮层（第二推荐，多卡片浏览优先）：未激活无按钮行，点击/键盘固定，hover/focus仅临时 */
+.stage[data-scheme="select"] .card-actions{display:none}
+.select-hint{display:none;align-items:center;justify-content:space-between;gap:12px;width:100%;
+  min-height:var(--tap);padding:6px 0 2px;font-size:12px;color:var(--sub)}
+.stage[data-scheme="select"] .select-hint{display:flex}
+.select-hint .action-btn{flex:0 0 auto}
+.card[data-active="true"]{border-color:var(--brand-dark);box-shadow:0 0 0 1px var(--brand-dark)}
+.ctx-toolbar{position:absolute;z-index:7;left:16px;right:16px;bottom:12px;
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);
+  padding:8px 12px 12px;opacity:0;visibility:hidden;transform:translateY(8px);
+  transition:opacity .18s cubic-bezier(0.2,0,0,1),transform .18s cubic-bezier(0.2,0,0,1)}
+.ctx-toolbar.is-open,.ctx-toolbar.is-peek{opacity:1;visibility:visible;transform:translateY(0)}
+.ctx-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.ctx-head>span{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.ctx-dot{width:6px;height:6px;background:var(--brand-dark);border-radius:999px;flex-shrink:0}
+.ctx-actions{display:flex;gap:8px}
+.ctx-actions .action-btn{flex:1 0 auto}
+@container card (max-width:30rem){
+  .ctx-actions .action-btn .btn-text{display:none}
+  .ctx-actions .action-btn{flex:1;padding:7px 8px}
+}
+@media (forced-colors:active){
+  .card[data-active="true"]{outline:2px solid Highlight}
+  .action-btn,.menu-item{border:1px solid ButtonText}
+}
+/* 三级收纳中的短标签过渡（仅语义无损时用）：容器中等宽把“新标签打开”收为“打开” */
+@container card (max-width:35rem){
+  .stage[data-scheme="wrap"] .label-full,.stage[data-scheme="scroll"] .label-full{display:none}
+  .stage[data-scheme="wrap"] .label-short,.stage[data-scheme="scroll"] .label-short{display:inline}
+}
+/* 极窄兜底：主操作退为图标 + 可访问名（整颗隐藏文字，不挤压省略） */
+@container card (max-width:22.5rem){
+  .stage[data-scheme="menu"] .btn-expand .btn-text{display:none}
+  .stage[data-scheme="menu"] .btn-expand{flex:0 0 var(--tap);padding:0}
+}
+/* 无容器查询旧环境的同效兜底：JS 在 k=0 时挂此类，动作不消失 */
+.stage[data-scheme="menu"] .btn-expand.is-icon-only .btn-text{display:none}
+.stage[data-scheme="menu"] .btn-expand.is-icon-only{flex:0 0 var(--tap);padding:0}
+[hidden]{display:none !important}
+/* 隐藏测量行（Priority+ 动态折叠用，与真按钮同组件同样式，含图标） */
+.measure-row{position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;
+  display:flex;gap:var(--gap);width:max-content}
+/* 测量行在 .stage 外，不受方案规则影响：强制可见才能量到真实宽度（尤其 ··· 按钮，量不到 wMore=0 会多收 44px） */
+.measure-row .action-btn{display:inline-flex}
+.measure-row .btn-more{display:inline-flex;width:var(--tap)}
+/* toast / 弹窗 */
+.toast{position:fixed;z-index:100;left:50%;bottom:max(24px,env(safe-area-inset-bottom));
+  max-width:calc(100vw - 32px);padding:10px 14px;color:#fff;background:rgba(15,23,42,.92);
+  border-radius:8px;font-size:14px;opacity:0;pointer-events:none;transform:translate(-50%,18px);
+  transition:opacity .2s cubic-bezier(0.2,0,0,1),transform .2s cubic-bezier(0.2,0,0,1)}
+.toast.is-visible{opacity:1;transform:translate(-50%,0)}
+.modal-mask{position:fixed;z-index:90;inset:0;display:none;align-items:center;justify-content:center;
+  padding:20px;background:rgba(15,23,42,.52)}
+.modal-mask.is-open{display:flex}
+.modal{width:min(100%,560px);max-height:min(82vh,720px);max-height:min(82dvh,720px);overflow:auto;background:var(--surface);border-radius:14px;box-shadow:var(--shadow)}
+.modal-header,.modal-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}
+.modal-header{border-bottom:1px solid var(--border-soft)}
+.modal-title{margin:0;font-size:16px}
+.modal-body{padding:16px}
+.modal-footer{border-top:1px solid var(--border-soft);justify-content:flex-end}
+.icon-close{width:var(--tap);height:var(--tap);min-width:var(--tap);padding:0;font-size:24px}
+.dialog-label{display:block;margin-bottom:8px;font-size:14px;font-weight:600}
+.dialog-input{width:100%;min-height:var(--tap);padding:8px 12px;font-size:16px;color:var(--text);
+  background:var(--surface);border:1px solid var(--border);border-radius:8px}
+.field-error{margin:8px 0 0;color:#b91c1c;font-size:13px;line-height:1.6}
+html[data-theme="dark"] .preview,html[data-theme="dark"] .modal-preview{background:#0b1220}
+html[data-theme="dark"] .dialog-input{background:#0b1220;color:#e2e8f0}
+html[data-theme="dark"] .field-error{color:#fca5a5}
+@media print{
+  .controls,.toast,.overflow-menu,.modal-mask,.skip-link{display:none !important}
+  .page{padding:0}
+  .card{box-shadow:none}
+}
+/* 移动端：菜单变底部面板，弹窗变底部全宽页（demo1 做法收敛到同一元素） */
+@media (max-width:29.9rem){
+  .page{padding:18px 0 32px}
+  .action-btn{min-height:var(--tap)}
+  .overflow-menu{position:fixed;left:0;right:0;bottom:0;top:auto;border-radius:16px 16px 0 0;
+    padding:8px 14px max(14px,env(safe-area-inset-bottom));transform:translateY(100%)}
+  .overflow-menu.is-open{transform:translateY(0)}
+  .only-sheet{display:block}
+  .overflow-menu .menu-item{min-height:50px;font-size:15px}
+  .modal-mask{align-items:flex-end;padding:0}
+  .modal{width:100%;max-height:90vh;border-radius:16px 16px 0 0}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+@media (prefers-color-scheme:dark){
+  html:not([data-theme="light"]) .preview,html:not([data-theme="light"]) .modal-preview{background:#0b1220}
+  html:not([data-theme="light"]) .dialog-input{background:#0b1220;color:#e2e8f0}
+  html:not([data-theme="light"]) .field-error{color:#fca5a5}
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#stage">跳到演示卡片</a>
+<main class="page">
+  <header class="page-header">
+    <h1>卡片操作区响应式综合演示</h1>
+    <p>同一张卡片演示五种方案：<b>完整换行（基线） / 主操作 + 更多（默认推荐） / 选中后浮层（多卡片推荐） / 纯图标（对照） / 横向滚动（对照）</b>。
+    拖滑块改的是<b>卡片容器宽</b>，不是视口；卡片内部只看容器，页级列数才看视口。</p>
+    <p class="map">去重说明：<code>demo1</code> 视口三档 + 底部面板闭环 → 收敛为容器查询 + 同一菜单双形态；
+    <code>demo2</code> 四态对照保留为教学切换（图标/横滑判可选）；<code>demo3</code> 滑块验证 + 静态折叠升级为 Priority+ 动态 <code>k</code> 计算；新增<code>select</code>为第二推荐，多卡片浏览优先。</p>
+  </header>
+
+  <section class="controls" aria-label="演示控制">
+    <div class="controls-row" role="group" aria-label="方案切换">
+      <span class="lbl">方案</span>
+      <button class="seg" data-scheme-btn="wrap" aria-pressed="false">换行基线</button>
+      <button class="seg" data-scheme-btn="menu" aria-pressed="true">主 + 更多（推荐）</button>
+      <button class="seg" data-scheme-btn="select" aria-pressed="false">选中浮层（推荐）</button>
+      <button class="seg" data-scheme-btn="icon" aria-pressed="false">纯图标（对照）</button>
+      <button class="seg" data-scheme-btn="scroll" aria-pressed="false">横向滚动（对照）</button>
+    </div>
+    <div class="controls-row">
+      <label class="lbl" for="widthSlider">卡片容器宽</label>
+      <input type="range" id="widthSlider" min="300" max="1440" value="600" step="1" />
+      <span class="debug">当前 <b id="widthValue">600px</b> · 可见 <b id="visibleCount">–</b> · 溢出 <b id="overflowState">–</b> · <span id="modeTip">桌面端单行</span></span>
+    </div>
+    <div class="controls-row" role="group" aria-label="容器宽度预设">
+      <span class="lbl">预设</span>
+      <button class="seg" data-width="320">320</button>
+      <button class="seg" data-width="390">390</button>
+      <button class="seg" data-width="600">600</button>
+      <button class="seg" data-width="768">768</button>
+      <button class="seg" data-width="800">800</button>
+      <button class="seg" data-width="1440">1440</button>
+    </div>
+    <div class="controls-row" role="group" aria-label="主题">
+      <span class="lbl">主题</span>
+      <button class="seg" data-theme-btn="system" aria-pressed="true">跟随系统</button>
+      <button class="seg" data-theme-btn="light" aria-pressed="false">浅色</button>
+      <button class="seg" data-theme-btn="dark" aria-pressed="false">深色</button>
+    </div>
+    <div class="controls-row" role="group" aria-label="预览状态">
+      <span class="lbl">预览</span>
+      <button class="seg" data-preview-btn="ready" aria-pressed="true">就绪</button>
+      <button class="seg" data-preview-btn="loading" aria-pressed="false">加载中</button>
+      <button class="seg" data-preview-btn="error" aria-pressed="false">加载失败</button>
+      <button class="seg" data-preview-btn="empty" aria-pressed="false">空</button>
+    </div>
+  </section>
+
+  <div class="stage" id="stage" data-scheme="menu">
+    <article class="card" id="demoCard" aria-labelledby="cardTitle" data-active="false">
+      <div class="card-main" id="cardMain">
+        <div class="card-title-row">
+          <input class="select-box" type="checkbox" aria-label="选择当前卡片（批量，与激活无关）" />
+          <h2 class="card-title" id="cardTitle" data-card-title>smooth-comparison-window-expansion-arena-max</h2>
+        </div>
+        <div class="meta-row"><span class="tag">✓ OK</span><span class="tag">✓ 已构建 · 10 小时前</span></div>
+        <div class="preview" id="previewBox" role="region" aria-label="卡片预览">
+          <div class="preview-inner" id="previewReady">
+            <div class="preview-icon" aria-hidden="true">↔</div>
+            <div class="preview-title">核心问题：对比窗口放大到全屏时，如何做到丝滑？</div>
+            <p class="preview-desc">对比窗口默认不会占满屏幕。用户点击“放大”后，通过平滑动画扩展到全屏，以便查看实验效果与细节内容。</p>
+          </div>
+          <div class="preview-state" id="previewLoading" hidden>
+            <div class="spinner" aria-hidden="true"></div>
+            <p>正在加载预览…<span id="loadSecs">0.0</span>s</p>
+            <button class="action-btn" type="button" id="cancelLoad">取消</button>
+          </div>
+          <div class="preview-state" id="previewError" hidden>
+            <p><strong>预览加载失败</strong></p>
+            <p class="preview-sub">请检查网络后重试（演示用模拟错误）。</p>
+            <button class="action-btn action-btn--primary" type="button" id="retryLoad">重新加载</button>
+          </div>
+          <div class="preview-state" id="previewEmpty" hidden>
+            <p><strong>暂无预览</strong></p>
+            <p class="preview-sub">当前卡片还没有可展示的内容。</p>
+            <button class="action-btn" type="button" id="reloadEmpty">重新加载</button>
+          </div>
+        </div>
+        <div class="select-hint" id="selectHint" hidden>
+          <span id="selectHintText">点击卡片，显示操作</span>
+          <button class="action-btn" type="button" id="selectTrigger" aria-expanded="false" aria-controls="ctxToolbar">显示操作</button>
+        </div>
+      </div>
+      <footer class="card-footer card-actions" id="cardActions">
+        <button class="action-btn btn-expand" type="button" data-action="expand" data-priority="0" aria-label="弹窗放大">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/></svg>
+          <span class="btn-text">弹窗放大</span>
+        </button>
+        <button class="action-btn action-btn--primary btn-compare" type="button" data-action="compare" data-priority="1" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="7" height="14" rx="1"/><rect x="14" y="5" width="7" height="14" rx="1"/></svg>
+          <span class="btn-text" data-compare-text>加入对比</span>
+        </button>
+        <button class="action-btn btn-open" type="button" data-action="open" data-priority="2" aria-label="在新标签页打开">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3h7v7M10 14L21 3M21 14v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h6"/></svg>
+          <span class="label-full btn-text">新标签打开</span><span class="label-short btn-text">打开</span>
+        </button>
+        <button class="action-btn btn-rename" type="button" data-action="rename" data-priority="3" aria-label="重命名">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          <span class="btn-text">重命名</span>
+        </button>
+        <button class="action-btn btn-more" type="button" id="moreBtn" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false">···</button>
+        <div class="overflow-menu" id="overflowMenu" role="menu" aria-label="更多操作"></div>
+      </footer>
+      <div class="ctx-toolbar" id="ctxToolbar" role="toolbar" aria-label="当前卡片操作" hidden>
+        <div class="ctx-head"><span><i class="ctx-dot" aria-hidden="true"></i><span id="ctxTitle">当前卡片操作</span></span><button class="action-btn" type="button" id="ctxClose" aria-label="关闭操作浮层">×</button></div>
+        <div class="ctx-actions" id="ctxActions">
+          <button class="action-btn" type="button" data-ctx-action="expand" aria-label="弹窗放大"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/></svg><span class="btn-text">弹窗放大</span></button>
+          <button class="action-btn" type="button" data-ctx-action="compare" aria-label="加入对比" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="7" height="14" rx="1"/><rect x="14" y="5" width="7" height="14" rx="1"/></svg><span class="btn-text" id="ctxCompareText">加入对比</span></button>
+          <button class="action-btn" type="button" data-ctx-action="open" aria-label="在新标签页打开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3h7v7M10 14L21 3M21 14v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1-1-1h6"/></svg><span class="btn-text">新标签打开</span></button>
+          <button class="action-btn" type="button" data-ctx-action="rename" aria-label="重命名"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span class="btn-text">重命名</span></button>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <!-- 隐藏测量行：与真按钮同样式同图标，用于 Priority+ 自然宽测量（缺图标会低估约 22px/颗导致挤压） -->
+  <div class="measure-row" id="measureRow" aria-hidden="true">
+    <button class="action-btn" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/></svg><span class="btn-text">弹窗放大</span></button>
+    <button class="action-btn" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="7" height="14" rx="1"/><rect x="14" y="5" width="7" height="14" rx="1"/></svg><span class="btn-text">加入对比</span></button>
+    <button class="action-btn" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3h7v7M10 14L21 3M21 14v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h6"/></svg><span class="btn-text">新标签打开</span></button>
+    <button class="action-btn" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span class="btn-text">重命名</span></button>
+    <button class="action-btn btn-more" tabindex="-1">···</button>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="modal-mask" id="previewModal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+  <section class="modal">
+    <header class="modal-header"><h2 class="modal-title" id="previewTitle">预览：对比窗口动画方案</h2>
+      <button class="action-btn icon-close" type="button" data-close-modal aria-label="关闭">×</button></header>
+    <div class="modal-body">
+      <div class="modal-preview">
+        <div class="modal-preview-card">
+          <div class="preview-icon" aria-hidden="true">↔</div>
+          <div class="preview-title">核心问题：对比窗口放大到全屏时，如何做到丝滑？</div>
+          <p class="preview-desc">此处模拟完整预览内容。实际项目中可以承载 iframe、图片预览、代码运行结果、视频内容或实验页面。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal-mask" id="renameModal" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+  <section class="modal" style="max-width:460px">
+    <header class="modal-header"><h2 class="modal-title" id="renameTitle">重命名卡片</h2>
+      <button class="action-btn icon-close" type="button" data-close-modal aria-label="关闭">×</button></header>
+    <div class="modal-body">
+      <label class="dialog-label" for="renameInput">卡片名称</label>
+      <input id="renameInput" class="dialog-input" type="text" maxlength="100" autocomplete="off" aria-describedby="renameError" />
+      <p class="field-error" id="renameError" role="alert" hidden>名称不能为空，请输入 1–100 个字符。</p>
+    </div>
+    <footer class="modal-footer">
+      <button class="action-btn" type="button" data-close-modal>取消</button>
+      <button class="action-btn action-btn--primary" type="button" id="saveRename">保存</button>
+    </footer>
+  </section>
+</div>
+
+<script>
+const stage=document.getElementById('stage'),actionsEl=document.getElementById('cardActions');
+const btns=[...actionsEl.querySelectorAll('[data-action]')];
+const moreBtn=document.getElementById('moreBtn'),menu=document.getElementById('overflowMenu');
+const slider=document.getElementById('widthSlider'),stageWrap=document.querySelector('.stage');
+const widthValue=document.getElementById('widthValue'),visibleCount=document.getElementById('visibleCount'),modeTip=document.getElementById('modeTip'),overflowState=document.getElementById('overflowState');
+const titleEl=document.querySelector('[data-card-title]'),compareBtn=document.querySelector('.btn-compare'),compareText=document.querySelector('[data-compare-text]');
+const toast=document.getElementById('toast'),previewModal=document.getElementById('previewModal'),renameModal=document.getElementById('renameModal');
+const renameInput=document.getElementById('renameInput'),measureRow=document.getElementById('measureRow');
+const demoCard=document.getElementById('demoCard'),cardMain=document.getElementById('cardMain');
+const selectHint=document.getElementById('selectHint'),selectTrigger=document.getElementById('selectTrigger'),selectHintText=document.getElementById('selectHintText');
+const ctxToolbar=document.getElementById('ctxToolbar'),ctxActions=document.getElementById('ctxActions'),ctxClose=document.getElementById('ctxClose'),ctxCompareText=document.getElementById('ctxCompareText'),ctxTitle=document.getElementById('ctxTitle');
+let lastTrigger=null,toastTimer=null,scheme='menu';
+let lastLayoutKey='',roQueued=false,menuDirty=false;
+const GAP=8;
+
+/* 方案切换（demo2 四态 → data-scheme，去重 body 类 hack） */
+document.querySelectorAll('[data-scheme-btn]').forEach(b=>b.addEventListener('click',()=>{
+  scheme=b.dataset.schemeBtn;stage.dataset.scheme=scheme;
+  document.querySelectorAll('[data-scheme-btn]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  closeMenu(true);clearSelect(true);relayout();
+}));
+/* 宽度：预设 + 滑块（demo3 做法：改容器，不改视口） */
+document.querySelectorAll('[data-width]').forEach(b=>b.addEventListener('click',()=>{
+  slider.value=b.dataset.width;applyWidth();
+}));
+slider.addEventListener('input',()=>{ /* 直接操纵按帧合并，一帧最多算一次 */
+  if(slider.queued)return;slider.queued=true;
+  requestAnimationFrame(()=>{slider.queued=false;applyWidth();});});
+function applyWidth(){
+  const v=slider.value;stageWrap.style.maxWidth=v+'px';widthValue.textContent=v+'px';
+  requestAnimationFrame(()=>{const real=stageWrap.clientWidth;modeTip.textContent=real<=480?'移动端，触发折叠':'桌面端单行';});
+  relayout();
+}
+/* Priority+ 动态折叠：可用宽（扣掉页脚内边距）>= sum(B_i)+(N-1)*G 则全显，否则前 k 个显示 */
+function naturalWidths(){
+  const kids=[...measureRow.querySelectorAll('.action-btn')];
+  const r=el=>el.getBoundingClientRect().width; /* 小数宽度，offsetWidth 取整会逐颗丢精度 */
+  return {w:kids.slice(0,4).map(r),wMore:r(kids[4])};
+}
+function contentWidth(){
+  const cs=getComputedStyle(actionsEl);
+  return actionsEl.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+}
+function checkOverflow(){
+  const scope=scheme==='select'?ctxActions:actionsEl;
+  const list=[...scope.querySelectorAll('.action-btn')].filter(b=>b.offsetParent!==null&&getComputedStyle(b).display!=='none');
+  const bad=list.filter(b=>b.scrollWidth-b.clientWidth>1);
+  if(overflowState)overflowState.textContent=bad.length?('溢出'+bad.length):'无溢出';
+}
+function relayout(){
+  if(scheme==='select'){
+    moreBtn.style.display='none';menu.innerHTML='';closeMenu(true);
+    document.querySelector('.btn-expand').classList.remove('is-icon-only');
+    selectHint.hidden=false;syncSelectUI(false);
+    visibleCount.textContent='浮层（按需）';lastLayoutKey='select';checkOverflow();return;
+  }
+  selectHint.hidden=true;
+  if(scheme!=='menu'){moreBtn.style.display='';menu.innerHTML='';closeMenu(true);
+    document.querySelector('.btn-expand').classList.remove('is-icon-only');
+    visibleCount.textContent=scheme==='wrap'?'全部（换行）':'全部（对照）';lastLayoutKey='nonmenu';checkOverflow();return;}
+  const W=contentWidth(),{w,wMore}=naturalWidths();
+  const total=w.reduce((a,b)=>a+b,0)+GAP*3;
+  let visible=[0,1,2,3],iconOnly=false;
+  if(total>W){
+    let acc=wMore,k=0;const order=[0,1,2,3]; /* 优先级=显示顺序，可按业务调整 */
+    for(const i of order){if(acc+GAP+w[i]>W)break;acc+=GAP+w[i];k++;}
+    if(k===0){visible=[0];iconOnly=true;}else{visible=order.slice(0,k);}
+  }
+  const hidden=[0,1,2,3].filter(i=>!visible.includes(i));
+  /* 同一布局签名直接返回：只看输出集合（可见集+对比文案），不看原始像素宽，拖动同集合零重建 */
+  const key=['menu',visible.join(','),compareText.textContent].join('|');
+  if(key===lastLayoutKey&&!menuDirty)return;
+  /* 页脚按钮与计数任何态都可写；菜单开着时菜单 DOM 不动（保焦点），关后重算 */
+  btns.forEach(b=>b.style.display='');
+  menuDirty=menu.classList.contains('is-open');
+  btns.forEach(b=>{const i=+b.dataset.priority;b.style.display=visible.includes(i)?'':'none';});
+  document.querySelector('.btn-expand').classList.toggle('is-icon-only',iconOnly);
+  moreBtn.style.display=hidden.length?'inline-flex':'none';
+  visibleCount.textContent=hidden.length?visible.length+' + 更多':'全部';
+  if(menuDirty){checkOverflow();return;}
+  lastLayoutKey=key;
+  menu.innerHTML='';closeMenu(true);
+  /* 面板 chrome：把手 + 标题（仅移动双形态下可见） */
+  const handle=document.createElement('div');handle.className='sheet-handle only-sheet';handle.setAttribute('aria-hidden','true');menu.appendChild(handle);
+  const title=document.createElement('div');title.className='sheet-title only-sheet';title.textContent='更多操作';menu.appendChild(title);
+  hidden.forEach(i=>{
+    const src=btns[i],label=(src.querySelector('.label-full')||src.querySelector('.btn-text')).textContent;
+    const svg=src.querySelector('svg')?src.querySelector('svg').outerHTML:'';
+    const m=document.createElement('button');m.className='menu-item';m.type='button';m.setAttribute('role','menuitem');
+    m.innerHTML=svg+'<span>'+label+'</span>';m.dataset.menuAction=src.dataset.action;
+    m.addEventListener('click',()=>{closeMenu();handleAction(src.dataset.action,moreBtn);});
+    menu.appendChild(m);
+  });
+  const cancel=document.createElement('button');cancel.className='menu-item menu-item--cancel only-sheet';cancel.type='button';
+  cancel.textContent='取消';cancel.addEventListener('click',()=>closeMenu());menu.appendChild(cancel);
+  /* k=0 兜底：主操作退图标（CSS 容器查询已处理，此处同步计数） */
+  visibleCount.textContent=hidden.length?visible.length+' + 更多':'全部';
+  checkOverflow();
+}
+new ResizeObserver(()=>{ /* rAF 节流 + 签名去重，双保险防回写成环 */
+  if(scheme!=='menu'||roQueued)return;roQueued=true;
+  requestAnimationFrame(()=>{roQueued=false;if(scheme==='menu')relayout();});
+}).observe(actionsEl);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{ /* 只注册一次：字体就绪重算 */
+  lastLayoutKey='';if(scheme==='menu')relayout();});
+/* 菜单：桌面下拉 / 移动底部面板（同一元素，Esc + 点外 + 焦点回归） */
+function openMenu(){menu.classList.add('is-open');moreBtn.setAttribute('aria-expanded','true');
+  const f=menu.querySelector('.menu-item');if(f)f.focus();}
+function closeMenu(silent){if(!menu.classList.contains('is-open')){moreBtn.setAttribute('aria-expanded','false');return;}
+  menu.classList.remove('is-open');moreBtn.setAttribute('aria-expanded','false');
+  if(!silent&&lastTrigger)lastTrigger.focus();
+  if(menuDirty&&scheme==='menu'){menuDirty=false;relayout();}}
+moreBtn.addEventListener('click',e=>{e.stopPropagation();lastTrigger=moreBtn;
+  menu.classList.contains('is-open')?closeMenu():openMenu();});
+document.addEventListener('click',e=>{if(menu.classList.contains('is-open')&&!menu.contains(e.target))closeMenu();});
+menu.addEventListener('keydown',e=>{
+  const items=[...menu.querySelectorAll('.menu-item')];const i=items.indexOf(document.activeElement);
+  if(e.key==='ArrowDown'){e.preventDefault();(items[i+1]||items[0]).focus();}
+  if(e.key==='ArrowUp'){e.preventDefault();(items[i-1]||items[items.length-1]).focus();}
+  if(e.key==='Home'){e.preventDefault();items[0].focus();}
+  if(e.key==='End'){e.preventDefault();items[items.length-1].focus();}
+  if(e.key==='Escape'){e.stopPropagation();closeMenu();}
+  if(e.key==='Tab'){closeMenu(true);}
+});
+/* 选中后浮层：点击/键盘固定，hover/focus仅临时peek，peek绝不写回记忆 */
+let pinned=false,peekIn=null,peekOut=null;
+function canPeek(){
+  if(window.matchMedia('(hover: hover)').matches===false)return false;
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return false;
+  if(pinned)return false;
+  if(scheme!=='select')return false;
+  return true;
+}
+function syncSelectUI(moveFocus){
+  const show=pinned||ctxToolbar.classList.contains('is-peek');
+  demoCard.dataset.active=String(pinned);
+  selectTrigger.setAttribute('aria-expanded',String(pinned));
+  selectHintText.textContent=pinned?'正在显示此卡片的操作':'点击卡片，显示操作';
+  ctxTitle.textContent=titleEl.textContent.trim()||'当前卡片操作';
+  ctxToolbar.hidden=!show;
+  ctxToolbar.classList.toggle('is-open',pinned);
+  if(show&&moveFocus){const f=ctxActions.querySelector('[data-ctx-action]');if(f)f.focus();}
+  checkOverflow();
+}
+function setPinned(v,trigger,moveFocus){
+  pinned=v;lastTrigger=trigger||lastTrigger;
+  ctxToolbar.classList.remove('is-peek');
+  clearTimeout(peekIn);clearTimeout(peekOut);
+  syncSelectUI(moveFocus);
+}
+function clearSelect(silent){
+  pinned=false;clearTimeout(peekIn);clearTimeout(peekOut);
+  ctxToolbar.classList.remove('is-open');ctxToolbar.classList.remove('is-peek');
+  demoCard.dataset.active='false';
+  if(selectTrigger)selectTrigger.setAttribute('aria-expanded','false');
+  if(selectHintText)selectHintText.textContent='点击卡片，显示操作';
+  if(!ctxToolbar.hidden&&!silent&&lastTrigger&&scheme==='select'&&document.contains(lastTrigger)){/* 焦点回归由调用方决定 */}
+  ctxToolbar.hidden=true;
+}
+selectTrigger.addEventListener('click',e=>{
+  e.stopPropagation();
+  if(scheme!=='select')return;
+  setPinned(!pinned,selectTrigger,pinned===false&&true);
+  if(!pinned&&document.activeElement&&ctxToolbar.contains(document.activeElement))selectTrigger.focus();
+});
+cardMain.addEventListener('click',e=>{
+  if(scheme!=='select')return;
+  if(e.target.closest('.select-box,.action-btn,.ctx-toolbar,.overflow-menu'))return;
+  setPinned(!pinned,selectTrigger,false);
+});
+cardMain.addEventListener('mouseover',()=>{
+  if(!canPeek())return;
+  clearTimeout(peekOut);
+  clearTimeout(peekIn);
+  peekIn=setTimeout(()=>{if(!canPeek())return;ctxToolbar.hidden=false;ctxToolbar.classList.add('is-peek');syncSelectUI(false);},280);
+});
+cardMain.addEventListener('mouseleave',()=>{
+  clearTimeout(peekIn);
+  clearTimeout(peekOut);
+  peekOut=setTimeout(()=>{if(pinned)return;ctxToolbar.classList.remove('is-peek');syncSelectUI(false);},180);
+});
+ctxToolbar.addEventListener('mouseenter',()=>{clearTimeout(peekOut);});
+ctxToolbar.addEventListener('mouseleave',()=>{
+  clearTimeout(peekOut);
+  peekOut=setTimeout(()=>{if(pinned)return;ctxToolbar.classList.remove('is-peek');syncSelectUI(false);},180);
+});
+cardMain.addEventListener('focusin',e=>{
+  if(scheme!=='select'||pinned)return;
+  if(e.target.closest('.select-box,.action-btn'))return;
+  ctxToolbar.hidden=false;ctxToolbar.classList.add('is-peek');syncSelectUI(false);
+});
+document.addEventListener('focusout',()=>{
+  if(scheme!=='select'||pinned)return;
+  setTimeout(()=>{
+    const a=document.activeElement;
+    if(demoCard.contains(a)||ctxToolbar.contains(a))return;
+    ctxToolbar.classList.remove('is-peek');syncSelectUI(false);
+  },0);
+});
+ctxClose.addEventListener('click',()=>{setPinned(false,selectTrigger,false);selectTrigger.focus();});
+ctxActions.addEventListener('click',e=>{
+  const b=e.target.closest('[data-ctx-action]');if(!b)return;
+  handleAction(b.dataset.ctxAction,b);
+});
+document.addEventListener('click',e=>{
+  if(scheme!=='select'||!pinned)return;
+  if(demoCard.contains(e.target)||ctxToolbar.contains(e.target))return;
+  setPinned(false,null,false);
+});
+/* 反馈 / 弹窗（demo1 闭环收敛） */
+function showToast(m){clearTimeout(toastTimer);toast.textContent=m;toast.classList.add('is-visible');
+  toastTimer=setTimeout(()=>toast.classList.remove('is-visible'),2200);}
+function openModal(m,t){lastTrigger=t||document.activeElement;m.classList.add('is-open');
+  if(m===renameModal){renameInput.value=titleEl.textContent.trim();setTimeout(()=>{renameInput.focus();renameInput.select();},50);}
+  else{const f=m.querySelector('button');if(f)setTimeout(()=>f.focus(),50);}}
+function closeModal(m){m.classList.remove('is-open');if(lastTrigger)lastTrigger.focus();}
+/* 自建 dialog 焦点圈定：Tab 首尾循环，不逃到背景页（Esc/回归已在别处处理） */
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Tab')return;
+  const open=[previewModal,renameModal].find(m=>m.classList.contains('is-open'));
+  if(!open)return;
+  const f=[...open.querySelectorAll('button,input')].filter(el=>el.offsetParent!==null);
+  if(!f.length)return;
+  const first=f[0],last=f[f.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
+function toggleCompare(){const on=compareBtn.getAttribute('aria-pressed')==='true';
+  compareBtn.setAttribute('aria-pressed',String(!on));
+  compareBtn.classList.toggle('action-btn--primary',on);compareBtn.classList.toggle('action-btn--compared',!on);
+  compareBtn.setAttribute('aria-label',!on?'移出对比':'加入对比');
+  compareText.textContent=!on?'已加入':'加入对比';
+  const ctxBtn=ctxActions.querySelector('[data-ctx-action="compare"]');
+  if(ctxBtn){ctxBtn.setAttribute('aria-pressed',String(!on));ctxBtn.setAttribute('aria-label',!on?'移出对比':'加入对比');}
+  if(ctxCompareText)ctxCompareText.textContent=!on?'已加入':'加入对比';
+  showToast(!on?'已加入对比列表。':'已从对比列表移除。');
+  if(scheme==='menu')relayout();
+  if(scheme==='select')syncSelectUI(false);}
+function handleAction(a,t){
+  if(scheme==='select'&&(a==='expand'||a==='rename')){
+    const fromCtx=t&&t.dataset&&t.dataset.ctxAction;
+    if(fromCtx){setPinned(false,selectTrigger,false);t=selectTrigger;}
+  }
+  if(a==='expand')openModal(previewModal,t);
+  else if(a==='open')showToast('已模拟在新标签页打开预览。');
+  else if(a==='rename')openModal(renameModal,t);
+  else if(a==='compare')toggleCompare();
+}
+actionsEl.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(!b||b===moreBtn)return;handleAction(b.dataset.action,b);});
+document.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',()=>closeModal(b.closest('.modal-mask'))));
+[previewModal,renameModal].forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeModal(m);}));
+document.getElementById('saveRename').addEventListener('click',()=>{
+  const v=renameInput.value.trim();
+  const err=document.getElementById('renameError');
+  if(!v){renameInput.setAttribute('aria-invalid','true');err.hidden=false;renameInput.focus();return;}
+  renameInput.removeAttribute('aria-invalid');err.hidden=true;
+  titleEl.textContent=v;if(ctxTitle)ctxTitle.textContent=v;closeModal(renameModal);showToast('卡片名称已更新。');});
+renameInput.addEventListener('input',()=>{
+  document.getElementById('renameError').hidden=true;renameInput.removeAttribute('aria-invalid');});
+renameInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing)document.getElementById('saveRename').click();});
+/* 主题：跟随系统 / 浅色 / 深色（D-20），持久化，跟随仍走媒体查询 */
+(function initTheme(){
+  const root=document.documentElement;
+  function paint(t){document.querySelectorAll('[data-theme-btn]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.themeBtn===t)));}
+  function apply(t){if(t==='system')root.removeAttribute('data-theme');else root.setAttribute('data-theme',t);paint(t);}
+  document.querySelectorAll('[data-theme-btn]').forEach(b=>b.addEventListener('click',()=>{
+    const t=b.dataset.themeBtn;try{localStorage.setItem('card-demo-theme',t);}catch(e){}
+    apply(t);}));
+  let saved='system';
+  try{saved=localStorage.getItem('card-demo-theme')||'system';}catch(e){}
+  apply(saved);
+})();
+/* 预览异步态：就绪 / 加载中（1.5s 自愈+可取消，S-03）/ 失败（重试，S-04）/ 空（S-01），局部化（S-06） */
+const previewLayers={ready:document.getElementById('previewReady'),loading:document.getElementById('previewLoading'),
+  error:document.getElementById('previewError'),empty:document.getElementById('previewEmpty')};
+let loadTimer=null,loadTick=null;
+function setPreview(s){
+  clearTimeout(loadTimer);clearInterval(loadTick);
+  Object.entries(previewLayers).forEach(([k,el])=>{el.hidden=(k!==s);});
+  document.querySelectorAll('[data-preview-btn]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.previewBtn===s)));
+  if(s==='loading'){
+    const t0=Date.now(),secs=document.getElementById('loadSecs');
+    loadTick=setInterval(()=>{secs.textContent=((Date.now()-t0)/1000).toFixed(1);},100);
+    loadTimer=setTimeout(()=>{setPreview('ready');showToast('预览加载完成。');},1500);
+  }
+}
+document.querySelectorAll('[data-preview-btn]').forEach(b=>b.addEventListener('click',()=>setPreview(b.dataset.previewBtn)));
+document.getElementById('cancelLoad').addEventListener('click',()=>{setPreview('ready');showToast('已取消加载。');});
+document.getElementById('retryLoad').addEventListener('click',()=>setPreview('loading'));
+document.getElementById('reloadEmpty').addEventListener('click',()=>setPreview('loading'));
+document.querySelector('.select-box').addEventListener('change',e=>{
+  const n=document.querySelectorAll('.select-box:checked').length;
+  showToast(n?('已选择 '+n+' 张卡片，加入对比走下方按钮。'):'已清空批量选择。');});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;
+  if(menu.classList.contains('is-open')){closeMenu();return;}
+  if(renameModal.classList.contains('is-open')){closeModal(renameModal);return;}
+  if(previewModal.classList.contains('is-open')){closeModal(previewModal);return;}
+  if(scheme==='select'&&(pinned||ctxToolbar.classList.contains('is-peek'))){setPinned(false,selectTrigger,false);selectTrigger.focus();return;}});
+applyWidth();
+</script>
+</body>
+</html>

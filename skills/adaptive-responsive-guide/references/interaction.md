@@ -24,6 +24,16 @@
 
 图标不参与名称，读的是 `aria-label`；切换态同步名称与 `aria-pressed`。不用 `title` 当唯一名称，不用 `div onClick` 伪装按钮。
 
+- 双态图标（展开↔收起、汉堡↔关闭）**两份都预渲染，用属性切换**，click 里不碰 `innerHTML`
+  （会摘掉事件 target，栏外关闭逻辑跟着错）：
+
+```css
+#railCollapse .rc-close { display: inline-flex; }
+#railCollapse .rc-open { display: none; }
+#railCollapse[data-ic="open"] .rc-open { display: inline-flex; }
+#railCollapse[data-ic="open"] .rc-close { display: none; }
+```
+
 ## 菜单、弹窗与反馈
 
 | 状态 | 期望行为 |
@@ -44,8 +54,16 @@
   点遮罩/点外部关；成功/失败走 `role=status` toast（2200ms 自动收）；重命名空值不关弹窗、聚焦输入框、保留原值。
 - 触发/关闭矩阵（选中浮层适用）：触屏点按卡片空白处或“显示操作”按钮展开，再点/点外部/`Esc` 收起；
   鼠标悬停或焦点进入只做临时显示、可移入浮层不消失，点击才固定；键盘 `Tab` 进卡片、`Enter/Space` 激活或固定，`Esc` 关闭不困焦点。
+- 悬停临时展开（peek）四道闸 + 两条纪律，缺一条就会在触屏/动画态下乱跳：
+  ① `matchMedia('(hover:hover)')` 不匹配直接不启用；② `prefers-reduced-motion: reduce` 下不启用；
+  ③ 进出各带延迟（进 ~280ms、出 ~180ms）并互相 `clearTimeout`；④ 已钉住/已展开时不抢。
+  纪律一：**临时态（peek）绝不写回记忆状态**（`localStorage`/组件值只记用户点按的收起或钉住）；
+  纪律二：常驻入口（展开键）始终可见，触屏/键盘没有 hover，不能只靠悬停展开。
 
 ## 动效与偏好
 
-- 过渡 ≤320ms（常用 120/200/320），只动 transform/opacity，缓动 `cubic-bezier(0.2,0,0,1)`。
+- 过渡 ≤320ms（常用 120/200/320），只动 transform/opacity，缓动 `cubic-bezier(0.2,0,0,1)`；能用 `transform` 折叠就不动 `width/grid`（布局过渡触发重排）。
+- 侧栏/面板折叠确实要改布局（`width`/`padding-left`/`grid-template-columns`）时，**动画期临时关掉重绘源**：加个一次性类
+  （如 `body.rail-anim`，`transitionend` 或定时移除），把 `backdrop-filter`、大 `box-shadow` 置 `none`——
+  它们每帧全屏重绘，是折叠动画掉帧的头号原因，过渡结束立即恢复。
 - 跟随 `prefers-reduced-motion`；拿不准选型查 `web-animation-guide`，时长禁令以本 skill 为准。

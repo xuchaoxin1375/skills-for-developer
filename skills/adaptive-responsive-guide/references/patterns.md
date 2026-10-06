@@ -43,6 +43,12 @@ flowchart TD
 - Priority+ 动态折叠（静态隐藏的进阶，动作数多/文案易变时用）：测每个带文字按钮自然宽 `w_i` + 更多按钮宽 `w_more` + 间距 `G`，
   按优先级算最大可见数 `k`（判据 `W >= sum(B_i)+(N-1)*G`，`W` 为操作区可用宽，文案/字体变化后重算，详见 `js-apis.md`）。
   静态 `@container (max-width:实测值)` 藏次要（demo3 做法）是它的零 JS 近似，动作 ≤4 且优先级稳定时够用。
+  极窄下二选一细则（零 Observer 打开瞬间读 `getComputedStyle` vs 动态 Priority+、P0–P3 矩阵、五级 em 阶梯）见 `extreme-narrow.md`。
+- 按钮梯子（连续降级，muse-spark Lab7 实测，JS 版 Priority+ 的轻量近似）：实测 `avail` = 操作区/标题行 `clientWidth`（扣 padding），
+  `need0 = 标签宽 + 8 + 整组动作宽`，`need1 = need0 - 首个可去动作宽`；`avail < need0 && avail >= need1` 进 `lv1`（藏第一颗次要），
+  `avail < need1` 进 `lv2`（再藏第二颗、`gap` 收 0）。`ResizeObserver` 触发、rAF 节流。
+  纪律：**只许整颗隐藏，不许压字号压文字**；阶梯要按优先级从低到高去，去到只剩主操作 + 更多就停（`k=0` 走图标态见上）；
+  演示里 `lv2` 把图标压到 28px 属取巧，生产守住 44/24 基线，放不下就进菜单。
 
 ## 实例映射（任选其一，卡片只是其中一种）
 

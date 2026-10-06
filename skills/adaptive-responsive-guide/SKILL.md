@@ -1,24 +1,29 @@
 ---
-name: adaptive-layout
+name: adaptive-responsive-guide
 description: >
-  Web前端自适应与响应式设计：视口与断点、媒体查询与容器查询、clamp流体排版、
+  Web前端自适应响应式适配指南：视口与断点、媒体查询与容器查询、clamp流体排版、
   Flex/Grid内在布局、响应式图片、深色与 reduced-motion、逻辑属性、国内vw适配、
   操作区按钮放不下、卡片/工具栏/表格操作列/弹窗底部窄屏拥挤、容器宽度变化、
   移动端适配、触控目标。
-  凡是提到自适应、响应式、媒体查询、容器查询、clamp、视口单位dvh/svh、
-  按钮放不下、窄屏溢出、横向滚动、触控目标、操作区收纳、主操作+更多菜单、
-  选中浮层时使用本 skill，
-  即使没点名自适应、只说手机上按钮挤/被裁/点不到/图片模糊/高度被遮也要加载。
+  凡是提到自适应、响应式、适配指南、媒体查询、容器查询、clamp、视口单位dvh/svh、
+  按钮放不下、窄屏溢出/挤压、横向滚动、越界、overflow、触控目标、操作区收纳、
+  主操作+更多菜单、选中浮层、溢出探针、极窄(≤320/200px侧栏/104px下限)、P0优先级、降级阶梯时使用本 skill，
+  即使没点名自适应、只说手机上按钮挤/压扁/被裁/点不到/图片模糊/高度被遮、受窗口限制、极限窄、卡片在小窗里放不下也要加载。
   覆盖决策选型、响应式实现、交互状态与验收清单；生成与验收两种模式。
 ---
 
 # 自适应布局设计与适配
 
 独立通用 skill：输入是“会变化的空间 + 要保住的可用性”，输出是决策、代码与验收。
-依据有二：① `自适应操作区按钮布局设计与适配/.../card-actions-design-guide.md`
+依据有五：① `自适应操作区按钮布局设计与适配/.../card-actions-design-guide.md`
 泛化到工具栏、表格操作列、表单操作栏、弹窗底部、导航；
-② `自适应-响应式设计/demo-gemimi3.7 + demo-opus5.5max`（两份指南 + 两份单文件实验页）
-提供通用响应式能力：视口、媒体/容器查询、流体、Grid/Flex、图片、偏好、国内适配。
+② `自适应-响应式设计/demo-opus5.5max`（`responsive-css-guide.md` 指南 + `index.html` 实验页）
+提供通用响应式能力：视口、媒体/容器查询、流体、Grid/Flex、图片、偏好、国内适配；
+③ `自适应-响应式设计/WebUI…面板侧边栏设计集锦-muse-spark1.3.html`（面板/侧栏三态、按钮梯子、验收读数案例）。
+④ 本 skill 自带可运行对照 `references/demos/card-actions-responsive-demo.html`
+（卡片操作区四方案合一：换行基线 / 主操作+更多 / 图标 / 横滑，Priority+ 动态折叠 + 探针滑条，见 `overflow-squeeze.md`）。
+⑤ `自适应-响应式设计/极窄自适应/` 五项目（`responsive-card-layout-optimization-opus5.5max` 五级 em 阶梯/P0–P3/零 Observer 收纳/诊断探针为主，
+`responsive-card-layout-optimization-qwen3.8-27b` cqi 流体/对照演示台为辅，其余三项目补失效分类与样本切换；收敛见 `references/extreme-narrow.md`）。
 
 与其它 skill 分工，不重复：
 `frontend-design` 管栅格、令牌、渐进披露、三断点交付；`frontend-ux-qa` 管存量缺陷编号深查与 CI 门禁；
@@ -31,19 +36,21 @@ description: >
 
 - A 操作区收纳：任何可复用模块里的操作区放不下（例如卡片/列表项/工具栏/表格行操作/弹窗底部/表单提交栏之一），
 动作超 3–4 个、窄侧栏/双列/弹窗里复用的同一组件、320–1440 验证。卡片只是示例之一，不是前提。
-- B 通用响应式：视口高度被遮（100vh/100dvh）、断点怎么定、字号间距跳变、网格换行、
-图片模糊/流量大/CLS 跳动、深色/reduced-motion、RTL/竖排、vw 无限放大、1px 细线。
+- B 通用响应式：视口高度被遮（100vh/100dvh）、软键盘盖住底部操作栏、断点怎么定、字号间距跳变、网格换行、
+图片模糊/流量大/CLS 跳动、深色/reduced-motion、强制颜色、RTL/竖排、vw 无限放大、1px 细线、
+侧栏/面板三态（展开↔图标轨↔抽屉）。
 不用本 skill：纯视觉风格发散（转 `distinctive-design-director`）、存量页按编号根因深查（转 `frontend-ux-qa`）。
 
 ## 流程（生成模式按 0–5，验收模式只走 5）
 
 ### 0——先路由，再读对应的 reference
 
-- A 操作区放不下 → 走 1–5，重点读 `patterns.md + container-queries.md + interaction.md`。
+- A 操作区放不下 → 走 1–5，重点读 `patterns.md + container-queries.md + interaction.md`。出现横滚/越界/压扁时加读 `overflow-squeeze.md`。
 - B 通用响应式 → 跳过 1–2，直接走 3 + 4 + 5。3 必读 `responsive-core.md + fluid-grid-media.md`；
 按需加读：概念不清补 `concepts.md`，断点/打印补 `media-queries.md`，整页骨架/抽屉/表格补 `page-patterns.md`，
 随断点改行为/监听尺寸补 `js-apis.md`，选型定基线/验收补 `compat-testing.md`。
 - 两者叠加（如窄容器里操作区放不下）→ 都走：先 B 定骨架与流体，再 A 做收纳。
+- 进 ≤320px 极窄（含 200px 侧栏、240–280 极限复用，直至约 104px 下限）→ 加读 `extreme-narrow.md`（P0–P3 矩阵、五级 em 阶梯、退让六序、零 Observer 与动态 Priority+ 二选一、挤压三探针）。
 
 ### 1——先认主次，不先画布局
 
@@ -92,7 +99,7 @@ description: >
 
 ### 5——验证交付
 
-读 `references/acceptance.md`。交付物固定四件：决策结论 + 关键代码 diff + 验证记录 + 已知问题。
+读 `references/acceptance.md`。交付物固定四件：决策结论 + 关键代码 diff + 验证记录 + 已知问题。溢出/挤压回归按 `overflow-squeeze.md` 探针法（220–1440 逐 20px + 320/390/768/1440 + <320 极限）。
 
 - 同一组件验 320/390/768/1440 + 窄侧栏复用态；页面级无非必要横向滚动。
 - 宽窄两态动作顺序、名称、行为一致；按钮文字要么完整显示要么整体隐藏，不许挤压截断省略号。
@@ -103,7 +110,7 @@ description: >
 
 - MUST：标准 viewport meta 且不禁缩放；标签完整或整体隐藏，禁挤压裁切省略号；所有动作键盘可达；图标必有准确可访问名；320 回流无页面级横滚；焦点可见，禁无替代 `outline:none`；字号不用纯 vw；图片有 `width/height` 或 `aspect-ratio`。
 - SHOULD：多实例低频先试选中浮层，主次明确先试主操作+菜单；容器查询优先；内在布局（RAM/Flex wrap）优先于查询；动效 ≤320ms 只动 transform/opacity 跟随 reduced-motion；逻辑属性优先；国内 H5 限最大宽。
-- AVOID：横向滚动/滑动露出/仅 hover 入口；小字号压窄按钮；只用颜色表选中；`title` 当唯一名称；禁用提交代校验；禁缩放禁粘贴；模块内再套内部滚动区；通栏 `100vw`；纯 vw 字号。
+- AVOID：横向滚动/滑动露出/仅 hover 入口；小字号压窄按钮；只用颜色表选中；`title` 当唯一名称；禁用提交代校验；禁缩放禁粘贴；模块内再套内部滚动区；通栏 `100vw`；纯 vw 字号；窄屏 `display:none` 删内容（重排不删减，收纳只是移进菜单不消失）；`overflow-x: hidden` 掩盖溢出且让 sticky 失效（找根因，确需裁切用 `clip`）。
 
 ## 输出结构（ALWAYS 用此模板）
 
@@ -127,6 +134,7 @@ description: >
 - [ ] hover 被 any-hover 包裹，键盘/触屏有等价路径？
 - [ ] 单选批量状态分离，Esc 层级与焦点回归定义了？
 - [ ] 44 基线表述没写成 WCAG AA 要求？
+- [ ] 进 ≤320 极窄时读了 `extreme-narrow.md`（P0–P3 矩阵、阈值 ±1px、floor 下限、退让六序）？
 - [ ] 输出用了上面的六节模板？
 
 ## 验证协议

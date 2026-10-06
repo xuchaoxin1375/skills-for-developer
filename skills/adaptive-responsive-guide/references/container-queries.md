@@ -15,8 +15,27 @@
 ```
 
 - 同一组件会进全宽列表、双列网格、侧栏、弹窗：只看视口会误判，必须用容器查询。
+- 成对阈值必须**同值分侧**（`(width >= 26rem)` 与 `(width < 26rem)`）；别写 `430px`/`431px` 这种整数对，落在中间的容器两头都不命中，宽窄标签会同时出现。
 - 视口媒体查询只调页级列数、外边距、导航（单列/双列/多列），不决定组件内部是文字还是菜单。
 - 不支持容器查询的旧环境：回退到主操作+菜单或文字换行，动作不许消失。
+
+## 字段与匹配规则
+
+```css
+container-type: normal | inline-size | size | scroll-state;
+container-name: none | <ident>+;          /* 不能用 none/and/or/not 等保留字 */
+@container [<name>] <condition> { ... }   /* 省略名 → 匹配最近的、类型符合的祖先容器 */
+```
+
+| 取值 | 要点 |
+|---|---|
+| `normal` | 默认，**不是尺寸容器**，但样式查询仍可命中它 |
+| `inline-size` | 最常用；只查行内方向，同时对该方向做**尺寸隔离**（宽度不再由内容决定） |
+| `size` | 宽高都查；两向隔离，**必须显式给高**否则塌陷为 0 |
+| `scroll-state` | 滚动状态查询（仅 Chromium 133+） |
+
+- 嵌套多层时查询命中错容器是常见 bug：**命名容器并带名查询**。
+- 容器查询同样是“逻辑”的：`inline-size`/`cqi` 在竖排（writing-mode）下自动变为按高度算。
 
 ## 按钮文字约束（按序执行）
 
@@ -32,6 +51,7 @@
   `overflow: hidden` / `text-overflow: ellipsis` / `flex-shrink: 1` 假装适配。
 - 长行（URL/命令/长标识）用 `overflow-wrap: anywhere` 断行不断窗。
 - 页面级建议 `html, body { overflow-x: clip; }`（保 sticky），flex 直接子 `min-width: 0`。
+  **别用 `overflow-x: hidden` 掩盖溢出**：真正的溢出元素被藏起来验收看不见，且会让 `position: sticky` 失效。
 - `[hidden] { display: none !important; }` 兜底，防止显式 display 覆盖隐藏语义。
 
 ## hover 只做增强
@@ -86,7 +106,7 @@
 
 - 样式查询目前只查自定义属性（Chrome 111/Safari 18，Firefox 待补 Interop 2026）；滚动状态（`stuck/snapped/scrollable`）仅 Chromium 133+，兜底 `IntersectionObserver`。
 
-## 四种塌陷陷阱
+## 五种塌陷/循环陷阱
 
 | 陷阱 | 解法 |
 |---|---|
@@ -94,6 +114,23 @@
 | 尺寸隔离致宽塌陷（inline-block/浮动/内容定宽 Flex 子项变 0） | 给明确宽或 `flex:1 1 20rem`、`width:100%` |
 | `size` 类型高塌陷为 0 | 显式高或改 `inline-size` |
 | 嵌套容器匹配错位 | 命名容器并带名查询 |
+| 在 `@container` 里改容器自身尺寸（循环依赖，规范禁止） | 只改后代；容器尺寸交给外层容器或视口决定 |
+
+## 命中自证与验收装置（零 JS）
+
+```css
+/* 自报告：不用 DevTools 也能看出哪条规则命中（可交给非前端验收方看） */
+.cq-state::after { content: "默认：纵向堆叠（容器 < 26rem）"; }
+@container card-slot (width >= 26rem) {
+  .cq-card { grid-template-columns: minmax(8rem, 38%) 1fr; }
+  .cq-state::after { content: "命中 (width >= 26rem)：左图右文"; }
+}
+/* 原生拖拽手柄：客户自己拖宽看断点，resize 需与 overflow:auto 成对 */
+.stage { min-width: 220px; resize: horizontal; overflow: auto; }
+```
+
+- 调试徽章/读数里的“容器宽”必须是**内容盒宽**：`clientWidth - padding`，再扣滚动条差值
+  （`offsetWidth - clientWidth`），否则读数比 `@container` 实际判据大一圈（详见 `js-apis.md`）。
 
 ## 与媒体查询分工
 
