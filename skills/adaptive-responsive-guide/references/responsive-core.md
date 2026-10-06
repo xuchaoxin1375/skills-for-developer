@@ -1,7 +1,7 @@
 # 响应式基础：视口、断点、单位
 
 > 何时读：页面骨架、首屏、窄屏溢出、全屏高度不对时。原则：**内在布局优先，查询只做兜底；容器管组件，视口管页面**。
-> 来源提炼：`自适应-响应式设计/demo-*/responsive-*.md` + 两份 `index.html` 实验。
+> 来源提炼：`自适应-响应式设计/demo-opus5.5max/responsive-css-guide.md` + 两份实验页（`demo-opus5.5max/index.html`、面板侧边栏集锦）。
 
 ## viewport meta（每页必写）
 
@@ -28,8 +28,48 @@
 
 - 首屏 Hero：`100svh`（最小可见，保证完整可见不跳）。
 - 全屏壳/弹窗/聊天：`100dvh`（实时跟随，但地址栏伸缩会重排）。
+- 为什么：`100vh` 按“地址栏收起后”的大视口计算，首屏底部会被挤出屏幕（macOS 悬浮滚动条下不易察觉）。
 - 旧浏览器回退：先写 `100vh` 再写新单位。
 - `svh/lvh/dvh` 默认不随软键盘变；要键盘感知用 `interactive-widget` 或 JS 写 `--vvh`。
+
+## 安全区 env()（沉浸式全屏、固定底部操作栏必做）
+
+```css
+.action-bar { position: fixed; inset-inline: 0; bottom: 0;
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom)); } /* 保底 12px，有安全区自动加大 */
+```
+
+| 写法 | 含义 |
+|---|---|
+| `env(safe-area-inset-top)` | 刘海、状态栏 |
+| `env(safe-area-inset-left/right)` | 横屏左右刘海/圆角 |
+| `env(safe-area-inset-bottom)` | 底部 Home 指示条 |
+| `env(name, fallback)` | 第二参是回退值，环境变量不存在时用 |
+
+前提是 meta 加 `viewport-fit=cover`；否则 `env()` 恒为 0。
+
+## 软键盘与底部操作栏（聊天/表单页，B+A 叠加高频）
+
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+```
+
+| 取值 | 软键盘弹出时 | 对 `vh/dvh` | 适用 |
+|---|---|---|---|
+| `resizes-visual`（Chromium Android 默认） | 只缩视觉视口，键盘盖住页面底部 | 不变 | 普通内容页 |
+| `resizes-content` | 布局视口一起缩、页面重排 | 随之变小 | 聊天输入栏、底部表单（要贴键盘） |
+| `overlays-content` | 两视口都不变，键盘全遮 | 不变 | 配 VirtualKeyboard API 自行处理（仅 Chromium） |
+
+```css
+.chat { height: 100vh;                    /* 兜底 */
+  height: var(--vvh, 100dvh);             /* JS 算的可见高，其次 dvh */
+  display: grid; grid-template-rows: auto 1fr auto; }
+.chat__messages { overflow-y: auto; overscroll-behavior: contain; } /* 列表滚到头不带整页橡皮筋 */
+.chat__input { padding-bottom: max(.5rem, env(safe-area-inset-bottom)); }
+```
+
+- `interactive-widget` 仅 Chromium/Firefox(Android)，iOS Safari 不支持，必须 JS 兜底（见 `js-apis.md` `visualViewport`）。
 
 ## 宽度坑
 

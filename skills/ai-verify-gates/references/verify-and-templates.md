@@ -58,7 +58,7 @@ blockers、nextAction，供跨会话续作。
 选型四原则：有 CLI 且退出码可靠、输出可机读、无头可跑、跨平台可装；沿用仓库现有栈优先，不重复装功能重叠工具；
 新项目做 3–5 个代表性场景 PoC（含至少一个失败诊断）；MCP 用于探索、CLI 用于验收。
 国内注意：npm 镜像、Playwright 浏览器镜像与缓存路径、代理变量（*nix export / PowerShell `$env:` / git 单独配）、
-`.gitattributes` 锁 LF、终端 UTF-8（`chcp 65001`）。
+`.gitattributes` 锁 LF、终端 UTF-8（`chcp 65001`）。浏览器装不动时读 `references/playwright-setup.md`（镜像/免下载/手动缓存/降级纪律）。
 
 ## 七、弱模型任务提示模板（放 `docs/prompts/task.md`，每次复制使用）
 
