@@ -46,7 +46,9 @@ skills-for-developer/
 | `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 常见错误排查：静默失败、退出码、编码乱码与 BOM、引号插值、别名冲突、Junction 误删 | powershell报错、pwsh报错、脚本没输出、退出码、中文乱码、BOM、引号转义、别名冲突、junction、troubleshooting |
 | `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
 | \skills/web-animation-guide\ | Web动画应用指导：选型、性能与无障碍落地，原生优先，零依赖片段与回退写法 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
-| `skills/adaptive-layout` | Web前端自适应布局设计与适配：操作区收纳决策、容器查询实现、交互状态与验收清单 | 自适应、响应式、按钮放不下、窄屏溢出、容器查询、触控目标、主操作菜单、选中浮层 |
+| `skills/adaptive-layout` | Web前端自适应与响应式设计：视口断点、媒体/容器查询、clamp流体、Flex/Grid内在布局、响应式图片、偏好与触控、国内vw适配、操作区收纳决策与验收 | 自适应、响应式、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
+| `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
+| `skills/ai-coding-quality` | AI 编程工程质量与可验证交付：风险分级定级、统一验证门禁、完整性防做一半、独立复核、发布回滚与闭环 | AI coding 质量、做一半、验收标准、门禁、verify、DoD、L0-L4 定级、风险评分、RTM、tasks、独立验证、完成报告、回滚、弱模型约束 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -131,6 +133,8 @@ cd ~/repos/skills-for-developer
 - 2026-10-02: 新增 `powershell-pitfalls`（PowerShell 5.1/pwsh 踩坑速查：静默失败、退出码、编码/BOM、引号插值、别名冲突、Junction 误删；案例全部来自本仓库真实排障证据），随链接脚本分发。
 - 2026-10-03: 新增 `agentic-web-search`（智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范），由 `prompts/ai联网` 两篇指南分析整合而成，含工具参数、提示词模板与评测参考三个 reference，随链接脚本分发。
 - 2026-10-05: 新增 `adaptive-layout`（Web前端自适应布局设计与适配：收纳决策、容器查询实现、交互状态与验收清单，由卡片操作区案例提炼泛化），随链接脚本分发；确立评估产物治理规则：`*-workspace/` 禁入 `skills/`，统一放 git 忽略的 `.workspaces/` 作回归基线（记入 `skill-authoring-sync` 规范与日常工作流）。
+- 2026-10-05: 新增 `sticky-position`（`position: sticky` 实现规范与失效排查，由 `web-learn/前端设计/粘性设计sticky` 的两份单文件教程与两个演示工程整合泛化，含 patterns / troubleshooting / compat-a11y 三个 reference），随链接脚本分发。
+- 2026-10-06: `sticky-position` 复核补齐（对照自适应 demo 与 gpt6astra 单文件页）：诊断脚本升级为六步自动版、IO 哨兵与 scroll-state 给出完整代码、新增层叠卡片与响应式断点切换两种场景、表格 z-index 梯度与层叠上下文说明、安全区/dvh/打印等移动端细节。
 
 ## 开源许可
 
