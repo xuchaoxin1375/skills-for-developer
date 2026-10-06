@@ -12,7 +12,11 @@
 | FLIP | 布局位移转合成 | 真 DOM 先变，视觉补偿；scale 扭曲圆角/阴影需反补偿；新元素无 First 改入场；删先播后卸；打断用代际守卫 |
 | SVG | 图标/路径/图表 | `pathLength=1` + `dashoffset 1→0`；形变需等点数 |
 | Canvas 2D | 粒子/图表/游戏 | DPR≤2；`OffscreenCanvas` 可进 Worker |
-| scroll()/view() | 进度/揭示 | 合成器友好；兼容未收敛，静态回退 |
+| scroll()/view() | 进度/揭示 | 合成器友好；兼容未收敛，静态回退；`animation-range` 关键字：`entry`（进→全进）/`contain`（全在内）/`exit`（开始离→全离）/`cover`（全全程）/`when`（单点对齐） |
+| `@starting-style` + `transition-behavior: allow-discrete` | 首次挂载/`display`/`overlay` 进出场 | 需 `@supports` 回退；同帧写起终点不播，双 rAF 兜底 |
+| `grid-template-rows: 0fr↔1fr` | 高度 auto 展开 | 子层 `overflow:hidden`；禁逐帧动 height |
+| `steps(n, jump-*)` | 雪碧图/打字机/翻牌 | n=帧数；jump-end 默认，jump-none 首尾帧都保留 |
+| `@property` | 渐变角/数值令牌插值 | 未注册的自定义属性不补间 |
 | IO | 进入播一次 | 只发现时机，非逐帧引擎 |
 | VT 同文档/跨文档 | 切换/形变/导航 | `startViewTransition` / `@view-transition{navigation:auto}`；过渡期不可交互；命名按数据 id，快照内唯一；old/new 错峰，禁 `animation:none` 硬切旧快照 |
 
@@ -28,6 +32,7 @@
 | Lottie | 视渲染器 | AE JSON；中文转形状 |
 | Rive | 小 | 状态机交互；许可核实 |
 | PAG/Galacean | — | 国产中文/Wasm/营销特效 |
+| Ant Design 动效规范 | 0（规范） | 中文设计原则“自然、高效、克制”，可采纳其动效语言；引包另核验维护与许可 |
 
 原则：同一元素同一属性只归一主；不为按钮引引擎。
 

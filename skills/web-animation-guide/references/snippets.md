@@ -148,6 +148,76 @@ async function fly(to) {
 内容层三策略（按观感选）：clip（壳反向 `scale(1/sx,1/sy)` 保像素，揭示框观感；反 scale 锚点必须与壳缩放中心同一点——取终态壳中心在内容层局部坐标里显式设 `transform-origin`，差一点全程错位）/ fade（内容 `opacity 0→1` + 骨架层反向交叉顶中点）/ stretch（直接跟随，许变形）。
 新元素无 First 改 `opacity+translateY` 入场；删节点先播出场再卸载。
 
+## 首值不补间（入场触发三选一）
+
+```css
+/* ① @starting-style（完整写法见文首 dialog 示例；display/overlay 需 allow-discrete） */
+```
+```js
+// ② 挂载后双 rAF 再加类，保证浏览器已完成首帧
+requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+// ③ 入场直接用 @keyframes（fill-mode: both 防延迟闪烁）
+```
+
+## 高度 auto 展开（禁逐帧动 height）
+
+```css
+.panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1); }
+.panel[data-open] { grid-template-rows: 1fr; }
+.panel > div { overflow: hidden; }
+/* 不支持时回退 scaleY（内容会变形）或 max-height 估算法 */
+```
+
+## steps() 逐格 / 雪碧图
+
+```css
+.strip { width: 800%; animation: frame 2400ms steps(8, end) infinite; } /* 8 帧 */
+@keyframes frame { to { transform: translateX(-87.5%); } }
+/* jump-start / jump-end(默认) / jump-none / jump-both 控制首尾帧停留 */
+```
+
+## @property 类型化令牌（渐变/数值可插值）
+
+```css
+@property --angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.aurora { background: conic-gradient(from var(--angle), #08f, #f08);
+  transition: --angle 1.2s linear; } /* 未注册则直接跳变 */
+```
+
+## 全站暂停 / 慢放（无需逐个持引用）
+
+```js
+document.getAnimations().forEach(a => a.pause());
+document.getAnimations().forEach(a => a.updatePlaybackRate(.5)); // 慢放走查
+```
+
+## 读写分批（避免强制同步布局）
+
+```js
+// 坏：读写交替，每轮强制重排。好：先批量读，再批量写
+const hs = els.map(e => e.offsetHeight);
+requestAnimationFrame(() => els.forEach((e, i) => { e.style.height = hs[i] * 2 + 'px'; }));
+```
+
+## React 集成要点
+
+```js
+// FLIP：useLayoutEffect 绘制前同步测量（useEffect 会闪一帧瞬移）
+useLayoutEffect(() => { /* measure → invert → animate */ });
+// VT：回调内同步提交 DOM
+document.startViewTransition(() => flushSync(() => setState(next)));
+// 卸载：animRef.current?.cancel()；StrictMode 双挂载 → 初始化可重复、清理完整
+```
+
+## 弹簧积分（rAF）
+
+```js
+// F = -k(x - target) - c·v；dt 秒，钳 ≤0.032
+const dt = Math.min(.032, (t - last) / 1000); last = t;
+vel += (-k * (pos - target) - c * vel) * dt; pos += vel * dt;
+el.style.transform = `translateX(${pos}px)`; // 只写 transform
+```
+
 ## SVG 描边 + Canvas DPR
 
 ```js

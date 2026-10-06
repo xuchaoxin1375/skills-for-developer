@@ -1,6 +1,6 @@
 ---
 name: web-animation-guide
-description: Web动画应用指导：选型、性能与无障碍落地。Whenever user mentions web动画、CSS Transition/Animation、WAAPI、requestAnimationFrame、FLIP、滚动驱动scroll-driven、View Transitions、SVG/Canvas动画、GSAP/Motion/Lottie、动效卡顿、prefers-reduced-motion, even if they don't say skill, use this skill. Also for animation selection, jank debugging, reduced-motion compliance.
+description: Web动画应用指导：选型、性能与无障碍落地。Whenever user mentions web动画、CSS Transition/Animation、WAAPI、requestAnimationFrame、FLIP、滚动驱动scroll-driven、View Transitions、SVG/Canvas动画、GSAP/Motion/Lottie、动效卡顿、prefers-reduced-motion、高度展开收起、steps逐格、弹簧spring、@property, even if they don't say skill, use this skill. Also for animation selection, jank debugging, reduced-motion compliance.
 ---
 
 # Web Animation Guide
@@ -47,10 +47,15 @@ description: Web动画应用指导：选型、性能与无障碍落地。Wheneve
 ## 必查坑（详情见 references）
 
 - `animation-timeline` 写在 `animation` 简写**之后**；滚动时长 `1ms` 只是兼容写法；简写两时间值第一是时长第二是延迟，写反不报错只慢半拍。
+- transition 只在**值变化**时启动：首屏/同帧写入起终点不播（首值不补间）→ 入场用 keyframes、`@starting-style`、或挂载后双 `requestAnimationFrame` 再加类；`display:none` 需 `transition-behavior: allow-discrete`；拖拽/初始化复位时临时 `transition: none` 防“自动飞过去”。
+- 高度 auto 展开：首选 `grid-template-rows: 0fr↔1fr`（子层 `overflow:hidden`），次选 scaleY（内容会变形）；禁逐帧动 `height`。雪碧图/打字机/翻牌用 `steps(n, jump-*)`，n=帧数；渐变/数值令牌要插值先 `@property` 注册类型化变量。
 - 状态是真相、动画只是表达：业务提交（落库/切视图/发请求）不依赖 `transitionend`/`finished`，先提交语义状态再叠视觉。
 - `fill:forwards` 长期占优先级，用完写终值+`cancel()` 或 `commitStyles()`；`Infinity` 调 `finish()` 抛错。
 - `transitionend` 每属性一次；值未变不触发。
-- `will-change` 临前加事后删；禁全局常驻、`translateZ(0)` 迷信、`setInterval 16ms`。
+- `will-change` 临前加事后删；禁全局常驻、`translateZ(0)` 迷信、`setInterval 16ms`；读写交错=强制同步布局，先批量读再批量写（或 rAF 合批）。
+- React：FLIP 测量用 `useLayoutEffect`（`useEffect` 会闪一帧瞬移）；VT 回调内 `flushSync` 提交；卸载 `cancel()`，StrictMode 双挂载要求初始化可重复；列表用稳定 `key`。
+- 弹簧物理：`F = -k(x-target) - c·v`，`v += F*dt; x += v*dt`，dt 秒且钳 ≤0.032~0.05；过冲克制（按钮/危险操作无回弹）。
+- 全局控制用 `document.getAnimations()` 批量 `pause()/updatePlaybackRate()`，做全站暂停与慢放，不必逐个持有引用。
 - SVG 原点加 `transform-box:fill-box`；SMIL 暂停须 `pauseAnimations()`，CSS 停不住它。
 - 减弱偏好至少 `.01ms` 一刀切（保事件），最好精细降级；WAAPI/SMIL/Canvas 全覆盖；站内开关可覆盖系统。
 - 中文逐字用 chars 或 `Intl.Segmenter('zh')`；竖排注意轴对调；npm/CDN 走 npmmirror（用前验证）；微信/X5/iOS 实测。
@@ -66,5 +71,5 @@ description: Web动画应用指导：选型、性能与无障碍落地。Wheneve
 ## References
 
 - `references/selection.md`：完整技术边界 + 库体积对比 + 决策细节
-- `references/snippets.md`：可粘贴代码（过渡/关键帧/WAAPI/rAF/FLIP 与反补偿/代际守卫/滚动兜底/VT 进阶/SVG/Canvas/starting-style）
+- `references/snippets.md`：可粘贴代码（过渡/首值不补间/高度展开/steps/@property/全局暂停/读写分批/React 集成/弹簧/WAAPI/rAF/FLIP 与反补偿/代际守卫/滚动兜底/VT 进阶/SVG/Canvas/starting-style）
 - `references/performance-a11y.md`：性能/无障碍/兼容/国内/中文清单
