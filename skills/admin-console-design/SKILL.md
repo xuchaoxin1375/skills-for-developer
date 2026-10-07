@@ -1,24 +1,14 @@
 ---
 name: admin-console-design
 description: >
-  Cloudflare风格后台控制台/管理面板设计与实现：外壳与侧边栏（折叠/Rail/悬停peek/抽屉）、
-  顶栏、数据表格（列宽拖拽/排序/批量/粘性操作列/窄屏切卡）、表单与设置页与向导（两级校验/草稿/离开保护/危险区）、
-  设计令牌与深浅主题、响应式与无障碍验收。
-  凡是提到后台面板、管理后台、控制台、admin/console/dashboard、DNS记录/站点设置这类页、
-  侧边栏折叠悬停展开、表格调宽/批量/行内编辑、表单校验/向导/设置保存，或说要做/评审一套像Cloudflare的控制台、
-  查控制台反例与传统缺陷，即使没点名本skill也要加载。与通用界面发散转distinctive-design-director、存量缺陷深查转frontend-ux-qa、
-  纯自适应收纳细节转adaptive-responsive-guide，本skill只管控制台骨架与行为一次做对。
+  后台控制台/管理面板设计与实现(Cloudflare风格):外壳与侧边栏（折叠/Rail/悬停peek/抽屉）、顶栏、数据表格（列宽拖拽/排序/批量/粘性操作列/窄屏切卡）、表单与设置页与向导（两级校验/草稿/离开保护/危险区）、设计令牌与深浅主题、响应式与无障碍验收。
+  凡是提到后台面板、管理后台、控制台、admin/console/dashboard、DNS记录/站点设置这类页、侧边栏和折叠悬停展开操作、表格调宽/批量/行内编辑、表单校验/向导/设置保存，或说要做/评审一套像Cloudflare的控制台、查控制台反例与传统缺陷，即使没点名本skill也要加载。
 ---
 
 # 后台控制台设计
 
-三份 Cloudflare-inspired 参考工程提炼（fable5.1-high / gpt6astra-max / sonnet5.5xhigh）：
 共同栈 React19+Vite7+Tailwind v4 CSS-first+Lucide+单文件+自研hash路由+无后端（localStorage mock）。
 本 skill 给出**可直接套用的骨架 + 为什么这样做**，细节查 `references/`，不要在 SKILL.md 外自创第五种页型。
-
-与其它 skill 分工：`frontend-design` 管通用主张/线框/令牌流程；`distinctive-design-director` 管视觉发散；
-`adaptive-responsive-guide` 管通用自适应与收纳决策；`frontend-ux-qa` 管存量编号深查；
-`web-animation-guide` 管动效选型。本 skill 只管**控制台四件套一次做对**。
 
 ## 适用范围
 
@@ -138,8 +128,7 @@ description: >
 - MUST：四页型四选一；令牌先行禁裸色；槽视觉解耦+覆盖不推挤；悬展必有键盘等价；触屏有点开按钮；
   表格末列粘性常驻+不透明；保存不置灰而是提交校验+首焦；脏保护+删清脏；页面无横滚；焦点可见；对比正文4.5/非文3；
   语义按钮不用 div onClick；图标按钮必有 aria-label；禁禁粘贴/禁缩放；危险远离首屏+二次确认。
-  悬浮覆盖零位移：peek/抽屉等覆盖展开必须图标列 x/行高两态恒定、脱离网格锁列、侧栏文本全单行，
-  用探针验前后逐行几何一致 + 内容 left 不变 + 点击落点仍是按钮（见 references/shell-sidebar.md 新增一节）。
+  悬浮覆盖零位移：peek/抽屉展开时图标列 x/行高两态不变、文本全单行，用探针验几何一致+内容不动+点击落点对（见 references/shell-sidebar.md“覆盖展开零位移”）。
 - SHOULD：主操作唯一且最右；语义色配图标文字；Filter 草稿/应用分离；列宽本地持久；批量 Undo 优于强确认；
   空态分零数据/零匹配；窄屏切卡保操作可用；保存显式/即时按风险分文案。
 - AVOID：整页定高锁死；推挤式展开；height:auto/left/top 动画；display:none 藏标签；100vw 通栏；
@@ -185,11 +174,14 @@ description: >
 - `references/forms.md` — 表单/设置/向导结构与两级校验/草稿/脏保护/危险区。
 - `references/responsive-a11y.md` — 断点/容器查询/防溢出/触控/语义与验收探针。
 - `references/anti-patterns.md` — Legacy 传统反例四缺陷与传统 vs 改进对照，评审先跑此表。
+- `references/builds/` — 三工程构建产物快照（单文件 `index.html`，双击即开的成品预览，见其 README；无源码时也能看到成品形态）。
 
-## 素材来源（三工程绝对路径，复用时按需对照）
+## 素材来源（三工程，复用时按需对照）
 
-- fable：`后台面板设计参考/cloudflare-inspired-ui-design-fable5.1-high/src/{index.css,components/shell,components/ui,pages/dns}`，`docs/01-08`。
-- gpt6astra：`后台面板设计参考/cloudflare-inspired-ui-design-gpt6astra-max/src/{index.css,components/Sidebar.tsx,components/DnsConsole.tsx,lib/hooks.ts}`，`public/docs/00-05`，`tests/acceptance.spec.ts`。
-- sonnet：`后台面板设计参考/cloudflare-inspired-ui-design-sonnet5.5xhigh/src/{index.css,dashboard/Sidebar.tsx,dashboard/pages/DnsRecords.tsx,ui/columns.tsx,dashboard/recordModel.ts}`，`docs/01-08`。
+三工程是**本仓库外**的参考工程，`<参考工程根>` 为占位符，按你机器上的实际位置解析：
+
+- fable：`<参考工程根>/cloudflare-inspired-ui-design-fable5.1-high/src/{index.css,components/shell,components/ui,pages/dns}`，`docs/01-08`。
+- gpt6astra：`<参考工程根>/cloudflare-inspired-ui-design-gpt6astra-max/src/{index.css,components/Sidebar.tsx,components/DnsConsole.tsx,lib/hooks.ts}`，`public/docs/00-05`，`tests/acceptance.spec.ts`。
+- sonnet：`<参考工程根>/cloudflare-inspired-ui-design-sonnet5.5xhigh/src/{index.css,dashboard/Sidebar.tsx,dashboard/pages/DnsRecords.tsx,ui/columns.tsx,dashboard/recordModel.ts}`，`docs/01-08`。
 - 边界声明（gpt `docs/05`）：本 skill 的时序/尺寸等数值是三工程的**设计选择**，非 Cloudflare 官方规范；
   外部参考为 WCAG、Project A11Y、CF Dark Mode 等公开资料。引用时不要说"Cloudflare 官方要求"。

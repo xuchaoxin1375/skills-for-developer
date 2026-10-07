@@ -29,7 +29,7 @@ skills-for-developer/
   skills/
     <skill-name>/
       SKILL.md                 # 必需：frontmatter + 正文
-      references/              # 可选：长篇参考材料
+      references/              # 可选：长篇参考材料（外部材料优先归档于此，而非引用外部路径）
       scripts/                 # 可选：配套脚本
   scripts/
     link-skills.ps1            # Windows：创建 / 校验 / 移除 Junction（幂等）
@@ -43,6 +43,7 @@ skills-for-developer/
   两处语义保持一致。
 - 推荐：正文按“适用范围 → 工作流程 → 约束/规范 → 自检 → 验证协议”组织；
   正文即工件，不套嵌套代码围栏，不夹带安装教程与链接聚合。
+- 推荐：skill 确需引用真源外部材料时，将其复制/归档为 `references/` 内参考资料并注明来源 URL 与快照日期；体积大、有版权限制或需跟随上游更新时例外，此时引用 URL。
 
 ## 工作流程
 
@@ -100,3 +101,4 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 - 不把 harness 链接本体提交到 git；`git add` 只点名实体文件。
 - `git commit/push` 必须用户明确指示才做。
 - 不在 harness 侧手工存放实体副本；所有改动走“真源 → 链接生效”单向流动。
+- skill 正文、引用、示例、配套脚本中不得出现仓库外真实路径（本机绝对路径如 `C:\Users\…`、`C:\tools\…`、`/home/…`，写死的 `/tmp/…`）：真实引用只许仓库内相对路径或 URL；示例路径必须用 `<…>` 占位符；约定俗成的标准位置须用环境变量形式（如 `%USERPROFILE%`、`$HOME`、`$XDG_RUNTIME_DIR`）而非写死；历史/迁移说明中提及的已删除旧路径须标注“旧/已删除”。

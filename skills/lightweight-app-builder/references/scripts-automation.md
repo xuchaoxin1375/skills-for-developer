@@ -77,8 +77,8 @@ PowerShell 侧对应规则：
 
 | 平台 | 工具 | 示例命令 | 说明 |
 | --- | --- | --- | --- |
-| Windows | 任务计划程序 | `schtasks /Create /TN "CleanDownloads" /TR "pythonw C:\tools\clean.py" /SC DAILY /ST 23:30` | 用 `pythonw` 避免弹出黑色控制台窗口 |
-| Linux | cron | `30 23 * * * /usr/local/bin/clean.sh >> /var/log/clean.log 2>&1` | 需要确认用户有 crontab 权限 |
+| Windows | 任务计划程序 | `schtasks /Create /TN "CleanDownloads" /TR "pythonw <脚本目录>\clean.py" /SC DAILY /ST 23:30` | 用 `pythonw` 避免弹出黑色控制台窗口 |
+| Linux | cron | `30 23 * * * <脚本目录>/clean.sh >> <日志目录>/clean.log 2>&1` | 需要确认用户有 crontab 权限 |
 | macOS | launchd | 用 `launchctl` 加载 `~/Library/LaunchAgents/com.example.clean.plist` | macOS 上 cron 已不推荐，日志要单独指定 |
 
 **cron 五个字段的含义**：依次是分钟（0–59）、小时（0–23）、日（1–31）、月（1–12）、星期（0–7，0 和 7 都是周日），`*` 表示"每一个"。因此 `30 23 * * *` 就是"每天 23 点 30 分"。

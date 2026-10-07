@@ -69,6 +69,7 @@ drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关
   Rail 行保持同布局，两个图标并排裁剪即可。
 - fixed 定位用悬停时刻捕获的 rect（top/left/height），滚动/resize/Esc 关；手动收起后 suppressed
   到指针离开一次；验证探针：peek 前后逐行 `offsetTop` 全等 + 内容 `left` 不变 + 点击落点仍是按钮。
+- 显形规则要高于隐藏规则：收起后悬停无字，就是显字与藏字优先级打平（同为 0,3,0），先写的输了。修法是显形多加一层（如 `.shell .sidenav[data-peek="open"] .lbl` 提到 0,4,0）——只打平不够。隐藏若按宽度分两套，768 过不代表 1440 过，要逐套测；复现按用户原话路径走。
 
 ## 命令面板（fable `docs/03` §5）
 

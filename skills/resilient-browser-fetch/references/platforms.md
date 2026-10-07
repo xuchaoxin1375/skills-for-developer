@@ -86,7 +86,7 @@ uv pip install --python .venv/bin/python -r <skill-dir>/requirements-cloak.txt
 
 ```bash
 sudo apt-get update && sudo apt-get install -y xvfb
-Xvfb :99 -screen 0 1920x1080x24 >/tmp/xvfb.log 2>&1 &
+Xvfb :99 -screen 0 1920x1080x24 >$HOME/xvfb.log 2>&1 &
 export DISPLAY=:99
 .venv/bin/python <skill-dir>/scripts/resilient_fetch.py --headful --humanize ...
 ```
@@ -106,7 +106,7 @@ $env:SCRAPE_PROXY = "http://127.0.0.1:7897"
 .\.venv\Scripts\python.exe <skill-dir>\scripts\resilient_fetch.py --url "https://example.com" --out ".\page.html"
 ```
 
-没有 `uv` 时执行 `.\.venv\Scripts\Activate.ps1`，再使用 `python -m pip install -r ...`。可选 CloakBrowser 使用 `requirements-cloak.txt` 和 `.\.venv\Scripts\python.exe -m cloakbrowser install`。只有 `--real-chrome` 才要求系统 Google Chrome；找不到时使用 `--executable-path "C:\完整路径\chrome.exe"`。保持源码、日志和 HTML 为 UTF-8。
+没有 `uv` 时执行 `.\.venv\Scripts\Activate.ps1`，再使用 `python -m pip install -r ...`。可选 CloakBrowser 使用 `requirements-cloak.txt` 和 `.\.venv\Scripts\python.exe -m cloakbrowser install`。只有 `--real-chrome` 才要求系统 Google Chrome；找不到时使用 `--executable-path "C:\<完整路径>\chrome.exe"`。保持源码、日志和 HTML 为 UTF-8。
 
 WSL 内的 `127.0.0.1` 不应假定等同 Windows 宿主。先确认 Mihomo 的监听地址、防火墙和 WSL 到宿主的路由，再运行环境诊断。
 
