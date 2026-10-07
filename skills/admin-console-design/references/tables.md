@@ -3,7 +3,7 @@
 为什么是这个骨架：用户进列表页只想“找到一条记录并改它”，所以 PageHeader 一句话 + 搜索左伸缩 +
 主操作最右 + 批量悬底 + 行末 Edit 常驻，三工程骨架完全一致。
 
-## 骨架 8 层
+## 骨架 9 层
 
 `PageHeader(h1唯一+desc≤2行+actions≤3) + Alert汇总 + Collapsible推荐 + 工具栏 + chips + 新增卡 + 表格卡(配额条+表+Showing) + 浮动批量条 + 分页`
 
@@ -28,7 +28,7 @@
 ## 列宽拖拽
 
 - 8px 热区 / 1px 线 / hover 3px 主色，`role=separator + aria-valuenow/min/max + ←→8 / Shift32 / Home还原 / 双击还原`
-  （sonnet `columns.tsx` 口径；fable `table.tsx` 为 16/64，同产品只用一组）。
+  （用 sonnet 口径 8/32；fable 为 16/64，同产品只用一组，见 SKILL 收敛口径）。
 - 拖时只写 DOM（`<col>/table style`），松手才 setState+localStorage；隔条止冒泡防误排序；拖完 `body user-select:none` 还原。
 
 ## 行内展开 vs 弹窗（共用同一表单）
@@ -48,7 +48,7 @@
   没有快照返回值的"可撤销"都是假的。
 - 分页左 `Showing 1–10 of N(filtered from M) live` 右 Rows+上下；搜筛量变回页 1；`?highlight` 翻到行央闪亮 2.4s。
 
-## 窄屏（<640 容器切卡，sonnet 工程为 <700）
+## 窄屏（<640 容器切卡；sonnet 工程为 <700，统一用 <640）
 
 - `thead` 保留语义但视觉隐藏，`tbody tr:grid 24px 48px 1fr 32px`：类型/名称/Edit + 内容跨列换行 + 代理/TTL；
   排序/全选移入 Display；焦点移交（表头→搜索框）；表卡只渲染其一。

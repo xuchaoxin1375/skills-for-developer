@@ -5,7 +5,7 @@
 ## 断点（外壳媒体查询 + 内容容器查询）
 
 - 外壳：`<640 drawer+单列+表切卡+按钮堆+Dialog底抽 / 640-767 抽屉+表横滚+6栅 / 768-1023 Rail+peek+统计2列 / 1024-1279 固定+12栅+大纲 / ≥1280 统计4列 / ≥1536 max1440居中`。
-- 内容：DNS 表 ≥640 表 / <640 卡（sonnet 用 700，项目内定死一个）；表单 ≥1040 助栏；设置 ≥720 分栏。视口只定页级列数边距导航，组件布局看容器。
+- 内容：DNS 表 ≥640 表 / <640 卡（sonnet 用 700，统一用 <640）；表单 ≥1024 助栏；设置 ≥720 分栏。视口只定页级列数边距导航，组件布局看容器。
 - 基线 390/768/1440 逐页 + 320 回流 + 300 不溢；禁 100vw（用 100%），禁固定 px 列，禁 `overflow-x:hidden` 伪造适配（确需裁切 用 clip，hidden 会劫持 sticky）。
 
 ## 防溢出三件套
@@ -35,7 +35,7 @@
 // 1. 页面级横溢（三宽+300极端，期望全 pass）
 for (const w of [1440,768,390,320,300]) { /* 置宽后断言 */ console.assert(document.documentElement.scrollWidth <= window.innerWidth, 'overflow at '+w); }
 // 2. 窄屏主操作可达（300px 下 Add/Edit/Save 仍可见可点）
-// 3. 侧栏 peek 不移内容：hover 前后 .workspace-main left 不变（Rail 64/56）
+// 3. 侧栏 peek 不移内容：hover 前后 .workspace-main left 不变（Rail 56）
 // 4. reduced-motion：transition≈0
 ```
 

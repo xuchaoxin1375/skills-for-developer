@@ -44,6 +44,8 @@ description: >
 | 表格切卡片阈值 | 容器 <640 | <640 | <700 | <640（@container） |
 | z-index 套 | fable 完整套 | 完整套（顶栏50…Toast100） | 简化套（顶栏20…Toast80） | 按需 |
 | 圆角档 | 4/6/8/12 | 4/6/8/12 | 4/8/12/full | 4/6/8/12 |
+| 外壳断点 | <768 抽屉 / 768–1023 Rail / ≥1024 固定 | 同左 | 同左 | 工作台 ≤1000 / 站点 960（docs 内 960/961 与实现互斥，以实现为准） |
+| 抽屉宽度 | min(288,100vw-48)，原生 dialog | min(264,85vw) | min(288,100vw-48) | 280~300 |
 
 注意"意图延迟"（进/出 peek 前的等待）与"宽度过渡时长"（width 动画本身）是两回事，别混写。
 
@@ -54,7 +56,7 @@ description: >
 
 - 骨架：`Topbar(sticky h56 z50) + Sidebar(slot占位) + main(max1440 居中 flex-1 min-w-0) + footer`。
   文档级滚动，侧边栏与顶栏 sticky，不要整页定高锁死。
-- 尺寸默认：展开 240（允许 240–264，按内容定死一个），Rail 56，顶栏 56，内容 max1440，
+- 尺寸默认：展开 240（定死不再改），Rail 56，顶栏 56，内容 max1440，
   表单卡 720（向导 768，设置 896）。三工程分别是 224/240/264，本 skill 收敛为 240。
 - 侧边栏状态机（详见 `references/shell-sidebar.md`）：`pinned(展开/折叠，持久化) / hover-peek / kbFocus-peek / forced(触屏点开) / suppressed(点收起后直到离开一次) / drawer(<768)`。
   进/出意图延迟 120/220ms（见收敛口径表），只动 width/box-shadow/opacity，文字用 opacity+visibility 延迟 75ms，
@@ -92,7 +94,7 @@ description: >
   拖时只写 DOM 松手才 setState+持久化，止冒泡防误排序。
 - 行内展开与弹窗共用同一表单同一校验（RecordEditor 模式），开后焦点进首字段，关后回 Edit，
   `aria-expanded/haspopup`。批量条 `fixed bottom16 max520 深色`，删除给 Undo（8s）优于强确认。
-- <640px 容器切卡片（sonnet 工程为 <700，项目内定死一个；三行式，thead保留语义但视觉隐藏），表卡只渲染其一防双编辑器重 id；
+- <640px 容器切卡片（sonnet 工程为 <700，统一用 <640；三行式，thead保留语义但视觉隐藏），表卡只渲染其一防双编辑器重 id；
   表容器自有 `overflow-x:auto + 可聚焦region`，页面级永无横滚。
 
 ### 4——做表单/设置/向导
@@ -174,14 +176,6 @@ description: >
 - `references/forms.md` — 表单/设置/向导结构与两级校验/草稿/脏保护/危险区。
 - `references/responsive-a11y.md` — 断点/容器查询/防溢出/触控/语义与验收探针。
 - `references/anti-patterns.md` — Legacy 传统反例四缺陷与传统 vs 改进对照，评审先跑此表。
+- `references/builds-comparison.md` — 三构建产物特点与对比（fable 侧栏正本 / gpt 规范验收 / sonnet 列宽 Undo 反例），先看本页决定抄谁。
 - `references/builds/` — 三工程构建产物快照（单文件 `index.html`，双击即开的成品预览，见其 README；无源码时也能看到成品形态）。
 
-## 素材来源（三工程，复用时按需对照）
-
-三工程是**本仓库外**的参考工程，`<参考工程根>` 为占位符，按你机器上的实际位置解析：
-
-- fable：`<参考工程根>/cloudflare-inspired-ui-design-fable5.1-high/src/{index.css,components/shell,components/ui,pages/dns}`，`docs/01-08`。
-- gpt6astra：`<参考工程根>/cloudflare-inspired-ui-design-gpt6astra-max/src/{index.css,components/Sidebar.tsx,components/DnsConsole.tsx,lib/hooks.ts}`，`public/docs/00-05`，`tests/acceptance.spec.ts`。
-- sonnet：`<参考工程根>/cloudflare-inspired-ui-design-sonnet5.5xhigh/src/{index.css,dashboard/Sidebar.tsx,dashboard/pages/DnsRecords.tsx,ui/columns.tsx,dashboard/recordModel.ts}`，`docs/01-08`。
-- 边界声明（gpt `docs/05`）：本 skill 的时序/尺寸等数值是三工程的**设计选择**，非 Cloudflare 官方规范；
-  外部参考为 WCAG、Project A11Y、CF Dark Mode 等公开资料。引用时不要说"Cloudflare 官方要求"。

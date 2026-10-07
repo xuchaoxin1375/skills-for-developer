@@ -28,7 +28,7 @@ expanded = wide ? (pinned==expanded || peek) : medium ? peek : false
 slotWidth = wide ? (expanded?240:56) : medium ? 56 : 0
 overlay = expanded && slotWidth<240 → fixed + shadow-2 + z40（fable 套：侧栏 top:56 起不与顶栏重叠，40<顶栏50 无妨；
           sonnet 通高侧栏才需槽40>顶栏20。按 tokens.md 所选层级套定死，内容永不重排）
-drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关
+drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关，宽 min(288,100vw-48)（收敛值；fable 旧 264 / gpt 280~300 不用）
 ```
 
 - `hover` 只在 rail 记，`pointerenter/leave` 忽略 touch（`pointerType==touch` 直接走 forced）。
@@ -39,6 +39,7 @@ drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关
 - 时序：进/出意图延迟 120/220ms（fable 110/220、sonnet 120/250、gpt 120/240，收敛 120/220），
   宽度过渡时长另算（280/220/220，收敛 240ms）；只动 width/box-shadow/opacity；
   文字 `opacity+visibility + 展开延迟50–75ms/折叠立即`，不用 display:none（读屏仍可读），不用 height:auto/left/top。
+- 延时验收可调：默认 120/220；演示/验收页可做 120/250/400 三档（默认 120，抄 gpt Workbench），关闭悬停不影响固定与键盘。
 - 子菜单：`grid-template-rows:0fr→1fr + visibility`，无需测高；折叠时 `visibility:hidden` 移出 Tab。
 - 持久化 pinned；`prefers-reduced-motion` 归零；`overscroll-behavior:contain` 防穿透；折叠藏滚动条（`scrollbar-width:none`）。
 
