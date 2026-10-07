@@ -49,7 +49,7 @@ skills-for-developer/
 | `skills/adaptive-responsive-guide` | Web前端自适应响应式适配指南：视口断点、媒体/容器查询、clamp流体、Flex/Grid内在布局、响应式图片、偏好与触控、国内vw适配、操作区收纳决策与验收 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
 | `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
 | `skills/ai-verify-gates` | AI 编程工程质量与可验证交付：风险分级定级、统一验证门禁、完整性防做一半、独立复核、发布回滚与闭环 | AI coding 质量、做一半、验收标准、门禁、verify、DoD、L0-L4 定级、风险评分、RTM、tasks、独立验证、完成报告、回滚、弱模型约束 |
-| `skills/admin-console-design` | Cloudflare风格后台控制台设计：外壳侧边栏/数据表格/表单设置向导/令牌主题/响应式验收，三工程提炼可直接复用 | 后台面板、管理后台、控制台、admin、console、dashboard、侧边栏折叠悬停、表格调宽批量、表单校验、设置页、向导、Cloudflare |
+| `skills/admin-console-design` | Cloudflare风格后台控制台设计：外壳侧边栏/数据表格/表单设置向导/令牌主题/响应式验收/收敛口径对照与Legacy反例，三工程提炼可直接复用 | 后台面板、管理后台、控制台、admin、console、dashboard、侧边栏折叠悬停、表格调宽批量、表单校验、设置页、向导、Cloudflare、反例、命令面板 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -138,6 +138,7 @@ cd ~/repos/skills-for-developer
 - 2026-10-06: `sticky-position` 复核补齐（对照自适应 demo 与 gpt6astra 单文件页）：诊断脚本升级为六步自动版、IO 哨兵与 scroll-state 给出完整代码、新增层叠卡片与响应式断点切换两种场景、表格 z-index 梯度与层叠上下文说明、安全区/dvh/打印等移动端细节。
 - 2026-10-06: `ai-coding-quality` 更名 `ai-verify-gates`（名实统一：目录与 frontmatter `name` 一致），三 harness 链接同步切换为新名。
 - 2026-10-07: 新增 `admin-console-design`（Cloudflare风格后台控制台：外壳侧边栏/表格/表单设置向导/令牌主题/响应式验收，三工程提炼），随链接脚本分发；`frontend-design` 接入后台控制台路由（骨架转交、表单细节引用 `admin-console-design/references/forms.md`）。
+- 2026-10-07: `admin-console-design` 覆盖度审计补齐：收敛口径对照表（时序/列宽/切卡/z-index/圆角三工程分歧，修4处口径矛盾）、新增 `anti-patterns.md`（Legacy 四缺陷反例）、命令面板规范、Undo 快照实现、导入导出原子性、宽度验收工具、来源边界声明；并入"覆盖展开零位移"实证节。
 
 ## 开源许可
 

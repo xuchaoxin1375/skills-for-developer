@@ -26,7 +26,8 @@ rail = medium(768-1023) || (wide>=1024 && collapsed)
 peek = rail && ((!suppressed && (hover || kbFocus)) || forced)
 expanded = wide ? (pinned==expanded || peek) : medium ? peek : false
 slotWidth = wide ? (expanded?240:56) : medium ? 56 : 0
-overlay = expanded && slotWidth<240 → fixed + shadow-2 + z40(盖过顶栏z50? 按工程取槽40>顶栏20或40>50，定死槽40盖顶栏，内容不重排)
+overlay = expanded && slotWidth<240 → fixed + shadow-2 + z40（fable 套：侧栏 top:56 起不与顶栏重叠，40<顶栏50 无妨；
+          sonnet 通高侧栏才需槽40>顶栏20。按 tokens.md 所选层级套定死，内容永不重排）
 drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关
 ```
 
@@ -35,8 +36,9 @@ drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关
 - 键盘：`:focus-visible` 进入侧栏视同 hover（peek），鼠标点击的焦点不触发（防抖）。
   Tab 进 peek，Esc 收 peek 并回触发器；`[` 切换 pinned，Ctrl+K 开命令面板。
 - 触屏：点图标 `forced=true`，点外/Esc/导航后关闭。
-- 时序：进 120ms 出 220–250ms，只动 width/box-shadow/opacity；文字 `opacity+visibility + 展开延迟50–75ms/折叠立即`，
-  不用 display:none（读屏仍可读），不用 height:auto/left/top。
+- 时序：进/出意图延迟 120/220ms（fable 110/220、sonnet 120/250、gpt 120/240，收敛 120/220），
+  宽度过渡时长另算（280/220/220，收敛 240ms）；只动 width/box-shadow/opacity；
+  文字 `opacity+visibility + 展开延迟50–75ms/折叠立即`，不用 display:none（读屏仍可读），不用 height:auto/left/top。
 - 子菜单：`grid-template-rows:0fr→1fr + visibility`，无需测高；折叠时 `visibility:hidden` 移出 Tab。
 - 持久化 pinned；`prefers-reduced-motion` 归零；`overscroll-behavior:contain` 防穿透；折叠藏滚动条（`scrollbar-width:none`）。
 
@@ -50,6 +52,29 @@ drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关
 - Rail 零文字泄露 + 不可聚焦（tabindex 移除），`aria-current=page` 加深+600，active 左 3px brand 条。
 - 分组 `<button aria-expanded/controls>`，折叠点先展栏再展组；默认只展含当前页组，路由变自动展。
 - 命令面板开时侧栏收起逻辑正常；`canHover=(hover:hover) and (pointer:fine)` 门控。
+
+## 覆盖展开零位移（2026-10 实证，不遵守则点击被吞）
+
+为什么：hover-peek 在 mousedown 与 mouseup 之间把面板变 fixed，若行高/图标 x 变了，
+目标就从鼠标下跑掉（实证：点击落到 DIV.spacer 上，弹窗打不开）。覆盖必须几何全等：
+
+- 图标列 x 与行高在 Rail/展开两态恒定：叶子固定 `min-height`（如 52px），分组缩进只作用于文字列
+  （图标 padding 两态同值），Rail 只做裁剪（`overflow:hidden`）不改 `padding/justify/flex-direction`；
+  注意选择器优先级：`.sidenav button(0,1,1)` 会吃掉单类名的 `min-height`，行高规则至少 `(0,2,0)`。
+- 侧栏内所有文本单行：Rail 窄宽下换行会造成两态行高差（实证：空提示换行差 99px），
+  用 `nowrap+overflow:hidden` 消灭；该规则同样适用于脚注与次要说明。
+- 脱离网格要锁列：aside 变 fixed（peek/抽屉）后脱离网格，`page` 必须显式 `grid-column:2`
+  （移动单列改回 1），否则内容掉进第一轨（实证：内容左移到 15px、宽被压到 52px）。
+- 收起键在 Rail 下保持可见可用：它是唯一的鼠标展开入口，藏掉会同时断掉用户与门禁复位点击；
+  Rail 行保持同布局，两个图标并排裁剪即可。
+- fixed 定位用悬停时刻捕获的 rect（top/left/height），滚动/resize/Esc 关；手动收起后 suppressed
+  到指针离开一次；验证探针：peek 前后逐行 `offsetTop` 全等 + 内容 `left` 不变 + 点击落点仍是按钮。
+
+## 命令面板（fable `docs/03` §5）
+
+- 触发：`Ctrl/⌘+K` 全局、侧栏搜索按钮、顶栏 Ask AI；开启时侧栏收起逻辑保持正常。
+- 语义：`role=combobox` + `aria-activedescendant`；↑↓ 导航、↵ 打开、Esc 关闭，滚动态保持可见项在视口内。
+- 数据源：导航项 + 业务对象（示例为 DNS 记录），**按分组显示**；底部显示快捷键说明。
 
 ## 顶栏
 

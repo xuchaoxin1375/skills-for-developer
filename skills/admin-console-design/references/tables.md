@@ -9,6 +9,9 @@
 
 - 工具栏：`flex-col lg:row，搜索 flex-1 max520（防抖150ms）+ Filters + Display + Import/Export(icon-only带名) + Add primary最右`。
   <1024 搜索独占一行 wrap；按钮图标+文字，窄屏文字可 `sr-only` 留图标但保可访问名。
+- 导入导出（gpt `docs/02` §7）：JSON 导入先整体校验（必填 type/name/content、1MB 上限、总数上限如 200、重复检查），
+  **任一失败整个导入拒绝、零部分写入**；导入生成本地新 ID（来源 ID 不可信）。
+  导出未选中导全部、选中导所选，Blob 下载后释放 object URL。
 - Filters：草稿/应用分离，Apply/Enter 才生效，无值禁用，<640 两行重排，`role=dialog + 首焦 + Esc还焦`，宽 `min(560,100vw-16)`。
 - Display：列显隐 + 密度，localStorage；空态分零数据 vs 零匹配（后者给“清除搜索与筛选”）。
 
@@ -24,7 +27,8 @@
 
 ## 列宽拖拽
 
-- 8px 热区 / 1px 线 / hover 3px 主色，`role=separator + aria-valuenow/min/max + ←→8 / Shift32 / Home还原 / 双击还原`。
+- 8px 热区 / 1px 线 / hover 3px 主色，`role=separator + aria-valuenow/min/max + ←→8 / Shift32 / Home还原 / 双击还原`
+  （sonnet `columns.tsx` 口径；fable `table.tsx` 为 16/64，同产品只用一组）。
 - 拖时只写 DOM（`<col>/table style`），松手才 setState+localStorage；隔条止冒泡防误排序；拖完 `body user-select:none` 还原。
 
 ## 行内展开 vs 弹窗（共用同一表单）
@@ -39,9 +43,12 @@
 
 - 批量条 `fixed bottom16 宽calc-32 max520 深色 + 数量live + 选全部 + 动作 + 清除`，禁顶插（勾首表移连选错）。
 - 删除确认 + 8s Undo（优于强确认），改直行 + Undo，不适用明示（如 `2 Proxied·3 skipped`）。
+- Undo 快照实现（sonnet `data.tsx`）：**快照先行**——`bulkUpdate(ids, patch)` 先筛出 `prev` 再改并返回更新前记录，
+  `restoreSnapshots(prev)` 按 id 回写；删除 `removeRecords` 返回 `{rec,index}`，`restoreRecords` 按 index 排序 splice 归位。
+  没有快照返回值的"可撤销"都是假的。
 - 分页左 `Showing 1–10 of N(filtered from M) live` 右 Rows+上下；搜筛量变回页 1；`?highlight` 翻到行央闪亮 2.4s。
 
-## 窄屏（<700 容器切卡）
+## 窄屏（<640 容器切卡，sonnet 工程为 <700）
 
 - `thead` 保留语义但视觉隐藏，`tbody tr:grid 24px 48px 1fr 32px`：类型/名称/Edit + 内容跨列换行 + 代理/TTL；
   排序/全选移入 Display；焦点移交（表头→搜索框）；表卡只渲染其一。

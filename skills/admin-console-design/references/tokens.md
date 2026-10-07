@@ -34,7 +34,7 @@
 - 字体：`Inter,system-ui,PingFang SC,Hiragino Sans GB,Microsoft YaHei,Noto Sans CJK SC`；
   等宽 `ui-monospace,SFMono,Menlo,Consolas` + `tabular-nums`（技术值/TTL/数字）。
 - 字号 7 档：11/12/13/14/16/20/28，行高正文 1.6 标题 1.3，中文不用斜体与两端对齐。
-- 间距只用 4/8/12/16/24/32/48；圆角 4/6/8/12；图标 Lucide 16/18/20。
+- 间距只用 4/8/12/16/24/32/48；圆角 4/6/8/12（fable 默认；sonnet 为 4/8/12/full，项目二选一）；图标 Lucide 16/18/20。
 - 阴影 3 级：`0 1px 2px .06 / 0 4px 12px .10 / 0 12px 32px .18`（深色加深）。
 - Tailwind v4 CSS-first：`@import tailwindcss` + `@custom-variant dark(&:where([data-theme=dark]))` + `@theme inline` 映射语义层，禁裸色。
 
@@ -43,5 +43,9 @@
 - 主题 `light/dark/system` + localStorage + 首屏内联脚本设 `data-theme` + `color-scheme` 跟随，防闪白。
 - 动效 `120/200/280ms + cubic-bezier(.2,0,0,1)`，只过渡 transform/opacity/width/grid-rows；
   `prefers-reduced-motion` 压 0.01ms；触屏粗指针控件 44px（桌面 24/36）。
-- 层级：粘性操作 15 / 顶栏 50 / 抽屉 60 / Popover 70 / Tooltip 80 / Dialog 90 / Toast 100（侧边槽 40 盖顶栏，模态走 dialog 顶层）。
+- 层级两套原值，**同项目只用一套不许混**（收敛默认 fable 完整套）：
+  - fable 完整套：侧栏 rail 20 / peek 40 / 顶栏 50 / 抽屉 60 / Popover 70 / Tooltip 80 / Dialog 90 / Toast 100。
+  - sonnet 简化套：粘性操作 15 / 顶栏 20 / Popover 30 / 侧边槽 40 / Tip 70 / Toast 80 / 跳链 100（模态走 dialog 顶层）。
+  - peek/槽是否盖顶栏取决于侧栏起点：侧栏从 `top:56` 起（fable）本就不与顶栏重叠，40<50 无妨；
+    侧栏通高（sonnet）才需槽 40 > 顶栏 20。按所选套写死，别中途换。
 - 控件高 36（窄/粗 44），`--content-max:1440px --topbar-h:56px --sidebar:240px --rail:56px`。

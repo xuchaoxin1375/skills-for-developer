@@ -5,8 +5,8 @@ description: >
   顶栏、数据表格（列宽拖拽/排序/批量/粘性操作列/窄屏切卡）、表单与设置页与向导（两级校验/草稿/离开保护/危险区）、
   设计令牌与深浅主题、响应式与无障碍验收。
   凡是提到后台面板、管理后台、控制台、admin/console/dashboard、DNS记录/站点设置这类页、
-  侧边栏折叠悬停展开、表格调宽/批量/行内编辑、表单校验/向导/设置保存，或说要做一套像Cloudflare的控制台、
-  即使没点名本skill也要加载。与通用界面发散转distinctive-design-director、存量缺陷深查转frontend-ux-qa、
+  侧边栏折叠悬停展开、表格调宽/批量/行内编辑、表单校验/向导/设置保存，或说要做/评审一套像Cloudflare的控制台、
+  查控制台反例与传统缺陷，即使没点名本skill也要加载。与通用界面发散转distinctive-design-director、存量缺陷深查转frontend-ux-qa、
   纯自适应收纳细节转adaptive-responsive-guide，本skill只管控制台骨架与行为一次做对。
 ---
 
@@ -43,6 +43,20 @@ description: >
 
 令牌先行：任何视觉决策先写进 CSS 变量（见 `references/tokens.md`），组件只用语义类，禁裸色。
 
+**收敛口径**（三工程原值有分歧，以本表为默认；分歧本身是各工程的真实设计选择，
+如 gpt `docs/05` 声明这些数值非 Cloudflare 官方，同项目内必须只用一套、不许混）：
+
+| 项 | 本 skill 收敛 | fable | sonnet | gpt |
+|---|---|---|---|---|
+| peek 进/出意图延迟 | 120/220ms | 110/220 | 120/250 | 120/240 |
+| 侧栏宽度过渡时长 | 240ms | 280 | 220 | 220 |
+| 列宽键盘步长 | 8/32 | 16/64 | 8/32 | 无列宽拖拽 |
+| 表格切卡片阈值 | 容器 <640 | <640 | <700 | <640（@container） |
+| z-index 套 | fable 完整套 | 完整套（顶栏50…Toast100） | 简化套（顶栏20…Toast80） | 按需 |
+| 圆角档 | 4/6/8/12 | 4/6/8/12 | 4/8/12/full | 4/6/8/12 |
+
+注意"意图延迟"（进/出 peek 前的等待）与"宽度过渡时长"（width 动画本身）是两回事，别混写。
+
 ### 1——搭外壳（Topbar 56 + Sidebar + Page）
 
 为什么槽与视觉要解耦：悬停展开若推挤内容，整页会左右抖一次；覆盖展开则内容不动，
@@ -53,7 +67,7 @@ description: >
 - 尺寸默认：展开 240（允许 240–264，按内容定死一个），Rail 56，顶栏 56，内容 max1440，
   表单卡 720（向导 768，设置 896）。三工程分别是 224/240/264，本 skill 收敛为 240。
 - 侧边栏状态机（详见 `references/shell-sidebar.md`）：`pinned(展开/折叠，持久化) / hover-peek / kbFocus-peek / forced(触屏点开) / suppressed(点收起后直到离开一次) / drawer(<768)`。
-  进 120ms 出 220–250ms，只动 width/box-shadow/opacity，文字用 opacity+visibility 延迟 75ms，
+  进/出意图延迟 120/220ms（见收敛口径表），只动 width/box-shadow/opacity，文字用 opacity+visibility 延迟 75ms，
   不用 display:none（保读屏可读），不用 height:auto/left/top 做动画。
 - 顶栏：汉堡（仅窄屏）+ Logo + 资源切换器（星标+域名truncate+套餐Badge）+ 右侧 AskAI/Support（窄屏藏文字）+ 通知/主题/头像。
   资源名 `max-60vw truncate`，极窄允许藏次要入口但永不藏主操作。
@@ -65,11 +79,12 @@ description: >
 
 - 语义层：`bg/subtle/hover/surface/canvas/text(1-3)/border/primary(+hover/soft)/success/warning/danger(+soft)/brand(橙，只做标识≤5%)/focus/link`。
   浅色主蓝 `#0051c3`，深色提亮 `#6ea8ff ~ #7fb0ff`（保白字对比）， brand 橙 `#f6821f` 两主题同值。
-- 字体：正文 Inter + PingFang/YaHei，技术值等宽 + `tabular-nums`；字号 ≤7 档，圆角 4/8/12/full，
+- 字体：正文 Inter + PingFang/YaHei，技术值等宽 + `tabular-nums`；字号 ≤7 档，圆角 4/6/8/12（或 sonnet 的 4/8/12/full，二选一），
   阴影 3 级，间距只用 4/8/12/16/24/32/48，图标只用一套 Lucide（16/18/20）。
 - 主题：`light/dark/system` 三态 + localStorage + 首屏内联脚本读缓存设 `data-theme` 防闪；
   `color-scheme` 跟随主题。动效 `120/200/280ms + cubic-bezier(.2,0,0,1)`，只过渡 transform/opacity/width/grid-rows，
-  `prefers-reduced-motion` 压到 0.01ms。层级：粘性操作15/顶栏20/Popover30/侧边槽40/Tip70/Toast80/跳链100/模态dialog顶层。
+  `prefers-reduced-motion` 压到 0.01ms。层级收敛为 fable 完整套：侧栏20/peek40/顶栏50/抽屉60/Popover70/Tooltip80/Dialog90/Toast100/跳链100
+  （sonnet 简化套 20/30/40/80/100 为可选变体，同项目只用一套，两套明细见 `references/tokens.md`）。
 - 复制即用值见 `references/tokens.md`。
 
 ### 3——做表格（列表页是控制台的脸）
@@ -83,11 +98,11 @@ description: >
 - 表：`table-fixed + colgroup + 每列min/max（Name140-520/Content160-720类）+ 固定列禁调 + 填充列吸余`；
   表头按钮三态排序 + `aria-sort`；首列复选（含 indeterminate + Shift连选 + 选全部匹配）；
   末列操作 `sticky right0 + 不透明行实色 + 滚动阴影`，Edit 文因是主行操，Delete 用图标。
-- 列宽调节：8px 热区/1px 线/hover 3px 主色，`role=separator + 键盘←→8/Shift32/Home还原/双击还原`，
+- 列宽调节：8px 热区/1px 线/hover 3px 主色，`role=separator + 键盘←→8/Shift32/Home还原/双击还原`（sonnet 步长，fable 为 16/64，见收敛口径表），
   拖时只写 DOM 松手才 setState+持久化，止冒泡防误排序。
 - 行内展开与弹窗共用同一表单同一校验（RecordEditor 模式），开后焦点进首字段，关后回 Edit，
   `aria-expanded/haspopup`。批量条 `fixed bottom16 max520 深色`，删除给 Undo（8s）优于强确认。
-- <700px 容器切卡片（三行式，thead保留语义但视觉隐藏），表卡只渲染其一防双编辑器重 id；
+- <640px 容器切卡片（sonnet 工程为 <700，项目内定死一个；三行式，thead保留语义但视觉隐藏），表卡只渲染其一防双编辑器重 id；
   表容器自有 `overflow-x:auto + 可聚焦region`，页面级永无横滚。
 
 ### 4——做表单/设置/向导
@@ -123,10 +138,14 @@ description: >
 - MUST：四页型四选一；令牌先行禁裸色；槽视觉解耦+覆盖不推挤；悬展必有键盘等价；触屏有点开按钮；
   表格末列粘性常驻+不透明；保存不置灰而是提交校验+首焦；脏保护+删清脏；页面无横滚；焦点可见；对比正文4.5/非文3；
   语义按钮不用 div onClick；图标按钮必有 aria-label；禁禁粘贴/禁缩放；危险远离首屏+二次确认。
+  悬浮覆盖零位移：peek/抽屉等覆盖展开必须图标列 x/行高两态恒定、脱离网格锁列、侧栏文本全单行，
+  用探针验前后逐行几何一致 + 内容 left 不变 + 点击落点仍是按钮（见 references/shell-sidebar.md 新增一节）。
 - SHOULD：主操作唯一且最右；语义色配图标文字；Filter 草稿/应用分离；列宽本地持久；批量 Undo 优于强确认；
   空态分零数据/零匹配；窄屏切卡保操作可用；保存显式/即时按风险分文案。
 - AVOID：整页定高锁死；推挤式展开；height:auto/left/top 动画；display:none 藏标签；100vw 通栏；
   overflow-x:hidden 掩盖溢出；卡套卡；多主按钮；纯 hover 入口；alert/confirm 原生框；成功无感。
+  传统四缺陷反例对照（固定侧栏无抽屉/强制 min-width 页面横滚/placeholder 当标签+置灰提交/笼统错误不聚焦）见
+  `references/anti-patterns.md`，评审先跑那张表。
 
 ## 输出结构（ALWAYS 用此模板）
 
@@ -148,6 +167,8 @@ description: >
 - [ ] 表格末列粘性+不透明+阴影，列宽有最小/键盘/持久，批量有 Undo/明示，窄屏切卡后操作可用？
 - [ ] 表单两级校验+首焦+留输+可行动文案，草稿与脏保护闭环，危险区隔离？
 - [ ] 页面无横滚，浮层夹取，触控 24/44，对比达标，reduced-motion 归零？
+- [ ] 悬浮覆盖前后几何一致、内容未位移、点击落点正确，探针验过？
+- [ ] 视觉矩阵（状态×视口×主题）逐图目检，已看/未覆盖显式记录？
 - [ ] 输出用了上面的六节模板？
 
 ## 验证协议
@@ -163,9 +184,12 @@ description: >
 - `references/tables.md` — 数据表格骨架与列宽/排序/批量/粘性/卡片降级。
 - `references/forms.md` — 表单/设置/向导结构与两级校验/草稿/脏保护/危险区。
 - `references/responsive-a11y.md` — 断点/容器查询/防溢出/触控/语义与验收探针。
+- `references/anti-patterns.md` — Legacy 传统反例四缺陷与传统 vs 改进对照，评审先跑此表。
 
 ## 素材来源（三工程绝对路径，复用时按需对照）
 
 - fable：`后台面板设计参考/cloudflare-inspired-ui-design-fable5.1-high/src/{index.css,components/shell,components/ui,pages/dns}`，`docs/01-08`。
 - gpt6astra：`后台面板设计参考/cloudflare-inspired-ui-design-gpt6astra-max/src/{index.css,components/Sidebar.tsx,components/DnsConsole.tsx,lib/hooks.ts}`，`public/docs/00-05`，`tests/acceptance.spec.ts`。
 - sonnet：`后台面板设计参考/cloudflare-inspired-ui-design-sonnet5.5xhigh/src/{index.css,dashboard/Sidebar.tsx,dashboard/pages/DnsRecords.tsx,ui/columns.tsx,dashboard/recordModel.ts}`，`docs/01-08`。
+- 边界声明（gpt `docs/05`）：本 skill 的时序/尺寸等数值是三工程的**设计选择**，非 Cloudflare 官方规范；
+  外部参考为 WCAG、Project A11Y、CF Dark Mode 等公开资料。引用时不要说"Cloudflare 官方要求"。
