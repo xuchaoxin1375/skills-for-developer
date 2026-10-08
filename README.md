@@ -15,6 +15,7 @@ skills-for-developer/
     repo-governance/            # 开源仓库治理与提交规范
     tech-learning-research/     # 技术学习·信息调研·方案探索
     markdown-style/             # Markdown 行文风格与排版规范（风格正本）
+    codex-model-config/         # Codex 接第三方/自定义模型（独立仓库，submodule 引用）
   scripts/
     link-skills.ps1             # Windows：创建 / 校验 / 移除 Junction（幂等）
     link-skills.sh              # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）
@@ -45,12 +46,13 @@ skills-for-developer/
 | `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味 | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique |
 | `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 常见错误排查：静默失败、退出码、编码乱码与 BOM、引号插值、别名冲突、Junction 误删 | powershell报错、pwsh报错、脚本没输出、退出码、中文乱码、BOM、引号转义、别名冲突、junction、troubleshooting |
 | `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
-| \skills/web-animation-guide\ | Web动画应用指导：选型、性能与无障碍落地，原生优先，零依赖片段与回退写法 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
+| `skills/web-animation-guide` | Web动画应用指导：选型、性能与无障碍落地，原生优先，零依赖片段与回退写法 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
 | `skills/adaptive-responsive-guide` | Web前端自适应响应式适配指南：视口断点、媒体/容器查询、clamp流体、Flex/Grid内在布局、响应式图片、偏好与触控、国内vw适配、操作区收纳决策与验收 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
 | `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
 | `skills/ai-verify-gates` | AI 编程工程质量与可验证交付：风险分级定级、统一验证门禁、完整性防做一半、独立复核、发布回滚与闭环 | AI coding 质量、做一半、验收标准、门禁、verify、DoD、L0-L4 定级、风险评分、RTM、tasks、独立验证、完成报告、回滚、弱模型约束 |
 | `skills/admin-console-design` | Cloudflare风格后台控制台设计：外壳侧边栏/数据表格/表单设置向导/令牌主题/响应式验收/收敛口径对照与Legacy反例，三工程提炼可直接复用 | 后台面板、管理后台、控制台、admin、console、dashboard、侧边栏折叠悬停、表格调宽批量、表单校验、设置页、向导、Cloudflare、反例、命令面板 |
 | `skills/skill-patcher` | 存量 skill 打补丁：实战复盘沉淀为增量条目，语言简练、不污染、项目无关、配人话例子 | 修补 skill、打补丁、沉淀教训、skill 措辞审查、去污染、项目无关性 |
+| `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -58,7 +60,7 @@ skills-for-developer/
 
 | Harness  | Windows skills 目录 | Linux skills 目录 | 说明 |
 |---|---|---|---|
-| OpenCode | `%USERPROFILE%/.config/opencode/skills` | `~/.config/opencode/skills` | 全量链接 12 个 skill |
+| OpenCode | `%USERPROFILE%/.config/opencode/skills` | `~/.config/opencode/skills` | 全量链接 22 个 skill |
 | Codex | `%USERPROFILE%/.codex/skills` | `~/.codex/skills` | 全量链接; 自带的 `.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude | `%USERPROFILE%/.claude/skills` | `~/.claude/skills` | 全量链接 |
 
@@ -140,6 +142,7 @@ cd ~/repos/skills-for-developer
 - 2026-10-06: `ai-coding-quality` 更名 `ai-verify-gates`（名实统一：目录与 frontmatter `name` 一致），三 harness 链接同步切换为新名。
 - 2026-10-07: 新增 `admin-console-design`（Cloudflare风格后台控制台：外壳侧边栏/表格/表单设置向导/令牌主题/响应式验收，三工程提炼），随链接脚本分发；`frontend-design` 接入后台控制台路由（骨架转交、表单细节引用 `admin-console-design/references/forms.md`）。
 - 2026-10-07: `admin-console-design` 覆盖度审计补齐：收敛口径对照表（时序/列宽/切卡/z-index/圆角三工程分歧，修4处口径矛盾）、新增 `anti-patterns.md`（Legacy 四缺陷反例）、命令面板规范、Undo 快照实现、导入导出原子性、宽度验收工具、来源边界声明；并入"覆盖展开零位移"实证节。
+- 2026-10-08: `codex-model-config`（Codex 接第三方/自定义模型）以 submodule 接入：独立仓库 pin 文档链接化去重版本，克隆需 `--recurse-submodules`；两仓全局忽略 Codex 运行时产物 `agents/openai.yaml`（真源为 `SKILL.md`）；检索表与链接计数同步。
 
 ## 开源许可
 
