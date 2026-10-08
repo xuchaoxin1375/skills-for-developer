@@ -1,6 +1,7 @@
 ---
 name: htmlmini
-description: Use when the user wants to summarize, analyze, review, or extract information from HTML files or web pages — local design mockups, dashboards, panels, page source code, or URLs. Forces core-content extraction (strips CSS/JS/boilerplate, ~75-99% token savings) before any summarizing. Engine chain is automatic: Defuddle article -> optional Trafilatura -> semantic -> UI-component inventory for dashboards. Trigger keywords: html, 网页, 页面, 设计稿, 面板, 仪表盘, 总结, 分析, 审查, summarize, review, parse, 渲染后.
+description: >
+  Use when the user wants to summarize, analyze, review, or extract information from HTML files or web pages — local design mockups, dashboards, panels, page source code, or URLs. Forces core-content extraction (strips CSS/JS/boilerplate, ~75-99% token savings) before any summarizing. Engine chain is automatic: Defuddle article -> optional Trafilatura -> semantic -> UI-component inventory for dashboards. Trigger keywords: html, 网页, 页面, 设计稿, 面板, 仪表盘, 总结, 分析, 审查, summarize, review, parse, 渲染后.
 ---
 
 # htmlmini — 网页核心骨架提取

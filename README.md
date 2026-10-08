@@ -7,7 +7,7 @@
 ```text
 skills-for-developer/
   skills/
-    doc-polish/                   # 文档改写与审校（原 doc-polish-zh，已去语言限定）
+    doc-polish/                 # 文档改写与审校（原 doc-polish-zh，已去语言限定）
     scripting-best-practices/   # 原 opencode
     resilient-browser-fetch/    # 原 codex
     htmlmini/                   # 原 claude
@@ -16,6 +16,19 @@ skills-for-developer/
     tech-learning-research/     # 技术学习·信息调研·方案探索
     markdown-style/             # Markdown 行文风格与排版规范（风格正本）
     codex-model-config/         # Codex 接第三方/自定义模型（独立仓库，submodule 引用）
+    lightweight-app-builder/    # 模糊小工具需求落成可交付程序
+    frontend-design/            # Web/桌面小工具界面设计
+    frontend-ux-qa/             # 存量前端 UI 缺陷诊断与验收门禁
+    arena-preview/              # arena.ai 项目包解压预览
+    distinctive-design-director/ # 差异化视觉方向与品味评审
+    powershell-pitfalls/        # PowerShell 5.1/pwsh 踩坑速查
+    agentic-web-search/         # 智能体联网搜索优化
+    web-animation-guide/        # Web 动画选型与落地
+    adaptive-responsive-guide/  # 自适应响应式适配指南
+    sticky-position/            # sticky 粘性定位规范与排查
+    ai-verify-gates/            # AI 交付验证门禁与质量定级
+    admin-console-design/       # Cloudflare 风格后台控制台设计
+    skill-patcher/              # 存量 skill 补丁沉淀
   scripts/
     link-skills.ps1             # Windows：创建 / 校验 / 移除 Junction（幂等）
     link-skills.sh              # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）

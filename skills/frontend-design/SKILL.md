@@ -1,5 +1,5 @@
 ---
-name: Frontend Design
+name: frontend-design
 description: Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、可用性铁律。凡是新建/改版/美化网页、组件、表单、仪表盘、落地页，或提到界面丑、布局乱、适配手机、加载动画时使用，覆盖生成与交付验收两种模式；存量页面缺陷深查与CI门禁转frontend-ux-qa。
 ---
 
