@@ -8,6 +8,8 @@
 #   - OpenCode : $HOME/.config/opencode/skills
 #   - Codex    : $HOME/.codex/skills
 #   - Claude   : $HOME/.claude/skills
+#   - Agents 通用: ${DSH_AGENTS_HOME:-$HOME/.agents}/skills（Pi 等标准兼容 harness 共用）
+#   - DeepSeek Harness (dsh): ${DSH_HOME:-$HOME/.dsh}/skills
 #
 # 幂等，可反复执行。只管理仓库中存在的 skill 名，
 # 不会动 harness 自带内容（如 Codex 的 .system/、AGENTS.md）。
@@ -27,6 +29,8 @@ TARGETS=(
   "$HOME/.config/opencode/skills"
   "$HOME/.codex/skills"
   "$HOME/.claude/skills"
+  "${DSH_AGENTS_HOME:-$HOME/.agents}/skills"
+  "${DSH_HOME:-$HOME/.dsh}/skills"
 )
 
 VERIFY_ONLY=0
@@ -72,6 +76,8 @@ harness_tag() {
     *opencode*) echo opencode ;;
     *.codex*) echo codex ;;
     *.claude*) echo claude ;;
+    *.agents*) echo agents ;;
+    *.dsh*) echo dsh ;;
     *) echo other ;;
   esac
 }

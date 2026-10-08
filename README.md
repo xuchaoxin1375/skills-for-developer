@@ -2,55 +2,16 @@
 
 本地 skills 唯一真源仓库（跨平台：Windows + Linux 共用）。实体只存这里，各 agent harness 侧通过链接引用，不存副本（Windows 用 **Junction**，Linux 用 **symlink**）。
 
-## 目录结构
-
-```text
-skills-for-developer/
-  skills/
-    doc-polish/                 # 文档改写与审校（原 doc-polish-zh，已去语言限定）
-    scripting-best-practices/   # 原 opencode
-    resilient-browser-fetch/    # 原 codex
-    htmlmini/                   # 原 claude
-    skill-authoring-sync/       # skill 新建与同步规范
-    repo-governance/            # 开源仓库治理与提交规范
-    tech-learning-research/     # 技术学习·信息调研·方案探索
-    markdown-style/             # Markdown 行文风格与排版规范（风格正本）
-    codex-model-config/         # Codex 接第三方/自定义模型（独立仓库，submodule 引用）
-    lightweight-app-builder/    # 模糊小工具需求落成可交付程序
-    frontend-design/            # Web/桌面小工具界面设计
-    frontend-ux-qa/             # 存量前端 UI 缺陷诊断与验收门禁
-    arena-preview/              # arena.ai 项目包解压预览
-    distinctive-design-director/ # 差异化视觉方向与品味评审
-    powershell-pitfalls/        # PowerShell 5.1/pwsh 踩坑速查
-    agentic-web-search/         # 智能体联网搜索优化
-    web-animation-guide/        # Web 动画选型与落地
-    adaptive-responsive-guide/  # 自适应响应式适配指南
-    sticky-position/            # sticky 粘性定位规范与排查
-    ai-verified-delivery/       # AI 编程质量与可验证交付
-    admin-console-design/       # Cloudflare 风格后台控制台设计
-    skill-patcher/              # 存量 skill 补丁沉淀
-    reference-to-skill/          # 多来源提炼、规则裁决与 skill 改进
-  scripts/
-    link-skills.ps1             # Windows：创建 / 校验 / 移除 Junction（幂等）
-    link-skills.sh              # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）
-  .workspaces/                  # 本地评估产物（git 忽略，不提交、不同步）
-  docs/                        # skill 编写协作与长期维护说明
-  .gitattributes                # 锁定 .sh/.ps1/.py 为 LF，防跨平台换行问题
-  LICENSE                     # MIT，宽松开源
-  CHANGELOG.md                # 迁移历史与重要变更记录
-  README.md
-```
-
-每个 skill 目录必须包含 `SKILL.md` (及该 skill 自带的 `references/`、`scripts/` 等)。
-
 ## Skill 目录（检索入口）
+
+真源布局：`skills/<skill-name>/`（一个目录一个 skill，必须包含 `SKILL.md`，可带自有的 `references/`、`scripts/` 等）；`scripts/` 放链接脚本，`docs/` 放协作说明，`.workspaces/` 放本地评估产物（git 忽略，不提交）。
 
 | Skill 目录 | 一句话说明 | 关键词 / 何时用 |
 |---|---|---|
-| `skills/doc-polish` | 技术/业务文档全面改写与质量提升：不改变原意，正式化、规范化、严谨化、清晰化，补充结构、示例、表格与 Mermaid 图 | 润色、改写、审校、优化文档、【原文】、polish、rewrite、proofread、edit、improve docs |
-| `skills/scripting-best-practices` | Shell (Bash) 与 Python 脚本的编写、审查与重构规范，生产级健壮性要求 | 写脚本、审脚本、重构 `.sh` / `.bash` / `.py`、排查脚本健壮性 |
-| `skills/resilient-browser-fetch` | 采集受反爬保护的网站：Scrapling 过 Cloudflare 挑战、可选 CloakBrowser CDP 浏览器，保存渲染后 HTML、截图与诊断元数据，中文输出 | 反爬、Cloudflare、Turnstile、抓取、采集、代理连通性、会话复用 |
-| `skills/htmlmini` | 网页核心骨架提取：Defuddle→Trafilatura(可选)→semantic→UI清单自动回退，省约 75–99% token；CLI+MCP双形态 | html、网页、页面、设计稿、面板、仪表盘、总结、分析、审查 |
+| `skills/doc-polish` | 技术/业务文档全面改写与质量提升：不改变原意，正式化、规范化、严谨化、清晰化，补充结构、示例、表格与 Mermaid 图（原名 doc-polish-zh，已去语言限定） | 润色、改写、审校、优化文档、【原文】、polish、rewrite、proofread、edit、improve docs |
+| `skills/scripting-best-practices` | Shell (Bash) 与 Python 脚本的编写、审查与重构规范，生产级健壮性要求（原 opencode） | 写脚本、审脚本、重构 `.sh` / `.bash` / `.py`、排查脚本健壮性 |
+| `skills/resilient-browser-fetch` | 采集受反爬保护的网站：Scrapling 过 Cloudflare 挑战、可选 CloakBrowser CDP 浏览器，保存渲染后 HTML、截图与诊断元数据，中文输出（原 codex） | 反爬、Cloudflare、Turnstile、抓取、采集、代理连通性、会话复用 |
+| `skills/htmlmini` | 网页核心骨架提取：Defuddle→Trafilatura(可选)→semantic→UI清单自动回退，省约 75–99% token；CLI+MCP双形态（原 claude） | html、网页、页面、设计稿、面板、仪表盘、总结、分析、审查 |
 | `skills/skill-authoring-sync` | agent harness 新建自定义 skill 并同步到真源仓库：真源唯一、链接分发、跨机器 git 同步 | 新建 skill、安装 skill、同步 skill、链接校验、真源管理 |
 | `skills/repo-governance` | 开源仓库规范治理与安全提交：脚手架清单、LICENSE 选型、行尾归一化、隐私红线、提交分支门禁 | 新建仓库、规范化改造、提交检查、CONTRIBUTING、CI、审计密钥 |
 | `skills/tech-learning-research` | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级 | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison |
@@ -82,9 +43,11 @@ skills-for-developer/
 
 | Harness  | Windows skills 目录 | Linux skills 目录 | 说明 |
 |---|---|---|---|
+| Agents 通用 | `%DSH_AGENTS_HOME%/skills`（默认 `%USERPROFILE%/.agents/skills`） | `${DSH_AGENTS_HOME:-~/.agents}/skills` | 全量链接；Pi 等标准兼容 harness 共用，第三方实体不动 |
 | OpenCode | `%USERPROFILE%/.config/opencode/skills` | `~/.config/opencode/skills` | 全量链接 23 个 skill |
 | Codex | `%USERPROFILE%/.codex/skills` | `~/.codex/skills` | 全量链接; 自带的 `.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude | `%USERPROFILE%/.claude/skills` | `~/.claude/skills` | 全量链接 |
+| DeepSeek Harness | `%DSH_HOME%/skills`（默认 `%USERPROFILE%/.dsh/skills`） | `${DSH_HOME:-~/.dsh}/skills` | 全量链接；dsh 原生用户级（rank 高于通用位置） |
 
 ## 链接方式：Junction（Win）/ symlink（Linux）
 

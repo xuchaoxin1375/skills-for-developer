@@ -16,7 +16,7 @@ description: >
 改完即对本机所有 harness 生效；跨机器靠 `git push/pull` 同步实体，
 每台机器跑一遍自己平台的链接脚本即可。
 
-**适用范围**：各 agent harness（OpenCode / Codex / Claude）的自定义 skill。
+**适用范围**：各 agent harness（OpenCode / Codex / Claude / Agents 通用 / dsh）的自定义 skill。
 分发与校验统一走仓库 `scripts/` 下的链接脚本，不手写零散命令。
 
 ---
@@ -45,6 +45,9 @@ skills-for-developer/
 - 推荐：正文按“适用范围 → 工作流程 → 约束/规范 → 自检 → 验证协议”组织；
   正文即工件，不套嵌套代码围栏，不夹带安装教程与链接聚合。
 - 推荐：skill 确需引用真源外部材料时，将其复制/归档为 `references/` 内参考资料并注明来源 URL 与快照日期；体积大、有版权限制或需跟随上游更新时例外，此时引用 URL。
+
+各 harness 的 skill 发现差异（如 dsh 的 rank、单层扫描、kebab 严格校验）见
+`references/dsh-skills.md`，写 skill 时遵守即可。
 
 ## 工作流程
 
@@ -93,7 +96,7 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 
 1. Windows：`scripts\link-skills.ps1 -VerifyOnly` 全量通过；
    Linux：`./scripts/link-skills.sh --verify-only` 全量通过。
-2. 新 skill 在 harness 中可见/可加载（出现在可用 skill 列表即算通过）。
+2. 新 skill 在 harness 中可见/可加载（出现在可用 skill 列表即算通过；dsh 差异见 `references/dsh-skills.md`）。
 3. 抽查正文：描述的触发条件在对应请求下能命中加载。
 4. `git status` 确认无链接本体被误暂存。
 

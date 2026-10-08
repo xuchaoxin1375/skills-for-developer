@@ -10,6 +10,8 @@
     - OpenCode : $env:USERPROFILE\.config\opencode\skills
     - Codex    : $env:USERPROFILE\.codex\skills
     - Claude   : $env:USERPROFILE\.claude\skills
+    - Agents 通用: $env:DSH_AGENTS_HOME\skills (默认 $env:USERPROFILE\.agents\skills)
+    - DeepSeek Harness (dsh): $env:DSH_HOME\skills (默认 $env:USERPROFILE\.dsh\skills)
 
   幂等, 可反复执行。只管理仓库中存在的 skill 名,
   不会动 harness 自带内容 (如 Codex 的 .system/、AGENTS.md)。
@@ -55,10 +57,15 @@ if (-not (Test-Path $skillsDir -PathType Container)) {
   exit 1
 }
 
+$dshHome = if (-not [string]::IsNullOrWhiteSpace($env:DSH_HOME)) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
+$agentsHome = if (-not [string]::IsNullOrWhiteSpace($env:DSH_AGENTS_HOME)) { $env:DSH_AGENTS_HOME } else { Join-Path $env:USERPROFILE '.agents' }
+
 $targets = @(
   (Join-Path $env:USERPROFILE '.config\opencode\skills'),
   (Join-Path $env:USERPROFILE '.codex\skills'),
-  (Join-Path $env:USERPROFILE '.claude\skills')
+  (Join-Path $env:USERPROFILE '.claude\skills'),
+  (Join-Path $agentsHome 'skills'),
+  (Join-Path $dshHome 'skills')
 )
 
 $skills = Get-ChildItem -Path $skillsDir -Directory | Where-Object {
@@ -180,6 +187,8 @@ foreach ($targetDir in $targets) {
     if ($targetDir -match 'opencode') { $harness = 'opencode' }
     elseif ($targetDir -match '\.codex') { $harness = 'codex' }
     elseif ($targetDir -match '\.claude') { $harness = 'claude' }
+    elseif ($targetDir -match '\.agents') { $harness = 'agents' }
+    elseif ($targetDir -match '\.dsh') { $harness = 'dsh' }
     $backup = Join-Path (Join-Path (Join-Path (Join-Path $env:USERPROFILE '.skills-migration-backup') $stamp) $harness) $skill.Name
     if ($PSCmdlet.ShouldProcess($link, "备份实体到 $backup 并创建 Junction -> $dest")) {
       New-Item -ItemType Directory -Force -Path (Split-Path $backup -Parent) | Out-Null
