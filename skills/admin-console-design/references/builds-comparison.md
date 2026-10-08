@@ -1,6 +1,6 @@
 # 三构建产物特点与对比（fable / gpt / sonnet）
 
-> 用途：`references/builds/` 三个单文件 `index.html` 的导读地图。先看本页决定抄谁，再双击对应产物验证，最后按 `SKILL.md` 收敛口径落地。产物是只读快照（Vite 单文件内联），实现细节以 `<参考工程根>` 源码为准，路径见 `SKILL.md` 素材来源。
+> 用途：`references/builds/` 三个单文件 `index.html` 的导读地图。先看本页决定复用谁，再双击对应产物验证，最后按 `SKILL.md` 收敛口径落地。产物是只读快照（Vite 单文件内联），实现细节以 `<参考工程根>` 源码为准，路径见 `SKILL.md` 素材来源。
 > 预览：对应目录 `index.html` 双击或 `file://` 离线开，无需起服务。边界声明：时序/尺寸等数值是三工程的设计选择，非 Cloudflare 官方规范（gpt `docs/05` 原话）。
 
 ## 0 快照一览
@@ -65,7 +65,7 @@
 - 窄屏 `≤640` 三行重排（类型/名称 + 内容 + 代理/TTL），排序/全选移入显示设置，焦点移交搜索框；`≤640` 用 `@container` + `container-type` 真实重排而非缩放。
 - 表单：`RecordForm` 同一套校验；`edgelab.draft` 只持久新增、编辑仅实例内；`550ms` 模拟异步 + `saving` 防重；表单实验页带“模拟保存失败”开关；删除二次确认默认焦“保留记录”，无 Undo（靠重置演示恢复 6 条初始记录）。
 
-### 边界声明（引用时抄这段）
+### 边界声明（引用时复用这段）
 
 - `docs/05`：截图只用于理解交互布局；参考 Project A11Y（标签/校验/语义表/非色传达）、CF Dark Mode（语义映射/跟随系统/非纯黑/逐态检查）、WCAG 2.2 + APG；全部颜色/字号/时序是 EdgeLab 独立决策，不代表 CF 官方。
 
@@ -107,12 +107,12 @@
 | 验收工具 | ResponsiveLab + `?frame=1` | Workbench + `?preview=1` + Playwright 用例 | 宽度实验室 + Legacy 对照 | 交付内置宽度滑条页 |
 | 独有资产 | 命令面板 `combobox` 分组 | `docs/00-05` + 导入原子性 + 双导航断点 | Legacy 反例 + `recordModel` + 快照实现 | 按需各取 |
 
-## 5 复用路线（看什么抄什么）
+## 5 复用路线（看什么复用什么）
 
 - 新建先定收敛值（上表右列），再谈视觉；令牌先行，组件只用语义类，禁裸色。
 - 调侧栏：看 fable 状态机公式 + 零位移探针（sonnet 实证节），时序用收敛 `120/220 + 240ms`，层级按侧栏起点选一套定死（`top:56` 起用 fable 套，通高用 sonnet 套）。
-- 调表格：列宽与 Undo 抄 sonnet（`columns.tsx + data.tsx` 快照），导入导出原子性抄 gpt（`docs/02 §7`），骨架 9 层三家一致。
-- 调表单：两级校验 + 首焦 + 留输抄任意一家（同一 `validateRecord`），草稿键按项目前缀重命名；危险区隔离 + 输名确认看 sonnet/fable。
+- 调表格：列宽与 Undo 复用 sonnet（`columns.tsx + data.tsx` 快照），导入导出原子性复用 gpt（`docs/02 §7`），骨架 9 层三家一致。
+- 调表单：两级校验 + 首焦 + 留输复用任意一家（同一 `validateRecord`），草稿键按项目前缀重命名；危险区隔离 + 输名确认看 sonnet/fable。
 - 评审他人：先跑 `anti-patterns.md` 四缺陷（实物在 sonnet Legacy 页），再按 `SKILL.md` 自检九项打勾；截图先全景后特写，浮层用视口截图。
 - 验收：`390/768/1440 + 320/300` 跑 `scrollWidth<=innerWidth`；peek 前后内容 left 不变；主题三态 + `reduced-motion` 各一次；200%/400% 缩放回流；纯键盘走完增改删撤销。
 

@@ -38,6 +38,7 @@
   内 `grid auto-fit minmax(min(260px,100%),1fr)`；窄卡内展；默认行内（上下文不丢，可多行独存）。
 - 弹窗：离表专注一次一，原生 dialog + 陷阱 + Esc + `aria-haspopup=dialog`。
 - 开焦首字段，关后回 Edit，`aria-expanded/controls`；保存进度防重，成功收起 + Toast + 高亮行。
+- 行内/弹窗共用同一表单同一校验是交互逻辑，整体迁移；只有一种挂载点时只取该形态并声明，不算拼凑。例：单文件页无行内展开位，只做 dialog＋同一 validateRecord。
 
 ## 批量与分页
 

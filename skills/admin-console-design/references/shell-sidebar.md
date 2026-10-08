@@ -39,7 +39,7 @@ drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关，宽 m
 - 时序：进/出意图延迟 120/220ms（fable 110/220、sonnet 120/250、gpt 120/240，收敛 120/220），
   宽度过渡时长另算（280/220/220，收敛 240ms）；只动 width/box-shadow/opacity；
   文字 `opacity+visibility + 展开延迟50–75ms/折叠立即`，不用 display:none（读屏仍可读），不用 height:auto/left/top。
-- 延时验收可调：默认 120/220；演示/验收页可做 120/250/400 三档（默认 120，抄 gpt Workbench），关闭悬停不影响固定与键盘。
+- 延时验收可调：默认 120/220；演示/验收页可做 120/250/400 三档（默认 120，复用 gpt Workbench），关闭悬停不影响固定与键盘。
 - 子菜单：`grid-template-rows:0fr→1fr + visibility`，无需测高；折叠时 `visibility:hidden` 移出 Tab。
 - 持久化 pinned；`prefers-reduced-motion` 归零；`overscroll-behavior:contain` 防穿透；折叠藏滚动条（`scrollbar-width:none`）。
 
@@ -71,6 +71,7 @@ drawer = narrow(<768) → 原生 dialog + 焦点陷阱 + Esc + 点外关，宽 m
 - fixed 定位用悬停时刻捕获的 rect（top/left/height），滚动/resize/Esc 关；手动收起后 suppressed
   到指针离开一次；验证探针：peek 前后逐行 `offsetTop` 全等 + 内容 `left` 不变 + 点击落点仍是按钮。
 - 显形规则要高于隐藏规则：收起后悬停无字，就是显字与藏字优先级打平（同为 0,3,0），先写的输了。修法是显形多加一层（如 `.shell .sidenav[data-peek="open"] .lbl` 提到 0,4,0）——只打平不够。隐藏若按宽度分两套，768 过不代表 1440 过，要逐套测；复现按用户原话路径走。
+- 断点与定死：交界用收窄值（抽屉 `<47.9375rem`、轨 `48–63.9375rem`），`max-width` 含等值不收窄会在 768 双命中；展开 240/Rail 56 用 px 定死（流体根字号下 rem 漂移，实测 `3.5rem`→52.6）；叶与按钮 `padding-left` 同值，图标列 x 两态恒定；JS `matchMedia`、CSS、测试阈值三方同步改。
 
 ## 命令面板（fable `docs/03` §5）
 
