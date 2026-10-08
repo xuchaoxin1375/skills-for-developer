@@ -26,15 +26,18 @@ skills-for-developer/
     web-animation-guide/        # Web 动画选型与落地
     adaptive-responsive-guide/  # 自适应响应式适配指南
     sticky-position/            # sticky 粘性定位规范与排查
-    ai-verify-gates/            # AI 交付验证门禁与质量定级
+    ai-verified-delivery/       # AI 编程质量与可验证交付
     admin-console-design/       # Cloudflare 风格后台控制台设计
     skill-patcher/              # 存量 skill 补丁沉淀
+    reference-to-skill/          # 多来源提炼、规则裁决与 skill 改进
   scripts/
     link-skills.ps1             # Windows：创建 / 校验 / 移除 Junction（幂等）
     link-skills.sh              # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）
   .workspaces/                  # 本地评估产物（git 忽略，不提交、不同步）
+  docs/                        # skill 编写协作与长期维护说明
   .gitattributes                # 锁定 .sh/.ps1/.py 为 LF，防跨平台换行问题
   LICENSE                     # MIT，宽松开源
+  CHANGELOG.md                # 迁移历史与重要变更记录
   README.md
 ```
 
@@ -62,18 +65,24 @@ skills-for-developer/
 | `skills/web-animation-guide` | Web动画应用指导：选型、性能与无障碍落地，原生优先，零依赖片段与回退写法 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
 | `skills/adaptive-responsive-guide` | Web前端自适应响应式适配指南：视口断点、媒体/容器查询、clamp流体、Flex/Grid内在布局、响应式图片、偏好与触控、国内vw适配、操作区收纳决策与验收 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
 | `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
-| `skills/ai-verify-gates` | AI 编程工程质量与可验证交付：风险分级定级、统一验证门禁、完整性防做一半、独立复核、发布回滚与闭环 | AI coding 质量、做一半、验收标准、门禁、verify、DoD、L0-L4 定级、风险评分、RTM、tasks、独立验证、完成报告、回滚、弱模型约束 |
+| `skills/ai-verified-delivery` | AI 编程质量与可验证交付：统一风险分级、验证门禁与防假通过、证据版本绑定、完整性检查、交接恢复、独立复核及适用发布回滚；咨询与验收分模式 | AI coding 质量、做一半、验收标准、门禁、verify、DoD、L0-L4 定级、风险评分、RTM、tasks、独立验证、完成报告、回滚、弱模型约束 |
 | `skills/admin-console-design` | Cloudflare风格后台控制台设计：外壳侧边栏/数据表格/表单设置向导/令牌主题/响应式验收/收敛口径对照与Legacy反例，三工程提炼可直接复用 | 后台面板、管理后台、控制台、admin、console、dashboard、侧边栏折叠悬停、表格调宽批量、表单校验、设置页、向导、Cloudflare、反例、命令面板 |
 | `skills/skill-patcher` | 存量 skill 打补丁：实战复盘沉淀为增量条目，语言简练、不污染、项目无关、配人话例子 | 修补 skill、打补丁、沉淀教训、skill 措辞审查、去污染、项目无关性 |
+| `skills/reference-to-skill` | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进 | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill |
 | `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
+
+## 维护文档
+
+- [更新日志](CHANGELOG.md)：迁移历史与重要变更记录。
+- [Skill 编写、提炼与维护协作](docs/skill-authoring-workflow.md)：`reference-to-skill`、社区版 `skill-creator`、`skill-patcher` 与 `skill-authoring-sync` 的职责、引用方式和维护取舍，含社区版/系统版区分与验证边界。
 
 ## Harness 映射（Win / Linux 路径同构，只是家目录写法不同）
 
 | Harness  | Windows skills 目录 | Linux skills 目录 | 说明 |
 |---|---|---|---|
-| OpenCode | `%USERPROFILE%/.config/opencode/skills` | `~/.config/opencode/skills` | 全量链接 22 个 skill |
+| OpenCode | `%USERPROFILE%/.config/opencode/skills` | `~/.config/opencode/skills` | 全量链接 23 个 skill |
 | Codex | `%USERPROFILE%/.codex/skills` | `~/.codex/skills` | 全量链接; 自带的 `.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude | `%USERPROFILE%/.claude/skills` | `~/.claude/skills` | 全量链接 |
 
@@ -125,37 +134,6 @@ cd ~/repos/skills-for-developer
 4. 原位置的实体在首次替换为链接时会自动备份到 `~/.skills-migration-backup/<时间戳>/<harness>/<name>`（Win 下即 `%USERPROFILE%/.skills-migration-backup/...`），备份移出 skills 目录是为了避免被 harness 误扫为重复 skill，确认无误后可手工删除备份。
 
 5. 跑 skill-creator 评估时，过程产物（`outputs/`、`benchmark.json`、`review.html` 等 `*-workspace/` 目录）统一放仓库根 `.workspaces/<skill-name>-workspace/`（已在 `.gitignore` 忽略，本地独占）；**禁止**放入 `skills/` 下（链接脚本会对无 `SKILL.md` 目录告警，且过程产物不许进入真源同步）。留到 skill 稳定作回归基线，过时后整目录删除。
-
-## 迁移记录
-
-- 2026-09-27: 从本机迁入 4 个用户 skill (文件数: doc-polish-zh 1、scripting-best-practices 1、resilient-browser-fetch 21、htmlmini 1), 哈希校验一致后原位置替换为指向本仓库的 Junction。Codex `.system/` 等 harness 自带内容未纳入。
-- 2026-09-27: 新增 skill-authoring-sync（skill 新建与真源同步规范，链接模型），随链接脚本分发。
-- 2026-09-27: 新增 repo-governance（开源仓库治理与安全提交规范，模糊项已具体化），随链接脚本分发。
-- 2026-09-27: htmlmini v2（实现体收进 `skills/htmlmini`，MCP 工具正名 `htmlmini_*` + 旧拼写别名，UI 清单按可访问语义重写，`--mode/--extractor/--completion`，`save_page` 产物 `.meta.json` 自动利用）。
-- 2026-09-28: `doc-polish-zh` 更名 `doc-polish`（去语言限定，触发词同步放宽），harness 链接同步切换。
-- 2026-09-28: 新增 tech-learning-research（技术学习·信息调研·方案探索），随链接脚本分发。
-- 2026-09-28: 新增 markdown-style（Markdown 行文风格与排版规范，风格正本），随链接脚本分发。
-- 2026-09-28: `doc-polish` 新增 mermaid 图文对应四条规则（只引可见文本、方位以渲染为准、逐件可指认、图例先行），自检追加对应两问。
-- 2026-09-28: `markdown-style` 正文与换行新增中英文混排无需加空格规则，自检追加对应一项。
-- 2026-09-28: `markdown-style` 列表选型新增步骤顺序须用有序列表规则，禁用 `①②③` 序号，自检同步。
-- 2026-09-28: `doc-polish` 与 `tech-learning-research` 新增英文专有名词配中文与来历说明规则（以 `ss` 为例）。
-- 2026-09-28: `markdown-style` 新增标点与括号一节，默认使用英文括号（圆括号、方括号、花括号），自检与工作流程同步。
-- 2026-09-28: `tech-learning-research` 新增成文前 Mermaid 门禁（候选图 `TODO` 清单加非线性、非重复、可承载三项），工作流程与自检同步；网络命令总览排障路径节删除与有序列表重复的线性顺序图。
-- 2026-09-28: `tech-learning-research` 取证优先级新增引用链接格式规则，须用 `[标题](url)` 行内语法（括号紧贴，空格与括号编码），自检同步。
-- 2026-09-28: `markdown-style` 行内标记新增反引号防滥用边界（仅代码字段命令路径用反引号，普通强调一律加粗），自检同步；`doc-polish` 图文对应由四条增至五条（默认会读图、只讲重点、禁空话），反引号与自检同步；`tech-learning-research` 示意图说明与风格快照同步。
-- 2026-09-30: `markdown-style` 触发描述与适用范围纳入文档合并与多文档整合类任务（章节合并、附录并入正文、统稿后排版收尾），检索表同步。
-- 2026-09-30: `frontend-design` 与小工具开发 skill 解耦（独立使用，技术栈只作输入），新增可用性铁律一节（状态可见、可撤销、防错优先等十二条），版本升至 1.2.0，检索表同步。
-- 2026-10-01: `frontend-design` 全文中文化（SKILL.md、5个新建reference、DESIGN.md模板、scan.py注释；旧文件本就是中文），description改中文触发词，与检索表对齐。
-- 2026-10-02: 新增 `distinctive-design-director`（差异化设计导演：外部种子发散、设计简报收敛、只看成品评审、删减去模板味，全中文），真源落 `skills/distinctive-design-director`，随链接脚本分发；`.agents` 侧实体副本按漂移处理（备份后替换为 Junction）。附带修复：`scripts/link-skills.ps1` 补 UTF-8 BOM——无 BOM 时 Windows PowerShell 5.1 按系统代码页解码含中文脚本会导致静默零输出（退出码 0），文档化调用方式失效；补 BOM 后 5.1/pwsh 均正常。
-- 2026-10-02: 新增 `powershell-pitfalls`（PowerShell 5.1/pwsh 踩坑速查：静默失败、退出码、编码/BOM、引号插值、别名冲突、Junction 误删；案例全部来自本仓库真实排障证据），随链接脚本分发。
-- 2026-10-03: 新增 `agentic-web-search`（智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范），由 `prompts/ai联网` 两篇指南分析整合而成，含工具参数、提示词模板与评测参考三个 reference，随链接脚本分发。
-- 2026-10-05: 新增 `adaptive-layout`（Web前端自适应布局设计与适配：收纳决策、容器查询实现、交互状态与验收清单，由卡片操作区案例提炼泛化），随链接脚本分发；确立评估产物治理规则：`*-workspace/` 禁入 `skills/`，统一放 git 忽略的 `.workspaces/` 作回归基线（记入 `skill-authoring-sync` 规范与日常工作流）。
-- 2026-10-05: 新增 `sticky-position`（`position: sticky` 实现规范与失效排查，由 `web-learn/前端设计/粘性设计sticky` 的两份单文件教程与两个演示工程整合泛化，含 patterns / troubleshooting / compat-a11y 三个 reference），随链接脚本分发。
-- 2026-10-06: `sticky-position` 复核补齐（对照自适应 demo 与 gpt6astra 单文件页）：诊断脚本升级为六步自动版、IO 哨兵与 scroll-state 给出完整代码、新增层叠卡片与响应式断点切换两种场景、表格 z-index 梯度与层叠上下文说明、安全区/dvh/打印等移动端细节。
-- 2026-10-06: `ai-coding-quality` 更名 `ai-verify-gates`（名实统一：目录与 frontmatter `name` 一致），三 harness 链接同步切换为新名。
-- 2026-10-07: 新增 `admin-console-design`（Cloudflare风格后台控制台：外壳侧边栏/表格/表单设置向导/令牌主题/响应式验收，三工程提炼），随链接脚本分发；`frontend-design` 接入后台控制台路由（骨架转交、表单细节引用 `admin-console-design/references/forms.md`）。
-- 2026-10-07: `admin-console-design` 覆盖度审计补齐：收敛口径对照表（时序/列宽/切卡/z-index/圆角三工程分歧，修4处口径矛盾）、新增 `anti-patterns.md`（Legacy 四缺陷反例）、命令面板规范、Undo 快照实现、导入导出原子性、宽度验收工具、来源边界声明；并入"覆盖展开零位移"实证节。
-- 2026-10-08: `codex-model-config`（Codex 接第三方/自定义模型）以 submodule 接入：独立仓库 pin 文档链接化去重版本，克隆需 `--recurse-submodules`；两仓全局忽略 Codex 运行时产物 `agents/openai.yaml`（真源为 `SKILL.md`）；检索表与链接计数同步。
 
 ## 开源许可
 

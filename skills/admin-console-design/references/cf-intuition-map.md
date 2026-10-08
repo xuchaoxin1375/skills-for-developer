@@ -48,7 +48,7 @@
 |---|---|---|
 | 小事右下角冒个条，大事弹窗跟我确认 | toast（成功 5s/撤销 8s，右下 live polite）vs Dialog（危险/复杂确认）；Alert 留给页内重要状态 | `references/tables.md`、`references/forms.md` 相关节 |
 | 空页面不说空话，告诉我下一步干嘛 | 空态分零数据/零匹配，各配恢复动作（Add / Clear） | `references/tables.md` |
-| 按钮点了就变忙，不会让我连点三下提三次 | 忙态三件套：禁用态 + 文案/spinner 切换 + 不可重入；`aria-busy` 同步读屏 | `references/forms.md`；验收见 ai-verify-gates 过渡与忙态条目 |
+| 按钮点了就变忙，不会让我连点三下提三次 | 忙态三件套：禁用态 + 文案/spinner 切换 + 不可重入；`aria-busy` 同步读屏 | `references/forms.md`；验收见 ai-verified-delivery 过渡与忙态条目 |
 
 **零偏差自测**：断网点保存，看得到明确失败归宿而不是静默转圈；连点提交只发出一次。否则反馈心智未还原。
 
