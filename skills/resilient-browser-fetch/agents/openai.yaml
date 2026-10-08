@@ -1,4 +1,0 @@
-interface:
-  display_name: "Cloudflare 稳健浏览器采集"
-  short_description: "使用 Scrapling 完成人工预热、会话复用与受保护页面采集"
-  default_prompt: "使用 $resilient-browser-fetch 先在可见浏览器中预热受保护站点，再复用同一会话批量采集页面。"

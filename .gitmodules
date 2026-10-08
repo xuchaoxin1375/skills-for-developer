@@ -1,0 +1,3 @@
+[submodule "skills/codex-model-config"]
+	path = skills/codex-model-config
+	url = https://github.com/xuchaoxin1375/codex-model-config.git
