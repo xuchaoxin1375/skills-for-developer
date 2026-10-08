@@ -1,36 +1,39 @@
-# 三参考工程构建产物快照
+# 构建快照与截图
 
-- 来源：三份 Cloudflare-inspired 参考工程的 `dist/`，Vite 单文件内联构建（JS/CSS 全部 inline，无 `/assets` 外链）。
-  源码与 docs 在**本仓库外**的参考工程里，路径见 SKILL.md「素材来源」的 `<参考工程根>` 占位符。
-- 用法：每个目录的 `index.html` 自包含，直接双击或 `file://` 打开即可离线预览，无需起服务、无依赖。
+三工程Vite单文件构建，JS/CSS内联，可直接打开各目录index.html预览。gpt文档依赖HTTP fetch，需读取Markdown原文件或在本地HTTP服务下预览；“单HTML可打开”不等于所有文档在file协议下都能加载。
 
-| 目录 | 对应工程 | 体积 | 产物里能看到什么 |
-|---|---|---|---|
-| `fable5.1-high/` | fable5.1-high | 605 KB | 侧栏状态机最完整实现（hover/kbFocus peek、suppressed、`[` 收起）、DNS 列表旗舰页、命令面板 |
-| `gpt6astra-max/` | gpt6astra-max | 512 KB + `docs/` | 含 `docs/00-05` 规范快照（构建时随 public 拷入）、acceptance 测试对应实现 |
-| `sonnet5.5xhigh/` | sonnet5.5xhigh | 524 KB | 含 Legacy 传统反例页（`references/anti-patterns.md` 的实物对照）、列宽拖拽与宽度实验室 |
-| `shots/` | 区域截图 | 9 张视口 WebP | 下表：常用区域直达引用，免每次重开产物 |
+源码与构建配置已归档到[assets/sources](../../assets/sources/README.md)，不再依赖缺失的SKILL“素材来源”章节或外部本机路径。版本校验见[manifest](../../assets/sources/manifest.json)。
 
-## 区域截图对照（`shots/`，按引用频率排）
-
-| 文件 | 对应区域 | 引用时看什么 |
+| 目录 | 当前快照 | 用途 |
 |---|---|---|
-| `fable-dns-1440.webp` | fable DNS 旗舰表 1440 | 骨架 9 层全貌：工具栏主操作最右、配额条、可排序表头、行末 Edit |
-| `fable-dns-edit-1440.webp` | fable 行内展开编辑器 | 行内/弹窗共用同一表单：Type/Name 联动、Proxy 开关、TTL、Delete |
-| `fable-dns-rail-1440.webp` | fable Rail 收起态 | 收起后图标列与内容补位，覆盖不推挤的对照 |
-| `fable-dns-390.webp` | fable 窄屏 390 卡片 | 容器切卡片：三行式、操作可用、无横滚 |
-| `fable-form-create-1440.webp` | fable 长表单 Create | 分组卡、右侧粘性大纲、RadioCards、Tags、保存不置灰 |
-| `gpt-dns-1440.webp` | gpt DNS 表纯预览（`?preview=1`） | 筛选/显示设置、导入导出入口、分页（导入原子性见其 `docs/02`，截图看不出） |
-| `sonnet-dns-1440.webp` | sonnet DNS 表纯页（`#/dashboard/dns?embed=1`） | 列宽调节、Details/Priority 列、末列 Actions 粘性 |
-| `sonnet-add-1440.webp` | sonnet 添加记录单列表单（展示壳版，左侧要点同框） | 两级校验说明、保存不置灰、粘性操作栏（左侧本场景设计要点一并可读） |
-| `sonnet-legacy-1440.webp` | sonnet 并排对比（改进 vs 传统反例，浮层已收起） | 评审先跑此图：传统表无排序/无复选/无批量，与改进逐项对照 |
+| `fable5.1-high/` | 2026-10-08同步外部侧栏修复与后续OpenCode修复，重新构建并归档 | 主图标、焦点保持/Esc、分组节点、按住点击与实际导航已复测；其余边界见对照表 |
+| `gpt6astra-max/` | 2026-10-08核对，与参考目录dist哈希相同，含docs | 文档/导入/验收案例；不是已全面执行测试的报告 |
+| `sonnet5.5xhigh/` | 2026-10-08重新构建并刷新 | 包含用户更新后的Stage底部dock与尺寸行为 |
 
-复现：`shots/` 由 Chromium 离线渲染对应产物截取（fable 路由直达；gpt 用 `?preview=1`；sonnet 纯页用 iframe 同文档 hash `#/dashboard/dns?embed=1`，并排对比在展示壳内收起控制浮层后截取）。
-存量格式：WebP，`quality=65, method=6`（pillow）；小字已验可读。新增截图沿用同参；字密图体积超标时 quality 可下探到 60，字糊时提到 70。
-转码依赖 pillow（缺则 `pip install pillow`，需 WebP 支持）；截图复现依赖 Chromium（Playwright 直驱 file:// 产物）。
+## 截图状态
 
-## 维护
+`shots/`原九张WebP为 **历史截图，原拍摄日期未记录**；没有把它们写成当前版本已验证证据。尤其sonnet-add/legacy的展示舞台不是新dock状态，旧fable Rail图也不能代表侧栏修复后的版本。未变的gpt产物也不意味着旧图覆盖所有状态。
 
-- 刷新：源工程重新 `npx vite build` 后，把新 `dist/*` 覆盖到对应目录，并更新本文件的快照日期。
-- 定位：这是**只读产物快照**，用于没有参考工程的机器上也能看到成品形态；
-  对照实现细节（组件结构、CSS 变量名、注释）仍以 `<参考工程根>` 的源码为准，产物不含源码。
+| 文件组 | 用途 |
+|---|---|
+| `fable-dns-1440/390`、`fable-dns-edit-1440`、`fable-dns-rail-1440` | DNS布局、编辑、Rail历史状态 |
+| `fable-form-create-1440` | 长表单分组与辅助大纲 |
+| `gpt-dns-1440` | DNS预览；导入原子性无法从图证明 |
+| `sonnet-dns-1440`、`sonnet-add-1440`、`sonnet-legacy-1440` | 表格/表单/对照历史状态 |
+| `sonnet-stage-2026-10-08.webp` | 新Stage默认dock收起状态，2026-10-08实拍 |
+| `fable-dns-1440-2026-10-08.webp`、`fable-dns-390-2026-10-08.webp` | 外部侧栏修复及后续OpenCode修复最终构建的DNS页面 |
+| `fable-rail-1440-2026-10-08.webp`、`fable-peek-1440-2026-10-08.webp` | 修复后Rail与peek对照；主图标x保持不变，回焦/目标身份另见对照表 |
+
+本轮1440/390和舞台截图及浏览器日志在真源仓库的本地`.workspaces/admin-console-design-workspace/2026-10-08-review/`，属于评估证据，不随skill分发。上表新Stage截图随快照归档。
+
+fable修复证据在本地`.workspaces/admin-console-design-workspace/2026-10-08-fable-refresh/`；最终版本在`after-opencode/`，包括构建哈希、7项侧栏检查、4条路径、八视口记录与对应PNG。初轮结果只代表各自版本，不混作最终证据；上表带日期的四张fable WebP来自最终版本，随快照分发。
+
+## 打开相关页面
+
+- fable：`index.html#/dns/records`，具体页面路由查源码router/App。
+- gpt：`index.html?preview=1`；文档在本地HTTP服务下查看。
+- sonnet：`index.html`为展示壳，`index.html#/dashboard/dns?embed=1`为控制台DNS页；variant=legacy为刻意反例。
+
+自动化直接导航到对应URL并操作即可，不要求再双击一遍。产物用来观察，源码用来复用，截图用来对照外观；三者证据范围不同。
+
+更新时归档源码/产物、记录manifest、重拍受影响截图或注明历史状态。具体交互与已知缺口查[对照表](../builds-comparison.md)。

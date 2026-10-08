@@ -1,55 +1,61 @@
-# 数据表格（DNS 记录为范本）
+# 数据列表与编辑
 
-为什么是这个骨架：用户进列表页只想“找到一条记录并改它”，所以 PageHeader 一句话 + 搜索左伸缩 +
-主操作最右 + 批量悬底 + 行末 Edit 常驻，三工程骨架完全一致。
+默认采用 fable DNS 页的层级、工具栏、表格卡、行末操作和编辑反馈。业务不需要的推荐、配额、导入、列宽或批量可裁剪；三工程没有完全相同的“九层”骨架。
 
-## 骨架 9 层
+## 页面与工具栏
 
-`PageHeader(h1唯一+desc≤2行+actions≤3) + Alert汇总 + Collapsible推荐 + 工具栏 + chips + 新增卡 + 表格卡(配额条+表+Showing) + 浮动批量条 + 分页`
+`PageHeader → 按需状态/推荐 → 搜索与操作 → 生效筛选chips → 列表/编辑 → 结果计数与分页 → 选中操作`。
 
-- 工具栏：`flex-col lg:row，搜索 flex-1 max520（防抖150ms）+ Filters + Display + Import/Export(icon-only带名) + Add primary最右`。
-  <1024 搜索独占一行 wrap；按钮图标+文字，窄屏文字可 `sr-only` 留图标但保可访问名。
-- 导入导出（gpt `docs/02` §7）：JSON 导入先整体校验（必填 type/name/content、1MB 上限、总数上限如 200、重复检查），
-  **任一失败整个导入拒绝、零部分写入**；导入生成本地新 ID（来源 ID 不可信）。
-  导出未选中导全部、选中导所选，Blob 下载后释放 object URL。
-- Filters：草稿/应用分离，Apply/Enter 才生效，无值禁用，<640 两行重排，`role=dialog + 首焦 + Esc还焦`，宽 `min(560,100vw-16)`。
-- Display：列显隐 + 密度，localStorage；空态分零数据 vs 零匹配（后者给“清除搜索与筛选”）。
+- 宽屏搜索左伸缩，默认新增在右端；窄屏搜索独占一行、动作折行/收纳，不为保持最右让主操作越界。
+- 小型本地列表可直接过滤；重算昂贵/服务端搜索再防抖，150ms是fable参数。useDeferredValue不等于网络请求防抖。
+- 多条件Filters默认草稿/应用分离，关闭不偷偷应用；简单单条件可即时过滤。chips/计数/清除反映实际生效条件。
+- Display可记列显隐、密度、编辑偏好；损坏存储回退安全默认，功能列不隐藏到无法操作。
+- 零数据给新增，零匹配给清除；加载、请求失败和空数据分别表示。
 
-## 表结构
+## 表结构与选择
 
-- `Card > div overflow-x:auto(可聚焦 region) > table fixed + colgroup + thead sticky + tbody`，页面永无横滚。
-- 每列 min/max（如 Name140-520/Content160-720），固定列禁调，加填充列吸余（防 100% 拉伸失真）。
-- 表头内按钮三态（升/降/无）+ `th aria-sort`，激活强调；数值列按数值排，其余 locale。
-- 首列复选：24 命中包 16 视觉 + indeterminate + Shift 连选 + 头“本页全选” + “选全部匹配”（跨页 Set 解耦，翻页不丢）。
-- 行：hover surface-2，选中 primary-soft + `aria-selected`；长格 `max+truncate+title`，技术值等宽+break-all，等宽内容 tabular。
-- 末列操作 `sticky right0 + 背景 inherit 行实色 + scroll+RO>1 才显阴影 + 头 z2 体 z1`；Edit 文（主行操）+ Delete 图标，
-  `aria-label="Edit A record www…"`，禁中列 Edit、禁整行点编、禁粘无背。
+- 原生table/caption/th scope=col；排序按钮在表头，aria-sort放th上。三态默认，也可按产品采用两态；数值按数值，服务端分页不只排序当前页冒充全量。
+- 可调列用table-layout:fixed+colgroup、min/default/max、固定功能列和填充列；普通表不必引入整套。
+- 宽表自有overflow-x:auto，必要时可聚焦且有名称；末列常用操作sticky+不透明行背景，hover/selected同步，仍有遮挡内容才显示阴影。
+- 本页全选含indeterminate。跨页、Shift连选和选全部匹配按业务加入，明确筛选/翻页后保留还是清除。
+- 大数据全选用查询快照/范围和排除项，不假设客户端有全部ID；批量反馈成功/跳过/失败数量。
+- 分页、虚拟化、表内滚动按数据与工作台需求选。配额不是分页替代品；不强制列表一屏或小表内滚。
 
-## 列宽拖拽
+## 列宽调节
 
-- 8px 热区 / 1px 线 / hover 3px 主色，`role=separator + aria-valuenow/min/max + ←→8 / Shift32 / Home还原 / 双击还原`
-  （用 sonnet 口径 8/32；fable 为 16/64，同产品只用一组，见 SKILL 收敛口径）。
-- 拖时只写 DOM（`<col>/table style`），松手才 setState+localStorage；隔条止冒泡防误排序；拖完 `body user-select:none` 还原。
+优先迁移 sonnet `src/ui/columns.tsx` 完整单元，再映射样式和状态。
 
-## 行内展开 vs 弹窗（共用同一表单）
+| 来源 | ←/→ | Shift | Home | End | 还原 |
+|---|---|---|---|---|---|
+| sonnet | 8px | 32px | 最小值 | 最大值 | Enter / 双击 |
+| fable | 16px | 64px | 默认值 | 未实现 | Home / 双击 |
 
-- 共用 RecordEditor + 同一 `validateRecord`，Display 选项记住（`nimbus.dns.edit inline/dialog`）。
-- 展开：紧跟 `<tr><td colSpan全>` 内 `sticky left0 width var(--sw)`，--sw 由 scroll 维护，横滚停可视；
-  内 `grid auto-fit minmax(min(260px,100%),1fr)`；窄卡内展；默认行内（上下文不丢，可多行独存）。
-- 弹窗：离表专注一次一，原生 dialog + 陷阱 + Esc + `aria-haspopup=dialog`。
-- 开焦首字段，关后回 Edit，`aria-expanded/controls`；保存进度防重，成功收起 + Toast + 高亮行。
-- 行内/弹窗共用同一表单同一校验是交互逻辑，整体迁移；只有一种挂载点时只取该形态并声明，不算拼凑。例：单文件页无行内展开位，只做 dialog＋同一 validateRecord。
+新模块默认选sonnet；继续采用fable可保留其键位，不混写说明。把手可聚焦，separator方向、名称和当前/min/max值完整；拖动不误排序。处理pointer capture、cancel/lost capture、卸载和文本选择恢复。
 
-## 批量与分页
+8px是鼠标热区，不等于触控目标；粗指针扩命中区或给替代调节。拖动局部预览，松手提交+持久化，刷新检验；cancel恢复原预览。DOM直写是样例优化，不强制所有框架绕开响应式状态。
 
-- 批量条 `fixed bottom16 宽calc-32 max520 深色 + 数量live + 选全部 + 动作 + 清除`，禁顶插（勾首表移连选错）。
-- 删除确认 + 8s Undo（优于强确认），改直行 + Undo，不适用明示（如 `2 Proxied·3 skipped`）。
-- Undo 快照实现（sonnet `data.tsx`）：**快照先行**——`bulkUpdate(ids, patch)` 先筛出 `prev` 再改并返回更新前记录，
-  `restoreSnapshots(prev)` 按 id 回写；删除 `removeRecords` 返回 `{rec,index}`，`restoreRecords` 按 index 排序 splice 归位。
-  没有快照返回值的"可撤销"都是假的。
-- 分页左 `Showing 1–10 of N(filtered from M) live` 右 Rows+上下；搜筛量变回页 1；`?highlight` 翻到行央闪亮 2.4s。
+## 编辑与批量
 
-## 窄屏（<640 容器切卡；sonnet 工程为 <700，统一用 <640）
+需要邻行上下文用行内，复杂字段用dialog/详情页；两种共存共享编辑模型和校验，不强制每表做全部形态。
 
-- `thead` 保留语义但视觉隐藏，`tbody tr:grid 24px 48px 1fr 32px`：类型/名称/Edit + 内容跨列换行 + 代理/TTL；
-  排序/全选移入 Display；焦点移交（表头→搜索框）；表卡只渲染其一。
+按稳定记录ID管理编辑。开进首字段；保存/取消回触发器，删除后回邻行或列表。排序/翻页/切形态保护输入，桌面表与移动卡不同时挂载同ID编辑器。横滚编辑区保持可见。
+
+浮动批量条预留底部空间，不遮最后一行；顶部批量条也可使用预留槽，关键是勾选后不使当前行突移。
+
+## Undo与真实接口
+
+sonnet `dashboard/data.tsx` 是本地机制范本：更新前存记录，删除前存{rec,index}，按ID/原索引恢复。是否可撤销看实际恢复，不以某函数是否返回快照判断。
+
+真实业务需服务端撤销、软删除或补偿，处理版本冲突/超时；UI回填不能恢复服务端。低风险可逆动作优先Undo；不可逆/高风险确认后执行并明确后果。8s为样例窗口，必要恢复入口不能因短toast消失而失效。
+
+## 导入导出
+
+gpt `DnsConsole.tsx` 先解析/整体验证再一次写入，任一失败零部分写入，生成新本地ID，检查现存/本批重复。1MB/200条是演示限制。
+
+后端原子性需事务/批端点保障；支持部分成功时给预览、逐项结果、重试策略。前端全量校验不能保证服务端原子性。导出说清全部/匹配/选中范围，不以当前页冒充全量，Blob URL用后释放。
+
+## 窄容器
+
+fable卡片阈值640，sonnet700；按实际列/动作宽度保留或调整。ul卡片有属性名称，重排table保留表头关联；没有table的卡片不留孤立thead。
+
+只挂载一种编辑形态，切断点保数据/选择/输入并移交消失控件焦点。二维比较型表可局部横滚；页面回流且关键操作可达。

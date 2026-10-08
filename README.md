@@ -66,7 +66,7 @@ skills-for-developer/
 | `skills/adaptive-responsive-guide` | Web前端自适应响应式适配指南：视口断点、媒体/容器查询、clamp流体、Flex/Grid内在布局、响应式图片、偏好与触控、国内vw适配、操作区收纳决策与验收 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
 | `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
 | `skills/ai-verified-delivery` | AI 编程质量与可验证交付：统一风险分级、验证门禁与防假通过、证据版本绑定、完整性检查、交接恢复、独立复核及适用发布回滚；咨询与验收分模式 | AI coding 质量、做一半、验收标准、门禁、verify、DoD、L0-L4 定级、风险评分、RTM、tasks、独立验证、完成报告、回滚、弱模型约束 |
-| `skills/admin-console-design` | Cloudflare风格后台控制台设计：外壳侧边栏/数据表格/表单设置向导/令牌主题/响应式验收/收敛口径对照与Legacy反例，三工程提炼可直接复用 | 后台面板、管理后台、控制台、admin、console、dashboard、侧边栏折叠悬停、表格调宽批量、表单校验、设置页、向导、Cloudflare、反例、命令面板 |
+| `skills/admin-console-design` | 后台控制台设计与实现：默认fable整体主题或完整局部模板，按需补sonnet列宽/撤销与gpt导入/验收；附设计与交互功能目录、源码、依赖边界与预览快照，默认继承设计并接业务，标明参考缺口 | 后台面板、管理后台、admin、console、dashboard、侧栏折叠悬停、列表编辑批量、设置页、向导、Cloudflare-inspired |
 | `skills/skill-patcher` | 存量 skill 打补丁：实战复盘沉淀为增量条目，语言简练、不污染、项目无关、配人话例子 | 修补 skill、打补丁、沉淀教训、skill 措辞审查、去污染、项目无关性 |
 | `skills/reference-to-skill` | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进 | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill |
 | `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |

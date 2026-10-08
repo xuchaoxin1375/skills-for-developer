@@ -1,0 +1,1392 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ==========================================================================
+   Design Tokens
+   - 字号 7 档：12 / 13(mono) / 14 / 16 / 20 / 24 / 32
+   - 圆角 3 档 + full：4 / 8 / 12
+   - 阴影 3 级：shadow-1(悬浮微抬升) / shadow-2(菜单、侧边栏悬停展开) / shadow-3(模态)
+   - 间距只用 4 / 8 / 12 / 16 / 24 / 32 / 48
+   ========================================================================== */
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.6;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.6;
+  --text-base: 1rem;
+  --text-base--line-height: 1.6;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.4;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.33;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 1.25;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
+
+  --color-bg: var(--bg);
+  --color-subtle: var(--bg-subtle);
+  --color-hover: var(--bg-hover);
+  --color-active: var(--bg-active);
+  --color-surface: var(--surface);
+  --color-canvas: var(--canvas);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-muted: var(--text-muted);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-link: var(--link);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-brand: var(--brand);
+  --color-scrim: var(--scrim);
+}
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-subtle: #f6f6f6;
+  --bg-hover: #f0f0f0;
+  --bg-active: #e8e8e8;
+  --surface: #ffffff;
+  --canvas: #e6e8eb;
+  --border: #e2e2e2;
+  --border-strong: #bdbdbd;
+  --border-input: #8c8c8c;
+  --text: #1b1b1b;
+  --text-muted: #5b5b5b;
+  --primary: #0051c3;
+  --primary-hover: #003f9a;
+  --primary-fg: #ffffff;
+  --primary-soft: #e8f0fc;
+  --link: #0051c3;
+  --danger: #b3261e;
+  --danger-solid: #c62b21;
+  --danger-soft: #fdeceb;
+  --warn-bg: #fff6e0;
+  --warn-border: #f0d08a;
+  --warn-fg: #7a4300;
+  --ok: #1a7f37;
+  --ok-soft: #e6f4ea;
+  --brand: #f6821f;
+  --focus: #0051c3;
+  --scrim: rgb(15 15 15 / 0.45);
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.08);
+  --shadow-2: 0 6px 24px rgb(0 0 0 / 0.14);
+  --shadow-3: 0 20px 60px rgb(0 0 0 / 0.28);
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --control-h: 36px;
+  --sb-w: 240px;
+  --sb-rail: 56px;
+  --topbar-h: 56px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #141414;
+  --bg-subtle: #1c1c1c;
+  --bg-hover: #262626;
+  --bg-active: #2e2e2e;
+  --surface: #1a1a1a;
+  --canvas: #0d0d0d;
+  --border: #303030;
+  --border-strong: #4d4d4d;
+  --border-input: #7d7d7d;
+  --text: #ededed;
+  --text-muted: #a6a6a6;
+  --primary: #2f6fe0;
+  --primary-hover: #2559bd;
+  --primary-soft: #1b2a45;
+  --link: #7fb0ff;
+  --danger: #ff8f85;
+  --danger-solid: #d4352b;
+  --danger-soft: #3a1d1b;
+  --warn-bg: #35280d;
+  --warn-border: #6b5016;
+  --warn-fg: #ffd58a;
+  --ok: #4cc26b;
+  --ok-soft: #173222;
+  --focus: #7fb0ff;
+  --scrim: rgb(0 0 0 / 0.6);
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-2: 0 6px 24px rgb(0 0 0 / 0.55);
+  --shadow-3: 0 20px 60px rgb(0 0 0 / 0.7);
+}
+
+/* 窄屏 / 触屏：控件高度提升到 44px 触控目标 */
+@media (max-width: 639px), (pointer: coarse) {
+  :root {
+    --control-h: 44px;
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 72px;
+    scroll-padding-bottom: 96px;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  ul,
+  ol,
+  dl,
+  dd {
+    margin: 0;
+  }
+  ul,
+  ol {
+    padding: 0;
+    list-style: none;
+  }
+  /* 焦点必须可见：任何元素都不允许 outline:none 而无替代 */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  button,
+  [role="button"],
+  summary,
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"] {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 28%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes slide-out {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes flash {
+  from {
+    background: var(--primary-soft);
+  }
+}
+
+@layer components {
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: var(--control-h);
+    padding: 4px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-weight: 500;
+    white-space: nowrap;
+    text-decoration: none;
+    max-width: 100%;
+    transition: background-color 0.12s, border-color 0.12s;
+  }
+  .btn:hover {
+    background: var(--bg-hover);
+  }
+  .btn:active {
+    background: var(--bg-active);
+  }
+  .btn svg {
+    flex: none;
+  }
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-fg);
+  }
+  .btn-primary:hover {
+    background: var(--primary-hover);
+  }
+  .btn-primary:active {
+    background: var(--primary-hover);
+  }
+  .btn-danger {
+    background: var(--danger-solid);
+    border-color: var(--danger-solid);
+    color: #fff;
+  }
+  .btn-danger:hover {
+    background: var(--danger-solid);
+    filter: brightness(0.92);
+  }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+  }
+  .btn-icon {
+    padding: 0;
+    width: var(--control-h);
+    flex: none;
+  }
+  /* 窄屏下文字按钮收敛为图标按钮（文字改为 sr-only，保持可访问名称） */
+  @media (max-width: 767px) {
+    .btn-collapse {
+      padding: 0;
+      width: var(--control-h);
+    }
+  }
+  .link {
+    color: var(--link);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+  }
+  .link:hover {
+    text-decoration-thickness: 2px;
+  }
+  .kbd {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 0 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    color: var(--text-muted);
+    background: var(--bg-subtle);
+    white-space: nowrap;
+  }
+
+  /* ---------- Form controls ---------- */
+  .input,
+  .textarea,
+  .select {
+    display: block;
+    width: 100%;
+    min-height: var(--control-h);
+    padding: 4px 12px;
+    border: 1px solid var(--border-input);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 14px;
+    transition: border-color 0.12s;
+  }
+  .textarea {
+    resize: vertical;
+    min-height: 96px;
+    padding: 8px 12px;
+  }
+  .select {
+    appearance: none;
+    padding-right: 32px;
+    text-overflow: ellipsis;
+  }
+  .input::placeholder,
+  .textarea::placeholder {
+    color: var(--text-muted);
+    opacity: 0.85;
+  }
+  .input:hover,
+  .textarea:hover,
+  .select:hover {
+    border-color: var(--text-muted);
+  }
+  .input[aria-invalid="true"],
+  .textarea[aria-invalid="true"],
+  .select[aria-invalid="true"] {
+    border-color: var(--danger);
+    box-shadow: inset 0 0 0 1px var(--danger);
+  }
+  .input:disabled,
+  .select:disabled,
+  .textarea:disabled {
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+  .input[type="search"]::-webkit-search-cancel-button {
+    display: none;
+  }
+  @media (max-width: 639px) {
+    /* 避免 iOS 聚焦时自动放大页面（同时不禁用用户缩放） */
+    .input,
+    .textarea,
+    .select {
+      font-size: 16px;
+    }
+  }
+  .input-group {
+    display: flex;
+    align-items: stretch;
+  }
+  .input-group .input {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    min-width: 0;
+  }
+  .addon {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border: 1px solid var(--border-input);
+    border-left: 0;
+    border-radius: 0 var(--r-md) var(--r-md) 0;
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .label {
+    font-weight: 600;
+  }
+  .hint {
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .error-text {
+    display: flex;
+    gap: 4px;
+    align-items: flex-start;
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .error-text svg {
+    flex: none;
+    margin-top: 3px;
+  }
+  .checkbox {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--primary);
+  }
+  .hit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+  }
+  .switch {
+    position: relative;
+    flex: none;
+    width: 40px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1px solid var(--border-input);
+    background: var(--bg-active);
+    padding: 0;
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform 0.18s var(--ease), background-color 0.15s;
+  }
+  .switch[aria-checked="true"] {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+  .switch[aria-checked="true"]::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+  .switch:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .choice {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 16px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    cursor: pointer;
+    min-width: 0;
+  }
+  .choice:hover {
+    background: var(--bg-hover);
+  }
+  .choice:has(input:checked) {
+    border-color: var(--primary);
+    box-shadow: inset 0 0 0 1px var(--primary);
+    background: var(--primary-soft);
+  }
+  .choice:has(input:focus-visible) {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  .choice input {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 4px 0 0;
+    accent-color: var(--primary);
+  }
+  fieldset.group {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  fieldset.group > legend {
+    padding: 0;
+    font-weight: 600;
+  }
+
+  /* ---------- Surfaces ---------- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    min-width: 0;
+  }
+  .card-pad {
+    padding: 24px;
+  }
+  @media (max-width: 639px) {
+    .card-pad {
+      padding: 16px;
+    }
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-info {
+    background: var(--primary-soft);
+    border-color: transparent;
+    color: var(--link);
+  }
+  .badge-ok {
+    background: var(--ok-soft);
+    border-color: transparent;
+    color: var(--ok);
+  }
+  .badge-warn {
+    background: var(--warn-bg);
+    border-color: var(--warn-border);
+    color: var(--warn-fg);
+  }
+  .alert {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg-subtle);
+  }
+  .alert svg {
+    flex: none;
+    margin-top: 3px;
+  }
+  .alert-warn {
+    background: var(--warn-bg);
+    border-color: var(--warn-border);
+    color: var(--warn-fg);
+  }
+  .alert-warn a {
+    color: inherit;
+    text-decoration: underline;
+  }
+  .alert-danger {
+    background: var(--danger-soft);
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .alert-info {
+    background: var(--primary-soft);
+    border-color: transparent;
+    color: var(--text);
+  }
+  .seg {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    background: var(--bg-subtle);
+  }
+  .seg > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: calc(var(--control-h) - 10px);
+    min-width: 28px;
+    padding: 0 8px;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .seg > button:hover {
+    color: var(--text);
+  }
+  .seg > button[aria-pressed="true"],
+  .seg > button[aria-checked="true"] {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-1);
+  }
+  .spin {
+    animation: spin 0.8s linear infinite;
+  }
+
+  /* ---------- Popover / Tooltip / Modal / Toast ---------- */
+  .pop {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 8px);
+    left: 0;
+    width: min(var(--pop-w, 320px), calc(100vw - 16px));
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-2);
+    animation: drop-in 0.14s ease-out;
+  }
+  .pop[data-align="right"] {
+    left: auto;
+    right: 0;
+  }
+  @media (max-width: 639px) {
+    .pop {
+      position: fixed;
+      top: auto;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      width: auto;
+      max-height: 80dvh;
+      overflow: auto;
+      translate: none !important;
+    }
+  }
+  .tip {
+    position: fixed;
+    z-index: 70;
+    max-width: min(280px, calc(100vw - 16px));
+    padding: 8px 12px;
+    border-radius: var(--r-md);
+    background: var(--text);
+    color: var(--bg);
+    font-size: 12px;
+    font-weight: 500;
+    box-shadow: var(--shadow-2);
+    pointer-events: none;
+  }
+  dialog.modal {
+    padding: 0;
+    margin: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-3);
+    width: min(480px, calc(100vw - 16px));
+    max-width: none;
+    max-height: calc(100dvh - 16px);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  dialog.modal::backdrop {
+    background: var(--scrim);
+  }
+  dialog.modal[open] {
+    animation: pop-in 0.18s var(--ease);
+  }
+  dialog.modal[open]::backdrop {
+    animation: fade-in 0.18s ease-out;
+  }
+  dialog.modal[data-closing] {
+    animation: pop-out 0.14s ease-in forwards;
+  }
+  dialog.modal[data-closing]::backdrop {
+    animation: fade-out 0.14s ease-in forwards;
+  }
+  dialog.modal[data-kind="palette"] {
+    margin: 12dvh auto auto;
+    width: min(560px, calc(100vw - 16px));
+  }
+  dialog.modal[data-kind="drawer"] {
+    margin: 0;
+    inset: 0 auto 0 0;
+    height: 100dvh;
+    max-height: none;
+    width: min(288px, calc(100vw - 48px));
+    border-radius: 0;
+    border-width: 0 1px 0 0;
+    overflow: hidden;
+  }
+  dialog.modal[data-kind="drawer"][open] {
+    animation: slide-in 0.22s var(--ease);
+  }
+  dialog.modal[data-kind="drawer"][data-closing] {
+    animation: slide-out 0.16s ease-in forwards;
+  }
+  .toasts {
+    position: fixed;
+    z-index: 80;
+    top: 64px;
+    right: 16px;
+    display: grid;
+    gap: 8px;
+    width: min(380px, calc(100vw - 32px));
+    pointer-events: none;
+  }
+  .toast {
+    pointer-events: auto;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-2);
+    animation: drop-in 0.2s var(--ease);
+  }
+
+  /* ---------- Data table ---------- */
+  /* 表格：fixed 布局 + <colgroup> 控制列宽；separate 边框模型，粘性列的边框才不会跟着滚走 */
+  .dt {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .dt th {
+    position: relative;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border);
+  }
+  .dt td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+  }
+  .dt tbody tr:last-child > td {
+    border-bottom: 0;
+  }
+  .dt[data-density="compact"] td {
+    padding: 4px 12px;
+  }
+  /* 行必须有不透明背景，粘性单元格才能用 background: inherit 遮住从下面滚过的内容 */
+  .dt tbody tr {
+    background: var(--surface);
+  }
+  .dt tbody tr:hover {
+    background: var(--bg-subtle);
+  }
+  .dt tbody tr[aria-selected="true"] {
+    background: var(--primary-soft);
+  }
+  .dt tbody tr.edit-row,
+  .dt tbody tr.edit-row:hover {
+    background: var(--bg-subtle);
+  }
+  .dt .cell-sel {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .dt .cell-flush {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .dt .edit-cell {
+    padding: 0;
+  }
+  /* 首列（勾选）与末列（操作）粘性固定：列再多，Edit 也始终可见 */
+  .dt .sticky-l,
+  .dt .sticky-r {
+    position: sticky;
+    z-index: 2;
+    background: inherit;
+  }
+  .dt .sticky-l {
+    left: 0;
+  }
+  .dt .sticky-r {
+    right: 0;
+  }
+  .dt th.sticky-l,
+  .dt th.sticky-r {
+    z-index: 3;
+    background: var(--bg-subtle);
+  }
+  .tbl[data-more-right="true"] .dt .sticky-r {
+    box-shadow: -1px 0 0 var(--border), -10px 0 10px -8px rgb(0 0 0 / 0.2);
+  }
+  .tbl[data-more-left="true"] .dt .sticky-l {
+    box-shadow: 1px 0 0 var(--border), 10px 0 10px -8px rgb(0 0 0 / 0.2);
+  }
+  /* 行内展开的编辑区：固定在滚动容器的可视范围内，不随横向滚动跑出屏幕 */
+  .edit-inner {
+    position: sticky;
+    left: 0;
+    box-sizing: border-box;
+    width: var(--sw, 100%);
+    padding: 16px 24px 24px;
+  }
+  @media (max-width: 639px) {
+    .edit-inner {
+      padding: 16px;
+    }
+  }
+  .edit-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  }
+  .edit-grid > .full {
+    grid-column: 1 / -1;
+  }
+  /* 列宽拖动手柄：常驻一条淡色分隔线作为可发现性提示，悬停 / 聚焦 / 拖动时加粗变色 */
+  .col-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 12px;
+    cursor: col-resize;
+    touch-action: none;
+    z-index: 1;
+  }
+  .col-resizer::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    right: 5px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--border-strong);
+    transition: background-color 0.12s, width 0.12s;
+  }
+  .col-resizer:hover::after,
+  .col-resizer:focus-visible::after,
+  .col-resizer[data-active]::after {
+    width: 3px;
+    background: var(--primary);
+  }
+  @media (pointer: coarse) {
+    .col-resizer {
+      width: 20px;
+    }
+    .col-resizer::after {
+      right: 8px;
+    }
+  }
+  /* 批量操作条：悬浮在视口底部（sticky），不占用表格上方空间 */
+  .bulkbar {
+    position: sticky;
+    bottom: 16px;
+    z-index: 16;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-2);
+  }
+  .row-flash {
+    animation: flash 2.4s ease-out;
+  }
+  .th-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 28px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+  }
+  .th-btn:hover {
+    color: var(--link);
+  }
+  .break-any {
+    overflow-wrap: anywhere;
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  /* .records：表格 / 卡片的宽度由 JS 的 ResizeObserver（useBelow）决定，只渲染其中一种 */
+  .records {
+    min-width: 0;
+  }
+
+  /* ---------- App shell ---------- */
+  .app {
+    display: flex;
+    min-height: 100dvh;
+    background: var(--bg);
+    overflow-x: clip;
+  }
+  .app-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--topbar-h);
+    padding: 0 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .page {
+    flex: 1;
+    width: 100%;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 24px 16px 48px;
+  }
+  @media (min-width: 768px) {
+    .page {
+      padding: 32px 32px 48px;
+    }
+  }
+  .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .actionbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 15;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  .actionbar > .grow {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+  @media (max-width: 639px) {
+    .actionbar .btn {
+      flex: 1 1 120px;
+    }
+  }
+  .skip-link {
+    position: fixed;
+    left: 8px;
+    top: 8px;
+    z-index: 100;
+    transform: translateY(-200%);
+  }
+  .skip-link:focus {
+    transform: none;
+  }
+  .formgrid {
+    container-type: inline-size;
+  }
+  /* 设置页行：窄容器上下堆叠，宽容器左说明右控件 */
+  .setrow {
+    display: grid;
+    gap: 16px;
+    padding: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .setrow:last-child {
+    border-bottom: 0;
+  }
+  @media (max-width: 639px) {
+    .setrow {
+      padding: 16px;
+    }
+  }
+  @container (min-width: 720px) {
+    .setrow {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+      gap: 32px;
+    }
+  }
+  .formgrid-in {
+    display: grid;
+    gap: 24px;
+    align-items: start;
+    grid-template-columns: minmax(0, 720px);
+  }
+  /* 帮助侧栏仅在容器足够宽时出现（取决于内容区而非视口，因此会随侧边栏展开 / 折叠自适应） */
+  .formgrid-aside {
+    display: none;
+  }
+  @container (min-width: 1040px) {
+    .formgrid-in {
+      grid-template-columns: minmax(0, 720px) minmax(240px, 1fr);
+    }
+    .formgrid-aside {
+      display: block;
+      position: sticky;
+      top: 72px;
+    }
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sb-slot {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    flex: none;
+    height: 100dvh;
+    z-index: 40;
+    transition: width 0.22s var(--ease);
+  }
+  .sb {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--sb-rail);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--surface);
+    transition: width 0.22s var(--ease), box-shadow 0.22s var(--ease);
+  }
+  /* 右侧分隔线用伪元素绘制，不占用盒模型宽度：56px 图标栏内容区恰好是 56px，图标（8 + 8 + 12）严格居中 */
+  .sb::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+    pointer-events: none;
+  }
+  .sb-static::after {
+    display: none;
+  }
+  .sb[data-expanded="true"] {
+    width: var(--sb-w);
+  }
+  .sb[data-overlay="true"] {
+    box-shadow: var(--shadow-2);
+  }
+  .sb-static {
+    position: static;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .sb-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: none;
+    height: var(--topbar-h);
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sb-scroll {
+    flex: 1;
+    min-height: 0;
+    padding: 8px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .sb[data-expanded="false"] .sb-scroll {
+    scrollbar-width: none;
+  }
+  .sb-foot {
+    flex: none;
+    padding: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .sb-sep {
+    height: 1px;
+    margin: 8px 4px;
+    background: var(--border);
+  }
+  .sb-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 40px;
+    padding: 8px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+  }
+  .sb-item:hover {
+    background: var(--bg-hover);
+  }
+  .sb-item[aria-current="page"],
+  .sb-item[data-active="true"] {
+    background: var(--bg-active);
+    font-weight: 600;
+  }
+  .sb-item[data-tone="muted"] {
+    background: var(--bg-subtle);
+  }
+  .sb-item[data-tone="muted"]:hover {
+    background: var(--bg-hover);
+  }
+  .sb-ico {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    color: var(--text-muted);
+  }
+  .sb-item[aria-current="page"] .sb-ico,
+  .sb-item[data-active="true"] .sb-ico {
+    color: var(--text);
+  }
+  .sb-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    transition: opacity 0.16s ease;
+  }
+  /* 图标栏（折叠态）：文字既不显示也不残留——宽度被压缩到 0，且透明度为 0（读屏仍可读取名称） */
+  .sb[data-expanded="false"] .sb-label {
+    opacity: 0;
+  }
+  .sb[data-expanded="true"] .sb-label {
+    transition-delay: 0.05s;
+  }
+  .sb-item > .sb-ico {
+    margin: 0;
+  }
+  .sb-fade {
+    transition: opacity 0.16s ease, transform 0.22s var(--ease);
+  }
+  .sb[data-expanded="false"] .sb-fade {
+    opacity: 0;
+    transform: translateX(-6px);
+    pointer-events: none;
+  }
+  .sb[data-expanded="true"] .sb-fade {
+    opacity: 1;
+    transition-delay: 0.05s;
+  }
+  .sb-sub {
+    display: grid;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition: grid-template-rows 0.22s var(--ease), visibility 0s linear 0.22s;
+  }
+  .sb-sub[data-open="true"] {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition: grid-template-rows 0.22s var(--ease), visibility 0s;
+  }
+  .sb-sub > ul {
+    overflow: hidden;
+    min-height: 0;
+    margin: 0 0 0 19px;
+    border-left: 1px solid var(--border);
+  }
+  .sb-sub-link {
+    display: block;
+    min-height: 36px;
+    margin: 0 0 0 8px;
+    padding: 4px 12px;
+    border-radius: var(--r-md);
+    color: var(--text);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sb-sub-link:hover {
+    background: var(--bg-hover);
+  }
+  .sb-sub-link[aria-current="page"] {
+    background: var(--bg-active);
+    font-weight: 600;
+  }
+  .sb-sub-link small {
+    display: block;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ---------- Docs prose ---------- */
+  .prose-doc {
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--text);
+    min-width: 0;
+  }
+  .prose-doc > :first-child {
+    margin-top: 0;
+  }
+  .prose-doc h1 {
+    font-size: 32px;
+    line-height: 1.25;
+    font-weight: 700;
+    margin: 0 0 24px;
+  }
+  .prose-doc h2 {
+    font-size: 24px;
+    line-height: 1.33;
+    font-weight: 700;
+    margin: 48px 0 16px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .prose-doc h3 {
+    font-size: 20px;
+    line-height: 1.4;
+    font-weight: 600;
+    margin: 32px 0 12px;
+  }
+  .prose-doc h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 24px 0 8px;
+  }
+  .prose-doc p,
+  .prose-doc ul,
+  .prose-doc ol,
+  .prose-doc blockquote,
+  .prose-doc pre,
+  .prose-doc .doc-table {
+    margin: 0 0 16px;
+  }
+  .prose-doc ul {
+    list-style: disc;
+    padding-left: 24px;
+  }
+  .prose-doc ol {
+    list-style: decimal;
+    padding-left: 24px;
+  }
+  .prose-doc li {
+    margin: 4px 0;
+  }
+  .prose-doc li > ul,
+  .prose-doc li > ol {
+    margin: 4px 0;
+  }
+  .prose-doc a {
+    color: var(--link);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-doc code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 0 4px;
+    border-radius: var(--r-sm);
+    background: var(--bg-active);
+    overflow-wrap: anywhere;
+  }
+  .prose-doc pre {
+    padding: 16px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg-subtle);
+    line-height: 1.6;
+  }
+  .prose-doc pre code {
+    padding: 0;
+    background: none;
+    overflow-wrap: normal;
+  }
+  .prose-doc blockquote {
+    padding: 8px 16px;
+    border-left: 4px solid var(--primary);
+    background: var(--primary-soft);
+    border-radius: 0 var(--r-md) var(--r-md) 0;
+  }
+  .prose-doc blockquote > :last-child {
+    margin-bottom: 0;
+  }
+  .prose-doc hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 32px 0;
+  }
+  .prose-doc .doc-table {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+  }
+  .prose-doc table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .prose-doc th,
+  .prose-doc td {
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+    min-width: 96px;
+  }
+  .prose-doc th {
+    background: var(--bg-subtle);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .prose-doc tr:last-child td {
+    border-bottom: 0;
+  }
+}

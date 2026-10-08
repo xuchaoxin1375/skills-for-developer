@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="theme-color" content="#fafafa" />
+    <meta name="description" content="EdgeLab 界面设计实验室：参考 Cloudflare 的导航、表单与响应式交互，在真实 DNS 管理案例中探索成熟的设计实践。" />
+    <script>
+      try {
+        const preference = JSON.parse(localStorage.getItem('edgelab.theme') || '"system"');
+        const theme = preference === 'dark' || preference === 'light' ? preference : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      } catch {
+        document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+    </script>
+    <title>EdgeLab | 界面设计实验室</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

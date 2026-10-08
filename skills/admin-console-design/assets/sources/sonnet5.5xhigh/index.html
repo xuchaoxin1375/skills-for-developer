@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nimbus Console · Cloudflare 风格控制台设计参考</title>
+    <meta
+      name="description"
+      content="参考 Cloudflare 控制台的侧边栏（折叠 / 悬停展开 / 自动收起）与表单页设计规范的交互式设计稿与文档。"
+    />
+    <script>
+      (function () {
+        try {
+          var m = location.hash.match(/[?&]theme=(light|dark|system)/);
+          var p = m ? m[1] : localStorage.getItem("nimbus.theme") || "system";
+          var d = p === "dark" || (p === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", d);
+          document.documentElement.style.colorScheme = d ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,48 +1,44 @@
-# 表单 / 设置 / 向导
+# 表单、设置与向导
 
-为什么不禁用提交：三工程一致“保存可点→提交校验→汇总→首错聚焦→保留输入”，
-置灰等于把缺什么藏起来，校验文案必须是一字段一可行动消息。
+默认复用所选模板的Field、校验、焦点和反馈。DNS规则、模拟延迟和草稿键是示例，不固定套到其他业务。
 
-## 四形态
+## 字段与布局
 
-内联（行内新增/编辑，高亮卡片单例）/ 长表单（Create）/ 向导（AddSite 三步）/ 设置（一卡一决策）。
+可见label+control+hint/error，以唯一ID、aria-describedby、aria-invalid关联；placeholder只给示例，必填有说明。根据内容采用inputMode/type/autoComplete，允许粘贴/缩放，规范化不静默破坏有意义输入。
 
-## Field 结构
+默认单列，表单720/设置896/向导768可作起点，按字段和容器调整。按决策分组，确有步骤才做向导，不能因超过七字段强制分步。长表单大纲/操作条按需加，焦点和锚点不被遮挡。
 
-`label(*/Optional)+control36px+hint/error(role=alert)+计数器`，`aria-invalid + aria-describedby(hint+error)`，
-`noValidate + 纯函数 validateRecord`，文案公式：哪里错 + 为什么 + 如何改（给示例值如 192.0.2.1，CNAME 冲突指明已有 A 记录）。
+窄屏操作可堆叠，但DOM与视觉顺序一致；不只靠flex-col-reverse把主操作放上方而让Tab反着走。
 
-- 标签可见，禁 placeholder 代标签；必填 `* aria-hidden + 顶部说明 + aria-required`，选填标 Optional；
-  正确 type/inputMode/autoComplete，主机名 `autocapitalize=none spellCheck=false`；允许粘贴+规范化；窄屏输入 16px 但禁禁缩放。
-- 布局：<640 单列按钮 `flex-col-reverse` primary 在上；640-1023 用 6 栅；≥1024 用 12 栅
-  （例 Type2/Name4/Content6/Proxy4/TTL2/Comment12）；≥7 项分组，≥3 组加 ≥1024 右侧粘性大纲（scroll-margin+IO 高亮）。
-- 控件：Switch(`role=switch`)即时+toast；2-4 互斥用 RadioCards（`:has(:focus-visible)` 整卡环）；多互斥用原生 Select；
-  长文本 Textarea 字数；Tags Enter/逗号。
+## 校验与按钮状态
 
-## 两级校验
+首次不提前责备→blur单字段→touched后修正同步→提交全量→汇总与首错定位→保留输入。短表单可直接字段错误，无需强加大型汇总。
 
-首次不责备 → blur 单字段 → 已 touched 修改同步 → 提交全量 + 汇总 Alert + 首错 focus+scrollIntoView（scroll-padding 防遮）+ 保留已填。
-`requestAnimationFrame` 聚首错；550ms 模拟异步 + saving 防重 + `aria-busy`；重复（type|name|content）与上限（如 200）抛错；
-服务端冲突（CNAME 独占）映射回字段，否则进汇总。
+- 校验模型与展示分离，同业务各挂载点共享；服务端冲突映射回字段/汇总，前端通过不替代服务端验证。
+- 错误说明哪里错、怎么改，必要时给原因/示例，不每条硬凑三段。
+- 普通无效输入保留可提交按钮，以校验说明问题。**提交中、无改动、无权限、依赖未就绪**可禁用，给原因/进度与恢复路径。
+- 保存只响应一次，处理成功、失败和重试，不清空失败输入，不把550ms模拟等待当真实成功。
 
-## 联动与草稿
+## 联动、草稿与离开保护
 
-- Type 切 label/placeholder；互斥强制（如 MX/TXT 关 proxied）并说明原因；条件字段出现才校验，切换清不适用值；TXT 用 textarea。
-- 新增每次 update 持久草稿（`edgelab.draft`），取消/关抽屉 Toast“草稿已保留”，成功清空；编辑仅实例内。
-- 脏保护：JSON 比对 + 站内守卫单例 + beforeunload，保存即解；删除时清脏防幽灵拦截；Cancel 再 Edit 关窗弹 Discard（默认 Keep editing）。
+条件字段仅适用时校验；变类型说明互斥结果，不适用值保留/清除由业务决定，不无提示丢输入。DNS的MX/TXT代理限制不是通用规则。
 
-## 设置页
+有恢复价值的非敏感新建草稿可本地存；敏感值不默认持久到localStorage。键按用户/资源/草稿类型隔离，成功清除，取消按约定保留或舍弃并说清。编辑是否持久由任务定。
 
-一卡一决策，Footer 左状态右 Save（dirty 才启用）；Toggle 即时生效+toast；危险区底部独立红描边远离首屏，
-二次确认，高风险输名确认但按钮可点（以校验说话）；离开 dirty 站内确认（默认焦“继续编辑”）+ beforeunload。
+有丢失风险时用站内守卫，beforeunload仅补充，不保证移动恢复。保存/舍弃/删除编辑对象后清脏；新增保留与编辑取消丢弃是不同策略，确认不互相冲突。简单对象可规范化后比对，复杂模型按字段/版本判断dirty，不一概JSON字符串比较。
 
-## 向导
+## 设置与向导
 
-线性进度可回退，Stepper `ol+aria-current=step`，窄屏 `Step 2 of 3:Plan`+进度；换步焦点到标题 `tabIndex=-1`；
-Continue 步校验，最后 Review 汇总回改（dl+Change 链）；输入不丢 + 离开保护。
+一组围绕一项决策；独立低风险开关可即时保存，失败回滚；关联/高风险设置显式Save。保存/脏状态可见，无改动可禁用Save。
+
+危险动作与日常保存分开，列对象/范围/后果；清楚且不易误点，不以不在首屏作唯一判据。高风险输入资源名再允许确认，未匹配禁用并说明是合理方案，默认首焦安全选项。
+
+向导可回退并保输入，aria-current=step，换步移焦标题，当前步校验，最后Review回改；成功前不清草稿或显示完成。
 
 ## 浮层与反馈
 
-- Dialog：danger 动词主按钮 + 移动底部抽屉 + 焦点陷阱 + 高风险输名；Popover 非模态 + 视口夹取（<640 变底板）；
-  Toast 右下 live polite（成功 5s/错误 8s/撤销 8s，可关）；表单内 success-banner + server-error(`role=alert`+focus) + draft-status。
-- Modal 用原生 `dialog.showModal()+body overflow lock计数+backdrop点+portal`；Esc 关浮层并回焦点。
+Popover非模态，外部点击/Esc/视口定位/回焦按内容设计；菜单、列表框、dialog有匹配键盘规则。窄屏底板变模态时处理背景不可交互与焦点约束。
+
+Modal用可靠组件或原生dialog，处理首焦、Esc、关闭策略、嵌套、锁滚和回焦；未保存时遮罩不无提示丢输入。top layer不按普通z-index推断。
+
+成功默认toast/status，错误用字段/汇总或alert；不让每字段反复live播报。重要失败、重试、撤销给足操作时间，5s/8s是参考默认；不强制自动消失，不增加无必要确认。

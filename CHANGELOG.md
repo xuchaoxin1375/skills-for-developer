@@ -2,6 +2,10 @@
 
 记录本仓库的迁移历史与重要变更。后续仅记录影响使用或维护的变化，例如新增 skill、职责或触发条件调整、兼容性及治理变化；纯措辞或排版微调无需逐条记录。
 
+### 未发布
+
+- `admin-console-design` 改为整体主题或完整局部模板复用：保留有依据的 fable 设计偏好，明确业务接线、依赖边界和参考缺口；归档三工程源码及哈希，同步 sonnet 舞台和 fable 侧栏修复后的预览/截图；补齐设计与交互功能目录，区分各稿的已实现、演示和占位能力。
+
 ### 历史记录
 
 - 2026-09-27: 从本机迁入 4 个用户 skill (文件数: doc-polish-zh 1、scripting-best-practices 1、resilient-browser-fetch 21、htmlmini 1), 哈希校验一致后原位置替换为指向本仓库的 Junction。Codex `.system/` 等 harness 自带内容未纳入。

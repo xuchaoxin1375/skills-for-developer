@@ -1,51 +1,54 @@
-# 响应式与无障碍（控制台验收版）
+# 控制台响应式与验证
 
-通用收纳决策走 `adaptive-responsive-guide`，本页只给定案参数与验收探针。
+本页用于采用了相关能力的实现验收；咨询/局部修复按任务裁剪。通用布局选型可结合adaptive-responsive-guide，缺陷根因深查可结合frontend-ux-qa，不要求把所有协议叠加。
 
-## 断点（外壳媒体查询 + 内容容器查询）
+## 覆盖范围
 
-- 外壳：`<640 drawer+单列+表切卡+按钮堆+Dialog底抽 / 640-767 抽屉+表横滚+6栅 / 768-1023 Rail+peek+统计2列 / 1024-1279 固定+12栅+大纲 / ≥1280 统计4列 / ≥1536 max1440居中`。
-- 内容：DNS 表 ≥640 表 / <640 卡（sonnet 用 700，统一用 <640）；表单 ≥1024 助栏；设置 ≥720 分栏。视口只定页级列数边距导航，组件布局看容器。
-- 基线 390/768/1440 逐页 + 320 回流 + 300 不溢；禁 100vw（用 100%），禁固定 px 列，禁 `overflow-x:hidden` 伪造适配（确需裁切 用 clip，hidden 会劫持 sticky）。
+默认1440/768/390 + 320回流，300按极窄支持要求做压力检查。改外壳断点补767/768、1023/1024；表切卡阈值按真实容器测两侧，不能把视口宽度当表宽。
 
-## 防溢出三件套
+| 改动范围 | 关键检查 |
+|---|---|
+| 外壳/侧栏 | 固定偏好、peek前后main left/width、同一点击目标、抑制/快速划过、Tab/Esc、触屏按钮、抽屉回焦 |
+| 表格 | 长值、列显隐、横滚操作列、选择/排序/分页范围、拖拽与键盘、刷新、编辑断点切换 |
+| 表单/设置 | 空/非法/合法提交、首错、失败保输入、一次提交、取消/离开、敏感草稿策略、危险确认 |
+| 浮层 | 进焦/回焦、Esc、背景交互、视口夹取、嵌套与top layer、长内容可达 |
+| 主题/动效 | 采用的主题模式、system变化、首屏、各状态真实对比、减少动态效果仍可操作 |
 
-`min-w-0/minmax(0,1fr)` 遍布 + 长值 `ellipsis/anywhere`（技术值 break-all+mono）+ 浮层 `min(期望,100vw-16)`。
-`*box-sizing`，`html scroll-padding-top 88px`，媒体 `max-width:100%`，根 `overflow-x:clip`（不破 sticky）。
-按钮 `flex-wrap`，窄屏文字 `sr-only` 留图标保名；触屏全控件 44px（含 checkbox-hit44），桌面 24/36，图标 32/36 间距 4。
+200%缩放查核心操作，400%检查320 CSS px等效回流；辅助技术另用实际读屏检查，不用DOM检查冒充NVDA/VoiceOver验收。桌面目标至少24 CSS px或满足间距/等效入口，触屏默认争取44px；不把8px列拖热区当完整触屏合格。
 
-## 语义与键盘
+## 溢出与滚动
 
-- 全 Tab 达 + Enter/Space 激 + 顺序一致；浮层进焦关还焦；模态陷阱 Esc；列表 ↑↓HomeEnd；Rail 聚焦 peek；Skip link 首位。
-- 焦点 `:focus-visible 2px 主色 + 2px offset`，禁无替代 outline:none；输入主色边+30% 环。
-- ARIA：nav/switch/checkbox/table/field/tooltip/popover/dialog/toast/combobox/步骤 ol/分段 radiogroup；图标按钮 aria-label，装饰 aria-hidden，禁 div onClick，禁仅 hover 行操作常显；状态非色（图标文+aria-sort）。
-- 文本行高 1.6，禁压缩，允许折行，禁 user-scalable=no，数字 tabular-nums。
+min-width:0/minmax(0,1fr)、长值overflow-wrap:anywhere/有完整查看入口的truncate、浮层max-inline-size约束；允许表自滚，避免页面横溢。先查原因，不在根上clip/hidden掩盖缺陷；Rail内裁剪标签是明确用途。
 
-## 验收工具（内置一个，比手动拖窗口快）
+固定高度工作台不是自动缺陷，需尺寸约束和完整键盘路径。固定批量条/操作条有安全空间，不挡末行或焦点。粘性表头的滚动祖先与真实滚动区域一致。
 
-- 宽度实验室（fable `ResponsiveLabPage`）：滑条 280–1600 + 预设 320/390/768/1024/1440 + Auto 扫描
-  （0.5/1/2x，Space 暂停）+ side-by-side 对比；iframe `?frame=1` 同产物加载，拿到**真实媒体查询**而非缩放模拟。
-- 回放/压力台（gpt `Workbench`）：宽度往返回放、自动演示 80ms 步进（`document.hidden` 暂停）、
-  模拟失败开关测表单错误态；hover 延迟等参数做成可调，方便验收时复现时序缺陷。
-- 控制台交付时内置一个宽度滑条页（或 ?frame=1 预览入口），写进交付物。
+Skip link聚焦立即可见，main可接焦；隐藏子项不可Tab，Rail主入口仍可Tab且有名称。语义按钮和控件优先，状态不只靠色，避免用全套ARIA装饰没有行为的元素。
 
-## 验收探针（复制即跑）
+## 浏览器探针示例
+
+下例在Playwright中真正改变视口；把`url`换成目标应用地址。它只验页面级溢出，不证明关键控件可点、内容未被裁切或视觉通过。
 
 ```js
-// 1. 页面级横溢（三宽+300极端，期望全 pass）
-for (const w of [1440,768,390,320,300]) { /* 置宽后断言 */ console.assert(document.documentElement.scrollWidth <= window.innerWidth, 'overflow at '+w); }
-// 2. 窄屏主操作可达（300px 下 Add/Edit/Save 仍可见可点）
-// 3. 侧栏 peek 不移内容：hover 前后 .workspace-main left 不变（Rail 56）
-// 4. reduced-motion：transition≈0
+for (const width of [1440, 768, 390, 320]) {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto(url);
+  await page.locator('main').waitFor();
+  const size = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    viewport: window.innerWidth,
+  }));
+  expect(size.scroll).toBeLessThanOrEqual(size.viewport);
+}
 ```
 
-- 发布门槛 P0 阻断：存/删/浮层/键盘/窄主操作任一失败即阻断。
-- 诚实声明：构建成功≠视觉/无障碍/交互验收；无浏览器能力不许声称验收；截图必须人眼确认。
-- 性能：搜索 `useDeferredValue` + 防抖，列拖只写 DOM，滚动 dataset+RO+rAF，动画仅 width/opacity/transform/grid-rows，监听按需绑卸。
+异步应用等待实际稳定状态，另查主操作bounding rect与点击结果。peek先稳定Rail、记main和关键按钮rect，再触发并等待状态；断言页面没移动，并执行同一目标的真实点击。不要用固定坐标或全行offsetTop一致取代任务结果。
 
-## 跳链与折叠文本（2026-10 实证）
+列宽测试读aria-valuenow/min/max，验证拖动、键盘、恢复、cancel、刷新；核对所采用模块的Home/End/Enter契约。[表格说明](tables.md)给出两稿差异。
 
-- Skip 链用 `:focus` 即现形（程序化聚焦不一定匹配 `:focus-visible`），且不要过渡：
-  120ms 过渡会让即时读数仍在屏外，造成断言抖动；出现要即时，`top:-56px → :focus{top:8px}` 无 transition。
-- Rail 标签显隐用 `opacity+visibility`（读屏在 Rail 下不可读、可访问名保留），不用 `display:none`
-  （保 peek 过渡与读屏语义）；隐藏侧加 `visibility 0s 120ms` 延迟，出现侧立即。
+gpt `assets/sources/gpt6astra-max/tests/acceptance.spec.ts`是样例，其URL、选择器、初始数据与视口配置需要适配，复制文件不等于目标已受CI保护。宽度实验室是开发预览辅助，不是每个生产控制台必须交付的页面；真实iframe宽度可触发查询，transform缩放只是展示尺寸，不等于新视口。
+
+## 证据与门槛
+
+阻断实际保存/删除、核心键盘路径、退出浮层或必要窄屏操作的问题不能标完成。非阻塞视觉差异记录范围和理由；静态可读、运行成功、截图已生成、截图已目检分别报告。
+
+最小记录：输入版本/页面 + 浏览器/视口/主题/方式 + 预期/实际 + 通过/失败/未执行/不适用 + 截图或日志。无浏览器标未执行，有人工条件可手工，不把工具不足写成不适用。
