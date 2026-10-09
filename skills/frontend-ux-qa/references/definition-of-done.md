@@ -36,6 +36,7 @@
 
 ## Manual
 
+- [ ] Automated key journeys pass before visual review when applicable; visual-trigger decision is recorded. For layout/interaction/state changes, Agent opened and reviewed screenshots for changed UI states, including action result, close/cancel/focus return, overlap/compression, clipping and responsive controls. Pure copy-only changes may record justified `N/A`. [G-10]
 - [ ] Keyboard-only + focus return; 200%/400% + spacing + 400px height. [A-10,L-12]
 - [ ] Win+Mac; iOS 16px/safe-area/dvh. [P]
 - [ ] IME composing Enter not submit. [F-16]

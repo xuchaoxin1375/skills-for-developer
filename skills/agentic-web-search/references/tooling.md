@@ -1,5 +1,7 @@
 # 工具与参数参考
 
+工具能力会随端点、地区、套餐和日期变化。下面的分类用于设计接口，不是对某个供应商当前价格、排名或覆盖率的永久承诺；落地前应读取对应官方文档并做小规模实测。
+
 本文件汇总面向 Agent 的联网搜索与抓取工具，以及关键参数。文中产品信息主要来自训练知识与两篇联网搜索指南，**使用前请查阅各家当前文档核实**。
 
 ## 工具分类与选型
@@ -53,6 +55,54 @@ Anthropic API 提供服务端搜索工具，工具类型示例为 `web_search_20
 **辨析**：`time_range` 与 `start_date`/`end_date` 都用于限定时间。前者是**相对**范围（“最近一个月”），适合追新；后者是**绝对**区间，适合查某个时间段的历史事件。注意 `time_range` 过滤不能证明发布日期，时效敏感流程仍须核实来源。
 
 **国内方案（需自行核实）**：博查 Web Search API、智谱与通义等平台提供的联网搜索工具，适合在国内网络环境下直接调用、覆盖中文内容。
+
+## 统一结果契约
+
+搜索结果和正文抓取应使用同一套可审计字段，缺失字段返回 `null`，不要猜测：
+
+```json
+{
+  "title": "...",
+  "url": "...",
+  "canonical_url": "...",
+  "published_at": "2026-10-09T00:00:00Z",
+  "updated_at": null,
+  "retrieved_at": "2026-10-09T08:00:00Z",
+  "page_age": "2h",
+  "snippet": "...",
+  "source_type": "official|paper|media|community|aggregator",
+  "provider": "...",
+  "self_reported": false,
+  "cache": {"used": true, "max_age_hours": 24},
+  "claim_ids": ["claim-1"]
+}
+```
+
+`published_at`、`updated_at`、`retrieved_at` 表达不同时间；`page_age` 是辅助字段，不能替代原始时间。`time_range`/`freshness` 约束搜索候选，`cache.max_age_hours` 约束正文取回，两者必须分别呈现。
+
+## 查询守卫与路由
+
+工具层应在执行前检查年份、版本号、语言和地域：
+
+```python
+def query_candidates(query: str, current_year: int) -> list[dict]:
+    """保留原查询，同时显式给出纠偏候选，不静默改写。"""
+    candidates = [{"query": query, "reason": "original"}]
+    if stale_year_anchor(query, current_year):
+        candidates += [
+            {"query": replace_year(query, current_year), "reason": "current-year"},
+            {"query": remove_year(query), "reason": "version-discovery"},
+        ]
+    return dedupe_queries(candidates)
+```
+
+返回 `query_guard` 事件（原查询、候选查询、判断依据），让模型决定是否采用。中文政策、国内产品和中文社区应允许国内索引作为补充；英文文档和国际产品使用英文路由。跨语言事实保留一个独立语言来源。
+
+## 证据与正文读取
+
+搜索摘要只用于筛选。正文读取工具应返回正文、页面元数据和抓取状态；对失败按“另一读取器 → 允许的渲染浏览器 → 无法核验”降级，并保留失败原因。浏览器工具不得默认承担搜索职责，也不得绕过登录、权限或站点规则。
+
+供应商返回的合成答案必须标记 `synthetic=true`；供应商自己的排名、基准或营销比较必须标记 `self_reported=true`，回到原始页面核验后才可作为证据。
 
 ## 网络环境
 
