@@ -2,7 +2,7 @@
 name: local-env
 description: >
   国内试验与海外生产的网络访问指导：按资源选择直连、代理或镜像，区分超时、403 与限流，提供 Windows 与 *nix 配置及核验方法。
-  凡是 GitHub/文档/其他外网资源访问慢或失败、Python/Node.js 依赖下载（pip/uv/npm/pnpm/Yarn）慢或超时、安装脚本额外下载、配镜像源、走代理出网、
+  凡是 GitHub/文档/其他外网资源访问慢或失败、Python/Node.js/conda 依赖下载（pip/uv/npm/pnpm/Yarn/conda）慢或超时、安装脚本额外下载、配镜像源、走代理出网、
   无代理加速、网络错误回退、确认本机代理端口，或技术方案需要说明网络环境影响时使用；纯代码问题不加载。
 ---
 
@@ -42,7 +42,7 @@ description: >
 - **必须**：诊断优先用单次参数或进程配置，保留私有源绑定、锁文件与完整性校验。例：锁文件指向旧 tarball 时检查来源，不先删锁文件或关闭 TLS。
 - **必须**：镜像回退按工具语义显式切换，分别核验元数据和实际包文件；合并多源不等于按顺序回退。例：pip 的 extra-index-url 会合并候选，不是备用源开关。
 
-pip/uv/npm/pnpm/Yarn 的配置、并发与超时、额外下载及验收方法见 [references/dependency-downloads.md](references/dependency-downloads.md)。包管理器内部并发由其自身设置控制，Agent 逐条启动命令不能保证下载逐条发生。
+pip/uv/npm/pnpm/Yarn/conda 的配置、并发与超时、额外下载及验收方法见 [references/dependency-downloads.md](references/dependency-downloads.md)。包管理器内部并发由其自身设置控制，Agent 逐条启动命令不能保证下载逐条发生。
 
 ## 自检
 

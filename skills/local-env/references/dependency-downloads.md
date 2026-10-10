@@ -1,6 +1,6 @@
-# Python 与 Node.js 依赖下载
+# Python、Node.js 与 conda 依赖下载
 
-网络路线、Windows/*nix 代理与错误分流见 [network-access.md](network-access.md)。本文件补充包管理器的配置与验证边界；国内镜像为候选，引用前用任务需要的包名、版本和平台核验，海外生产按实际执行位置优先验证官方源。
+网络路线、Windows/*nix 代理与错误分流见 [network-access.md](network-access.md)。本文件补充包管理器的配置与验证边界；国内镜像为候选，引用前用任务需要的包名、版本和平台核验，海外生产按实际执行位置优先验证官方源。conda 走 channel 映射语义（channel 名 → 镜像 URL），不是 URL 替换，以 `conda config --show channels` 的实际解析为准。
 
 ## 先定位下载阶段
 
@@ -24,8 +24,9 @@
 | pnpm | `pnpm install --frozen-lockfile --registry="<已核验registry>"` | 核对具体版本和子命令参数；配置文件职责随大版本变化 |
 | Yarn Classic（1.x） | 安装命令的 `--registry` 或版本支持的配置 | 不套用现代 Yarn 的 `.yarnrc.yml` 配置 |
 | 现代 Yarn | 进程变量 `YARN_NPM_REGISTRY_SERVER` 或项目 `.yarnrc.yml` 的 `npmRegistryServer` | 不能假定 `.npmrc` 的 registry/代理配置生效，scope 用对应 Yarn 配置 |
+| conda | `CONDA_CHANNELS="<channel>[,<channel>]"`（逗号分隔，只影响本次进程） | custom_channels 映射与 nodefaults 仍按合并后配置生效，先 `conda config --show channels` 与 `--show-sources` 核对实际解析 |
 
-已核验的候选示例：Python `https://mirrors.ustc.edu.cn/pypi/simple`，Node.js `https://registry.npmmirror.com`。这些地址在小包观测中可用，不承诺所有包、平台或日期均可用；官方回退分别为 `https://pypi.org/simple` 与 `https://registry.npmjs.org`。
+已核验的候选示例：Python `https://mirrors.ustc.edu.cn/pypi/simple`，Node.js `https://registry.npmmirror.com`，conda channel 映射如 `conda-forge → https://mirrors.pku.edu.cn/anaconda/cloud`、`bioconda → https://mirrors.ustc.edu.cn/anaconda/cloud`。这些地址在小包观测中可用，不承诺所有包、平台或日期均可用；官方回退分别为 `https://pypi.org/simple`、`https://registry.npmjs.org` 与 `repo.anaconda.com`。
 
 下面只展示当前任务终端的源变量；任选所需工具，替换占位符后执行。关闭专用终端即可结束覆盖；复用已有终端时保存并恢复原值。代理仍按网络访问参考配置，不能由源变量代替。
 
@@ -34,6 +35,7 @@ export PIP_INDEX_URL='<已核验simple源>'
 export UV_DEFAULT_INDEX='<已核验simple源>'
 export npm_config_registry='<已核验registry>'
 export YARN_NPM_REGISTRY_SERVER='<已核验registry>'
+export CONDA_CHANNELS='<channel>[,<channel>]'
 ```
 
 ```powershell
@@ -41,11 +43,19 @@ $env:PIP_INDEX_URL = '<已核验simple源>'
 $env:UV_DEFAULT_INDEX = '<已核验simple源>'
 $env:npm_config_registry = '<已核验registry>'
 $env:YARN_NPM_REGISTRY_SERVER = '<已核验registry>'
+$env:CONDA_CHANNELS = '<channel>[,<channel>]'
 ```
 
 CMD 对应 `set "变量名=值"`；Windows 调用 npm/pnpm 时可写 `npm.cmd`/`pnpm.cmd`，避免 PowerShell 脚本 shim 受执行策略拦截。不要为此永久放宽系统执行策略。
 
 当前 pnpm 文档区分 `pnpm-workspace.yaml` 与 `.npmrc`：后者主要负责 registry/auth，其他设置按当前版本文档处理。不同子命令也可能接受不同参数；例如安装命令的 `--fetch-timeout` 不能直接复制到 `pnpm view`。先看实际命令帮助，诊断子命令缺少超时参数时由调用方约束进程期限。
+
+## conda / miniforge
+
+- 配置按安装级、用户级合并生效，用 `conda config --show-sources` 定位每项来源。常见国内做法：`nodefaults` 去掉官方 `defaults`，`custom_channels` 把 `conda-forge`、`bioconda` 等指向镜像；`show_channel_urls: true` 便于审计实际来源。
+- 任务级覆盖用 `CONDA_CHANNELS`（逗号分隔，只影响本次进程）；`CONDARC` 指定文件变量在本机 conda 26.3.2 实测未改变有效 channels，不采用。
+- conda 读取 `HTTP(S)_PROXY` 环境变量（黑洞代理下报 `ProxyError` 已验证）；未配 `proxy_servers` 时先确认环境代理是否实际被使用，不假定直连或代理。
+- 探针用小包元数据查询，不做完整安装：`conda search --override-channels -c conda-forge <包名>`，看 channel 列与返回耗时；私有 channel 与扫包工具的源不在此覆盖。
 
 ## 回退、私有包与锁文件
 
@@ -81,7 +91,7 @@ CMD 对应 `set "变量名=值"`；Windows 调用 npm/pnpm 时可写 `npm.cmd`/`
 
 先查一个所需固定版本的元数据，再用真实包管理器取回实际包文件；临时目录与独立缓存可减少环境修改。pip 可用 `download --no-deps --only-binary=:all:` 做已有 wheel 的小包探针；npm 可用 `pack --ignore-scripts` 做 registry 包文件探针。它们只验证指定目标，不代替完整依赖图和安装脚本验收。
 
-Windows 的 pip/npm 小包镜像与官方源下载及哈希对照见 [local-observations.md](local-observations.md)。uv 参数已核对本地帮助，pnpm 已验证元数据查询；Yarn 与其他平台仅作官方文档核对，不宣称安装实测。
+Windows 的 pip/npm 小包镜像与官方源下载及哈希对照、conda 北大镜像 search 探针见 [local-observations.md](local-observations.md)。uv 参数已核对本地帮助，pnpm 已验证元数据查询；Yarn 与其他平台仅作官方文档核对，不宣称安装实测。
 
 官方文档于 2026-10-10 读取核对；规则落地前结合安装版本复查：
 

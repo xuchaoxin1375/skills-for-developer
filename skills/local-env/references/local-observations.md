@@ -43,3 +43,13 @@ pip 使用临时下载目录、`--no-deps --only-binary=:all: --no-cache-dir --t
 - pnpm `view` 使用带 `--fetch-timeout`/`--fetch-retries` 的命令被拒绝，首先报 `--fetch-timeout` 不受支持；移除这两个参数后查询成功。`install --help` 支持 `--fetch-timeout`、`--network-concurrency` 与 `--registry`，不能跨子命令直接照搬参数。
 
 pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并核对。未验证：完整项目安装、uv 下载、Yarn 运行、私有包、额外二进制下载、Linux/macOS/CMD 或海外生产。
+
+## 2026-10-10 conda 探针
+
+执行环境：Windows PowerShell；本地为 scoop 版 miniforge、conda 26.3.2。安装级与用户级两处 `.condarc` 合并生效：`nodefaults` 去 defaults，`custom_channels` 中 `conda-forge → https://mirrors.pku.edu.cn/anaconda/cloud`、`bioconda → https://mirrors.ustc.edu.cn/anaconda/cloud`。
+
+- `conda search --override-channels -c conda-forge ca-certificates`：退出码 0，约 20 秒出结果，channel 列为 `conda-forge`（经北大镜像解析）。
+- 代理验证：`HTTP(S)_PROXY` 指向黑洞 `http://127.0.0.1:1` 时同命令报 `ProxyError`，确认 conda 读取环境代理变量。
+- 任务级覆盖：`CONDA_CHANNELS='bioconda,conda-forge'` 经 `conda config --show channels` 确认生效；`CONDARC` 指定文件变量同条件未改变有效 channels，不采用。
+
+未验证：完整环境安装、私有 channel、大包下载、Linux/macOS 或海外生产。
