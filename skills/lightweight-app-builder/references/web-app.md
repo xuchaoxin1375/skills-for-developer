@@ -161,9 +161,9 @@ my-tool/
 | 事项 | 说明 |
 | --- | --- |
 | ICP 备案 | 服务器在中国大陆境内且绑定域名对外提供服务，依法需要 ICP 备案；部署境外则无需备案，但境内访问速度与稳定性会明显下降 |
-| 依赖镜像 | npm → `registry.npmmirror.com`；PyPI → 清华/阿里镜像；Go → `GOPROXY=https://goproxy.cn,direct`；Homebrew → 中科大/清华镜像 |
+| 依赖镜像 | Python/Node.js 按 `local-env` 的依赖下载参考选择已核验的任务级源配置，分别处理包文件与安装脚本；Go/Homebrew 候选镜像同样先核验 |
 | GitHub 加速 | Release 下载可用镜像代理包裹原链接，镜像代理示例（引用前实测）：`https://gh-proxy.com/` + 原始 URL；生产环境不应依赖第三方镜像 |
-| 代理配置 | `*nix` 下 `export HTTPS_PROXY=http://127.0.0.1:7890`；Windows PowerShell 下 `$env:HTTPS_PROXY="http://127.0.0.1:7890"`；端口按本地代理软件实际监听值填写 |
+| 代理配置 | 按 `local-env` 分 Windows 与 *nix 说明，按实际客户端验证；本机端口与一次成功不推广为部署默认值 |
 
 ## PWA 取舍
 

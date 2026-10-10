@@ -343,14 +343,14 @@ main "$@"
 | --- | --- |
 | GitHub Release 下载慢 | 配置当前可用的镜像代理包裹原链接(镜像代理示例见上文 install.sh 用法注释);**镜像可用性会变化,引用前务必实测**,且生产环境不应长期依赖第三方镜像 |
 | 自建分发 | 把产物同步到国内可达的对象存储(阿里云 OSS、腾讯云 COS、七牛),自建下载页,这是**最可靠**的做法 |
-| npm | `npm config set registry https://registry.npmmirror.com` |
-| PyPI | `pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple` |
+| npm/pnpm/Yarn | 按 `local-env` 的 `references/dependency-downloads.md` 使用版本对应的任务级 registry/代理配置；默认不改用户全局设置 |
+| pip/uv | 按 `local-env` 使用任务级索引配置；镜像缺包显式回退，保留私有源绑定与锁文件 |
 | Homebrew | 设置 `HOMEBREW_API_DOMAIN`、`HOMEBREW_BOTTLE_DOMAIN` 指向中科大或清华镜像 |
 | Go 模块 | `go env -w GOPROXY=https://goproxy.cn,direct` |
 | Cargo | 在 `~/.cargo/config.toml` 配置 `rsproxy.cn` 或中科大源 |
 | Docker | 配置可用的 registry mirror;公共镜像加速地址变动频繁,以当前实测为准 |
 
-代理场景分平台说明:`*nix` 用 `export https_proxy=http://127.0.0.1:7890`,Windows PowerShell 用 `$env:https_proxy="http://127.0.0.1:7890"`,并提醒 Git 与终端可能需要分别设置。把以上配置写进项目 README 的"国内环境"一节,并让安装脚本支持 `--mirror`。
+代理场景按 `local-env` 分 Windows 与 *nix 说明，核验实际客户端、代理协议和端口；registry、包文件与额外二进制下载分开处理。把适用配置写进项目 README 的"国内环境"一节，并让安装脚本支持 `--mirror`，不将本机专值写成项目默认配置。
 
 **给用户的诚实建议**:镜像只是权宜之计。如果这个工具会被多人长期使用,请把安装脚本的 `--mirror` 参数和你自己托管的下载源写进 README,而不是让每个人各自想办法。
 

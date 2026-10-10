@@ -22,7 +22,7 @@
 | `skills/arena-preview` | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告 | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看 |
 | `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味 | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique |
 | `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 常见错误排查：静默失败、退出码、编码乱码与 BOM、引号插值、别名冲突、Junction 误删 | powershell报错、pwsh报错、脚本没输出、退出码、中文乱码、BOM、引号转义、别名冲突、junction、troubleshooting |
-| `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制与输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
+| `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制、搜索/抓取请求节奏与 429 冷却、输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
 | `skills/web-animation-guide` | Web动画应用指导：选型、性能与无障碍落地，原生优先，零依赖片段与回退写法 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
 | `skills/adaptive-responsive-guide` | Web前端自适应响应式适配指南：视口断点、媒体/容器查询、clamp流体、Flex/Grid内在布局、响应式图片、偏好与触控、国内vw适配、操作区收纳决策与验收 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
 | `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
@@ -31,7 +31,7 @@
 | `skills/skill-patcher` | 存量 skill 打补丁：实战复盘沉淀为增量条目，语言简练、不污染、项目无关、配人话例子 | 修补 skill、打补丁、沉淀教训、skill 措辞审查、去污染、项目无关性 |
 | `skills/reference-to-skill` | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进 | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill |
 | `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |
-| `skills/local-env` | 国内用户出网与下载偏好：镜像优先、代理次之、裸连兜底的回退流程，附本机实测环境（仅供参考，换机器需核对） | 出网、下载慢、超时、回退、镜像源、代理、直连、pip、uv、联网 |
+| `skills/local-env` | 国内试验与海外生产的网络访问：直连/代理/镜像、Windows 与 *nix 配置、GitHub/文档访问、Python/Node.js 依赖及额外下载、超时/403/限流分流与加速核验，附带日期的本机观测 | 出网、外网资源、GitHub、文档访问、依赖下载、安装脚本、下载慢、超时、403、回退、镜像源、文件加速、代理、mihomo、直连、pip、uv、npm、pnpm、Yarn、Python、Node.js、联网、网络环境 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
