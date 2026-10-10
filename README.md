@@ -26,7 +26,7 @@
 | `skills/web-animation-guide` | Web动画应用指导：选型、性能与无障碍落地，原生优先，零依赖片段与回退写法 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
 | `skills/adaptive-responsive-guide` | Web前端自适应响应式适配指南：视口断点、媒体/容器查询、clamp流体、Flex/Grid内在布局、响应式图片、偏好与触控、国内vw适配、操作区收纳决策与验收 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
 | `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
-| `skills/ai-verified-delivery` | AI 编程质量与规格驱动开发（SDD）可验证交付：规格、AC、tasks、RTM 到测试证据的追踪，统一风险分级与门禁、防假通过、自动截图与 Agent 视觉验收、独立复核及适用发布回滚；支持咨询、实现交付与验收 | AI coding 质量、spec、规格驱动开发、SDD、需求拆解、验收标准、门禁、verify、DoD、L0-L4 定级、风险评分、RTM、tasks、Playwright、截图验证、视觉回归、独立验证、完成报告、回滚、弱模型约束 |
+| `skills/ai-verified-delivery` | AI 编程质量与规格驱动开发（SDD）可验证交付：规格、AC、tasks、RTM 到测试证据的追踪，统一风险分级与门禁、防假通过、自动截图与 Agent 视觉验收、主代理复核及修复重验、可选独立复核与适用发布回滚；支持咨询、实现交付与验收 | AI coding 质量、spec、规格驱动开发、SDD、需求拆解、验收标准、门禁、verify、DoD、L0-L4 定级、风险评分、RTM、tasks、Playwright、截图验证、视觉回归、主代理复核、独立复核、完成报告、回滚、弱模型约束 |
 | `skills/admin-console-design` | 后台控制台设计与实现：默认fable整体主题或完整局部模板，按需补sonnet列宽/撤销与gpt导入/验收；附设计与交互功能目录、源码、依赖边界与预览快照，默认继承设计并接业务，标明参考缺口 | 后台面板、管理后台、admin、console、dashboard、侧栏折叠悬停、列表编辑批量、设置页、向导、Cloudflare-inspired |
 | `skills/skill-patcher` | 存量 skill 打补丁：实战复盘沉淀为增量条目，语言简练、不污染、项目无关、配人话例子 | 修补 skill、打补丁、沉淀教训、skill 措辞审查、去污染、项目无关性 |
 | `skills/reference-to-skill` | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进 | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill |
