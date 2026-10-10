@@ -12,7 +12,7 @@ description: >
   覆盖决策选型、响应式实现、交互状态与验收清单；生成与验收两种模式。
 ---
 
-# 自适应布局设计与适配
+## 自适应布局设计与适配
 
 独立通用 skill：输入是“会变化的空间 + 要保住的可用性”，输出是决策、代码与验收。
 依据有五：① `自适应操作区按钮布局设计与适配/.../card-actions-design-guide.md`
@@ -25,12 +25,21 @@ description: >
 ⑤ `自适应-响应式设计/极窄自适应/` 五项目（`responsive-card-layout-optimization-opus5.5max` 五级 em 阶梯/P0–P3/零 Observer 收纳/诊断探针为主，
 `responsive-card-layout-optimization-qwen3.8-27b` cqi 流体/对照演示台为辅，其余三项目补失效分类与样本切换；收敛见 `references/extreme-narrow.md`）。
 
-与其它 skill 分工，不重复：
-`frontend-design` 管栅格、令牌、渐进披露、三断点交付；`frontend-ux-qa` 管存量缺陷编号深查与 CI 门禁；
-`distinctive-design-director` 管视觉主张；`web-animation-guide` 管动效选型细节。
-本 skill 只管“空间变化时布局怎么变、操作怎么收纳、如何证明可用”。
+### 职责与规则来源
 
-## 适用范围
+本 skill 维护“空间变化时布局怎么变、操作怎么收纳、如何证明可用”。同类规则按下表维护，项目 `DESIGN.md` 记录实际令牌、断点与必要例外。
+
+| 内容 | 维护位置 |
+| --- | --- |
+| 用户任务、信息层级、页面结构、视觉令牌、通用交互与无障碍基线、整体交付 | `frontend-design`；无障碍详则见[通用基线](../frontend-design/references/a11y.md) |
+| 视口/容器阈值、流体与媒体实现、操作收纳、滚动归属、浮层响应式形态、专项验证 | 本 skill 的对应参考；基线见 `responsive-core.md`，场景见 `page-patterns.md`，验收见 `acceptance.md` |
+| 反馈目的、默认视觉稳定性与工具界面动效预算 | [动效设计规则](../frontend-design/references/motion.md) |
+| 动效技术、退出布局保持、打断清理、性能与减弱处理 | `web-animation-guide` 的对应参考 |
+| 存量缺陷编号深查与 CI 门禁、视觉方向发散 | 分别由 `frontend-ux-qa`、`distinctive-design-director` 维护 |
+
+与 `frontend-design` 同用时，在线框阶段识别空间约束，实施时按 A/B 读取专项，验收归入一份报告；不重复跑两套完整流程。独立适配任务按本流程执行，不要求重做视觉设计；其他 skill 不可用时，保留本文件的原生语义、键盘与可访问名底线，动效使用项目令牌和可瞬时切换的简单反馈。
+
+### 适用范围
 
 双轨道，用哪个先路由（0），不要混着写：
 
@@ -41,24 +50,24 @@ description: >
 侧栏/面板三态（展开↔图标轨↔抽屉）。
 不用本 skill：纯视觉风格发散（转 `distinctive-design-director`）、存量页按编号根因深查（转 `frontend-ux-qa`）。
 
-## 流程（生成模式按 0–5，验收模式只走 5）
+### 流程（生成模式按 0–5，验收模式只走 5）
 
-### 0——先路由，再读对应的 reference
+#### 0——先路由，再读对应的 reference
 
 - A 操作区放不下 → 走 1–5，重点读 `patterns.md + container-queries.md + interaction.md`。出现横滚/越界/压扁时加读 `overflow-squeeze.md`。
 - B 通用响应式 → 跳过 1–2，直接走 3 + 4 + 5。3 必读 `responsive-core.md + fluid-grid-media.md`；
 按需加读：概念不清补 `concepts.md`，断点/打印补 `media-queries.md`，整页骨架/抽屉/表格补 `page-patterns.md`，
 随断点改行为/监听尺寸补 `js-apis.md`，选型定基线/验收补 `compat-testing.md`。
 - 两者叠加（如窄容器里操作区放不下）→ 都走：先 B 定骨架与流体，再 A 做收纳。
-- 进 ≤320px 极窄（含 200px 侧栏、240–280 极限复用，直至约 104px 下限）→ 加读 `extreme-narrow.md`（P0–P3 矩阵、五级 em 阶梯、退让六序、零 Observer 与动态 Priority+ 二选一、挤压三探针）。
+- 产品实际支持 <320px 极窄容器（含 200px 侧栏、240–280 极限复用）→ 加读 `extreme-narrow.md`（P0–P3 矩阵、五级 em 阶梯、退让六序、零 Observer 与动态 Priority+ 二选一、挤压三探针）；不为基础320px点检强制实现约104px下限。
 
-### 1——先认主次，不先画布局
+#### 1——先认主次，不先画布局
 
 用一句话写清：有哪些动作、哪个最高频、哪个推进主任务、判断依据是什么。
 频率相近时不许硬点一个当主操作。写不清就先问用户或记下假设再往下走。
 为什么：收纳的前提是主次，错了后面全错。
 
-### 2——按决策树选策略
+#### 2——按决策树选策略
 
 读 `references/patterns.md`。按序判断，不按“手机用图标、桌面用文字”刻板印象：
 
@@ -69,16 +78,16 @@ description: >
 5. 固定图标行只给熟悉、语义稳定、数量少、且每个都有准确可访问名的动作。
 6. 一律不用滑动/横向拖动/长按来发现操作。
 
-### 3——按容器宽度实现，不按设备名
+#### 3——按容器宽度实现，不按设备名
 
 读 `references/container-queries.md`（A，含样式/滚动查询与塌陷陷阱）
 + `references/responsive-core.md`（B 骨架）+ `references/fluid-grid-media.md`（B 流体/网格/图片）
 + 按需 `concepts.md / media-queries.md / page-patterns.md / js-apis.md / compat-testing.md`。
 原则：**容器决定组件布局，视口只决定页级列数边距导航**。
 
-- B 先定骨架：标准 viewport meta；移动优先、按内容定 2–4 个 rem 断点；内在布局优先
+- B 先定骨架：标准 viewport meta；移动优先、按内容实测必要的 rem 断点（通常 2–4 个）；内在布局优先
 （RAM `auto-fit + minmax(min(100%,15rem),1fr)`、Flex wrap/sidebar/switcher、subgrid），查询只兜底。
-- B 再定流体：容器 `width:min(100%-2rem,72rem)`；字号间距 `clamp()` 且含 rem 项、MAX≤2.5×MIN；
+- B 再定流体：容器 `width:min(calc(100% - 2rem),72rem)`；字号间距 `clamp()` 且含 rem 项、MAX≤2.5×MIN；
 首屏 `100svh`、全屏壳 `100dvh`（先写 `vh` 回退）；通栏 `100%` 不用 `100vw`。
 - B 再定媒体：`srcset+sizes`（w 配 sizes，x 给固定尺寸），美术指导用 `picture`，
 `width/height` 或 `aspect-ratio` 防 CLS，LCP 图 `fetchpriority=high` 不懒加载。
@@ -86,8 +95,9 @@ description: >
 随断点改行为/监听尺寸见 `js-apis.md`；框架选型/基线/验收见 `compat-testing.md`。
 - A 通用做法：可复用模块设命名容器 `container: xxx / inline-size`，`@container (min-width: 实测阈值)` 切宽窄两态；
 阈值按真实字体/标签/边距实测，320/390/768/1440 只是验证点；文字约束顺序完整标签→整颗换行→图标+可访问名→次要进菜单；旧环境回退主操作+菜单或换行，动作不消失。
+- 滚动归属与浮层形态按 `references/page-patterns.md` 场景选择，不能只按“手机”强制全屏或给所有列表定高。例：短确认保留普通弹窗，长表单在空间不足时转全屏。
 
-### 4——交互状态闭环
+#### 4——交互状态闭环
 
 读 `references/interaction.md`。触发、浮层、菜单、弹窗、反馈一次做全：
 
@@ -97,34 +107,36 @@ description: >
 - 单选（当前操作上下文）与复选（批量任务）分离：后者给计数、继续、清空。
 - 反馈用页面状态区或 `role=status/alert`，不用 `alert()`；表单错关联字段、聚焦首错、保留输入。
 
-### 5——验证交付
+#### 5——验证交付
 
-读 `references/acceptance.md`。交付物固定四件：决策结论 + 关键代码 diff + 验证记录 + 已知问题。溢出/挤压回归按 `overflow-squeeze.md` 探针法（220–1440 逐 20px + 320/390/768/1440 + <320 极限）。
+读 `references/acceptance.md`，按变更范围选择基础与专项验证；溢出/挤压修复读 `overflow-squeeze.md` 探针法，涉及极窄复用再加 `extreme-narrow.md`。独立交付包含决策结论、关键代码 diff、验证记录和已知问题；与主设计流程同用时合并这些内容。
 
-- 同一组件验 320/390/768/1440 + 窄侧栏复用态；页面级无非必要横向滚动。
+- 基础宽度与追加条件统一见 `references/acceptance.md`；记录实际视口/容器宽与未执行项，预设值不冒充设备实测。
 - 宽窄两态动作顺序、名称、行为一致；按钮文字要么完整显示要么整体隐藏，不许挤压截断省略号。
-- 触控基线 44×44（产品基线，非 WCAG AA 要求，AA 最低 24×24，见 acceptance 边界）。
-- 深色/浅色/系统主题、减少动态偏好各验一次。
+- 触控目标按通用无障碍基线；44×44 是产品基线，不能写成 WCAG AA 要求，详见 acceptance 边界。
+- 主题、缩放与减少动态偏好按 `references/acceptance.md` 的适用范围验，不给每次局部改动追加无关全量检查。
 
-## MUST / SHOULD / AVOID（精简，详见 references）
+### MUST / SHOULD / AVOID（精简，详见 references）
 
 - MUST：标准 viewport meta 且不禁缩放；标签完整或整体隐藏，禁挤压裁切省略号；所有动作键盘可达；图标必有准确可访问名；320 回流无页面级横滚；焦点可见，禁无替代 `outline:none`；字号不用纯 vw；图片有 `width/height` 或 `aspect-ratio`。
-- SHOULD：多实例低频先试选中浮层，主次明确先试主操作+菜单；容器查询优先；内在布局（RAM/Flex wrap）优先于查询；动效 ≤320ms 只动 transform/opacity 跟随 reduced-motion；逻辑属性优先；国内 H5 限最大宽。
-- AVOID：横向滚动/滑动露出/仅 hover 入口；小字号压窄按钮；只用颜色表选中；`title` 当唯一名称；禁用提交代校验；禁缩放禁粘贴；模块内再套内部滚动区；通栏 `100vw`；纯 vw 字号；窄屏 `display:none` 删内容（重排不删减，收纳只是移进菜单不消失）；`overflow-x: hidden` 掩盖溢出且让 sticky 失效（找根因，确需裁切用 `clip`）。
+- SHOULD：多实例低频先试选中浮层，主次明确先试主操作+菜单；容器查询优先；内在布局（RAM/Flex wrap）优先于查询；动效读取项目令牌并按职责表验稳定性、性能与 reduced-motion；逻辑属性优先；国内 H5 限最大宽。
+- AVOID：滑动/拖动/仅 hover 发现操作；小字号压窄按钮；只用颜色表选中；`title` 当唯一名称；禁用提交代校验；禁缩放禁粘贴；无任务理由的多重嵌套滚动；通栏 `100vw`；纯 vw 字号；窄屏 `display:none` 删内容（收纳移进菜单不消失）；用 `hidden/clip` 掩盖真实溢出，裁切不能代替可达性修复。
 
-## 输出结构（ALWAYS 用此模板）
+### 输出与整合
+
+独立方案可按下列结构组织，简单咨询只输出相关结论；验收模式报告结果和证据，不强行补实现代码。与 `frontend-design` 同用时，把决策、diff、验证记录和已知问题归入主交付，不再生成第二份六节报告。例：同一轮页面改版只交付一份报告，其中包含窄侧栏收纳验证。
 
 ```markdown
-# [场景]自适应方案
-## 1 决策（A写主次+所选策略+为什么不用其它；B写布局目标+断点/流体选型+为什么不用其它）
-## 2 布局（宽/窄两态说明+容器阈值与实测依据；B加断点与流体参数来源）
-## 3 代码（容器查询+菜单/浮层关键片段，回退说明；B加视口/流体/网格/图片片段）
-## 4 交互（触发/切换/关闭/焦点/反馈）
-## 5 验证（320/390/768/1440+窄栏结果，主题与 reduced-motion）
-## 6 已知问题
+## [场景]自适应方案
+### 决策（A写主次与策略依据；B写布局目标与选型依据）
+### 布局（宽/窄两态、阈值与实测依据；B加断点与流体参数来源）
+### 代码（关键diff与回退；仅实现交付需要）
+### 交互（触发、切换、关闭、焦点、反馈）
+### 验证（基础与适用专项结果、实际宽度、未执行项）
+### 已知问题
 ```
 
-## 自检（出稿前逐项过）
+### 自检（出稿前逐项过）
 
 - [ ] 0 已路由（A/B/叠加），读了对应的 reference？
 - [ ] A 主次有依据，频率相近没硬点主操作？B 断点按内容、阈值实测，320 等只是验证点？
@@ -134,10 +146,14 @@ description: >
 - [ ] hover 被 any-hover 包裹，键盘/触屏有等价路径？
 - [ ] 单选批量状态分离，Esc 层级与焦点回归定义了？
 - [ ] 44 基线表述没写成 WCAG AA 要求？
-- [ ] 进 ≤320 极窄时读了 `extreme-narrow.md`（P0–P3 矩阵、阈值 ±1px、floor 下限、退让六序）？
-- [ ] 输出用了上面的六节模板？
+- [ ] 滚动归属与浮层形态是否按任务和可用空间选择？
+- [ ] 实际支持 <320px 容器时，是否按 `extreme-narrow.md` 验对应阈值与floor，而非强制所有页面支持约104px？
+- [ ] 长菜单开前量过视口空间，不够下展时上翻封顶可滚？
+- [ ] 收纳移动节点不克隆，钉死项已排除，右键与更多同源？
+- [ ] 同用时是否在线框阶段识别空间约束，只读取所需专项？
+- [ ] 验证是否按变更范围选择，结果是否归入同一交付？
 
-## 验证协议
+### 验证协议
 
 1. `SKILL.md` 头部 description 与仓库 `README.md` 检索表语义一致。
 2. 新 skill 在 harness 可见/可加载。

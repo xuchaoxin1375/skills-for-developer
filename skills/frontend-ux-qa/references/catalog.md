@@ -217,7 +217,7 @@ stateDiagram-v2
 | `V-02` | 全局 `width:auto` | 见 L-05，覆盖宽高比计算 | 审查全局 img 规则 |
 | `V-03` | 字体切换偏移 | 度量差异；仅 11% 页预加载字体 | `font-display:swap/optional` + `size-adjust`，关键字体 preload；中文正文优先系统栈 |
 | `V-04` | 动态注入撑开 | 横幅/Cookie/广告首屏后插入 | 预留高度或覆盖层，非插入文档流 |
-| `V-05` | 动画布局属性 | 过渡 width/height/top/margin 只在加载期偏移，难复现 | 只动画 `transform+opacity` |
+| `V-05` | 动画布局属性 | 宽高、位置与 Grid 过渡可能触发布局，须区分过渡期与初始重排成本 | 优先透明度/变换；必要小区域布局过渡按实测验收，技术标准见 `web-animation-guide/references/performance-a11y.md` |
 | `V-06` | 加载后偏移 | 懒加载计入；SPA 超 500ms 宽限期过渡 | 懒加载预留高度；路由 500ms 内首绘或 View Transitions |
 | `V-07` | 仅真机/慢网现形 | 缓存掩盖 | 禁缓存 + Slow 4G 硬刷新验收，以 RUM 为准 |
 
@@ -326,8 +326,8 @@ Baymard 16 年结算测试：结算设计常为弃购唯一原因；70% 加车�
 | 编号 | 缺陷 | 验收 |
 |---|---|---|
 | `I-01` | hover-only | 触屏必有替代入口，`@media(hover:hover)` 区分 |
-| `I-02` | 动效过长 | 微 100~150ms，中 200~250ms，大 300~400ms；>500ms 几乎总太慢 |
-| `I-03` | 缓动不当 | 进入 ease-out，退出 ease-in（如 `cubic-bezier(0.2,0,0,1)`），位移不用 linear |
+| `I-02` | 动效过长 | 按项目令牌验收，不拖延任务可用；工具界面默认预算见 `frontend-design/references/motion.md`，不另设时长表 |
+| `I-03` | 缓动或过程不当 | 读取项目缓动令牌，进入/退出符合交互目的；中间帧稳定性与连续性按 `web-animation-guide/references/performance-a11y.md` 验收 |
 | `I-04` | 动画阻塞 | 可中断，新交互立即接管 |
 | `I-05` | 滚动劫持/过度视差 | 保原生滚动，视差克制且尊 `prefers-reduced-motion` |
 | `I-06` | 自动轮播播放 | 可暂停可手动，>5s 自动须可停（2.2.2），媒体默认静音不自动播 |

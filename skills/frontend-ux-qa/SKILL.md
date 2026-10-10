@@ -28,7 +28,7 @@ description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已�
 ## 模式二：约束新生成（Generate）
 
 1. 输出组件代码时强制满足：`min-width:0`（可收缩子项）、媒体 `max-width:100%+height:auto`（禁 `width:auto`）、容器 `max-width` 非固定宽、表单可见 `<label>`、图片有尺寸/`alt`、异步视图 `Loading/Empty/Error` 三态起步。
-2. 颜色间距字号只许引用设计令牌；动效只许 `transform+opacity`；目标≥`24×24`（移动端 `44×44`）；弹窗/列表/耗时操作须有出现/退出/忙态过渡（原生 dialog 闪现、骨架切实物硬切、无忙态连点可重提，都记动效类建议）。关键状态截图由 Agent 实际查看，附自动化动作结果和截图证据，不以截图替代 Playwright 断言。
+2. 颜色间距字号只许引用设计令牌；动效预算见 `frontend-design/references/motion.md`，技术与减弱/回退验收见 `web-animation-guide/references/performance-a11y.md`，不另设属性禁令；目标≥`24×24`（移动端 `44×44`）。弹窗/列表/耗时操作检查双向反馈与忙态，允许减弱/兼容路径瞬时切换；无忙态连点可重提须修复。关键状态截图由 Agent 实际查看，附自动化动作结果和截图证据，不以截图替代 Playwright 断言。
 3. 在 `DESIGN.md`/`AGENTS.md` 中声明 MUST/SHOULD/NEVER 并绑定检查器（axe/stylelint/Playwright），情绪板式描述（“现代简洁有呼吸感”）一律改写为数值枚举。
 
 ## 速查阈值（与 catalog 一致）

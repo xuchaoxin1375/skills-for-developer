@@ -1,43 +1,36 @@
-# 响应式：断点、降级与触控
+## 响应式：约束识别与专项路由
 
-> 何时读：布局完成后、Step 5 验证时。原则：**内容决定断点，不断点将就内容**——先定三段，再微调。
+> 何时读：线框阶段识别空间约束，实施与验收时按需回读。**内容决定断点，基础验证宽度不等于布局断点。**
 
-## 断点（两刀三段）
+### 职责与读取范围
 
-| 段 | 宽度 | 布局 |
-| --- | --- | --- |
-| 手机 | <640 | 单列；侧边导航变顶栏+抽屉；操作按钮全宽或悬浮主按钮 |
-| 平板 | 640–1024 | 双列；列表+详情可并存但详情变窄；卡片 2 列 |
-| 桌面 | >1024 | 完整栅格；侧边导航展开；卡片 3–4 列 |
+`frontend-design` 决定任务、信息层级、页面结构与视觉令牌；`adaptive-responsive-guide` 维护空间变化时的重排、收纳和响应式实现。线框阶段记录窄屏/窄容器的变化，实施时只读命中场景的参考，验收归入同一交付。
 
-用容器查询（container queries）替代媒体查询处理卡片内部，同一组件在侧栏和主区表现一致。
+| 场景 | 响应式专项参考 |
+| --- | --- |
+| 视口、内容断点、首屏/全屏高度、安全区、软键盘 | [响应式基础](../../adaptive-responsive-guide/references/responsive-core.md) |
+| 字号与间距流体、内在 Grid/Flex、响应式图片 | [流体、网格与媒体](../../adaptive-responsive-guide/references/fluid-grid-media.md) |
+| 导航/侧栏、表格、滚动归属、普通弹窗/底部面板/全屏选型 | [页面场景](../../adaptive-responsive-guide/references/page-patterns.md) |
+| 操作区放不下、主操作与更多、容器阈值 | [收纳策略](../../adaptive-responsive-guide/references/patterns.md)、[容器查询](../../adaptive-responsive-guide/references/container-queries.md) |
+| 收纳后焦点、菜单定位、跨断点状态 | [空间变化中的交互](../../adaptive-responsive-guide/references/interaction.md) |
+| 溢出/挤压或极窄复用 | [溢出诊断](../../adaptive-responsive-guide/references/overflow-squeeze.md)，极窄时加[极窄适配](../../adaptive-responsive-guide/references/extreme-narrow.md) |
+| 基础与专项验收、实际视口、截图诊断 | [验收清单](../../adaptive-responsive-guide/references/acceptance.md)、[测试与兼容](../../adaptive-responsive-guide/references/compat-testing.md) |
 
-## 必做降级
+通用键盘、目标尺寸、对比度与回流标准由 [a11y.md](a11y.md) 维护；响应式专项只补空间变化产生的风险。动效设计与技术沿用 [motion.md](motion.md) 的职责声明。
 
-- **表格**：手机上转为横向滚动（首列冻结）或卡片列表；超过 5 列的表必须提供列显隐。
-- **导航**：>1024 侧边展开；<640 收进汉堡抽屉，抽屉必须有关闭按钮且点遮罩可关。
-- **工具栏**：操作超过 4 个，手机上只留主操作+搜索，其余进"更多"。
-- **页眉**：sticky 优先（滚动时操作不丢失；窄屏可解 sticky 但不许遮挡内容）。窄窗口/手机端善用汉堡菜单：直接显示的按钮 ≤3 个（含状态指示器），上传/队列/设置这类次操作全收进菜单；菜单内按"上传 / 构建 / 状态"分组，一次只开一个浮层。桌面端恢复平铺时不许增减功能，只变呈现。
-- **sticky 优先级与限高**：页眉（品牌/标题行）是第一 sticky 优先级，全宽度 sticky，只在超矮横屏等极端情况解除。反模式：解掉页眉却留着又高又大的次级栏 sticky（本末倒置）；两个 sticky 叠加也不许超高。限高：手机 sticky 总高 ≤64px（一行），桌面所有 sticky 相加 ≤120px；超了就把次级的解掉（随页面滚走），不要全留着。
-- **sticky 零缝隙**：次级 sticky 的 `top` 必须等于页眉实高（`getBoundingClientRect` 量出来的，不许拍脑袋写魔法数字），和页眉下缘齐平。留缝的话滚动时内容从缝里漏过去，看着像 bug。多个 sticky 共存时共用同一基线；页眉换行变高的断点下，次级 sticky 宁可解除也不要错位吸住。
-- **弹窗**：手机上变全屏页（带顶部返回），不许出现双指缩放才能点到的按钮。
+### 线框与项目记录
 
-## 触控与可点
+- 写清窄屏和受限容器中，区域如何重排、操作如何收纳、滚动由谁承担。
+- 项目 `DESIGN.md` 记录实际视口/容器阈值及内容实测依据；断点数量按需要，不强制套设备三段。
+- 滚动与浮层按上述页面场景选择；表格的列显隐、卡片化或局部滚动应保住当前任务，操作收纳不删除功能。
+- 页眉与次级固定栏的主次在线框中确定，不让固定区域遮住内容与焦点；定位实现按需使用 `sticky-position`。
 
-- 触控目标 ≥44×44px，间距 ≥8px；桌面按钮高 ≥32px。
-- 悬停（hover）不能是唯一的信息通道：手机没有 hover，关键信息必须常显或可点出。
-- 表单输入框手机上 `font-size ≥16px`，否则 iOS 自动放大打乱布局。
+专项 skill 未安装时，保留最小可用方案：页面窄屏单列、模块自然换行，按钮完整或收进可发现的菜单，正文可断行，媒体受容器约束；用通用无障碍基线检查回流、缩放和键盘，不凭设备名推定断点或采用未经验证的复杂收纳。
 
-## 验证
+### 验收与截图助手
 
-三断点各截一屏检查：无横向滚动（表格区除外）、主任务可完成、文字无截断重叠。只测 Chrome 桌面宽度=没测。
+验收范围由上述 `acceptance.md` 维护：基础点检加本次变更适用的容器、阈值或极窄检查，不重复生成两份报告。记录实际视口/容器宽、检查状态和未执行项。
 
-自动化（条件允许）：`node scripts/screenshot.mjs <本地地址>` 一次产出三断点整页截图再人工看；另跑 `npx @axe-core/cli <地址>` 与 Lighthouse，对比度/可访问性错误清零，修不掉的列入已知问题。
+`node scripts/screenshot.mjs <本地地址> --out <截图目录>` 产出基础宽度截图；可用 `--widths <逗号分隔的CSS像素宽度>` 追加项目阈值附近的截图。脚本默认减弱动效，仅检查静态布局；容器、交互与正常动效须另验，截图后由 Agent 查看图像。独立复用组件即使页面很宽，仍须在实际窄容器里验证。
 
-## 无头截图验收坑位（实战沉淀）
-
-- **视口钳制误报（必查）**：`headless=new` 受 OS 最小窗口宽度钳制（如要 390 实得 478），截图再按请求宽度裁图——视口外的内容看起来像"被裁切/遮挡"，实为假阳性。对策：页内置探针断言真值（把 `window.innerWidth` 写进横幅里再拍），只认 innerWidth 达标的截图；<500 的真视口要真机或 CDP 设备模拟；同一媒体查询段内可用钳制以上宽度等价验证，但结论必须注明实际 innerWidth。
-- **`hidden` 被 display 覆盖**：任何显式写了 `display` 的类选择器都会打败 UA 的 `[hidden]{display:none}`（实测 `.badge{display:inline-flex}` 让隐藏徽标常显）。对策：全局加 `[hidden]{display:none!important}`。
-- **常驻调试浏览器占锁**：带 `--remote-debugging-port` 或常驻的 headless 实例占住 profile Singleton 锁，后续截图进程静默退出（无文件、无报错）。对策：调试完即杀，只杀带 `headless`/`remote-debugging` 标记的进程，勿动用户主浏览器；截图失败先查锁再查代码。本机浏览器开着就烫手时，无头进程改用独立 `--user-data-dir`（或走 Playwright 自带 profile + 每次 `browser.close()`），不碰默认 profile。
-- **溢出二分法**：一时定位不到是哪个元素撑宽时，临时 `display:none` 藏半页拍（顶栏/子顶栏/列表逐段隔离）；或插临时探针把 `getBoundingClientRect` 越界元素名写进横幅拍出来。临时 CSS/JS 拍完即删，终验前 grep 确认无残留（`tmp-`/`PROBE` 标记）。
-- **防溢出标配**：`html,body{overflow-x:clip}`（保 sticky，比 hidden 安全）；flex 容器直接子 `min-width:0`；下拉框长值 `max-width:100% + text-overflow:ellipsis`；pre/日志类内容加 `overflow-wrap:anywhere`。
+无头截图与溢出诊断细节集中在专项 `compat-testing.md`，不将全局裁切当作修复，也不以请求的截图尺寸代替实际视口证据。

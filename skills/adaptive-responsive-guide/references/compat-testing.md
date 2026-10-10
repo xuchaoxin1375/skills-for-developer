@@ -1,9 +1,9 @@
-# 框架、调试、兼容与前沿（落地清单）
+## 框架、调试、兼容与前沿（落地清单）
 
 > 何时读：选型、定基线、验收、看新特性时。来源：opus 框架/测试/前沿/兼容四章 + `index.html:2339`。
 > 结论一律以 MDN/caniuse/webstatus.dev 实时数据为准。
 
-## 框架速查
+### 框架速查
 
 | 工具 | 响应式能力 |
 |---|---|
@@ -18,7 +18,7 @@ Tailwind 区间显示：只在某段宽度露出用 `hidden md:max-lg:block`（�
 
 工程链：Vite 7 默认 `baseline-widely-available`；`postcss-preset-env` 降级范围语法/嵌套；`browserslist` 统一定目标；ESLint CSS `use-baseline` 拦截不兼容特性。
 
-## 调试测试
+### 调试测试
 
 - DevTools 设备模式（`Ctrl+Shift+M`）、Rendering 面板模拟 `prefers-*/forced-colors/print`、容器查询徽章看命中规则；Safari 数据线调 iPhone，`chrome://inspect` 调 Android。
 - 断点/单位**实测装置**（验收演示可直接抄）：
@@ -30,11 +30,19 @@ Tailwind 区间显示：只在某段宽度露出用 `hidden md:max-lg:block`（�
 - 国内 WebView 基线别拍脑袋：埋点上报 UA + 视口宽分布，配真机回归定（工具见 vConsole/Eruda）。
 - 多视口：Responsively（开源）、Polypane（付费）；云真机：BrowserStack/LambdaTest；国内：微信开发者工具、vConsole/Eruda；审计：Lighthouse。
 - 浏览器自动化优先 playwright（E2E/截图/断言），先 evaluate 探真实 DOM 再断言；CDP（远程调试端口+截图）为回退；手拼无头浏览器截图命令不用。
-- 跨平台必查：Windows 占宽滚动条（`100vw` 只在此暴露）、125%/150% 显示缩放小数 DPR、 Win 雅黑 vs mac 苹方（禁固定高文本容器）。
-- 验收宽度：320/375–430/768/1024/1280/1440/1920+；缩放 200%/400%（400%≈320宽，查双向滚动）；横屏 360 高；键盘弹起；深色/reduce/对比度主题；德语长词/RTL；弱网图片；触屏+鼠标。
+- 目标平台相关时加验：Windows 占宽滚动条、125%/150%显示缩放的小数DPR、Win雅黑与mac苹方的字号差异；受限工作区可以限高滚动，正文不能被固定高度裁掉。
+- 基础宽度与追加条件统一见 `acceptance.md`“验证范围”。按目标与变更风险扩展375–430/1024/1280/1920+、400%缩放、矮横屏、键盘、德语长词/RTL、弱网图片和触屏+鼠标，不将全清单强加给每次局部修补。
 - 性能：图片写宽高防 CLS；LCP 图 `fetchpriority=high` 不懒加载（可 `link preload imagesrcset`）；`media=print` 样式低优先级下载不阻塞；长页 `content-visibility:auto + contain-intrinsic-size`。
 
-## 兼容核心（首个默认支持版本，上线前复核）
+### 截图与溢出诊断
+
+- **实际视口**：截图前读 `innerWidth/innerHeight` 与容器内容盒宽，核对请求值；无头窗口或设备模拟配置可能造成尺寸不符，裁图不能证明媒体查询命中。记录实测宽度，不用同一媒体段的另一宽度冒充原目标。
+- **隐藏规则**：检查显式 `display` 是否覆盖目标控件的 `[hidden]` 隐藏行为；按组件声明可靠隐藏选择器，别让隐藏徽标或操作常显。全局规则须区分普通隐藏与 `hidden="until-found"` 等已有行为。
+- **浏览器隔离**：截图使用独立 profile，优先 Playwright context，结束后关闭自己创建的实例；失败检查 profile 锁和页面错误，不结束用户浏览器。
+- **定位溢出**：按 `overflow-squeeze.md` 读越界 rect 和裁切祖先；必要时临时隐藏半页或插探针二分定位，终验前移除探针与临时规则。
+- **裁切边界**：先处理长串、不可收缩子项和收纳策略，再验内容可达性；`hidden/clip` 都不能代替修复。装饰确需裁切时限定到装饰层并检查焦点环、菜单与 sticky，不将 `html,body{overflow-x:clip}` 作为通用标配。
+
+### 兼容核心（首个默认支持版本，上线前复核）
 
 先认清标签：**Baseline（web.dev/WebDX）**，`Newly available` = 四引擎桌面+移动最新版都支持；`Widely available` = 之后再过 30 个月才叫“广泛可用”。
 引用本文件的“Baseline 20XX”指前者——新近可用 ≠ 可放心上线，关键布局仍要回退。

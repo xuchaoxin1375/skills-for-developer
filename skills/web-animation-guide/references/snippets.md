@@ -1,4 +1,6 @@
-# 可粘贴片段（均含回退/减弱要点，版本以 MDN 为准）
+# 技术片段（集成时补齐回退、减弱与清理）
+
+这些是局部技术片段，并非每段都可独立运行。完整弹窗、按钮忙态与下拉示例集中维护在 [interactions.md](interactions.md)；减弱/清理/验证统一见 [performance-a11y.md](performance-a11y.md)。数值是示例默认值，实际读取项目令牌。
 
 ## Transition（显式属性 + 键盘）
 
@@ -15,14 +17,9 @@
 @keyframes drop { from { transform: translateY(-70px); } to { transform: translateY(0); } }
 ```
 
-## starting-style dialog
+## 弹窗 / 按钮忙态 / 下拉
 
-```css
-dialog { opacity: 0; translate: 0 20px;
-  transition: opacity .4s, translate .4s, display .4s allow-discrete, overlay .4s allow-discrete; }
-dialog[open] { opacity: 1; translate: 0 0; }
-@starting-style { dialog[open] { opacity: 0; translate: 0 20px; } }
-```
+见 [interactions.md](interactions.md) 的完整示例；这里不再维护第二份进出场和焦点代码。
 
 ## Motion Path（回退直线）
 
@@ -145,13 +142,13 @@ async function fly(to) {
 }
 ```
 
-内容层三策略（按观感选）：clip（壳反向 `scale(1/sx,1/sy)` 保像素，揭示框观感；反 scale 锚点必须与壳缩放中心同一点——取终态壳中心在内容层局部坐标里显式设 `transform-origin`，差一点全程错位）/ fade（内容 `opacity 0→1` + 骨架层反向交叉顶中点）/ stretch（直接跟随，许变形）。
+内容层三策略：clip（壳反向 `scale(1/sx,1/sy)` 保像素，揭示框观感；反 scale 锚点必须与壳缩放中心同一点——取终态壳中心在内容层局部坐标里显式设 `transform-origin`，差一点全程错位）/ fade（内容 `opacity 0→1` + 骨架层反向交叉顶中点）/ stretch（直接跟随变形，仅用于明确的形变设计并验全过程）。普通窗口关闭优先稳定布局的淡出/短位移，不默认套用 FLIP 拉伸。
 新元素无 First 改 `opacity+translateY` 入场；删节点先播出场再卸载。
 
 ## 首值不补间（入场触发三选一）
 
 ```css
-/* ① @starting-style（完整写法见文首 dialog 示例；display/overlay 需 allow-discrete） */
+/* ① @starting-style（完整写法见 interactions.md；display/overlay 需 allow-discrete） */
 ```
 ```js
 // ② 挂载后双 rAF 再加类，保证浏览器已完成首帧
@@ -159,13 +156,18 @@ requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')))
 // ③ 入场直接用 @keyframes（fill-mode: both 防延迟闪烁）
 ```
 
-## 高度 auto 展开（禁逐帧动 height）
+## 小区域高度展开（仍会布局）
 
 ```css
-.panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 240ms cubic-bezier(.2,.8,.2,1); }
+.panel { display: grid; grid-template-rows: 0fr; }
 .panel[data-open] { grid-template-rows: 1fr; }
-.panel > div { overflow: hidden; }
-/* 不支持时回退 scaleY（内容会变形）或 max-height 估算法 */
+.panel > div { min-height: 0; overflow: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  @supports (grid-template-rows: 1fr) {
+    .panel { transition: grid-template-rows var(--motion-enter, 200ms) ease-out; }
+  }
+}
+/* 语义开合、inert 与焦点由调用方同步管理；不支持过渡时直接终态。 */
 ```
 
 ## steps() 逐格 / 雪碧图
