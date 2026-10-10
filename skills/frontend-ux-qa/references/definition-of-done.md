@@ -5,7 +5,7 @@
 - [ ] No h-overflow at 320/360/390/480/600/768/834/1024/1180/1280/1440/1920. [L]
 - [ ] Reflow 320-equiv single column, no 2D scroll. [L-07]
 - [ ] axe 0 violations all routes/states. [A]
-- [ ] Text >=4.5:1 (large >=3:1); UI borders/icons >=3:1. [A-01]
+- [ ] Text incl. placeholder/read-only >=4.5:1 (large >=3:1); required UI cues/icons >=3:1 against adjacent colors. Product enhancements separately marked. [A-01]
 - [ ] Label for all controls; placeholder != label. [A-03,F-01]
 - [ ] Name for all link/button; icon-only aria-label. [A-04,A-05]
 - [ ] `<html lang>` correct. [A-06]
@@ -36,10 +36,11 @@
 
 ## Manual
 
+- [ ] Changed color pairs measured on actual composed backgrounds across supported themes/states; complex backgrounds and axe incomplete items resolved; readability checked and evidence recorded. [A-01]
 - [ ] Automated key journeys pass before visual review when applicable; visual-trigger decision is recorded. For layout/interaction/state changes, Agent opened and reviewed screenshots for changed UI states, including action result, close/cancel/focus return, overlap/compression, clipping and responsive controls. Pure copy-only changes may record justified `N/A`. [G-10]
 - [ ] Keyboard-only + focus return; 200%/400% + spacing + 400px height. [A-10,L-12]
 - [ ] Win+Mac; iOS 16px/safe-area/dvh. [P]
 - [ ] IME composing Enter not submit. [F-16]
 - [ ] Dark: no pure b/w, elevation readable, no FOUC. [D-15..D-19]
 
-来源：`references/catalog.md` 验收方法论一节；阈值依据见该节末表。
+来源：`references/catalog.md` 验收方法论一节；阈值依据见该节末表。色对、例外与测量方法见 [对比度与可读性](../../frontend-design/references/contrast-readability.md)。

@@ -1,6 +1,6 @@
 ---
 name: frontend-ux-qa
-description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已有页面找错、Agent 看截图做初步视觉理解、Playwright 用户流程验收、复现定位布局溢出挤压横向滚动、响应式断点、弹窗关闭/焦点回归、CLS/LCP/INP、无障碍 axe 对比度焦点、表单校验 label、深色模式、导航后退、微信 iOS 跨平台、欺骗模式、AGENTS.md UI 约束与 Definition of Done、CI 质量拦截时使用；新建/改版/美化先走 frontend-design。截图按变更风险触发：纯文案且无几何/状态影响可记录 N/A，布局/交互/状态变化必须先自动化再由 Agent 查看关键态截图。覆盖缺陷评审与生成约束两类任务，即使没点名本 skill 也要主动调用。
+description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已有页面找错、Agent 看截图做初步视觉理解、Playwright 用户流程验收、复现定位布局溢出挤压横向滚动、响应式断点、弹窗关闭/焦点回归、CLS/LCP/INP、无障碍 axe 对比度焦点、文字/图标与背景难辨、页面可读性、表单校验 label、深色模式、导航后退、微信 iOS 跨平台、欺骗模式、AGENTS.md UI 约束与 Definition of Done、CI 质量拦截时使用；新建/改版/美化先走 frontend-design。截图按变更风险触发：纯文案且无几何/状态影响可记录 N/A，布局/交互/状态变化必须先自动化再由 Agent 查看关键态截图。覆盖缺陷评审与生成约束两类任务，即使没点名本 skill 也要主动调用。
 ---
 
 # Frontend UX QA（存量 UI 缺陷诊断与验收门禁）
@@ -15,6 +15,7 @@ description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已�
   布局→`L`；假数据极值→`C`；缺状态→`S`；跳动卡顿→`V`；对比度焦点语义→`A`；表单→`F`；URL后退→`N`；动效toast→`I`；间距色彩深色→`D`；Win/Mac/iOS/微信→`P`；约束agent→`G`；欺骗性模式→`H`。
 - 需要可执行检查时读 `scripts/` 下对应脚本（控制台粘贴或进 CI），不要背诵。
 - 需要交付闸门时读 `references/definition-of-done.md`，原文粘贴到 `AGENTS.md`/`DESIGN.md`。
+- 对比度/可读性读取 [共用规范](../frontend-design/references/contrast-readability.md)，按实际背景测量并补测自动未判项；例：图片上白字不能因axe无报错而放行。
 
 ## 模式一：评审存量 UI（Review）
 
@@ -34,7 +35,7 @@ description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已�
 ## 速查阈值（与 catalog 一致）
 
 - CWV：`LCP≤2.5s / INP≤200ms / CLS≤0.1`（75分位，节流冷缓存测；0.08 说法不采纳）。
-- 对比：正文 `≥4.5:1`，大字/UI边框图标 `≥3:1`。
+- 对比：普通文字 `≥4.5:1`，大字 `≥3:1`，必要图标/控件识别线索对相邻色 `≥3:1`；placeholder与只读值不豁免，装饰边框不一概3:1。项目强化与AAA另标，详见共用规范。
 - Reflow：`320px` 单列无二维滚动（即 `1280px@400%`）；文本间距覆盖下无裁切。
 - 目标 `≥24×24`，焦点 `:focus-visible` 且不被遮挡（2.4.11）。
 

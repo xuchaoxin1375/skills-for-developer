@@ -258,14 +258,14 @@ WebAIM Million 2025（100 万首页自动化检测）：50,960,288 错误，均�
 
 | 编号 | 缺陷 | 出现率 2025 | 验收 |
 |---|---|---|---|
-| `A-01` | 低对比文字 | 79.1%（均值29.6处，同比-14.4%） | 正文 ≥4.5:1，大字 ≥3:1，UI 边框/图标 ≥3:1；令牌层预验证色对 |
+| `A-01` | 低对比文字 | 79.1%（均值29.6处，同比-14.4%） | 普通文字≥4.5:1、大字≥3:1、必要边界/图标对相邻色≥3:1，placeholder/只读值不豁免；按[共用规范](../../frontend-design/references/contrast-readability.md)验实际叠层/状态及未判项。重置样式进 `@layer base`，避免无层 `button{color:inherit}` 吞掉文字色工具类 |
 | `A-02` | 图片缺 alt | 55.5% | 信息图写含义，装饰 `alt=""`，功能图述动作非外观 |
 | `A-03` | 表单无标签 | 48.2% | `<label for>/aria-label/aria-labelledby`，placeholder 不算标签 |
 | `A-04` | 空链接 | 45.4% | 必有可访问名，图标加隐藏文本/`aria-label` |
 | `A-05` | 空按钮 | 29.6% | 同上；`×`字符需 `aria-label="关闭"` 且字符 `aria-hidden` |
 | `A-06` | 缺文档语言 | 15.8% | `<html lang="zh-CN">`，异语段落局部 `lang` |
 | `A-07` | ARIA 滥用 | 用量与错误正相关 | No ARIA 优于 Bad ARIA；原生优先，对照 APG |
-| `A-08` | 焦点不可见 | — | `:focus-visible` ≥3:1、周长 2px+；禁裸 `outline:none` |
+| `A-08` | 焦点不可见 | — | `:focus-visible` 可见、不被完全遮挡，作者定义的必要焦点线索对相邻色≥3:1；2px周长等效面积与同一像素聚焦前后≥3:1采用为产品增强（2.4.13 AAA，非AA必需）；禁裸 `outline:none` |
 | `A-09` | 非语义交互 | — | 禁 `<div onClick>` 当控件，一律 button/a |
 | `A-10` | 键盘陷阱/焦点管理 | — | 浮层移入焦点+Tab 循环+Esc+关闭返回触发元 |
 | `A-11` | 仅颜色传达 | — | 加图标/文字/形状，错误不只红边框 |
@@ -545,7 +545,7 @@ Minimal（全空最短）/Typical（真实）/Maximal（上限+中英+长 URL）
 - [ ] No h-overflow at 320/360/390/480/600/768/834/1024/1180/1280/1440/1920. [L]
 - [ ] Reflow 320-equiv single column, no 2D scroll. [L-07]
 - [ ] axe 0 violations all routes/states. [A]
-- [ ] Text >=4.5:1 (large >=3:1); UI borders/icons >=3:1. [A-01]
+- [ ] Text incl. placeholder/read-only >=4.5:1 (large >=3:1); required UI cues/icons >=3:1 against adjacent colors. Product enhancements separately marked. [A-01]
 - [ ] Label for all controls; placeholder != label. [A-03,F-01]
 - [ ] Name for all link/button; icon-only aria-label. [A-04,A-05]
 - [ ] <html lang> correct. [A-06]
@@ -570,6 +570,7 @@ Minimal（全空最短）/Typical（真实）/Maximal（上限+中英+长 URL）
 - [ ] loading/empty/error/forbidden/offline/partial/success-stale; empty has next action; error has retry; refresh keeps data. [S]
 - [ ] Minimal/Typical/Maximal/Pathological per component. [C]
 ### Manual
+- [ ] Changed color pairs measured on actual composed backgrounds across supported themes/states; complex backgrounds and axe incomplete items resolved; readability checked and evidence recorded. [A-01]
 - [ ] Keyboard-only + focus return; 200%/400% + spacing + 400px height. [A-10,L-12]
 - [ ] Win+Mac; iOS 16px/safe-area/dvh. [P]
 - [ ] IME composing Enter not submit. [F-16]
