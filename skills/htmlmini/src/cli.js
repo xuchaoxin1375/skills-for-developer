@@ -133,6 +133,12 @@ if (!EXTRACTORS.includes(extractor)) {
   process.exit(2);
 }
 
+// 终端裸跑（无管道、无文件参数）会无限等 stdin：直接给提示而不是挂起。
+if (source === '-' && process.stdin.isTTY) {
+  console.error('htmlmini: no input (stdin is a terminal). Give a file, a URL, or pipe HTML via stdin. See --help.');
+  process.exit(2);
+}
+
 try {
   const out = await runExtract(source, mode, { extractor });
   if (output) {

@@ -15,6 +15,8 @@ export const DEFAULT_UA =
 const MIN_ARTICLE_CHARS = 50;
 const UI_SWITCH_CHARS = 300;
 const TRAFILATURA_TIMEOUT_MS = 15000;
+// 远程抓取超时：之前无超时，黑洞主机可无限挂起。默认 30s，测试可经 timeoutMs 覆盖。
+export const FETCH_TIMEOUT_MS = 30000;
 
 // UI/文本清单的截断上限：保证输出 token 可控。
 const CAP = {
@@ -52,15 +54,22 @@ function readStdin() {
   });
 }
 
-export async function readSource(source) {
+export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS } = {}) {
   if (source === '-' || source == null) {
     return { html: decodeHtml(await readStdin()), source: 'stdin' };
   }
   if (/^https?:\/\//i.test(source)) {
-    const res = await fetch(source, {
-      headers: { 'user-agent': DEFAULT_UA, 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8' },
-      redirect: 'follow',
-    });
+    let res;
+    try {
+      res = await fetch(source, {
+        headers: { 'user-agent': DEFAULT_UA, 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8' },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (e) {
+      if (e && e.name === 'TimeoutError') throw new Error(`fetch timeout after ${timeoutMs}ms: ${source}`);
+      throw e;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${source}`);
     return { html: decodeHtml(Buffer.from(await res.arrayBuffer())), source };
   }
@@ -163,7 +172,7 @@ function buttonName(doc, el) {
  */
 export function uiSkeleton(doc) {
   const out = [];
-  const title = doc.title || '(no title)';
+  const title = safeTitle(doc) || '(no title)';
   out.push(`# ${title}`);
 
   const headings = [...doc.querySelectorAll('h1,h2,h3,h4,h5,h6')]
@@ -310,7 +319,7 @@ export function uiSkeleton(doc) {
 export function semanticFallback(doc) {
   const root =
     doc.querySelector('main,article,[role="main"]') || doc.querySelector('body') || doc;
-  const out = [`# ${doc.title || '(no title)'}`];
+  const out = [`# ${safeTitle(doc) || '(no title)'}`];
   const headings = [...root.querySelectorAll('h1,h2,h3,h4,h5,h6')]
     .map(collectText)
     .filter(Boolean)
@@ -331,7 +340,18 @@ export function semanticFallback(doc) {
 }
 
 function parseOnce(html) {
-  return parseHTML(html).document;
+  // 空/纯空白输入 linkedom 会产出无 documentElement 的文档，后续读 title 直接抛：归一化。
+  const src = html && html.trim() ? html : '<html><head><title></title></head><body></body></html>';
+  return parseHTML(src).document;
+}
+
+/** linkedom 的 title getter 在畸形文档上可能抛（如只剩 doctype），统一吞掉。 */
+function safeTitle(doc) {
+  try {
+    return doc.title || '';
+  } catch {
+    return '';
+  }
 }
 
 async function extractWithDefuddle(document, url) {
@@ -405,7 +425,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   const document = parseOnce(html);
 
   const finish = (content, used, base = {}) => ({
-    title: base.title ?? document.title ?? '',
+    title: base.title ?? safeTitle(document),
     description: base.description ?? '',
     published: base.published ?? '',
     site: base.site ?? '',
@@ -542,7 +562,7 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto' } = {}) {
+export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', timeoutMs } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -553,7 +573,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     html = forceContent;
     src = 'content';
   } else {
-    const r = await readSource(source);
+    const r = await readSource(source, timeoutMs == null ? {} : { timeoutMs });
     html = r.html;
     src = r.source;
     if (!/^https?:\/\//i.test(src) && src !== 'stdin') {

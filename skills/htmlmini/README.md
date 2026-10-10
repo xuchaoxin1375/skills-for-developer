@@ -134,10 +134,11 @@ claude mcp add htmlmini -- node <仓库>/skills/htmlmini/src/mcp.js
 ## 自检
 
 ```bash
-npm test                        # 内置合成 fixture，17 项断言
-node tests/test-mcp.mjs         # MCP 6 工具 + 别名调用
+npm test                        # smoke 17 + MCP 自检 + 可靠性 36，全内置合成输入与本地回环，无外部网络依赖
 node tests/test-batch.mjs <目录>  # 本地 HTML 目录批量抽查（fixture 不入库）
 ```
+
+远程抓取默认 30s 超时（`fetch timeout after …`），终端裸跑无管道时直接提示而不挂等 stdin。
 
 ## 从 v0.1 迁移
 
