@@ -21,6 +21,8 @@
 
 每条缺陷统一四要素：**现象、根因、复现、验收**，编号可直接写入 Issue/`AGENTS.md`。
 
+本目录提供专项候选与诊断方法，不要求每次检查全部类别、状态、宽度和平台。按产品支持范围与改动影响面选择矩阵，相关断点边界和已知缺陷须覆盖；具体数值样本不自动成为所有项目的必需集合。审美建议只有属于确认的设计要求时才作为阻断条件。
+
 | 前缀 | 类别 | 核心关注 | 可自动化程度 |
 |---|---|---|---|
 | `L` | 布局与响应式 | 宽度变化下的溢出、挤压、堆积 | 中（溢出脚本） |
@@ -453,11 +455,11 @@ flowchart LR
     G --> H["合并"]
 ```
 
-闸 1~3 全自动阻断合并；闸 4~5 需 Playwright+Storybook 投入；闸 6 不可省（焦点顺序、文案、空引导自动化无法判）。禁 `overflow:hidden` 掩盖，回根因修复。
+上图是 UI 专项组织示意，不要求每次改动执行全部工具、路由和状态。必需检查按 [唯一等级矩阵](../../ai-verified-delivery/references/levels-and-gates.md)、实际影响面与产品支持范围选择；不可自动判断的适用 AC 保留人工或明确指定的判断记录。机器与人工结果接入同一交付汇总，不由本节另定合并/完成政策。禁 `overflow:hidden` 掩盖，回根因修复。
 
 ### 动作一：宽度连续扫描（治 L）
 
-非断点截图，而是连续拖动（缺陷常在断点之间）。矩阵：320（Reflow 基准=1280@400%）/360/390/414/480/600/768/834/1024/1180（最易忽略笔记本窄窗）/1280/1440/1920/2560+（查拉伸）。
+在相关区间连续拖动或步进探测，不能用少量断点截图冒充连续适配验证。候选样本：320（Reflow 基准=1280@400%）/360/390/414/480/600/768/834/1024/1180/1280/1440/1920/2560+；按支持范围选取，并补实际断点两侧、等值和问题宽度。
 
 控制台定位脚本：
 
@@ -502,34 +504,22 @@ Minimal（全空最短）/Typical（真实）/Maximal（上限+中英+长 URL）
 
 ### 动作四：门禁分层（smoke/quick/full，快慢分离）
 
-全量门禁越长跑得越少。按“改什么跑什么”分三层，默认最轻，全量按需（本轮实测：smoke 3.1s / quick 8.4s / full 54.2s）：
+快慢分离的实施方法读 [测试环境与 CI](../../web-app-testing/references/environment-and-maintenance.md)，执行模式和汇总判定读 [验证入口规范](../../ai-verified-delivery/references/verify-and-templates.md)。`smoke/quick/full` 是项目可选命名，不与 L0–L4 一一映射，也不预设通用命令、宽度或耗时预算。
 
-| 层 | 命令 | 内容 |
-|---|---|---|
-| smoke（默认） | 不传参 | 1440 单宽纯静态：溢出/宽控件/图标 + 合同静态（纯 evaluate，无滚动、无开盖、无弹窗） |
-| quick | `--quick` | smoke + 390 冒烟（单行+开盖）+ 吸顶 + 开盖 + 设置窗 |
-| full | `--full` | 三宽全量：另含视图对等/筛选深测/抽屉/对比专注+整窗/拖拽与骨架档 |
-| 定向 | `--only=动画 --widths=1440` | 语义标签（动画/布局/筛选/卡片/拖拽，可混写原文子串）：改窗口动画只验铺满+关闭，不跑拖拽 |
-
-四条铁律：
-
-1. 省时间靠跳整块等待+动作，不靠少打印：门控以“块”为单位（交互冒烟一块、重型一块），`--only` 点名时无视层级单独跑；只过滤打印不跳动作等于没省。
-2. 新行为先补断言再跑门禁：曾出现对比整窗铺满/还原零覆盖——覆盖不到改动点的门禁跑再多也验不到。
-3. 分块后共享状态基线独立取：铺满键会清拖拽内联尺寸，还原基线必须取拖拽前默认值，不复用块内变量（曾因此全量 3 项误报）。
-4. 无差值断言直接跳过并注明：窄屏默认尺寸即铺满时变大断言恒假，跳过而非放宽阈值；尾部打印层/宽/only/跳过数/用时，速度可感知才有人用。
+本节只保留 UI 分组注意事项：按受影响入口/控件/状态选择动作块；定向过滤必须实际减少无关动作，不只过滤打印；每块独立建立状态和几何基线，避免上一个动作污染本块；没有产品承诺的差值不硬套断言，但仍验证该状态实际承诺。跳过/不适用与缺证据统一按汇总政策记录，不能静默漏掉必需场景。
 
 ### 动作五：新功能正式交付路线（微调保"没坏"，新功能保"第一次就是对的"）
 
-微调跑门禁即可；新功能引入的是新状态，门禁只保旧状态，必须先设计验收链再写功能，把 QA 留在交付前、不转嫁给用户。
+本节只维护含 UI 的新功能专项验收；整体交付由 [ai-verified-delivery](../../ai-verified-delivery/SKILL.md)负责，Web 测试范围与编写时机由 [web-app-testing](../../web-app-testing/SKILL.md)负责。先定义新状态与用户结果，再落实对应检查，不把旧用例通过当作新行为已验。
 
-1. **验收链先行**：动工前把用户旅程写成可跑脚本（机器人用户），覆盖正程**与回程**（停止后/重启后/关窗后）、**瞬间态与等待态**（启动中锁死、就绪自动切）。失败输出要像用户报障一样可读（当时文案/地址切片），一眼定位。
+1. **验收链先行**：先定义用户旅程与预期结果，自动化脚本可先于或伴随实现。按承诺覆盖正程**与回程**（停止后/重启后/关窗后）、**瞬间态与等待态**（启动中锁死、就绪自动切）。失败输出包含动作、实际状态与预期，便于定位。
 2. **状态矩阵**：每个可点元素列出何时可点/何时禁/禁了说什么。禁用必须带原因和去向（title/toast），不许哑巴禁用；防重复点（已在跑则锁死并点名），只碰自己拉起的进程（手动的只报冲突不碰）。
 3. **闭环**：每个动作回答"然后呢"——做完必须一键到达使用现场，并一句话说明好处。没有闭环的功能不算做完。
 4. **口径统一**：同一事实多处显示时收敛到一个状态函数（如 running/starting/manual/off），所有 UI 调它；**中间态是独立态**，不许把"还没好"说成"离线"，不许在中间态指用户去做注定失败的动作。
-5. **测试分层**：门禁只放快速/稳定/高信号的；纯逻辑桩（最难复现的状态：如"在跑+端口未开"）可进默认层，毫秒级无副作用；有副作用的（真拉进程/真删改）走独立验收脚本，自建自删，不进门禁。测试是信息，门禁是裁决。
+5. **测试分层**：编辑时默认入口优先快速/稳定/高信号检查；纯逻辑桩可验证难复现的局部状态。有隔离副作用的真实进程、API/数据库集成走独立测试组，自建资源并清理，按需求纳入合并/发布前完整验收汇总，不因耗时或副作用排除必需验证。前后端用例与环境实施读 [web-app-testing](../../web-app-testing/SKILL.md)，交付检查强度遵循 [唯一等级矩阵](../../ai-verified-delivery/references/levels-and-gates.md)。快速检查通过不代表完整交付通过。
 6. **真目标验证**：替用户拼命令/调工具时，用真实目标跑一遍（如真服务绑定端口），不只看"进程存活"。自制夹具的宽容会掩盖真 bug（曾因此放行坏参数：夹具容忍多余 `--`，真目标直接丢端口）。
 7. **截图验证**：先用 Playwright 等工具执行关键动作并断言用户结果；能自动发现的问题先修复。随后由 Agent 实际打开并理解空闲/运行/抽屉/预览窗等关键态截图，检查按钮响应结果、弹窗关闭与焦点回归、挤压遮挡、溢出裁切和响应式操作区。截图验收不是图片存档、死代码图片处理或像素相似度通过；自动化失败时截图只能作诊断证据，不能放行。
-8. 交付标准：验收链全绿 + 门禁对应层全绿 + 已按变更风险记录 Agent 关键态截图结论或有理由的 `N/A` + 文档同步（行为 + 决策记录，回答“为什么这样拼/这样分态”）。纯文案且无几何/状态影响的修正不强制截图；可能造成换行、挤压、弹窗或操作变化的改动不得套用该豁免。
+8. UI 专项结果纳入同一项目报告：适用用户链路和 UI 检查的实际结果、按 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md)取得的截图判断或有理由的不适用、相关行为/设计文档。总体是否完成由交付政策判定，不以 UI 单项通过代替全功能验收。
 
 程序交付场景（打包/安装/CLI 形态）的对应规则见 skill `lightweight-app-builder`（`quality-gates.md` 测试策略与验收清单、`engineering-standards.md` 界面状态与文案纪律）。
 
@@ -537,45 +527,9 @@ Minimal（全空最短）/Typical（真实）/Maximal（上限+中英+长 URL）
 
 静态 `eslint-plugin-jsx-a11y/vuejs-accessibility`；样式 `stylelint+declaration-strict-value`（D-02/G-09）；运行时 `axe-core/@axe-core/playwright/addon-a11y/pa11y-ci`；插件 axe DevTools/WAVE/Lighthouse；性能 Lighthouse CI + `web-vitals` RUM；视觉 Playwright 截图比对（免费自托管，Chromatic/Argos 备选）；真机自备 Win+Mac+iOS+低端 Android；对比度 WebAIM Checker/`culori` CI。国内：npm `registry.npmmirror.com`，`PLAYWRIGHT_DOWNLOAD_HOST` 指镜像；Win 注意 `core.autocrlf` 误判快照。
 
-### Definition of Done（粘贴到 AGENTS.md/DESIGN.md）
+### Definition of Done（UI 清单入口）
 
-```markdown
-## Definition of Done (UI)
-### Blocking (MUST, CI)
-- [ ] No h-overflow at 320/360/390/480/600/768/834/1024/1180/1280/1440/1920. [L]
-- [ ] Reflow 320-equiv single column, no 2D scroll. [L-07]
-- [ ] axe 0 violations all routes/states. [A]
-- [ ] Text incl. placeholder/read-only >=4.5:1 (large >=3:1); required UI cues/icons >=3:1 against adjacent colors. Product enhancements separately marked. [A-01]
-- [ ] Label for all controls; placeholder != label. [A-03,F-01]
-- [ ] Name for all link/button; icon-only aria-label. [A-04,A-05]
-- [ ] <html lang> correct. [A-06]
-- [ ] :focus-visible present, never obscured. [A-08,L-10]
-- [ ] No div/span onClick as control. [A-09]
-- [ ] img/video/iframe sized; no global img{width:auto}. [V-01,V-02]
-- [ ] Lighthouse A11y>=95; CLS<=0.1; LCP<=2.5s; INP<=200ms (throttled cold). [V]
-- [ ] Tokens only, no hardcoded color/space/size/radius/duration. [D-02,G-09]
-### Blocking (NEVER)
-- [ ] NEVER outline:none w/o :focus-visible. [A-08]
-- [ ] NEVER user-scalable=no/maximum-scale=1. [L-13]
-- [ ] NEVER fixed width on layout containers. [L-01]
-- [ ] NEVER nowrap on UGC. [L-03]
-- [ ] NEVER overflow:hidden on text/interactive. [L-09]
-- [ ] NEVER disabled-button as validation. [F-05]
-- [ ] NEVER block paste. [F-10]
-- [ ] NEVER hover-only. [I-01]
-- [ ] NEVER animate w/h/top/left/margin. [V-05]
-- [ ] NEVER nested modals/alert/confirm/prompt. [N-07]
-- [ ] NEVER gradient text/emoji headings/full glass. [D-06,D-13]
-### States & fixtures
-- [ ] loading/empty/error/forbidden/offline/partial/success-stale; empty has next action; error has retry; refresh keeps data. [S]
-- [ ] Minimal/Typical/Maximal/Pathological per component. [C]
-### Manual
-- [ ] Changed color pairs measured on actual composed backgrounds across supported themes/states; complex backgrounds and axe incomplete items resolved; readability checked and evidence recorded. [A-01]
-- [ ] Keyboard-only + focus return; 200%/400% + spacing + 400px height. [A-10,L-12]
-- [ ] Win+Mac; iOS 16px/safe-area/dvh. [P]
-- [ ] IME composing Enter not submit. [F-16]
-- [ ] Dark: no pure b/w, elevation readable, no FOUC. [D-15..D-19]
-```
+唯一模板见 [definition-of-done.md](definition-of-done.md)。本节不保留内联副本；按适用范围纳入项目完成条件，项目快照注明来源与版本。截图政策不在模板另定，统一引用视觉验收。
 
 阈值依据：320px=1.4.10 基准；4.5:1/3:1=1.4.3/1.4.11 AA；CWV 按 75 分位；A11y≥95 仅自动项不等于合规；须节流冷缓存测；1180=最易崩窄窗；400 高=暴露固定头。
 

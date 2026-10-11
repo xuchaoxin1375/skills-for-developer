@@ -4,6 +4,8 @@
 
 本文是维护决策说明。实际执行时读取对应 skill 的当前正文、项目规则及有效用户授权；本文不新增操作权限，也不替代各 skill 的具体执行规范。
 
+仓库维护入口见 [skill-governance.md](skill-governance.md)，自有 skill 的正文约束与语言正本见 [skill-content-guidelines.md](skill-content-guidelines.md)。本文保留各流程的分工与选择理由，不复制通用写作或治理规则。
+
 ### 职责与关联
 
 四个 skill 围绕同一生命周期协作，但主要输入、判断依据和交付物不同。

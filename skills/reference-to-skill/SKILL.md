@@ -12,6 +12,8 @@ description: >
 
 把资料变成会改变代理决策的指引：**来源可追溯、规则可执行、适用范围清楚、验证结论诚实。**输出可以是有依据的建议，也可以是在授权范围内修改的 skill；不以篇幅增长或 MUST 数量衡量改善。
 
+本仓库的正文组织、约束强度与语言使用 [内容与语言规范](../skill-authoring-sync/references/skill-content-guidelines.md)；本 skill 保留来源提炼与裁决流程，不复制一套通用写作标准。
+
 ## 边界与分工
 
 - 多来源比较、从材料设计新 skill、对既有 skill 做整体审查与改进：用本 skill。

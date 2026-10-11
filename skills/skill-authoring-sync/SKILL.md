@@ -3,7 +3,7 @@ name: skill-authoring-sync
 description: >
   在 agent harness 中新建自定义 skill 并同步到真源仓库集中管理。
     包括skill真源提交操作,skill真源治理规则定义和修改;
-  当用户要求新建 skill、询问是否建议创建skill时给出肯定回答、把 skill 安装到 harness、或复盘/同步/分发/校验已有 skill 时使用此 Skill。
+  当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、或复盘/同步/分发/校验已有 skill 时使用此 Skill。
 ---
 
 # Skill 新建与真源同步规范
@@ -18,6 +18,8 @@ description: >
 
 **适用范围**：各 agent harness（OpenCode / Codex / Claude / Agents 通用 / dsh）的自定义 skill。
 分发与校验统一走仓库 `scripts/` 下的链接脚本，不手写零散命令。
+
+维护本仓库先读 [治理规范](references/skill-governance.md)；职责设计、正文约束与语言风格按 [内容与语言规范](references/skill-content-guidelines.md)。本 skill 继续维护真源、路径、索引和分发规则，不另复制写作规范；新建前核对邻近能力，适合扩展已有 skill 时不强行新建。
 
 ---
 
@@ -38,6 +40,7 @@ skills-for-developer/
 ```
 
 - 必须：`<skill-name>` 使用 kebab-case 小写英文（如 `scripting-best-practices`）。
+- 推荐：名称简短、易理解，不把职责全称堆进名字；可用 `app` 等常见缩写，避免难懂的自造缩写。详细职责写入 description。
 - 必须：`SKILL.md` 以 frontmatter 开头，含 `name`（与目录名一致）与
   `description`（写清触发条件：什么请求下加载本 skill）。
 - 必须：新增/修改 skill 时同步更新仓库 `README.md` 的“Skill 目录”检索表，
