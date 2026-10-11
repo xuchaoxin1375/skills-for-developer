@@ -16,6 +16,7 @@ description: >
 1. MCP 工具（已配置时）：`htmlmini_extract_file(path, mode?, extractor?)` / `htmlmini_extract_url(url, mode?, extractor?)` / `htmlmini_extract_html(html_content, mode?, extractor?)`
    - 旧拼写 `htmmini_*` 是兼容别名，行为相同；新配置一律用 `htmlmini_*`。
 2. CLI：`htmlmini <文件|URL|stdin> [--mode <模式>] [--extractor <引擎>]`（详见本目录 `README.md`；支持 `--completion bash|powershell`）。
+   - CLI 不在 PATH 时用 `node <本 skill 目录>/src/cli.js <同样参数>`，无需全局安装。例：`htmlmini` 命令报无法识别，直接 node 跑本 skill 目录里的 cli.js。
 
 ## 模式选择
 
@@ -32,7 +33,7 @@ description: >
 
 ## 动态页流水线（静态抓取不够时）
 
-`htmlmini_extract_url` 只做静态抓取。JS 重度渲染 / 被反爬拦截的页面：先用 `resilient-browser-fetch` 的 `save_page` 保存渲染后 HTML，再用 `htmlmini_extract_file` 读该文件（同目录 `<name>.html.meta.json` 会被自动利用，无需手动传 URL）。
+`htmlmini_extract_url` 只做静态抓取。抓 URL 报 403/超时：先走 `network-access` 双路探测（直连+代理并行 curl，正文落盘），用胜出路线落盘的正文按文件模式提取，不按 URL 重抓；两路皆取不到可用正文才用 `resilient-browser-fetch` 的 `save_page` 保存渲染后 HTML，再用 `htmlmini_extract_file` 读该文件（同目录 `<name>.html.meta.json` 会被自动利用，无需手动传 URL）。例：直连 403、代理 200 落盘，直接提取该文件，不启浏览器。
 
 ## 不用 htmlmini 的情况（选型结论）
 
@@ -41,6 +42,11 @@ description: >
 | office/pdf/音视频转 Markdown | `markitdown`，htmlmini 只做 HTML |
 | 批量新闻正文 + 只要最高精度且有 Python | `pip install trafilatura` 后 htmlmini `auto` 会自动用上，无需换工具 |
 | 动态交互页要"可操作结构"而非文本摘要 | 浏览器可访问树（Playwright 类 MCP），而非静态提取 |
+
+## 自检
+
+- CLI 缺失时是否用 `node` 跑本 skill 目录的 `cli.js`，而非找全局安装？
+- URL 抓取 403/超时，是否先双路探测落盘、按文件模式提取，而非直接上浏览器渲染？
 
 ## 输出后
 
