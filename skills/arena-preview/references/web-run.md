@@ -65,4 +65,4 @@ python3 -m http.server 8000
 
 ## 截图验证（条件允许）
 
-跑起来后可用 `frontend-design` 的 `scripts/screenshot.mjs` 截三断点（跨 skill 调用，路径按本机实际安装位），截图存预览报告旁。
+跑起来后可用 `frontend-design` 的 `scripts/screenshot.mjs` 截基础宽度概览（跨 skill 调用，路径按本机实际安装位），截图存预览报告旁。预览截图用于展示；需要据此作 UI 验收结论时，再按 [视觉验收协议](../../ai-verified-delivery/references/visual-acceptance.md)补取景、状态、断言与实际查看证据。

@@ -18,18 +18,18 @@
 | `skills/tech-learning-research` | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级 | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison |
 | `skills/markdown-style` | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法；文档合并与多文档整合定稿后走本规范收尾；skill 指令内容与语言按仓库写作规范 | 排版、风格迁移、规范格式、统一标题、markdown lint、format、文档合并、文档整合、章节合并、统稿 |
 | `skills/lightweight-app-builder` | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、技术选型、打包签名分发，六步流程 | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、打包分发 |
-| `skills/frontend-design` | Web/桌面小工具界面设计：任务、页面结构、令牌、通用交互与整体交付；统一文字/图标对实际背景的对比度与可读性规范；线框接入 adaptive-responsive-guide，动效设计查 motion.md、技术查 web-animation-guide，存量深查转 frontend-ux-qa | 界面丑、布局乱、美化、适配手机、加载动画、文字/图标难辨、对比度、页面可读性、新建改版、交付验收、可用性、UX |
-| `skills/frontend-ux-qa` | 存量前端 UI 缺陷诊断与验收门禁：先跑 Playwright 用户流程，再由 Agent 查看关键态截图做初步视觉理解；对比度复用共用规范，测实际背景/状态并补测自动未判项；按风险分层，覆盖 `L/C/S/V/A/F/N/I/D/P/G/H`、溢出/CLS 脚本与 DoD CI 门禁；前后端测试实施按需转 web-app-testing | 布局溢出、横向滚动、弹窗关闭、焦点回归、文字/图标与背景难辨、对比度、页面可读性、截图验收、Agent 视觉理解、Playwright、UI 验收门禁、axe、DoD、CI 拦截 |
+| `skills/frontend-design` | Web/桌面小工具界面设计：任务、页面结构、令牌、通用交互与整体交付；共用对比度与截图协议，局部验收优先特写；线框接入 adaptive-responsive-guide，动效设计查 motion.md、技术查 web-animation-guide，存量深查转 frontend-ux-qa | 界面丑、布局乱、美化、适配手机、加载动画、文字/图标难辨、对比度、页面可读性、新建改版、交付验收、可用性、UX |
+| `skills/frontend-ux-qa` | 存量前端 UI 缺陷诊断与验收门禁：先跑 Playwright 用户流程，再按共用截图协议查看关键态，局部缺陷优先特写；对比度测实际背景/状态并补测自动未判项；按风险分层，覆盖 `L/C/S/V/A/F/N/I/D/P/G/H`、溢出/CLS 脚本与 DoD CI 门禁；前后端测试实施按需转 web-app-testing | 布局溢出、横向滚动、弹窗关闭、焦点回归、文字/图标与背景难辨、对比度、页面可读性、截图验收、Agent 视觉理解、Playwright、UI 验收门禁、axe、DoD、CI 拦截 |
 | `skills/web-app-testing` | 前后端 Web 测试规划、编写与维护：有效断言、真实 API/存储、隔离与 CI，含幂等/副作用和兼容回归；工程设计按应用治理，交付证据按 ai-verified-delivery | Web 测试、该测什么、什么时候写测试、单元/组件/集成/E2E、API 契约、数据库、权限回归、幂等/兼容回归、过度 Mock、测试隔离、不稳定测试、CI 分层 |
-| `skills/arena-preview` | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告 | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看 |
-| `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味；交付对比度复用 frontend-design 共用规范 | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique |
+| `skills/arena-preview` | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告；展示截图用于验收时转共用协议 | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看 |
+| `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味；对比度与截图行为复用共用规范，保留整体品味和模板覆盖评审 | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique |
 | `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 常见错误预防与排查：编码与输出保真、profile/开发测试例外、错误和退出码、原生参数、精确路径/写入格式与函数输出；兼顾引号、别名、Junction | Windows 读文件、Get-Content/type/cat、UTF-8、NoProfile、profile、PowerShell 开发测试、退出码、原生参数、Start-Process、LiteralPath、管道输出、中文乱码、BOM、引号、别名、junction |
 | `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制、搜索/抓取请求节奏与 429 冷却、输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
-| `skills/web-animation-guide` | Web动画技术实现：选型、示例、退出布局保持、中间帧验证、打断清理、兼容、性能与减弱动效；读取项目令牌，与 frontend-design 分工维护 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
-| `skills/adaptive-responsive-guide` | 响应式专项：视口/容器阈值、clamp流体、Flex/Grid、媒体、操作收纳、滚动与浮层场景、范围化验收；可独立使用，与 frontend-design 合并交付，动效引用现有规则来源 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
+| `skills/web-animation-guide` | Web动画技术实现：选型、示例、退出布局保持、中间帧验证、打断清理、兼容、性能与减弱动效；读取项目令牌，截图取景与查看复用共用协议，与 frontend-design 分工维护 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
+| `skills/adaptive-responsive-guide` | 响应式专项：视口/容器阈值、clamp流体、Flex/Grid、媒体、操作收纳、滚动与浮层场景、范围化验收；可独立使用，与 frontend-design 合并交付，动效与截图引用共用规则 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
 | `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
-| `skills/ai-verified-delivery` | AI 编程质量与规格驱动可验证交付：规格/AC/任务到证据追踪，唯一风险等级/状态、视觉验收、复核与适用发布恢复；例外和批准事实分开，工程设计/测试按需协作 | AI coding 质量、spec、SDD、需求拆解、验收标准、门禁、verify、DoD、L0-L4、RTM、截图验收、复核、完成报告、例外、风险接受、发布恢复 |
-| `skills/admin-console-design` | 后台控制台设计与实现：默认fable整体主题或完整局部模板，按需补sonnet列宽/撤销与gpt导入/验收；附设计与交互功能目录、源码、依赖边界与预览快照，默认继承设计并接业务，标明参考缺口；令牌接入共用对比度规范 | 后台面板、管理后台、admin、console、dashboard、侧栏折叠悬停、列表编辑批量、设置页、向导、Cloudflare-inspired |
+| `skills/ai-verified-delivery` | AI 编程质量与规格驱动可验证交付：规格/AC/任务到证据追踪，唯一风险等级/状态；维护共用截图触发、特写/视口/全页取景、实际查看与视觉证据协议；复核与适用发布恢复，工程设计/测试按需协作 | AI coding 质量、spec、SDD、需求拆解、验收标准、门禁、verify、DoD、L0-L4、RTM、截图验收、特写、复核、完成报告、例外、风险接受、发布恢复 |
+| `skills/admin-console-design` | 后台控制台设计与实现：默认fable整体主题或完整局部模板，按需补sonnet列宽/撤销与gpt导入/验收；附功能目录、源码、依赖边界与快照，默认继承设计并接业务，标明参考缺口；对比度与截图复用共用规范 | 后台面板、管理后台、admin、console、dashboard、侧栏折叠悬停、列表编辑批量、设置页、向导、Cloudflare-inspired |
 | `skills/skill-patcher` | 存量 skill 实战补丁：把真实漏验、误判或执行失败修成增量条目；一般写作审查按编写入口，内容与语言复用仓库规范 | 实战复盘、修补 skill、真实逃逸、补丁措辞审查、去污染、项目无关性 |
 | `skills/reference-to-skill` | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进，内容写作复用仓库规范 | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill |
 | `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |
@@ -46,6 +46,7 @@
 - [更新日志](CHANGELOG.md)：迁移历史与重要变更记录。
 - [Skill 编写、提炼与维护协作](docs/skill-authoring-workflow.md)：`reference-to-skill`、社区版 `skill-creator`、`skill-patcher` 与 `skill-authoring-sync` 的职责、引用方式和维护取舍，含社区版/系统版区分与验证边界。
 - [测试相关 Skill 的职责与维护边界](skills/web-app-testing/references/skill-boundaries.md)：测试设计、交付等级与证据、UI 专项、工具打包和仓库 CI 的唯一维护位置；按需协作并复用计划与有效证据。
+- [共用截图与视觉验收协议](skills/ai-verified-delivery/references/visual-acceptance.md)：截图触发、取景优先级、采集、实际查看与证据的唯一维护位置；相关 skill 引用，不各自维护完整截图规则。
 
 ## Harness 映射（Win / Linux 路径同构，只是家目录写法不同）
 

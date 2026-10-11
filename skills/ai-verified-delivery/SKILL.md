@@ -155,7 +155,7 @@ L0/L1 可简报：改动与范围、实际验证及证据、未做与风险、�
 - [等级与门禁](references/levels-and-gates.md)：定级时读；唯一等级矩阵、风险分、测试设计与流程评估。
 - [验证入口与模板](references/verify-and-templates.md)：建门禁、编排检查、报告、交接或审查证据时读。
 - [Web 验收](references/web-acceptance.md)：浏览器交互、截图、异常与环境证据时读。
-- [自动化截图与 Agent 视觉验收](references/visual-acceptance.md)：需要固定截图环境、视觉检查、Agent 查看图像、基线治理或视觉门禁时读。
+- [自动化截图与 Agent 视觉验收](references/visual-acceptance.md)：截图行为的共用正本；需要决定截图触发、特写/视口/全页取景、固定环境、实际查看、基线治理或视觉门禁时读。
 - [Playwright 环境准备](references/playwright-setup.md)：浏览器缺失、启动失败或下载受阻时读。
 
 skill 自身的索引、链接与分发验证走真源治理流程，不属于每次软件交付的门禁。

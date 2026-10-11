@@ -12,7 +12,7 @@
 | 交付状态、报告事实与授权边界 | [ai-verified-delivery 正文](../../ai-verified-delivery/SKILL.md) | 测试结果作为输入，不另定义总体完成状态 |
 | 例外字段、风险接受与正式批准事实 | [交付例外与责任](../../ai-verified-delivery/references/spec-driven-delivery.md#例外与责任) | 运行/安全例外沿用项目权限与同一字段，不把原失败改成通过 |
 | 验证入口契约、证据版本、零用例/跳过/重试判定 | [验证入口与模板](../../ai-verified-delivery/references/verify-and-templates.md) | 测试 CI 与专项 job 接入同一汇总政策 |
-| 截图触发、采集、实际查看与视觉证据 | [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md) | UI QA 提供判断内容，复用证据格式与触发政策 |
+| 截图触发、取景优先级、采集、实际查看与视觉证据 | [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md) | 设计、响应式、动效与 UI QA 提供判断内容，复用取景、证据与触发政策 |
 | UI 缺陷分类、诊断与专项验收方法 | [frontend-ux-qa/catalog](../../frontend-ux-qa/references/catalog.md) | 测试计划引用相关类别；不把完整 UI 扫描强加给每个后端任务 |
 | UI 完成清单模板 | [UI DoD](../../frontend-ux-qa/references/definition-of-done.md) | catalog 只链接模板；按适用范围纳入总体 DoD，不另判整个产品完成 |
 | 界面设计与呈现规则 | [frontend-design](../../frontend-design/SKILL.md)及其领域路由 | 测试验证产品已确定的设计，不通过测试规范重选设计 |

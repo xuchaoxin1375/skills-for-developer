@@ -36,6 +36,7 @@ Tailwind 区间显示：只在某段宽度露出用 `hidden md:max-lg:block`（�
 
 ### 截图与溢出诊断
 
+- **取景与查看**：按 [视觉验收协议](../../ai-verified-delivery/references/visual-acceptance.md)选择特写、视口或长页分段，共用有效证据；本节只补响应式诊断，不另定截图优先级。
 - **实际视口**：截图前读 `innerWidth/innerHeight` 与容器内容盒宽，核对请求值；无头窗口或设备模拟配置可能造成尺寸不符，裁图不能证明媒体查询命中。记录实测宽度，不用同一媒体段的另一宽度冒充原目标。
 - **隐藏规则**：检查显式 `display` 是否覆盖目标控件的 `[hidden]` 隐藏行为；按组件声明可靠隐藏选择器，别让隐藏徽标或操作常显。全局规则须区分普通隐藏与 `hidden="until-found"` 等已有行为。
 - **浏览器隔离**：截图使用独立 profile，优先 Playwright context，结束后关闭自己创建的实例；失败检查 profile 锁和页面错误，不结束用户浏览器。

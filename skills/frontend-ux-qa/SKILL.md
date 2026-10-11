@@ -9,7 +9,7 @@ description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已�
 
 分工：新建/改版/美化（线框、令牌、UX 文案）先调 `frontend-design`；本 skill 只做**查错与门禁**，不重复设计决策。
 
-需要规划前后端测试、编写业务回归或建立真实 API/数据库测试环境时按需读 [web-app-testing](../web-app-testing/SKILL.md)；本 skill 继续负责 UI 缺陷与体验专项，共用计划和有效证据，不重新启动测试或交付全流程。快慢分层不另定放行政策；完整交付按 [唯一等级矩阵](../ai-verified-delivery/references/levels-and-gates.md)，截图触发和证据按 [视觉验收](../ai-verified-delivery/references/visual-acceptance.md)。
+需要规划前后端测试、编写业务回归或建立真实 API/数据库测试环境时按需读 [web-app-testing](../web-app-testing/SKILL.md)；本 skill 继续负责 UI 缺陷与体验专项，共用计划和有效证据，不重新启动测试或交付全流程。快慢分层不另定放行政策；完整交付按 [唯一等级矩阵](../ai-verified-delivery/references/levels-and-gates.md)，截图触发、取景与证据按 [视觉验收](../ai-verified-delivery/references/visual-acceptance.md)，局部缺陷优先特写，遮挡与滚动关系保留视口上下文。
 
 ## 何时读什么（渐进加载）
 
