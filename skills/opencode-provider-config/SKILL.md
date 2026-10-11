@@ -91,11 +91,17 @@ opencode service start   # set env 本身也会重启服务
 3. `opencode run -m <provider>/<model> "reply with exactly: OK"` —— 真实调用。首次调用经代理可能较慢，短超时会误判；超时则放后台加长超时重跑，同时 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。
 4. 用 `max_tokens=512` 直接打 `/v1/chat/completions` 测每个模型：核对 `choices[0].message.content` 非空、`finish_reason`（reasoning 模型小 max_tokens 会 `length` 且 content 为 null，属正常，说明思考占用了输出预算）、`usage` 里 `reasoning_tokens`。
 
+## OpenCode 官方套餐（opencode / opencode-go）
+
+- 官方免费与 Go 订阅是现成 provider：凭据经 TUI `/connect` 写入 `~/.local/share/opencode/auth.json`（`opencode` / `opencode-go` 条目），模型引用 `opencode/<id>`、`opencode-go/<id>`；opencode.ai 不放行 `NO_PROXY` 即自动走服务端代理。
+- 同名模型先枚举再选 ID：`opencode models | findstr <系列名>`。例：免费变体带 `-free` 后缀，普通变体报 "Insufficient account funds" 需 Console 余额；`Contributor` 变体低价但提示词会用于模型训练。
+
 ## 约束/规范
 
 - 密钥只写入 `service set env` 与配置引用（`env` 变量名），**不写进 `opencode.json` 明文**（`settings.apiKey` 仅在用户明确要求时才考虑）。
 - 修改既有 `opencode.json` 前先读全文，保留无关配置。
 - `service set env`、`mcp add` 等会重启服务的操作不要连排在同一条命令里，逐条执行。
+- **必须**：`NO_PROXY` 必须逗号分隔；接手既有配置先核验分隔符，空格分隔一律改正。例：`localhost 127.0.0.1 ::1` 的空格写法可能不被 HTTP 客户端解析，放行域名静默走代理。
 - skill 正文与示例中不得出现真实密钥、真实域名（用 `<…>` 占位）与本机绝对路径。
 
 ## 自检
@@ -103,6 +109,8 @@ opencode service start   # set env 本身也会重启服务
 - [ ] 模型列表经过筛选，只配对话模型
 - [ ] 本地直连不通时代理已持久化到服务端（非仅 shell export）
 - [ ] `NO_PROXY` 含 `localhost,127.0.0.1`；多入口分流时直连域名已加入（按域名分流，不按 provider 配代理）
+- [ ] `NO_PROXY` 已核验为逗号分隔，空格分隔的既有值已改正？
+- [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体再选 ID？
 - [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染
 - [ ] `limit` 参数来自 models.dev 或官网，非臆造
 - [ ] 三步验证（get env → models → run）全部通过

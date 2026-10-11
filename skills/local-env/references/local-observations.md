@@ -61,6 +61,8 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 已创建登记文件 `~/.config/proxy-resources.json`（`verge-mihomo-7897` 为默认条目，`source: registry`）；约定与流程见 [proxy-registry.md](proxy-registry.md)，后续任务先读登记再做有界核验。
 - 真直连对照（`--noproxy '*'`）：被阻断域名三次 15 秒超时；shell 代理变量曾让同命令"假直连成功"，测直连必须显式绕过代理变量。
 
+- 同日修正：服务端 `NO_PROXY` 原为空格分隔，已改为逗号分隔（放行域名不变）并重启服务生效；空格写法可能被 HTTP 客户端解析失败而使放行域名静默走代理。修正后官方 Go 端点经代理调用验证通过。
+
 ## 2026-10-11 站点拦截观测（arena.ai）
 
 执行环境：Windows PowerShell 调用 `curl.exe`，连接超时 5 秒、单次总期限 20 秒，无自动重试；总结任务触发，双路有界探测一次完成。
