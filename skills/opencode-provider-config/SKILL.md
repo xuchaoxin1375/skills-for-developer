@@ -112,7 +112,37 @@ opencode service start   # set env 本身也会重启服务
 
 **按域名分流代理**：代理是进程级的，JSON 配置无法按 provider 配代理（源码的 `options.fetch` 是函数，写不进配置文件）。同一供应商有多个入口域名、部分直连部分被阻断时，用服务端全局代理 + `NO_PROXY` 分流：直连可达的域名加进 `NO_PROXY`，其余域名自动走代理。例：域名 A 直连、域名 B 被阻断，则 `NO_PROXY` 加 A，两套 provider 配置共用同一服务端代理即可自动分流，启动时无需设置任何环境变量。
 
+**密钥错位排查**：同一 provider 下所有模型均报网关侧“无可用渠道”，但配置文件与单模型直连测试均正常时，应优先怀疑实际生效的密钥与本次配置的密钥不一致（多会话共用同一后台服务时易发生混用）。以下命令仅输出 `True`/`False`，不打印密钥明文：
+
+```bash
+python3 -c "import os; print(os.environ.get('<PROVIDER>_API_KEY','') == '<KEY>')"
+```
+
+输出 `False` 即确认错位：不同密钥对应不同的网关账号，其模型目录与分组权限各自独立。此时换用正确的密钥并重启服务即可恢复，无需修改 provider 配置。
+
+**大小写代理变量**：shell 环境中通常仅存在小写 `http_proxy` 系变量，但部分 HTTP 客户端仅识别大写变量。恢复代理时，应以 `env | grep -i proxy` 的实测值为准补齐大写三变量（端口照抄实测值，不得臆造；写入方式见上文模板），`NO_PROXY` 保持逗号分隔。
+
 **已知行为**：每次 `service set env` 都会重启后台服务，导致正在执行的 shell 命令以 "Tool execution interrupted"（导出日志中也显示为 "Command cancelled"）中断——这不是失败，变量已写入。逐条设置、每条跑完重新确认即可；确认用只读的 `opencode service get env`（输出含密钥，展示前先打码）。
+
+**例外（写入丢失）**：经由服务端派生的 shell 执行 `set env` 时，服务重启可能先于 CLI 完成写入即将其终止，导致写入丢失（`get env` 仍为空）。若多次重试后 `get env` 依然为空，即属此情形，应改用 detached 方式执行，并以只读命令确认：
+
+```bash
+setsid nohup opencode service set env <KEY_NAME> <KEY_VALUE> >/tmp/setenv.log 2>&1 < /dev/null &
+sleep 75
+opencode service get env                                        # 只读确认已落盘（输出含密钥，展示前打码）
+ps -o pid,ppid,lstart,cmd $(pgrep -f "serve --service")         # 以 STARTED 时间最新者为当前服务进程
+```
+
+`service restart` 完全生效约需 1 分钟：重启后不得以 pgrep 返回的第一个 PID 为准（该进程可能处于正在退出的瞬态），必须以上述 `ps` 输出中 `STARTED` 时间最新者为准，再对其核验环境变量。
+
+**存储与生效分离**：`get env` 读取的是持久化存储（`service.json` 的 `env` 块），而运行中服务进程的环境变量是其启动时继承的快照。`get env` 为空并不代表服务进程中无此变量——修改服务级 env 之前，除 `get env` 外，还应查询 live 服务进程的环境（密钥经掩码处理，不输出明文）：
+
+```bash
+SERV_PID=$(pgrep -f "serve --service" | head -n 1)
+tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(sk-)[A-Za-z0-9]+/\1****/g'
+```
+
+修改存储后，必须重启服务一次，新进程才会继承更新后的变量；多次 `set env` 意味着多次重启并多次打断用户会话，因此应一次合并写好 `env` 块，再执行单次 restart。
 
 ### 5. 端到端验证（按序，缺一不可）
 
@@ -142,6 +172,8 @@ opencode service start   # set env 本身也会重启服务
 - [ ] `NO_PROXY` 含 `localhost,127.0.0.1`；多入口分流时直连域名已加入（按域名分流，不按 provider 配代理）
 - [ ] `NO_PROXY` 已核验为逗号分隔，空格分隔的既有值已改正？
 - [ ] 改服务级 env 前 `get env` 抄了既有值，代理三变量是合并不是覆盖？
+- [ ] `get env`（持久化存储）与 live 服务进程环境一致：无陈旧密钥，大写代理变量齐全？
+- [ ] 重启后是否以上述 `ps` 命令中 `STARTED` 时间最新的服务进程为准完成核验，而非 pgrep 返回的任意 PID？
 - [ ] 直连可达的设备未设代理变量，代理端口无臆造？
 - [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体再选 ID？
 - [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染
