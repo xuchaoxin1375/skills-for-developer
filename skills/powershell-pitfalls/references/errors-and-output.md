@@ -57,6 +57,22 @@ $result.Count  # 2：日志和数值都成了返回结果
 
 `Format-Table`/`Format-List` 返回展示用格式对象；对象应先筛选、导出或序列化，最后才格式化给人看。已有文本捕获契约可使用文本输出，不把“所有输出必须是对象”当通用要求。
 
+### 执行策略、脚本调用与诊断
+
+- 被执行策略拒绝时先用 `Get-ExecutionPolicy -List` 核对生效范围和脚本来源；确需临时放行可信脚本时才使用进程级 `-ExecutionPolicy Bypass`。不默认修改全局策略；该参数不授予管理员权限，也不能覆盖组策略。
+- `powershell -File s.ps1 -VerifyOnly -Include name`：`-File` 后参数直传给脚本，
+  `[switch]` 开关照常用。
+- `exit N` 即进程退出码，外层用 `$LASTEXITCODE` 读。`-File` 模式退出码可以正常透出；
+  "退出码 0 但无输出"仍需核对实际执行结果，并检查[版本差异与脚本 BOM](startup-and-version.md#版本差异出大头的地方)。
+- 独立诊断探针可用 `Write-Output` 提供可捕获结果；返回业务对象的函数应分离诊断流，不能把日志混入成功输出。`Write-Host` 用于宿主展示，其捕获取决于宿主与输出流设置。
+
+### 静默失败逐段定位
+
+1. hello-world 对照：`Write-Output AAA` 的 tmp 脚本能跑，说明外壳与调用方式没问题。
+2. 从 `param()` 块后逐段插 `Write-Output PROBE-<位置>`，看断在哪两行之间。
+3. 断点前后加变量值探针（如 `"DIR=" + $skillsDir`），注意探针字符串本身别引入新的插值坑。
+4. 探针与重定向输出放临时或被忽略的工作目录，不混入交付；清理时只处理本任务创建的文件。
+
 ### 验证记录
 
 2026-10-11，在 Windows PowerShell 5.1 与 pwsh 7.5.3 的隔离子进程中复现：默认 cmdlet 错误后继续、`-ErrorAction Stop` 进入 catch、原生返回 7 后继续及显式检查后进入 catch、后续日志改写 `$?`、函数日志令结果数量从 1 变 2。测试原生错误偏好时在支持的版本显式关闭该偏好，不推定所有 pwsh 默认配置相同。

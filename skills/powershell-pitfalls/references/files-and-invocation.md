@@ -58,6 +58,33 @@ $nativeExit = $LASTEXITCODE
 
 同步检查退出码用 `-Wait -PassThru` 返回的进程对象之 `.ExitCode`，不读旧的 `$LASTEXITCODE`。后台程序不立刻判业务成功；就绪与输出结果仍按任务契约检查。
 
+### 跨层引号与插值
+
+- 外层 pwsh 的双引号会展开 `$变量`、反引号转义、`$( )`。`python -c "..."` 里若含 `$`
+ （如 `$PSVersionTable` 或要透传给内层的 `$`），外层必须用**单引号**包裹整段 python 代码。
+- 症状实例：`-Command "$PSVersionTable.PSVersion"` 被外层展开成
+  `System.Management...PSVersion` 当命令执行而报错——错的不是内层，是外层先吃了 `$`。
+- `[CmdletBinding()]param()` 前不能有任何可执行语句。调试探针 `Write-Output` 插错位置
+  会直接报 `Unexpected attribute 'CmdletBinding'` / `Unexpected token 'param'`。
+  探针只能插在 `param()` 块**之后**。
+
+### 别名与命令冲突
+
+| 想用的 cmd 写法 | pwsh 下实际发生 | 改用 |
+|---|---|---|
+| `fc /b a b` | `fc` = `Format-Custom`，报位置参数错误 | `fc.exe /b a b` |
+| `where powershell` | `where` = `Where-Object`，无输出 | `where.exe` / `Get-Command` |
+| `dir /s /b` | 参数错误 | `Get-ChildItem -Recurse` |
+| `mkdir -p a/b/c` | 位置参数错误 | `New-Item -ItemType Directory -Force` 或逐级建 |
+
+### Junction 的创建、删除与实体迁移
+
+- 建 Junction：`New-Item -ItemType Junction -Path <link> -Target <dest>`（Win 无需管理员）。
+- **删 Junction 只删链接本体**：`Remove-Item <junction>`，绝不加 `-Recurse`
+ （加了会删目标目录内容）。Linux 对应：`rm <symlink>` 不加 `-r`，路径尾不加 `/`。
+- 实体占住了链接位置时：先 `Move-Item` 到备份目录（必须移出 skills 目录，
+  否则 harness 会误扫成重复 skill），再建链接。
+
 ### 验证记录
 
 2026-10-11，在 Windows PowerShell 5.1 与 pwsh 7.5.3 的隔离子进程中复现：

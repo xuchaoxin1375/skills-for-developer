@@ -7,7 +7,7 @@
 - 改动职责或触发条件时更新 README 索引和相关引用；可变规则保持一个维护位置。
 - 验证强度与变更风险相称，报告结构检查、桌面走查和真实执行各自的事实与限制。
 - 分发复用仓库链接脚本；过程产物放被忽略的 `.workspaces/`，不进入 skill 实体。
-- Windows 下读取含非 ASCII 的 UTF-8 文件前，按 [PowerShell 编码读取规则](skills/powershell-pitfalls/SKILL.md#文件读取与输出编码agent-读文件前)选择命令与保真回退。
+- Windows 下通过 PowerShell 读取含非 ASCII 的 UTF-8 文件前，按 [PowerShell 编码读取规则](skills/powershell-pitfalls/SKILL.md#文件读取与输出编码agent-读文件前)选择命令与保真回退。
 - 提交、推送及外部操作遵循有效会话授权，不从修改文档或创建 skill 推定授权。
 
 治理文档是维护入口，不要求每次修改通读全部 skill、运行所有应用级检查或做全仓格式迁移。
