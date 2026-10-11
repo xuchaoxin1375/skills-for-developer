@@ -34,15 +34,42 @@ curl.exe -s -m 30 <baseURL>/v1/models -H "Authorization: Bearer <KEY>"
 4. 验证代理可用：`curl.exe -x http://127.0.0.1:<port> https://<域名>/v1/models -H "Authorization: Bearer <KEY>"`，返回 JSON 即通。
 5. 直连与代理都失败时才考虑 `--resolve` 强制 IP，但被阻断时会握手重置，不必强求。
 
-**结论：只要本地直连不可达，就必须把代理配置到 OpenCode 服务端**（见第 4 步），只在当前 shell 临时 export 是不够的。
+**结论：只要本地直连不可达，就必须把代理配置到 OpenCode 服务端**（见第 4 步），只在当前 shell 临时 export 是不够的；反向同样成立——直连可达的设备不设代理变量。
 
 ### 3. 联网查模型参数
 
-拿到模型名后查 `https://models.dev/api.json`（全量 JSON，按 `prov.models[modId]` 取）或搜索官网/发布博客，确定：
+数据源按序取用，一个源查全即停；字段冲突时以供应商官方文档为最终权威。所有大 JSON 一律先落盘、按模型名过滤出目标条目再读，不把整段响应拖进上下文。
 
-- `limit.context`（上下文窗口）与 `limit.output`（最大输出）：写配置的 `limit` 字段，避免上下文截断或输出超限。
-- 是否支持工具调用（agent 必需）、是否 reasoning 模型、输入模态（图片等）。
-- 没查到的模型用保守值（如 context 128000、output 32000），后续按实际报错再调。
+**首选**：本 skill 自带零依赖脚本 `scripts/model_info.py`（纯标准库，多源自动回退，jsdelivr 超时自动落回 raw）：Windows `python <本skill目录>/scripts/model_info.py <模型名>`（部分机器是 `py`），*nix `python3 <本skill目录>/scripts/model_info.py <模型名>`；`--source all` 跨源合并，`--json` 输出供程序读取，无命中退出码 1、全源失败退出码 2。脚本不可用或需自定义时再手工取（下表与示例）。
+
+| 数据源（按序） | 关键字段 | 可达性与取法 |
+| --- | --- | --- |
+| `https://openrouter.ai/api/v1/models` | `data[]`：`context_length`、`architecture.input_modalities`/`output_modalities`、`top_provider.max_completion_tokens`、`supported_parameters`（含 `tools`/`reasoning`）、定价 | 无需鉴权，单文件约 0.8MB，通常直连最快，以实测为准 |
+| `https://models.dev/api.json` | `prov.models[id]`：`limit.context`/`limit.output`、`modalities`、`tool_call`、`reasoning` | 文件数 MB 常偏慢；慢或 403 时改走代理 |
+| LiteLLM JSON `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json` | 键=模型名（常带 `provider/` 前缀）：`max_input_tokens`、`max_output_tokens`、`mode`、`supports_function_calling`/`supports_vision`/`supports_reasoning`、定价 | raw 直连常超时/截断：走代理，或 jsdelivr 镜像 `https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json`；新模型可能滞后 |
+| 供应商官方文档/发布博客 | 权威兜底；国产供应商站点国内直连可达 | 搜索或按 `network-access` 抓取 |
+
+- 下载统一 `curl -A "Mozilla/5.0"`（脚本 HTTP 库常被 403）；解析前校验 JSON 完整性，截断文件解析报 Unterminated string，重取即可。
+- 平台解析差异：Windows PowerShell 必须写 `curl.exe`（`curl` 是 `Invoke-WebRequest` 别名），用 `ConvertFrom-Json` 过滤（`jq`/`python3` 非默认安装，Windows 上常只有 `py`/`python`）；*nix 用 `curl` + `jq`（或 `python3`）。
+- 把 `limit.context`/`limit.output` 写进配置的 `limit` 字段；工具调用（agent 必需）、reasoning 与输入模态（图片等）决定模型能否上岗。
+- 三源都没有的模型（新发布/小众）用保守值（如 context 128000、output 32000），后续按实际报错再调。
+
+Windows 过滤示例（PowerShell）：
+
+```powershell
+curl.exe -s -m 30 -A "Mozilla/5.0" -o models.json https://openrouter.ai/api/v1/models
+(Get-Content models.json -Raw | ConvertFrom-Json).data | Where-Object { $_.id -match "glm-5.3" } |
+  Select-Object id, context_length, @{n="max_out";e={$_.top_provider.max_completion_tokens}},
+    @{n="io";e={($_.architecture.input_modalities -join "+") + "->" + ($_.architecture.output_modalities -join "+")}},
+    @{n="tools";e={$_.supported_parameters -contains "tools"}} | ConvertTo-Json
+```
+
+*nix 过滤示例（jq）：
+
+```bash
+curl -s -m 30 -A "Mozilla/5.0" https://openrouter.ai/api/v1/models \
+  | jq '[.data[] | select(.id | test("glm-5.3")) | {id, context_length, max_out: .top_provider.max_completion_tokens, io: (.architecture.input_modalities | join("+")), tools: (.supported_parameters | index("tools")) != null}]'
+```
 
 ### 4. 写配置与设置服务环境变量
 
@@ -70,19 +97,22 @@ curl.exe -s -m 30 <baseURL>/v1/models -H "Authorization: Bearer <KEY>"
 }
 ```
 
-**服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用）：
+**服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值）：
 
 ```bash
 opencode service set env <PROVIDER>_API_KEY <KEY>
+
+# 以下三行仅当该网关直连不可达才执行：先 get env 读既有值，合并后回写，不照模板覆盖；
+# 端口来自实测/登记/用户告知，设备上没有可用代理就不设，不臆造端口
 opencode service set env HTTPS_PROXY http://127.0.0.1:<port>
 opencode service set env HTTP_PROXY http://127.0.0.1:<port>
-opencode service set env NO_PROXY localhost,127.0.0.1,::1   # 回环必须绕过；多入口分流时直连域名也加这里
+opencode service set env NO_PROXY localhost,127.0.0.1,::1,<既有放行域名>   # 回环必须绕过；逗号分隔，合并既有值
 opencode service start   # set env 本身也会重启服务
 ```
 
 **按域名分流代理**：代理是进程级的，JSON 配置无法按 provider 配代理（源码的 `options.fetch` 是函数，写不进配置文件）。同一供应商有多个入口域名、部分直连部分被阻断时，用服务端全局代理 + `NO_PROXY` 分流：直连可达的域名加进 `NO_PROXY`，其余域名自动走代理。例：域名 A 直连、域名 B 被阻断，则 `NO_PROXY` 加 A，两套 provider 配置共用同一服务端代理即可自动分流，启动时无需设置任何环境变量。
 
-**已知行为**：每次 `service set env` 都会重启后台服务，导致正在执行的 shell 命令以 "Tool execution interrupted" 中断——这不是失败，变量已写入。逐条设置、每条跑完重新确认即可；确认用只读的 `opencode service get env`（输出含密钥，展示前先打码）。
+**已知行为**：每次 `service set env` 都会重启后台服务，导致正在执行的 shell 命令以 "Tool execution interrupted"（导出日志中也显示为 "Command cancelled"）中断——这不是失败，变量已写入。逐条设置、每条跑完重新确认即可；确认用只读的 `opencode service get env`（输出含密钥，展示前先打码）。
 
 ### 5. 端到端验证（按序，缺一不可）
 
@@ -102,6 +132,7 @@ opencode service start   # set env 本身也会重启服务
 - 修改既有 `opencode.json` 前先读全文，保留无关配置。
 - `service set env`、`mcp add` 等会重启服务的操作不要连排在同一条命令里，逐条执行。
 - **必须**：`NO_PROXY` 必须逗号分隔；接手既有配置先核验分隔符，空格分隔一律改正。例：`localhost 127.0.0.1 ::1` 的空格写法可能不被 HTTP 客户端解析，放行域名静默走代理。
+- **必须**：改服务级 env 前先 `opencode service get env` 抄下既有值；`HTTP(S)_PROXY`/`NO_PROXY` 对设备上所有 provider 全局生效，只增合并不覆盖。例：设备原有模型靠既有代理变量连通，新接入照模板覆盖后旧模型静默断链。
 - skill 正文与示例中不得出现真实密钥、真实域名（用 `<…>` 占位）与本机绝对路径。
 
 ## 自检
@@ -110,9 +141,11 @@ opencode service start   # set env 本身也会重启服务
 - [ ] 本地直连不通时代理已持久化到服务端（非仅 shell export）
 - [ ] `NO_PROXY` 含 `localhost,127.0.0.1`；多入口分流时直连域名已加入（按域名分流，不按 provider 配代理）
 - [ ] `NO_PROXY` 已核验为逗号分隔，空格分隔的既有值已改正？
+- [ ] 改服务级 env 前 `get env` 抄了既有值，代理三变量是合并不是覆盖？
+- [ ] 直连可达的设备未设代理变量，代理端口无臆造？
 - [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体再选 ID？
 - [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染
-- [ ] `limit` 参数来自 models.dev 或官网，非臆造
+- [ ] `limit` 参数来自任一数据源并经交叉核验或官方确认，非臆造
 - [ ] 三步验证（get env → models → run）全部通过
 - [ ] 配置文件原有内容未被覆盖
 

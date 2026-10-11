@@ -54,6 +54,19 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 未验证：完整环境安装、私有 channel、大包下载、Linux/macOS 或海外生产。
 
+## 2026-10-11 模型参数数据源双路探测
+
+执行环境：国内 Windows，`curl.exe` + UA `Mozilla/5.0`，连接超时 5 秒、总期限 20 秒；为 opencode-provider-config 选备用数据源（models.dev 访问慢），总结任务触发。
+
+| 数据源 | 直连 | 代理(7897) | 备注 |
+| --- | --- | --- | --- |
+| openrouter.ai/api/v1/models | 200 / 3.5s / 766KB | 200 / 3.1s | 458 模型，无需鉴权；字段最全（`context_length`、模态、`supported_parameters`） |
+| models.dev/api.json | 200 / 18.0s / 5.4MB | 200 / 18.1s | 直连代理都慢，印证"访问慢"体感 |
+| litellm raw（githubusercontent） | 20s 超时仅落 16KB（截断） | 200 / 8.6s / 2.7MB | 直连不可用，需代理 |
+| litellm jsdelivr 镜像 | 200 / 6.3s / 2.7MB | 200 / 10.8s | 直连可用；另一 *nix 设备曾遇 jsdelivr 异常响应，单点观测不互相推广 |
+
+字段形状已核验：OpenRouter `data[].context_length`/`architecture.input_modalities`/`top_provider.max_completion_tokens`；LiteLLM 键含 `provider/` 前缀、`max_input_tokens`/`supports_*` 标志，新模型可能滞后。未验证：海外生产直连、镜像长期稳定性、跨日波动。
+
 ## 2026-10-11 代理资源核验与登记
 
 - 进程 `verge-mihomo.exe`（mihomo 类工具图形封装）监听 `127.0.0.1:7897`；用 `curl.exe -x http://127.0.0.1:7897` 访问境外网关 `/v1/models` 返回 200（0.87 秒），补上 2026-10-10 "未核验 7897 协议"的缺口。
