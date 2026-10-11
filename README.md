@@ -32,6 +32,7 @@
 | `skills/reference-to-skill` | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进 | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill |
 | `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |
 | `skills/local-env` | 国内试验与海外生产的网络访问：直连/代理/镜像、Windows 与 *nix 配置、GitHub/文档访问、Python/Node.js/conda 依赖及额外下载、超时/403/限流分流与加速核验，附带日期的本机观测 | 出网、外网资源、GitHub、文档访问、依赖下载、安装脚本、下载慢、超时、403、回退、镜像源、文件加速、代理、mihomo、直连、pip、uv、npm、pnpm、Yarn、conda、miniforge、Python、Node.js、联网、网络环境 |
+| `skills/opencode-provider-config` | 第三方 AI API（中转站/NewAPI/OpenAI 兼容网关）接入 OpenCode：拉 `/v1/models` 筛模型、DNS/代理诊断、models.dev 查参数、写 providers 配置、service set env 持久化代理与密钥、三步端到端验证 | 接入 opencode、自定义供应商、配 provider、中转站、NewAPI、one-api、第三方模型、/v1/models、models.dev、baseURL、service set env、OpenCode 接模型 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
