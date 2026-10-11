@@ -97,7 +97,7 @@ curl -s -m 30 -A "Mozilla/5.0" https://openrouter.ai/api/v1/models \
 }
 ```
 
-**服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值）：
+**服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值——该命令只读，读 `service.json` 的 `env` 块，与 live 进程快照、shell 变量分属三层，见下文"存储与生效分离"）：
 
 ```bash
 opencode service set env <PROVIDER>_API_KEY <KEY>
@@ -135,21 +135,21 @@ ps -o pid,ppid,lstart,cmd $(pgrep -f "serve --service")         # 以 STARTED �
 
 `service restart` 完全生效约需 1 分钟：重启后不得以 pgrep 返回的第一个 PID 为准（该进程可能处于正在退出的瞬态），必须以上述 `ps` 输出中 `STARTED` 时间最新者为准，再对其核验环境变量。
 
-**存储与生效分离**：`get env` 读取的是持久化存储（`service.json` 的 `env` 块），而运行中服务进程的环境变量是其启动时继承的快照。`get env` 为空并不代表服务进程中无此变量——修改服务级 env 之前，除 `get env` 外，还应查询 live 服务进程的环境（密钥经掩码处理，不输出明文）：
+**存储与生效分离**：环境变量有三层——shell 里 export 的临时变量（对服务进程无效，见第 2 步结论）、`get env` 读的持久化存储（`service.json` 的 `env` 块）、运行中服务进程启动时继承的快照（读法 `tr '\0' '\n' < /proc/<PID>/environ`）。三者可各自不同步；`get env` 为空并不代表服务进程中无此变量——修改服务级 env 之前，除 `get env` 外，还应查询 live 服务进程的环境（密钥经掩码处理，不输出明文）：
 
 ```bash
 SERV_PID=$(pgrep -f "serve --service" | head -n 1)
 tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(sk-)[A-Za-z0-9]+/\1****/g'
 ```
 
-修改存储后，必须重启服务一次，新进程才会继承更新后的变量；多次 `set env` 意味着多次重启并多次打断用户会话，因此应一次合并写好 `env` 块，再执行单次 restart。
+修改存储后，必须重启服务一次，新进程才会继承更新后的变量；多次 `set env` 意味着多次重启并多次打断用户会话，因此应一次合并写好 `env` 块，再执行单次 restart。重启本身有风险：只存在于旧进程 environ 快照、未持久化的代理变量会随旧进程消失，任何重启前先双查（`get env`＋live environ），缺的先补持久化再重启；从服务派生的 shell 里直接跑 `service restart` 可能被重启连带打断，用 detached 方式（`setsid nohup … &`）执行，重启后按 STARTED 时间定位新进程并核验 PROXY 变量仍在。
 
 ### 5. 端到端验证（按序，缺一不可）
 
 1. `opencode service get env` —— 密钥、代理变量齐全（打码展示）。
 2. `opencode models | findstr <providerID>` —— 配置被识别、模型全部列出。
-3. `opencode run -m <provider>/<model> "reply with exactly: OK"` —— 真实调用。首次调用经代理可能较慢，短超时会误判；超时则放后台加长超时重跑，同时 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。
-4. 用 `max_tokens=512` 直接打 `/v1/chat/completions` 测每个模型：核对 `choices[0].message.content` 非空、`finish_reason`（reasoning 模型小 max_tokens 会 `length` 且 content 为 null，属正常，说明思考占用了输出预算）、`usage` 里 `reasoning_tokens`。
+3. `opencode run -m <provider>/<model> "reply with exactly: OK"` —— 真实调用，默认限时 10 秒（可酌情放宽到 15 秒）：超时即判该模型当前时段可靠性不佳，不换长超时重试翻案（见约束/规范）；同时 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。
+4. 用 `max_tokens=512` 直接打 `/v1/chat/completions`，只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）：核对 `choices[0].message.content` 非空、`finish_reason`（reasoning 模型小 max_tokens 会 `length` 且 content 为 null，属正常，说明思考占用了输出预算）、`usage` 里 `reasoning_tokens`。
 
 ## OpenCode 官方套餐（opencode / opencode-go）
 
@@ -163,6 +163,9 @@ tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(s
 - `service set env`、`mcp add` 等会重启服务的操作不要连排在同一条命令里，逐条执行。
 - **必须**：`NO_PROXY` 必须逗号分隔；接手既有配置先核验分隔符，空格分隔一律改正。例：`localhost 127.0.0.1 ::1` 的空格写法可能不被 HTTP 客户端解析，放行域名静默走代理。
 - **必须**：改服务级 env 前先 `opencode service get env` 抄下既有值；`HTTP(S)_PROXY`/`NO_PROXY` 对设备上所有 provider 全局生效，只增合并不覆盖。例：设备原有模型靠既有代理变量连通，新接入照模板覆盖后旧模型静默断链。
+- **必须**：重启 opencode 服务前先双查代理环境（`get env` ＋ live 进程 environ），只在旧进程快照里的代理一重启就丢；重启用 detached 方式，事后核验新进程 environ 里 PROXY 仍在。例：模型靠 HTTPS_PROXY 连网，裸 restart 后集体断链，查 environ 才发现新进程没继承。
+- **必须**：只实测本次接入要用的模型（默认或用户点名的），分组内其余模型不逐一验可用性与速度。例：分组 20 个模型只用 2 个，就只测那 2 个，不跑完 20 个。
+- **必须**：单模型验证默认限时 10 秒，可酌情放宽到 15 秒；超时即判该模型当前时段可靠性不佳，不改配置不删条目，换时段复测即可。例：12 秒回的模型放宽到 15 秒重测；仍超时也不动配置，其他时段可能就通了。
 - skill 正文与示例中不得出现真实密钥、真实域名（用 `<…>` 占位）与本机绝对路径。
 
 ## 自检
@@ -178,9 +181,12 @@ tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(s
 - [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体再选 ID？
 - [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染
 - [ ] `limit` 参数来自任一数据源并经交叉核验或官方确认，非臆造
+- [ ] 只实测了接入要用的模型，未逐一遍历分组全量？
+- [ ] 单模型验证默认限时 10 秒（可放宽到 15 秒），超时判当前时段可靠性不佳而非无限重试？
+- [ ] 重启服务前双查代理环境（get env＋live environ），重启后新进程 PROXY 仍在？
 - [ ] 三步验证（get env → models → run）全部通过
 - [ ] 配置文件原有内容未被覆盖
 
 ## 验证协议
 
-接入成功的判定：`opencode models` 出现 `<providerID>/<modelID>`，且 `opencode run -m <providerID>/<默认模型>` 返回模型正常回复；每个模型至少一次直接 API 调用确认 `content` 可产出。
+接入成功的判定：`opencode models` 出现 `<providerID>/<modelID>`，且 `opencode run -m <providerID>/<默认模型>` 返回模型正常回复；只对本次接入要用的每个模型各做一次直接 API 调用确认 `content` 可产出，每次默认限时 10 秒（可酌情放宽到 15 秒）。
