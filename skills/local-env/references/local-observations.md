@@ -53,3 +53,21 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 任务级覆盖：`CONDA_CHANNELS='bioconda,conda-forge'` 经 `conda config --show channels` 确认生效；`CONDARC` 指定文件变量同条件未改变有效 channels，不采用。
 
 未验证：完整环境安装、私有 channel、大包下载、Linux/macOS 或海外生产。
+
+## 2026-10-11 代理资源核验与登记
+
+- 进程 `verge-mihomo.exe`（mihomo 类工具图形封装）监听 `127.0.0.1:7897`；用 `curl.exe -x http://127.0.0.1:7897` 访问境外网关 `/v1/models` 返回 200（0.87 秒），补上 2026-10-10 "未核验 7897 协议"的缺口。
+- 同日核验 OpenCode 服务端已持久化全局 `HTTP_PROXY`/`HTTPS_PROXY=http://127.0.0.1:7897`，`NO_PROXY` 含回环地址与一条直连业务域名；shell 环境变量仍指向 `localhost:10808`，本次未核验其监听与协议。
+- 已创建登记文件 `~/.config/proxy-resources.json`（`verge-mihomo-7897` 为默认条目，`source: registry`）；约定与流程见 [proxy-registry.md](proxy-registry.md)，后续任务先读登记再做有界核验。
+- 真直连对照（`--noproxy '*'`）：被阻断域名三次 15 秒超时；shell 代理变量曾让同命令"假直连成功"，测直连必须显式绕过代理变量。
+
+## 2026-10-11 站点拦截观测（arena.ai）
+
+执行环境：Windows PowerShell 调用 `curl.exe`，连接超时 5 秒、单次总期限 20 秒，无自动重试；总结任务触发，双路有界探测一次完成。
+
+| 路线 | 设置 | HTTP / 耗时 | 结果 |
+| --- | --- | --- | --- |
+| 直连 | `--noproxy '*'` | 403 / 0.5 秒 | 拦截，未取到正文 |
+| 默认代理 | `--proxy http://127.0.0.1:7897` | 200 / 1.9 秒 | 取得正文，最终 URL 重定向为 `https://arena.ai/company/about` |
+
+代理路线落盘正文经网页骨架提取（htmlmini）成功取得完整页面内容，未启用浏览器渲染；`resilient-browser-fetch` 对该站未验证。单站点单路径观测，不推广到该域其他路径或其他拦截站点。

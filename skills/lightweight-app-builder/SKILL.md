@@ -225,7 +225,7 @@ flowchart TD
 - **PyInstaller 不能交叉编译**：Win exe 必须 Win 上打，或 GH Actions 三平台矩阵；另有杀软误报风险，提前告知。
 - **Tauri WebView 系统自带**（Win WebView2 / mac WKWebView / Linux WebKitGTK）：同 CSS 渲染不同，关键样式兼容测；Linux 需装 WebKitGTK；Win10 老机器需引导装 WebView2。
 - **macOS 分发链不可拆**：签名 → 公证 → 才能静默更新；未签名报"已损坏"，交付时给右键打开 / `xattr -dr com.apple.quarantine` 说明，优先签名公证；签名与平台绑定，CI 需三平台矩阵。
-- **国内网络**：按 `local-env` 为 npm/pip/cargo/Go 选择镜像或代理，Windows 与 *nix 分别说明；GitHub 下载加速先核验对应目标与服务支持范围，代理变量按实际客户端生效，海外生产直连仍需实测。
+- **国内网络**：按 `network-access` 为 npm/pip/cargo/Go 选择镜像或代理，Windows 与 *nix 分别说明；GitHub 下载加速先核验对应目标与服务支持范围，代理变量按实际客户端生效，海外生产直连仍需实测。
 - **改存量先还原理由**：每个现存设计背后有正当理由。
   动手前先书面说出它为什么是现在这样，说不清先问用户不许猜。
   反例：给为直连而设的探测加代理复测，路线反了还误导决策。

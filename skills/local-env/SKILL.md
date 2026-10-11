@@ -1,9 +1,10 @@
 ---
-name: local-env
+name: network-access
 description: >
-  国内试验与海外生产的网络访问指导：按资源选择直连、代理或镜像，区分超时、403 与限流，提供 Windows 与 *nix 配置及核验方法。
-  凡是 GitHub/文档/其他外网资源访问慢或失败、Python/Node.js/conda 依赖下载（pip/uv/npm/pnpm/Yarn/conda）慢或超时、安装脚本额外下载、配镜像源、走代理出网、
-  无代理加速、网络错误回退、确认本机代理端口，或技术方案需要说明网络环境影响时使用；纯代码问题不加载。
+  网络访问路线决策，国内试验与海外生产通用：按资源选择直连、代理或镜像；陌生链接先双路有界探测（直连+代理）再抓取，并确认抓取工具的实际出口；
+  本机代理资源登记于 ~/.config/proxy-resources.json，找不到可用代理时向用户询问；区分超时、403 与限流，提供 Windows 与 *nix 配置及核验方法。
+  凡是访问或抓取外网链接、网页、GitHub、文档慢或失败，Python/Node.js/conda 依赖下载（pip/uv/npm/pnpm/Yarn/conda）慢或超时、安装脚本额外下载、
+  配镜像源、走代理出网、无代理加速、网络错误回退、确认本机代理端口或代理工具（mihomo 等），或技术方案需要说明网络环境影响时使用；纯代码问题不加载。
 ---
 
 # Local Env（网络环境与资源访问）
@@ -25,13 +26,18 @@ description: >
 | 国内普通文档/其他资源，无代理 | 有界直连 → 已核验且内容对应的官方镜像/替代渠道；GitHub 加速前缀不适用于任意 URL |
 | 海外生产服务器 | 原站直连优先，按真实出口验证；失败再诊断，不能假定海外一定可达或继承本机代理 |
 
+**陌生链接先探测后抓取**：无先验的外部链接不盲发单路默认访问——先按有界诊断同时测直连与代理两条路线（命令见 [references/network-access.md](references/network-access.md)"有界诊断与超时"），选可用且更快的一路抓取正文，探测结论同一任务内复用，不逐次重测。例：直连 20 秒超时、代理 1 秒返回，正文抓取直接走代理，不再等第二次直连。与网页提取/总结类 skill 搭配时，探测即取正文：胜出路线落盘的文件直接交提取方读，不让其按 URL 重抓。例：代理 curl 200 存好正文，总结 skill 直接读该文件。
+
 ## 约束
 
 - **必须**：区分国内试验与海外生产，代理配置分别说明 Windows 与 *nix，并核验协议、端口及消费方环境。例：容器里的 localhost 不等于宿主机代理。
+- **必须**：抓取工具的默认路径由宿主进程网络环境决定（可能已带全局代理或 shell 代理变量），不等于直连；选路和下结论前确认实际出口，需要指定路线时用显式参数。例：内置网页抓取悄悄走了全局代理，curl 加 `--noproxy '*'` 才是真直连。
+- **必须**：核验可用的代理登记到本机登记文件（`~/.config/proxy-resources.json`，格式与流程见 [references/proxy-registry.md](references/proxy-registry.md)），后续任务先读登记再发现；登记是线索，用前做一次有界核验。例：登记本机混合端口后，新任务直接核验该端口，不再全盘重扫。
+- **必须**：需要代理而登记与探测都找不到可用代理时，向用户询问代理地址或申请授权，按回复继续；不反复盲试端口、不静默放弃。例：常见端口无监听、登记已失效，就问"本机代理地址是多少？"拿到后先核验再登记。
 - **必须**：按超时、权限/拦截和限流响应分类回退，所有尝试设耗时上限；限流遵守冷却，不靠换出口绕过。例：GitHub 403 若提示限流，先等待而非换镜像连发。
 - **必须**：引用镜像/加速服务前核验对应目标及适用范围，保留原始来源；未能核验时明确说明。例：一个 raw 文件可下载，不能证明整站文档或 git clone 都可用。
 
-代理、超时、错误分流及 GitHub 加速细节见 [references/network-access.md](references/network-access.md)；带日期的本机记录见 [references/local-observations.md](references/local-observations.md)。搜索与抓取的并发、频率、重试预算及共享冷却遵循 `agentic-web-search`。
+代理、超时、错误分流及 GitHub 加速细节见 [references/network-access.md](references/network-access.md)；本机代理登记见 [references/proxy-registry.md](references/proxy-registry.md)；带日期的本机记录见 [references/local-observations.md](references/local-observations.md)。搜索与抓取的并发、频率、重试预算及共享冷却遵循 `agentic-web-search`。
 
 - 单次任务优先使用进程环境变量或客户端的本次调用参数（如 `PIP_INDEX_URL`、`UV_DEFAULT_INDEX`、`--proxy`）；不为诊断静默改系统代理或全局 Git 配置。
 - 不把本机端口、镜像或一次测量写成永久默认值；实际环境与历史记录不一致时，以实测为准，仅将与本机有关的观测更新到参考记录。
@@ -47,6 +53,9 @@ pip/uv/npm/pnpm/Yarn/conda 的配置、并发与超时、额外下载及验收�
 ## 自检
 
 - [ ] 是否区分国内试验与海外生产，分别说明 Windows/*nix，并核验实际消费方的代理协议和端口？
+- [ ] 陌生外部链接是否先双路有界探测选定路线再抓取，并确认了抓取工具的实际出口？
+- [ ] 探测落盘的正文是否直接交提取方读，避免按 URL 重抓？
+- [ ] 可用代理是否经核验后登记并在后续任务先读登记轻量核验？代理不可得时是否询问用户而非盲试？
 - [ ] 超时、权限/拦截与限流是否分流，尝试有耗时上限，限流未通过切换出口绕过？
 - [ ] 镜像/加速是否核验对应目标、内容与适用范围，保留原始来源并注明未验证范围？
 - [ ] 是否确认包管理器版本、有效配置和失败阶段，区分索引、包文件与额外下载？
@@ -56,5 +65,5 @@ pip/uv/npm/pnpm/Yarn/conda 的配置、并发与超时、额外下载及验收�
 ## 验证协议
 
 1. 在仓库根运行 `powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -VerifyOnly` 或 `./scripts/link-skills.sh --verify-only`，确认链接与正文可读。
-2. 检查 harness 可用列表中存在 `local-env`，且 README 检索表与 description 语义一致。
+2. 检查 harness 可用列表中存在 `network-access`，且 README 检索表与 description 语义一致。
 3. 按参考文档分别核验目标的直连、代理或加速路线，记录实际执行的平台；未运行的平台示例仅声明文档核对。
