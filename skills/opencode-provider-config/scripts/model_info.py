@@ -135,12 +135,13 @@ def cell(v, width):
     return s[:width]
 
 
-def print_table(rows, limit):
+def print_table(rows, limit, exact=""):
     heads = ["model", "source", "ctx", "out", "in", "out_mod", "tools", "rsn", "mode"]
     widths = [44, 10, 8, 8, 16, 16, 5, 3, 10]
     keys = ["model", "source", "ctx", "max_out", "modal_in", "modal_out", "tools", "reasoning", "mode"]
     order = {"openrouter": 0, "litellm": 1, "modelsdev": 2}
-    rows = sorted(rows, key=lambda r: (order.get(r["source"], 9), r["model"]))[:limit]
+    ex = (exact or "").lower()
+    rows = sorted(rows, key=lambda r: (r["model"].lower() != ex, order.get(r["source"], 9), r["model"]))[:limit]
     print("  ".join(h.ljust(w) for h, w in zip(heads, widths)))
     for r in rows:
         print("  ".join(cell(r[k], w).ljust(w) for k, w in zip(keys, widths)))
@@ -182,10 +183,14 @@ def main():
     if not matched:
         sys.exit(1 if failures < len(order) else 2)
 
+    # 精确名优先：裸键（如 claude-opus-5-5）排在带前缀变体之前，其余保持原顺序
+    needle = args.pattern.lower()
+    matched.sort(key=lambda r: r["model"].lower() != needle)
+
     if args.json:
         print(json.dumps(matched[:args.limit], ensure_ascii=False, indent=2))
     else:
-        print_table(matched, args.limit)
+        print_table(matched, args.limit, args.pattern)
 
 
 if __name__ == "__main__":
