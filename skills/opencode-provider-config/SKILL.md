@@ -106,7 +106,7 @@ opencode service set env <PROVIDER>_API_KEY <KEY>
 # 端口来自实测/登记/用户告知，设备上没有可用代理就不设，不臆造端口
 opencode service set env HTTPS_PROXY http://127.0.0.1:<port>
 opencode service set env HTTP_PROXY http://127.0.0.1:<port>
-opencode service set env NO_PROXY localhost,127.0.0.1,::1,<既有放行域名>   # 回环必须绕过；逗号分隔，合并既有值
+opencode service set env NO_PROXY "localhost,127.0.0.1,::1,<既有放行域名>"   # 回环必须绕过；逗号分隔，合并既有值；含逗号的值加引号（PowerShell 否则拆成数组）
 opencode service start   # set env 本身也会重启服务
 ```
 
@@ -120,9 +120,18 @@ python3 -c "import os; print(os.environ.get('<PROVIDER>_API_KEY','') == '<KEY>')
 
 输出 `False` 即确认错位：不同密钥对应不同的网关账号，其模型目录与分组权限各自独立。此时换用正确的密钥并重启服务即可恢复，无需修改 provider 配置。
 
+**变量名占用前置检查**：定 `env` 变量名前，先查四层是否已有同名（`service get env`、当前 shell 进程、Windows `User`/`Machine` 注册表），任一层有值且与本次密钥不同即视为占用，必须换名，不得覆盖用户既有变量。以下命令只查有无，不输出值：
+
+```powershell
+[Environment]::GetEnvironmentVariable("<NAME>","User")
+[Environment]::GetEnvironmentVariable("<NAME>","Machine")
+```
+
+任一返回非空即占用。`providerID` 同理：不得与内置供应商同名（内置改 `baseURL` 只覆盖 `settings.baseURL`，见适用范围）。
+
 **大小写代理变量**：shell 环境中通常仅存在小写 `http_proxy` 系变量，但部分 HTTP 客户端仅识别大写变量。恢复代理时，应以 `env | grep -i proxy` 的实测值为准补齐大写三变量（端口照抄实测值，不得臆造；写入方式见上文模板），`NO_PROXY` 保持逗号分隔。
 
-**已知行为**：每次 `service set env` 都会重启后台服务，导致正在执行的 shell 命令以 "Tool execution interrupted"（导出日志中也显示为 "Command cancelled"）中断——这不是失败，变量已写入。逐条设置、每条跑完重新确认即可；确认用只读的 `opencode service get env`（输出含密钥，展示前先打码）。
+**已知行为**：每次 `service set env` 都会重启后台服务，导致正在执行的 shell 命令以 "Tool execution interrupted"（导出日志中也显示为 "Command cancelled"）中断——这不是失败，变量已写入。变量名与取值全部定稿后再写入，`set env` 次数即重启次数，能少一次就少一次；逐条设置、每条跑完重新确认即可；确认用只读的 `opencode service get env`（输出含密钥，展示前先打码）。
 
 **例外（写入丢失）**：经由服务端派生的 shell 执行 `set env` 时，服务重启可能先于 CLI 完成写入即将其终止，导致写入丢失（`get env` 仍为空）。若多次重试后 `get env` 依然为空，即属此情形，应改用 detached 方式执行，并以只读命令确认：
 
@@ -144,6 +153,14 @@ tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(s
 
 修改存储后，必须重启服务一次，新进程才会继承更新后的变量；多次 `set env` 意味着多次重启并多次打断用户会话，因此应一次合并写好 `env` 块，再执行单次 restart。重启本身有风险：只存在于旧进程 environ 快照、未持久化的代理变量会随旧进程消失，任何重启前先双查（`get env`＋live environ），缺的先补持久化再重启；从服务派生的 shell 里直接跑 `service restart` 可能被重启连带打断，用 detached 方式（`setsid nohup … &`）执行，重启后按 STARTED 时间定位新进程并核验 PROXY 变量仍在。
 
+**live 未生效的判定与隔离验证**（Windows 无 `/proc` 时，以对照与隔离为准）：`service status` 端口与 `opencode.log` 中 `spawning process` 的 `run=` 是否变化，是重启是否真正生效的判据；两者不变即 live 仍是旧快照，此时重复 `set env`/`restart` 只是空转，应停手。用已知正常模型做对照：已知模型 `run` 正常、新模型报缺 key，即 live 陈旧而非配置错。先用 `run --standalone` 隔离验证（私有服务继承当前 shell 环境，同条命令内设变量并验证，密钥不落盘到配置文件）：
+
+```powershell
+$env:<VAR_NAME> = "<KEY>"; opencode run --standalone -m <providerID>/<modelID> "reply with exactly: OK"
+```
+
+通过即证明配置与密钥无误；后台服务侧改用会话外部重启（新开终端、任务管理器、重启机器）后再按第 5 步重验，不在会话内空转重试。
+
 ### 5. 端到端验证（按序，缺一不可）
 
 1. `opencode service get env` —— 密钥、代理变量齐全（打码展示）。
@@ -161,7 +178,7 @@ tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(s
 - 密钥只写入 `service set env` 与配置引用（`env` 变量名），**不写进 `opencode.json` 明文**（`settings.apiKey` 仅在用户明确要求时才考虑）。
 - 修改既有 `opencode.json` 前先读全文，保留无关配置。
 - `service set env`、`mcp add` 等会重启服务的操作不要连排在同一条命令里，逐条执行。
-- **必须**：`NO_PROXY` 必须逗号分隔；接手既有配置先核验分隔符，空格分隔一律改正。例：`localhost 127.0.0.1 ::1` 的空格写法可能不被 HTTP 客户端解析，放行域名静默走代理。
+- **必须**：`NO_PROXY` 必须逗号分隔；PowerShell 下含逗号的值必须加双引号，否则逗号被解析为数组、落盘变成空格分隔，例：`opencode service set env NO_PROXY "localhost,127.0.0.1,::1,<既有放行域名>"`。接手既有配置先核验分隔符，空格分隔一律改正。例：`localhost 127.0.0.1 ::1` 的空格写法可能不被 HTTP 客户端解析，放行域名静默走代理。
 - **必须**：改服务级 env 前先 `opencode service get env` 抄下既有值；`HTTP(S)_PROXY`/`NO_PROXY` 对设备上所有 provider 全局生效，只增合并不覆盖。例：设备原有模型靠既有代理变量连通，新接入照模板覆盖后旧模型静默断链。
 - **必须**：重启 opencode 服务前先双查代理环境（`get env` ＋ live 进程 environ），只在旧进程快照里的代理一重启就丢；重启用 detached 方式，事后核验新进程 environ 里 PROXY 仍在。例：模型靠 HTTPS_PROXY 连网，裸 restart 后集体断链，查 environ 才发现新进程没继承。
 - **必须**：只实测本次接入要用的模型（默认或用户点名的），分组内其余模型不逐一验可用性与速度。例：分组 20 个模型只用 2 个，就只测那 2 个，不跑完 20 个。
@@ -176,6 +193,9 @@ tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(s
 - [ ] `NO_PROXY` 已核验为逗号分隔，空格分隔的既有值已改正？
 - [ ] 改服务级 env 前 `get env` 抄了既有值，代理三变量是合并不是覆盖？
 - [ ] `get env`（持久化存储）与 live 服务进程环境一致：无陈旧密钥，大写代理变量齐全？
+- [ ] `env` 变量名定名前已查四层占用，同名不同值已换名，未覆盖用户既有变量？
+- [ ] 含逗号的 `set env` 值已加引号写入并核验为逗号分隔；写入次数已是最少？
+- [ ] 重启生效已用端口/`run=` 变化确认；live 陈旧时已用已知模型对照并以 `--standalone` 隔离验证通过？
 - [ ] 重启后是否以上述 `ps` 命令中 `STARTED` 时间最新的服务进程为准完成核验，而非 pgrep 返回的任意 PID？
 - [ ] 直连可达的设备未设代理变量，代理端口无臆造？
 - [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体再选 ID？
@@ -189,4 +209,4 @@ tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(s
 
 ## 验证协议
 
-接入成功的判定：`opencode models` 出现 `<providerID>/<modelID>`，且 `opencode run -m <providerID>/<默认模型>` 返回模型正常回复；只对本次接入要用的每个模型各做一次直接 API 调用确认 `content` 可产出，每次默认限时 10 秒（可酌情放宽到 15 秒）。
+接入成功的判定：`opencode models` 出现 `<providerID>/<modelID>`，且 `opencode run -m <providerID>/<默认模型>` 返回模型正常回复；只对本次接入要用的每个模型各做一次直接 API 调用确认 `content` 可产出，每次默认限时 10 秒（可酌情放宽到 15 秒）。后台服务 live 陈旧且会话内重启无效时，以存储侧齐全＋ `--standalone` 同配置验证通过为准，后台侧待外部重启后重验。
