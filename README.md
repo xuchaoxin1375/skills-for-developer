@@ -35,6 +35,7 @@
 | `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |
 | `skills/local-env` | 国内试验与海外生产的网络访问：直连/代理/镜像、Windows 与 *nix 配置、GitHub/文档访问、Python/Node.js/conda 依赖及额外下载、超时/403/限流分流与加速核验，附带日期的本机观测 | 出网、外网资源、GitHub、文档访问、依赖下载、安装脚本、下载慢、超时、403、回退、镜像源、文件加速、代理、mihomo、直连、pip、uv、npm、pnpm、Yarn、conda、miniforge、Python、Node.js、联网、网络环境 |
 | `skills/opencode-provider-config` | 第三方 AI API（中转站/NewAPI/OpenAI 兼容网关）接入 OpenCode：拉 `/v1/models` 筛模型、DNS/代理诊断、多源查模型参数（OpenRouter/models.dev/LiteLLM，自带零依赖 Python 脚本 model_info.py，含 Windows 与 *nix 手工取法）、写 providers 配置、service set env 持久化代理与密钥、三步端到端验证 | 接入 opencode、自定义供应商、配 provider、中转站、NewAPI、one-api、第三方模型、/v1/models、models.dev、openrouter、litellm、上下文窗口、模态、model_info.py、baseURL、service set env、OpenCode 接模型 |
+| `skills/mermaid-fix` | Mermaid 渲染失败诊断与修复：提块复现 Parse error、修节点引号与转义、mmdc/kroki 复验回写；语法正本走 markdown-style | mermaid 渲染失败、Parse error、got SQS、图挂了、节点方括号、修图、复验 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
