@@ -11,6 +11,15 @@
 
 `-Encoding UTF8` 只解决第一层；设置 `[Console]::OutputEncoding` 不会修复已误读的字符串。切换 pwsh 7 能改善默认文件解码，仍可能在第二层失败。`chcp 65001` 也不能替代文件读取编码和捕获端核验。
 
+### 形态初判与码点裁决
+
+链路按“文件字节 → 字符串 → stdout 字节 → harness 文本 → 渲染”分层；字体缺字只表现为方框，与前三层的 mojibake 不同。形态只做初判：生僻汉字堆（UTF-8 按 GBK 解）指向读取层；`U+FFFD` 指向输出/捕获层（GBK 按 UTF-8 解）；`??` 指向 `$OutputEncoding` 的 ASCII 丢失。裁决以全 ASCII 码点为准，不凭显示文本：
+
+```powershell
+[int[]][char[]](Get-Content -LiteralPath '.workspaces/encoding-probe.txt' -Encoding UTF8 -Raw).Trim() -join ' '
+# 中文样本期望 20013 25991；码点正确但显示烂则为输出层，码点错则为读取层
+```
+
 ### Python 与工具捕获编码
 
 - PowerShell 输出编码与 Python 捕获端默认编码不一致时，`subprocess(..., text=True)` 可能乱码或抛 `UnicodeDecodeError`。先确定生产方编码，再显式指定 `encoding='utf-8'`（生产方确为 UTF-8 时），或先捕获 bytes 并严格按已知编码解码。
@@ -54,6 +63,71 @@ python -c "from pathlib import Path; import json; print(json.dumps(Path('.worksp
 同次任务中，直接经 agent 工具输出的 pwsh 7 `Get-Content -Encoding UTF8` 仍显示乱码；追加进程 UTF-8 输出设置也未修复，Python ASCII JSON 路线能保真读取。这证明当前工具链还有输出/捕获问题，尚未定位其具体转码环节，不能归因于 5.1，也不能承诺只换 pwsh 就解决。
 
 以上验证文件读取和受控子进程捕获，以及当前 agent 的回退路线；不证明所有终端、profile 或 agent 宿主具有相同默认编码。遇到新环境按同一非 ASCII 样本核验，不通过退出码 0 或一段英文输出推定编码正确。
+
+2026-10-12，在另一 agent harness 的 shell 工具（pwsh 7.5.4）复现同一现象：UTF-8 无 BOM 中文文件经 `Get-Content -LiteralPath … -Encoding UTF8` 读取后，工具捕获输出仍为乱码；同文件经 Python `read_bytes` 核验为合法 UTF-8，ASCII JSON 路线还原正确。再次确认故障位于“字符串之后的输出/捕获链路”，与文件解码、pwsh 版本无关；跨 harness 遇到时直接采用 ASCII JSON，不重复调试编码参数。
+
+### Select-String 检索的解码层与输出层
+
+2026-10-12，OpenCode shell 工具（pwsh 7.5.4，子进程 Windows PowerShell 5.1，本机 ANSI 936）用同一中文样本写入 UTF-8 无 BOM、带 BOM、GBK 三种文件，对照 `Select-String` 的匹配计数（结果只用 ASCII 标签输出，避免捕获层干扰判读）：
+
+| 场景 | 5.1 | pwsh 7 |
+|---|---|---|
+| `Select-String` 直接检索无 BOM UTF-8 | 1（默认按 UTF-8 解码） | 1 |
+| `Select-String` 直接检索带 BOM UTF-8 | 1 | 1 |
+| `Select-String` 直接检索 GBK 文件 | 0（静默漏配） | 0（静默漏配） |
+| 按实际编码读成字符串后管道 `Select-String` | 1 | 1 |
+| `Get-Content` 默认编码读无 BOM UTF-8 后管道 | 0（按 ANSI 误解码） | 1（默认 UTF-8） |
+
+要点：同一无 BOM UTF-8 文件，5.1 的 `Select-String` 能检索而 `Get-Content` 默认读出的文本是错的，两个 cmdlet 的默认解码方向相反；GBK 文件两版 `Select-String` 都静默漏配且退出码 0。5.1 的 `Select-String` 无 `-Encoding` 参数，需控制文件解码时用管道路线。输出层：两版未设 `[Console]::OutputEncoding` 时，匹配行经工具捕获均为乱码；本 harness 同次调用先设输出编码后显示正确，与上文另一 harness“追加输出设置仍未修复”的记录并存，各自只证明所记环境。5.1 输出被重定向捕获时，结果尾部会附加 `#< CLIXML` 进度序列化噪声，属诊断噪声，不影响匹配计数。
+
+复现注意：探针脚本曾在新调用中引用上一调用定义的样本变量，写入空文件后所有场景计数全 0，险些误判为“GBK 必漏配”；跨调用重跑探针必须在本调用内重建样本，并用字节回读（按写入编码读回后 `-match`）先验证样本本身。
+
+同日用户在交互终端（pwsh 7 与 Windows PowerShell 5.1 各一，加载 profile）按上述命令清单复核，全部匹配计数与预期一致：解码层结论在交互环境与 agent 捕获链路均成立，输出层乱码仅出现在捕获链路。
+
+### Select-String 编码探针（复现用）
+
+在 pwsh 7 中整体运行；样本在本脚本内重建（避免跨调用引用悬空变量写入空文件），先按写入编码字节回读再计数，输出全为 ASCII 标签，可与上文对照表逐项比较：
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$dir = Join-Path (Join-Path $env:TEMP 'opencode') ('ss-probe-' + [guid]::NewGuid().ToString('N').Substring(0,8))
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+$text = "ascii marker line`r`n验证 content line`r`n"
+$gbEnc = [Text.Encoding]::GetEncoding(936)
+$files = @{ nobom = [Text.UTF8Encoding]::new($false); bom = [Text.UTF8Encoding]::new($true); gbk = $gbEnc }
+foreach ($k in $files.Keys) { [IO.File]::WriteAllText((Join-Path $dir "$k.txt"), $text, $files[$k]) }
+$pat = '验证'
+foreach ($k in $files.Keys) {
+  $rt = [IO.File]::ReadAllText((Join-Path $dir "$k.txt"), $files[$k]) -match $pat
+  "RT_$k=$rt"
+  if (-not $rt) { throw "sample $k corrupted" }
+}
+$nb = Join-Path $dir 'nobom.txt'; $bm = Join-Path $dir 'bom.txt'; $gb = Join-Path $dir 'gbk.txt'
+'NOBOM7=' + (Select-String -LiteralPath $nb -Pattern $pat).Count
+'BOM7='   + (Select-String -LiteralPath $bm -Pattern $pat).Count
+'GBK7='   + (Select-String -LiteralPath $gb -Pattern $pat).Count
+'GPIPE7=' + ([IO.File]::ReadAllLines($gb, $gbEnc) | Select-String -Pattern $pat).Count
+'UDEF7='  + (Get-Content -LiteralPath $nb | Select-String -Pattern $pat).Count
+$inner = @"
+`$ProgressPreference = 'SilentlyContinue'
+`$c1 = (Select-String -LiteralPath '$nb' -Pattern '验证').Count
+`$c2 = (Select-String -LiteralPath '$bm' -Pattern '验证').Count
+`$c3 = (Select-String -LiteralPath '$gb' -Pattern '验证').Count
+`$c4 = (Get-Content -LiteralPath '$gb' | Select-String -Pattern '验证').Count
+`$c5 = (Get-Content -LiteralPath '$nb' | Select-String -Pattern '验证').Count
+Write-Output ('NOBOM51=' + `$c1)
+Write-Output ('BOM51=' + `$c2)
+Write-Output ('GBK51=' + `$c3)
+Write-Output ('GPIPE51=' + `$c4)
+Write-Output ('UDEF51=' + `$c5)
+"@
+powershell -NoProfile -NonInteractive -EncodedCommand ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner)))
+"exit51=$LASTEXITCODE"
+Remove-Item -LiteralPath $dir -Recurse -Force
+'CLEANUP=done'
+```
+
+预期（2026-10-12，本机 ANSI 936，pwsh 7.5.4 + 5.1 子进程）：`RT_*` 三行均为 True（键序不定）；`NOBOM7=1`、`BOM7=1`、`GBK7=0`、`GPIPE7=1`、`UDEF7=1`；`NOBOM51=1`、`BOM51=1`、`GBK51=0`、`GPIPE51=1`、`UDEF51=0`；`exit51=0`。计数不符时，先核对本机 ANSI 码页（`(Get-Culture).TextInfo.ANSICodePage`）与 PowerShell 版本，再决定是否修订记录；不在其他机器把本表当硬断言。输出层（捕获乱码）验证不在本探针内，直接用「文件读取与输出编码」节的模板对照。子进程内 `$ProgressPreference = 'SilentlyContinue'` 实测消除了上文提到的 `#< CLIXML` 噪声。
 
 ### 实际工具的启动方式对照
 

@@ -20,6 +20,8 @@ powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'Get-Location'
 
 参数应作用于 agent 实际启动的外壳；外层已经加载 profile 后，再嵌套启动 `-NoProfile` 子进程，不能撤销外层的初始化影响。也不为纯文件读取增加无必要的嵌套 shell。`-NoProfile` 不改变 5.1 的默认文件读取编码，编码问题按 [编码读取排障](encoding-read.md)处理。
 
+Agent 会话禁 `chcp`：它改共享控制台代码页，污染后续子进程。需显式编码时在每条命令同次设置正文三行模板，不依赖 profile；无控制台句柄时 `Console` 赋值可终止错误，加 `try/catch`。
+
 ## 版本差异（出大头的地方）
 
 | 行为 | Windows PowerShell 5.1 | pwsh 7 |

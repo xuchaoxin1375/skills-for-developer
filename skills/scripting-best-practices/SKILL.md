@@ -283,6 +283,16 @@ PEP 723 单文件依赖声明示例：
 # ///
 ```
 
+### 文件读写编码（UTF-8，默认）
+
+必须：读写文本文件时显式指定编码。常规文本按 UTF-8 处理：读用 `Path.read_text(encoding="utf-8")`，写用 `Path.write_text(..., encoding="utf-8")`；需去掉字节顺序标记（BOM，Byte Order Mark）时读用 `encoding="utf-8-sig"`。子进程输出编码见“本地工具：文件遍历与子进程”第 3 条，不与本条混用。禁止用 `errors="replace"` 或 ASCII 转义做常规输出，它们只掩盖误读；诊断链路无法统一编码时的保真回退见 `powershell-pitfalls` 的编码参考。
+
+```python
+from pathlib import Path
+Path("example.txt").write_text("中文", encoding="utf-8")
+text = Path("example.txt").read_text(encoding="utf-8")
+```
+
 ### 命名风格（PEP 8）
 
 变量/函数 `snake_case`；常量 `UPPER_SNAKE_CASE`；类 `PascalCase`；文件名 `snake_case.py`。
@@ -402,6 +412,7 @@ argcomplete 用自定义 Completer（如 `.completer = argcomplete.DirectoriesCo
 - [ ] 是否有裸 `except` 或 `except: pass`？
 - [ ] 外部命令是否用了 `subprocess.run()`（列表参数）？
 - [ ] 是否有硬编码路径/密码？
+- [ ] 文本读写是否显式指定 encoding？是否误用 errors="replace" 或 ASCII 转义做常规输出？
 - [ ] 是否通过 Ruff 零告警？
 - [ ] 需要补全时是否已接入（Click 内建 / argcomplete / Typer）并在 README 说明激活方式？
 
