@@ -52,7 +52,7 @@ python -c "from pathlib import Path; import json; print(json.dumps(Path('docs/ex
   [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
   $OutputEncoding = [System.Text.Encoding]::UTF8
   ```
-- Python 探针用 `python -X utf8 -c ...`（只影响本次调用），不再依赖控制台代码页。
+- Python 运行与探针一律加 `-X utf8`（如 `python -X utf8 script.py`、`python -X utf8 -c ...`，只影响本次调用），不再依赖控制台代码页。
 - 判读：中文回显可读且退出码正确；纯状态判断仍可用 ASCII 断言。
 
 ## Agent 启动参数与 profile 例外

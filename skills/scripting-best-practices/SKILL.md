@@ -426,6 +426,7 @@ argcomplete 用自定义 Completer（如 `.completer = argcomplete.DirectoriesCo
 - [ ] 外部命令是否用了 `subprocess.run()`（列表参数）？
 - [ ] 是否有硬编码路径/密码？
 - [ ] 文本读写是否显式指定 encoding？是否误用 errors="replace" 或 ASCII 转义做常规输出？
+- [ ] 经 shell 启动 Python 是否对齐执行侧编码（单次 `-X utf8`，多层父进程设 `PYTHONUTF8=1`）？详见“执行侧编码”节。
 - [ ] 是否通过 Ruff 零告警？
 - [ ] 需要补全时是否已接入（Click 内建 / argcomplete / Typer）并在 README 说明激活方式？
 
