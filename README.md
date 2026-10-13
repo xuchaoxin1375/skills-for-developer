@@ -44,6 +44,7 @@
 
 - [仓库维护入口](AGENTS.md)：供代理读取的短入口。
 - [全局 AGENTS.md 真源](config/global-AGENTS.md)：个人常驻引用（一行），新机恢复用；链接脚本不碰各 harness 的 AGENTS.md。
+- [WSL 复用 Windows 侧 OpenCode 配置](docs/wsl-opencode-reuse.md)：完整配置（含模型配置）在 WSL 侧的复用范围、方式选型、密钥红线与验证（复用后默认不测活）；skill 分发仍走链接脚本。
 - [Skill 仓库治理](docs/skill-governance.md)：规则归属、职责划分、变更流程与分级验证。
 - [Skill 内容与语言规范](docs/skill-content-guidelines.md)：约束强度、正文与参考落点、指令措辞、术语、例子和写作复核。
 - [更新日志](CHANGELOG.md)：迁移历史与重要变更记录。
@@ -101,6 +102,23 @@ cd ~/repos/skills-for-developer
 ./scripts/link-skills.sh --unlink
 ```
 
+## 部署清单（新机 / 首次 / 代理执行）
+
+部署 = skill 链接安装 + 全局 AGENTS.md 合并 + 两级校验。按下列顺序一次跑完，避免来回补步；各步细则见对应小节，此处只给顺序与开关。
+
+1. **链接安装（首跑即定 cli.json）**：命令见「常用操作」。交互终端不带开关会询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
+   ```bash
+   ./scripts/link-skills.sh --apply-recommended-cli   # 应用推荐 TUI 配置
+   ./scripts/link-skills.sh --skip-recommended-cli   # 保持本机 TUI 配置
+   ```
+   Windows 对应 `scripts\link-skills.ps1 -ApplyRecommendedCli` / `-SkipRecommendedCli`。
+2. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——缺才复制；不一致只提示，由人或代理对比后合并，不直接覆盖。
+3. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径与五 harness 安装数全过，见「结构校验」。
+4. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」。
+5. **服务端计数对照**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
+
+WSL（Windows 子系统）首次部署除上述步骤外，还要复用 Windows 侧的完整配置（含模型配置），见 [WSL 复用 Windows 侧 OpenCode 配置](docs/wsl-opencode-reuse.md)。
+
 ## 推荐的 OpenCode TUI 设置
 
 真源：`config/opencode/cli.json`（图片预览、侧栏、tabs、主题等本机备份）。
@@ -143,19 +161,31 @@ python3 scripts/check-skills.py
 python3 scripts/check-skills.py --no-harness
 ```
 
-通过后再跑链接校验与服务端计数对照（`skill.list` 应含全部真源数 + 兼容源/内置）：
+通过后再跑链接校验与服务端计数对照（`skill.list` 应含全部真源数 + 兼容源/内置）。JSON 较长，先落盘再解析，避免管道截断半截输出；两段计数命令都在仓库根目录执行，整段贴进同一次调用一次跑完（每次独立调用都有服务调度与快照开销，拆散跑更慢）。`reload` 后等约 5 秒再 `list`——重扫是异步的，紧跟查询可能读到中间态；若 `missing` 非 `none`，隔几秒重查一次，仍非 `none` 才算异常：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -VerifyOnly
 opencode reload
 opencode api skill.list > $env:TEMP\skills.json
+python3 -c "import json,os;ids={s['id'] for s in json.load(open(os.environ['TEMP']+'/skills.json'))['data']};src={d for d in os.listdir('skills') if os.path.isfile('skills/'+d+'/SKILL.md')};print('server:',len(ids),'| in-source:',len(src&ids),'/',len(src),'| missing:',sorted(src-ids) or 'none')"
 ```
+
+```bash
+./scripts/link-skills.sh --verify-only
+opencode reload
+sleep 5   # 等重扫落定，紧跟查询可能读到中间态
+f="${TMPDIR:-/tmp}/opencode-skills.json"
+opencode api skill.list > "$f"
+python3 -c "import json,sys,os;ids={s['id'] for s in json.load(open(sys.argv[1]))['data']};src={d for d in os.listdir('skills') if os.path.isfile('skills/'+d+'/SKILL.md')};print('server:',len(ids),'| in-source:',len(src&ids),'/',len(src),'| missing:',sorted(src-ids) or 'none')" "$f"
+```
+
+`missing` 必须为 `none`、`in-source` 为满额；`server` 大于真源数属正常（含兼容源与内置 skill）。
 
 ## 全局 AGENTS.md同步与合并
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
 
-真源：`config/global-AGENTS.md`（与目标文件字节一致）。链接脚本不碰各 harness 的 `AGENTS.md`，新机 clone 后跑一次下面命令；已存在且不一致时只提示，需agent对比后合并(或手工合并，不是直接覆盖)。
+真源：`config/global-AGENTS.md`（与目标文件字节一致）。链接脚本不碰各 harness 的 `AGENTS.md`，但 `-VerifyOnly`/`--verify-only` 会一并提示漂移：目标缺失计异常，内容不一致只警告（由人或代理手工合并，不自动覆盖）。新机 clone 后跑一次下面命令；已存在且不一致时只提示，需agent对比后合并(或手工合并，不是直接覆盖)。
 
 Windows（PowerShell）：
 

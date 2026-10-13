@@ -4,6 +4,7 @@
 
 ### 未发布
 
+- README 新增「部署清单（新机 / 首次 / 代理执行）」：链接安装（非交互须首跑带 `--apply-recommended-cli`/`--skip-recommended-cli`，免二次全量）→ 全局 AGENTS.md 恢复合并 → 结构校验 → 链接校验 → 服务端计数对照五步有序给出；服务端计数补「落盘再解析」的跨平台计数片段（长 JSON 走管道会截断，`missing` 须为 `none`）。新增 `docs/wsl-opencode-reuse.md`：规定 WSL 复用 Windows 侧 providers、密钥与代理的配置分层、三种方式选型、密钥红线与验证，skill 分发仍走链接脚本。
 - 新增 `scripts/check-skills.py`（零依赖，Windows/Linux 通用）：一遍校验 frontmatter（`name` 与目录一致且 kebab、非空 `description`、多行须 `>`/`|` 折叠缩进）、README 检索入口、红线真实路径、五 harness 安装数；补上链接脚本只查存在性不查内容的盲区。用法见 README“结构校验”一节，`--no-harness` 可进 CI。
 - `doc-rewrite-review` frontmatter 改 `>` 折叠块：此前 `description` 第二行顶格续行，被服务端静默丢弃（`skill.list` 42 缺 1，链接校验却全绿），现恢复 43；`opencode-provider-config` 示例 `/tmp/setenv.log` 改 `"$HOME/setenv.log"`（红线禁写死 `/tmp`）。
 
