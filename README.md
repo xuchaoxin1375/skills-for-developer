@@ -101,6 +101,37 @@ cd ~/repos/skills-for-developer
 ./scripts/link-skills.sh --unlink
 ```
 
+## 结构校验（frontmatter/索引/红线/安装数）
+
+链接脚本只查 `SKILL.md` 存在与链接指向，不校验内容；
+`description` 顶格续行曾导致服务端静默丢弃 skill 而链接校验全绿。
+改 skill 后跑一遍零依赖的 `scripts/check-skills.py`（Windows/Linux 通用）：
+
+```powershell
+# 全量：frontmatter + README 索引 + 红线路径 + 五 harness 安装数
+python3 scripts/check-skills.py
+
+# 只查仓库侧（含 CI，不碰 harness）
+python3 scripts/check-skills.py --no-harness
+
+# 只查部分 skill / 警告也视为失败
+python3 scripts/check-skills.py --include doc-rewrite-review,htmlmini
+python3 scripts/check-skills.py --strict
+```
+
+```bash
+python3 scripts/check-skills.py
+python3 scripts/check-skills.py --no-harness
+```
+
+通过后再跑链接校验与服务端计数对照（`skill.list` 应含全部真源数 + 兼容源/内置）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -VerifyOnly
+opencode reload
+opencode api skill.list > $env:TEMP\skills.json
+```
+
 ## 全局 AGENTS.md同步与合并
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.

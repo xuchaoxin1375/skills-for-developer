@@ -4,6 +4,9 @@
 
 ### 未发布
 
+- 新增 `scripts/check-skills.py`（零依赖，Windows/Linux 通用）：一遍校验 frontmatter（`name` 与目录一致且 kebab、非空 `description`、多行须 `>`/`|` 折叠缩进）、README 检索入口、红线真实路径、五 harness 安装数；补上链接脚本只查存在性不查内容的盲区。用法见 README“结构校验”一节，`--no-harness` 可进 CI。
+- `doc-rewrite-review` frontmatter 改 `>` 折叠块：此前 `description` 第二行顶格续行，被服务端静默丢弃（`skill.list` 42 缺 1，链接校验却全绿），现恢复 43；`opencode-provider-config` 示例 `/tmp/setenv.log` 改 `"$HOME/setenv.log"`（红线禁写死 `/tmp`）。
+
 - 新增 `user-profile`（个人常驻默认值：网络选路与 PowerShell 执行底线，及转调 `network-access`/`powershell-pitfalls` 的指针；仅由全局 AGENTS.md 显式加载，`autoinvoke: false` 不进候选列表；全局 AGENTS.md 收敛为一行）。
 - 全局偏好可恢复：新增 `config/global-AGENTS.md`（与 `~/.config/opencode/AGENTS.md` 字节一致），README 补新机恢复命令；缺才复制、不一致只提示不覆盖。
 - `powershell-pitfalls` 升级默认 UTF-8：每次 PowerShell 调用先设输出编码、Python 探针用 `-X utf8`；`link-skills.ps1` 脚本内默认 UTF-8 回显（5.1 的 GBK 默认不再污染采集侧）。

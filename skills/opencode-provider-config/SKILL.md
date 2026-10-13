@@ -136,7 +136,7 @@ python3 -c "import os; print(os.environ.get('<PROVIDER>_API_KEY','') == '<KEY>')
 **例外（写入丢失）**：经由服务端派生的 shell 执行 `set env` 时，服务重启可能先于 CLI 完成写入即将其终止，导致写入丢失（`get env` 仍为空）。若多次重试后 `get env` 依然为空，即属此情形，应改用 detached 方式执行，并以只读命令确认：
 
 ```bash
-setsid nohup opencode service set env <KEY_NAME> <KEY_VALUE> >/tmp/setenv.log 2>&1 < /dev/null &
+setsid nohup opencode service set env <KEY_NAME> <KEY_VALUE> >"$HOME/setenv.log" 2>&1 < /dev/null &
 sleep 75
 opencode service get env                                        # 只读确认已落盘（输出含密钥，展示前打码）
 ps -o pid,ppid,lstart,cmd $(pgrep -f "serve --service")         # 以 STARTED 时间最新者为当前服务进程
