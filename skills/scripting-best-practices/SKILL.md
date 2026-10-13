@@ -293,6 +293,19 @@ Path("example.txt").write_text("中文", encoding="utf-8")
 text = Path("example.txt").read_text(encoding="utf-8")
 ```
 
+### 执行侧编码（UTF-8，默认）
+
+必须：从 shell/任务调度启动 Python 时，调用侧与被调侧编码对齐。管道重定向下
+Python 按系统 locale 编码 stdout（中文 Windows 默认 GBK），而调用侧（如已设
+UTF-8 的 PowerShell）按 UTF-8 解码，错位即乱码——文件读写已显式 UTF-8 也救不了输出管道。默认：
+
+- 单次：`python3 -X utf8 <script>.py`；
+- 父子多层 python（脚本内再起子进程）：父进程先设 `PYTHONUTF8=1`，子进程继承；
+- 新脚本文件本身：UTF-8 无 BOM，换行 LF（仓库 `.gitattributes` 已对 `*.py` 强制）。
+
+反例证据：外层有 `-X utf8` 而内层无，内层 GBK 输出在外层直接 `UnicodeDecodeError`。
+文件内容编码见上一节，不与本条混用。
+
 ### 命名风格（PEP 8）
 
 变量/函数 `snake_case`；常量 `UPPER_SNAKE_CASE`；类 `PascalCase`；文件名 `snake_case.py`。

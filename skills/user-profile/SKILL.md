@@ -19,6 +19,9 @@ description: >
 - **PowerShell**：带逻辑的脚本片段一律用 PowerShell。读非 ASCII 文件用 `-LiteralPath`
   加显式 `-Encoding`；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；
   退出码 0 或纯英文输出不能证明读取正确。
+- **脚本（非 PowerShell）**：默认 UTF-8。Python 一律 `-X utf8`（父子多层时父进程先设
+  `PYTHONUTF8=1`）、读写显式 `encoding="utf-8"`；新脚本文件 UTF-8 无 BOM、换行 LF。
+  细节见 `scripting-best-practices`。
 
 ## 域指针（需细节时加载，不预读）
 
@@ -26,6 +29,7 @@ description: >
 |---|---|
 | 出网慢/失败、GitHub/文档抓取、依赖下载、镜像/加速、超时·403·限流分流 | `network-access`（含其 `references/network-access.md` 命令与分流表） |
 | 编写/运行 PowerShell 片段、非 ASCII 乱码、静默失败、退出码、启动/profile、引号路径 | `powershell-pitfalls`（按其“按需读取”表只读相关章节） |
+| 编写/审查/重构 `.sh`/`.bash`/`.py` 脚本、脚本执行侧与文件侧 UTF-8 默认、换行/BOM、子进程输出编码 | `scripting-best-practices`（先读其 Python“文件读写/执行侧编码”两节） |
 
 ## 约束
 
