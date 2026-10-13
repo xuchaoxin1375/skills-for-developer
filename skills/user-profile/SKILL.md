@@ -1,16 +1,12 @@
 ---
 name: user-profile
 description: >
-  个人常驻默认值，仅由全局 AGENTS.md 显式加载：国内试验/海外生产网络选路、
-  Windows PowerShell 执行底线，以及何时转调 network-access / powershell-pitfalls。
-  日常任务不按关键词触发；域细节以被指 skill 正文为准，本文件不复制其规则。
-metadata:
-  opencode/autoinvoke: false
+  全局偏好记录,重点阅读并实践,任何会话都要确保读取这里的常驻默认值：优先由全局 AGENTS.md 显式加载.
 ---
 
 # User Profile（个人常驻默认值）
 
-本 skill 只存个人高频偏好与域指针，由全局 `AGENTS.md` 显式加载，不靠关键词触发。
+本 skill 只存个人高频偏好与域指针，优先由全局 `AGENTS.md` 显式加载；涉及网络选路或 PowerShell 时也可按关键词加载兜底，不依赖单一入口。
 域规则以被指 skill 正文为准，本文件只保留能改变默认动作的底线摘要。
 
 ## 常驻底线

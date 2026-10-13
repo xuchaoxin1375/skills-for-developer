@@ -6,37 +6,37 @@
 
 真源布局：`skills/<skill-name>/`（一个目录一个 skill，必须包含 `SKILL.md`，可带自有的 `references/`、`scripts/` 等）；`scripts/` 放链接脚本，`docs/` 放协作说明，`.workspaces/` 放本地评估产物（git 忽略，不提交）。
 
-| Skill 目录 | 一句话说明 | 关键词 / 何时用 |
-|---|---|---|
-| `skills/doc-polish` | 技术/业务文档全面改写与质量提升：不改变原意，正式化、规范化、严谨化、清晰化，补充结构、示例、表格与 Mermaid 图（原名 doc-polish-zh，已去语言限定） | 润色、改写、审校、优化文档、【原文】、polish、rewrite、proofread、edit、improve docs |
-| `skills/scripting-best-practices` | Shell (Bash) 与 Python 脚本的编写、审查与重构规范，生产级健壮性要求（原 opencode） | 写脚本、审脚本、重构 `.sh` / `.bash` / `.py`、排查脚本健壮性 |
-| `skills/resilient-browser-fetch` | 采集受反爬保护的网站：Scrapling 过 Cloudflare 挑战、可选 CloakBrowser CDP 浏览器，保存渲染后 HTML、截图与诊断元数据，中文输出（原 codex） | 反爬、Cloudflare、Turnstile、抓取、采集、代理连通性、会话复用 |
-| `skills/htmlmini` | 网页核心骨架提取：Defuddle→Trafilatura(可选)→semantic→UI清单自动回退，省约 75–99% token；CLI+MCP双形态（原 claude） | html、网页、页面、设计稿、面板、仪表盘、总结、分析、审查 |
-| `skills/skill-authoring-sync` | agent harness 新建自定义 skill 并同步到真源仓库：新建必要性判断、真源唯一、链接分发、跨机器 git 同步；内容写作引用仓库规范 | 新建 skill、是否新建 skill、安装 skill、同步 skill、链接校验、真源管理 |
-| `skills/repo-governance` | 公开/私有仓库治理与安全提交：按用途选文件，保留隐私底线，复用提交/分支政策；补 CI 权限、评审保护、依赖和构建供应链控制 | 新建仓库、规范化改造、提交检查、CONTRIBUTING、CI、分支保护、供应链、审计密钥 |
-| `skills/app-engineering` | 长期应用工程基线：模块与数据边界、ADR、契约兼容、运行目标与恢复、文档/技术债及效能反馈；按需复用测试、仓库和交付政策 | 应用开发规范、架构治理、ADR、契约演进、兼容迁移、幂等副作用、SLO、恢复、技术债、持续维护 |
-| `skills/tech-learning-research` | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级 | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison |
-| `skills/markdown-style` | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法；文档合并与多文档整合定稿后走本规范收尾；skill 指令内容与语言按仓库写作规范 | 排版、风格迁移、规范格式、统一标题、markdown lint、format、文档合并、文档整合、章节合并、统稿 |
-| `skills/lightweight-app-builder` | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、技术选型、打包签名分发，六步流程 | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、打包分发 |
-| `skills/frontend-design` | Web/桌面小工具界面设计：任务、页面结构、令牌、通用交互与整体交付；共用对比度与截图协议，局部验收优先特写；线框接入 adaptive-responsive-guide，动效设计查 motion.md、技术查 web-animation-guide，存量深查转 frontend-ux-qa | 界面丑、布局乱、美化、适配手机、加载动画、文字/图标难辨、对比度、页面可读性、新建改版、交付验收、可用性、UX |
-| `skills/frontend-ux-qa` | 存量前端 UI 缺陷诊断与验收门禁：先跑 Playwright 用户流程，再按共用截图协议查看关键态，局部缺陷优先特写；对比度测实际背景/状态并补测自动未判项；按风险分层，覆盖 `L/C/S/V/A/F/N/I/D/P/G/H`、溢出/CLS 脚本与 DoD CI 门禁；前后端测试实施按需转 web-app-testing | 布局溢出、横向滚动、弹窗关闭、焦点回归、文字/图标与背景难辨、对比度、页面可读性、截图验收、Agent 视觉理解、Playwright、UI 验收门禁、axe、DoD、CI 拦截 |
-| `skills/web-app-testing` | 前后端 Web 测试规划、编写与维护：有效断言、真实 API/存储、隔离与 CI，含幂等/副作用和兼容回归；工程设计按应用治理，交付证据按 ai-verified-delivery | Web 测试、该测什么、什么时候写测试、单元/组件/集成/E2E、API 契约、数据库、权限回归、幂等/兼容回归、过度 Mock、测试隔离、不稳定测试、CI 分层 |
-| `skills/arena-preview` | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告；展示截图用于验收时转共用协议 | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看 |
-| `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味；对比度与截图行为复用共用规范，保留整体品味和模板覆盖评审 | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique |
-| `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 执行与排障：编写/运行脚本片段、读取选择、编码保真、启动和安全底线，诊断与版本细节按需读取；原生 read 常规查看无需加载 | PowerShell 读文件、编写脚本、Get-Content/type/cat、UTF-8、默认UTF-8输出、NoProfile、profile、PowerShell 开发测试、退出码、原生参数、Start-Process、LiteralPath、管道输出、中文乱码、BOM、引号、别名、junction |
-| `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制、搜索/抓取请求节奏与 429 冷却、输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
-| `skills/web-animation-guide` | Web动画技术实现：选型、示例、退出布局保持、中间帧验证、打断清理、兼容、性能与减弱动效；读取项目令牌，截图取景与查看复用共用协议，与 frontend-design 分工维护 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
-| `skills/adaptive-responsive-guide` | 响应式专项：视口/容器阈值、clamp流体、Flex/Grid、媒体、操作收纳、滚动与浮层场景、范围化验收；可独立使用，与 frontend-design 合并交付，动效与截图引用共用规则 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
-| `skills/sticky-position` | CSS `position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单 | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵 |
-| `skills/ai-verified-delivery` | AI 编程质量与规格驱动可验证交付：规格/AC/任务到证据追踪，唯一风险等级/状态；维护共用截图触发、特写/视口/全页取景、实际查看与视觉证据协议；复核与适用发布恢复，工程设计/测试按需协作 | AI coding 质量、spec、SDD、需求拆解、验收标准、门禁、verify、DoD、L0-L4、RTM、截图验收、特写、复核、完成报告、例外、风险接受、发布恢复 |
-| `skills/admin-console-design` | 后台控制台设计与实现：默认fable整体主题或完整局部模板，按需补sonnet列宽/撤销与gpt导入/验收；附功能目录、源码、依赖边界与快照，默认继承设计并接业务，标明参考缺口；对比度与截图复用共用规范 | 后台面板、管理后台、admin、console、dashboard、侧栏折叠悬停、列表编辑批量、设置页、向导、Cloudflare-inspired |
-| `skills/skill-patcher` | 存量 skill 实战补丁：把真实漏验、误判或执行失败修成增量条目；一般写作审查按编写入口，内容与语言复用仓库规范 | 实战复盘、修补 skill、真实逃逸、补丁措辞审查、去污染、项目无关性 |
-| `skills/reference-to-skill` | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进，内容写作复用仓库规范 | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill |
-| `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |
-| `skills/network-access` | 国内试验与海外生产的网络访问：直连/代理/镜像、Windows 与 *nix 配置、GitHub/文档访问、Python/Node.js/conda 依赖及额外下载、超时/403/限流分流与加速核验，附带日期的本机观测 | 出网、外网资源、GitHub、文档访问、依赖下载、安装脚本、下载慢、超时、403、回退、镜像源、文件加速、代理、mihomo、直连、pip、uv、npm、pnpm、Yarn、conda、miniforge、Python、Node.js、联网、网络环境 |
-| `skills/opencode-provider-config` | 第三方 AI API（中转站/NewAPI/OpenAI 兼容网关）接入 OpenCode：拉 `/v1/models` 筛模型、DNS/代理诊断、多源查模型参数（OpenRouter/models.dev/LiteLLM，自带零依赖 Python 脚本 model_info.py，含 Windows 与 *nix 手工取法）、写 providers 配置、service set env 持久化代理与密钥、三步端到端验证 | 接入 opencode、自定义供应商、配 provider、中转站、NewAPI、one-api、第三方模型、/v1/models、models.dev、openrouter、litellm、上下文窗口、模态、model_info.py、baseURL、service set env、OpenCode 接模型 |
-| `skills/mermaid-fix` | Mermaid 渲染失败诊断与修复：提块复现 Parse error、修节点引号与转义、mmdc/kroki 复验回写；语法正本走 markdown-style | mermaid 渲染失败、Parse error、got SQS、图挂了、节点方括号、修图、复验 |
-| `skills/user-profile` | 个人常驻默认值：网络选路与 PowerShell 执行底线，及转调 network-access/powershell-pitfalls 的指针；仅由全局 AGENTS.md 显式加载 | 常驻偏好、个人默认值、user-profile、全局偏好、动手前加载 |
+| Skill 目录                             | 一句话说明                                                                                                                                                                                                                                                                                  | 关键词 / 何时用                                                                                                                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skills/doc-rewrite-review`          | 技术/业务文档全面改写与质量提升：不改变原意，正式化、规范化、严谨化、清晰化，补充结构、示例、表格与 Mermaid 图（原名 doc-polish-zh，已去语言限定；2026-10-13 由 doc-polish 改名）                                                                                                           | 润色、改写、审校、优化文档、【原文】、polish、rewrite、proofread、edit、improve docs                                                                                                                          |
+| `skills/scripting-best-practices`    | Shell (Bash) 与 Python 脚本的编写、审查与重构规范，生产级健壮性要求（原 opencode）                                                                                                                                                                                                          | 写脚本、审脚本、重构`.sh` / `.bash` / `.py`、排查脚本健壮性                                                                                                                                             |
+| `skills/resilient-browser-fetch`     | 采集受反爬保护的网站：Scrapling 过 Cloudflare 挑战、可选 CloakBrowser CDP 浏览器，保存渲染后 HTML、截图与诊断元数据，中文输出（原 codex）                                                                                                                                                   | 反爬、Cloudflare、Turnstile、抓取、采集、代理连通性、会话复用                                                                                                                                                 |
+| `skills/htmlmini`                    | 网页核心骨架提取：Defuddle→Trafilatura(可选)→semantic→UI清单自动回退，省约 75–99% token；CLI+MCP双形态（原 claude）                                                                                                                                                                     | html、网页、页面、设计稿、面板、仪表盘、总结、分析、审查                                                                                                                                                      |
+| `skills/skill-authoring-sync`        | agent harness 新建自定义 skill 并同步到真源仓库：新建必要性判断、真源唯一、链接分发、跨机器 git 同步；内容写作引用仓库规范                                                                                                                                                                  | 新建 skill、是否新建 skill、安装 skill、同步 skill、链接校验、真源管理                                                                                                                                        |
+| `skills/repo-governance`             | 公开/私有仓库治理与安全提交：按用途选文件，保留隐私底线，复用提交/分支政策；补 CI 权限、评审保护、依赖和构建供应链控制                                                                                                                                                                      | 新建仓库、规范化改造、提交检查、CONTRIBUTING、CI、分支保护、供应链、审计密钥                                                                                                                                  |
+| `skills/app-engineering`             | 长期应用工程基线：模块与数据边界、ADR、契约兼容、运行目标与恢复、文档/技术债及效能反馈；按需复用测试、仓库和交付政策                                                                                                                                                                        | 应用开发规范、架构治理、ADR、契约演进、兼容迁移、幂等副作用、SLO、恢复、技术债、持续维护                                                                                                                      |
+| `skills/tech-learning-research`      | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级                                                                                                                                                                                                                    | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison                                                                                                                                            |
+| `skills/markdown-style`              | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法；文档合并与多文档整合定稿后走本规范收尾；skill 指令内容与语言按仓库写作规范                                                                                                                   | 排版、风格迁移、规范格式、统一标题、markdown lint、format、文档合并、文档整合、章节合并、统稿                                                                                                                 |
+| `skills/lightweight-app-builder`     | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、技术选型、打包签名分发，六步流程                                                                                                                                                                                              | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、打包分发                                                                                                                                                   |
+| `skills/frontend-design`             | Web/桌面小工具界面设计：任务、页面结构、令牌、通用交互与整体交付；共用对比度与截图协议，局部验收优先特写；线框接入 adaptive-responsive-guide，动效设计查 motion.md、技术查 web-animation-guide，存量深查转 frontend-ux-qa                                                                   | 界面丑、布局乱、美化、适配手机、加载动画、文字/图标难辨、对比度、页面可读性、新建改版、交付验收、可用性、UX                                                                                                   |
+| `skills/frontend-ux-qa`              | 存量前端 UI 缺陷诊断与验收门禁：先跑 Playwright 用户流程，再按共用截图协议查看关键态，局部缺陷优先特写；对比度测实际背景/状态并补测自动未判项；按风险分层，覆盖`L/C/S/V/A/F/N/I/D/P/G/H`、溢出/CLS 脚本与 DoD CI 门禁；前后端测试实施按需转 web-app-testing                               | 布局溢出、横向滚动、弹窗关闭、焦点回归、文字/图标与背景难辨、对比度、页面可读性、截图验收、Agent 视觉理解、Playwright、UI 验收门禁、axe、DoD、CI 拦截                                                         |
+| `skills/web-app-testing`             | 前后端 Web 测试规划、编写与维护：有效断言、真实 API/存储、隔离与 CI，含幂等/副作用和兼容回归；工程设计按应用治理，交付证据按 ai-verified-delivery                                                                                                                                           | Web 测试、该测什么、什么时候写测试、单元/组件/集成/E2E、API 契约、数据库、权限回归、幂等/兼容回归、过度 Mock、测试隔离、不稳定测试、CI 分层                                                                   |
+| `skills/arena-preview`               | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告；展示截图用于验收时转共用协议                                                                                                                                                                                     | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看                                                                                                                                                        |
+| `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味；对比度与截图行为复用共用规范，保留整体品味和模板覆盖评审                                                                                                                                    | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique                                                                                                 |
+| `skills/powershell-pitfalls`         | PowerShell 5.1/pwsh 执行与排障：编写/运行脚本片段、读取选择、编码保真、启动和安全底线，诊断与版本细节按需读取；原生 read 常规查看无需加载                                                                                                                                                   | PowerShell 读文件、编写脚本、Get-Content/type/cat、UTF-8、默认UTF-8输出、NoProfile、profile、PowerShell 开发测试、退出码、原生参数、Start-Process、LiteralPath、管道输出、中文乱码、BOM、引号、别名、junction |
+| `skills/agentic-web-search`          | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制、搜索/抓取请求节奏与 429 冷却、输出规范，含工具参数与评测参考                                                                                                                          | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search                                                                                                |
+| `skills/web-animation-guide`         | Web动画技术实现：选型、示例、退出布局保持、中间帧验证、打断清理、兼容、性能与减弱动效；读取项目令牌，截图取景与查看复用共用协议，与 frontend-design 分工维护                                                                                                                                | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿                                                                                                                                    |
+| `skills/adaptive-responsive-guide`   | 响应式专项：视口/容器阈值、clamp流体、Flex/Grid、媒体、操作收纳、滚动与浮层场景、范围化验收；可独立使用，与 frontend-design 合并交付，动效与截图引用共用规则                                                                                                                                | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层                                                                                  |
+| `skills/sticky-position`             | CSS`position: sticky` 粘性定位实现规范：三句心智模型、七种场景标准写法、六类失效根因排查、sticky/fixed 选型、兼容降级与无障碍上线清单                                                                                                                                                     | 吸顶、吸底、吸附、置顶导航、表头冻结、粘性侧栏、分组标题顶走、层叠卡片、抽屉切侧栏、sticky 不生效/粘不住、滚动到某处停住、scroll-padding、overflow 劫持、诊断脚本、is-stuck 哨兵                              |
+| `skills/ai-verified-delivery`        | AI 编程质量与规格驱动可验证交付：规格/AC/任务到证据追踪，唯一风险等级/状态；维护共用截图触发、特写/视口/全页取景、实际查看与视觉证据协议；复核与适用发布恢复，工程设计/测试按需协作                                                                                                         | AI coding 质量、spec、SDD、需求拆解、验收标准、门禁、verify、DoD、L0-L4、RTM、截图验收、特写、复核、完成报告、例外、风险接受、发布恢复                                                                        |
+| `skills/admin-console-design`        | 后台控制台设计与实现：默认fable整体主题或完整局部模板，按需补sonnet列宽/撤销与gpt导入/验收；附功能目录、源码、依赖边界与快照，默认继承设计并接业务，标明参考缺口；对比度与截图复用共用规范                                                                                                  | 后台面板、管理后台、admin、console、dashboard、侧栏折叠悬停、列表编辑批量、设置页、向导、Cloudflare-inspired                                                                                                  |
+| `skills/skill-patcher`               | 存量 skill 实战补丁：把真实漏验、误判或执行失败修成增量条目；一般写作审查按编写入口，内容与语言复用仓库规范                                                                                                                                                                                 | 实战复盘、修补 skill、真实逃逸、补丁措辞审查、去污染、项目无关性                                                                                                                                              |
+| `skills/reference-to-skill`          | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进，内容写作复用仓库规范                                                                                                                                                       | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill                                                                                                                      |
+| `skills/codex-model-config`          | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用）                                                                                                                                                                                           | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config                                                                                                           |
+| `skills/network-access`              | 国内试验与海外生产的网络访问：直连/代理/镜像、Windows 与 *nix 配置、GitHub/文档访问、Python/Node.js/conda 依赖及额外下载、超时/403/限流分流与加速核验，附带日期的本机观测                                                                                                                   | 出网、外网资源、GitHub、文档访问、依赖下载、安装脚本、下载慢、超时、403、回退、镜像源、文件加速、代理、mihomo、直连、pip、uv、npm、pnpm、Yarn、conda、miniforge、Python、Node.js、联网、网络环境              |
+| `skills/opencode-provider-config`    | 第三方 AI API（中转站/NewAPI/OpenAI 兼容网关）接入 OpenCode：拉`/v1/models` 筛模型、DNS/代理诊断、多源查模型参数（OpenRouter/models.dev/LiteLLM，自带零依赖 Python 脚本 model_info.py，含 Windows 与 *nix 手工取法）、写 providers 配置、service set env 持久化代理与密钥、三步端到端验证 | 接入 opencode、自定义供应商、配 provider、中转站、NewAPI、one-api、第三方模型、/v1/models、models.dev、openrouter、litellm、上下文窗口、模态、model_info.py、baseURL、service set env、OpenCode 接模型        |
+| `skills/mermaid-fix`                 | Mermaid 渲染失败诊断与修复：提块复现 Parse error、修节点引号与转义、mmdc/kroki 复验回写；语法正本走 markdown-style                                                                                                                                                                          | mermaid 渲染失败、Parse error、got SQS、图挂了、节点方括号、修图、复验                                                                                                                                        |
+| `skills/user-profile`                | 个人常驻默认值：网络选路与 PowerShell 执行底线，及转调 network-access/powershell-pitfalls 的指针；优先由全局 AGENTS.md 显式加载，网络/PowerShell 任务可按关键词兜底                                                                                                                         | 常驻偏好、个人默认值、user-profile、全局偏好、动手前加载、代理/镜像/出网、shell/乱码/编码                                                                                                                     |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
@@ -53,13 +53,13 @@
 
 ## Harness 映射（Win / Linux 路径同构，只是家目录写法不同）
 
-| Harness  | Windows skills 目录 | Linux skills 目录 | 说明 |
-|---|---|---|---|
-| Agents 通用 | `%DSH_AGENTS_HOME%/skills`（默认 `%USERPROFILE%/.agents/skills`） | `${DSH_AGENTS_HOME:-~/.agents}/skills` | 全量链接；Pi 等标准兼容 harness 共用，第三方实体不动 |
-| OpenCode | `%USERPROFILE%/.config/opencode/skills` | `~/.config/opencode/skills` | 全量链接仓库中的 skill |
-| Codex | `%USERPROFILE%/.codex/skills` | `~/.codex/skills` | 全量链接; 自带的 `.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
-| Claude | `%USERPROFILE%/.claude/skills` | `~/.claude/skills` | 全量链接 |
-| DeepSeek Harness | `%DSH_HOME%/skills`（默认 `%USERPROFILE%/.dsh/skills`） | `${DSH_HOME:-~/.dsh}/skills` | 全量链接；dsh 原生用户级（rank 高于通用位置） |
+| Harness          | Windows skills 目录                                                   | Linux skills 目录                        | 说明                                                             |
+| ---------------- | --------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------- |
+| Agents 通用      | `%DSH_AGENTS_HOME%/skills`（默认 `%USERPROFILE%/.agents/skills`） | `${DSH_AGENTS_HOME:-~/.agents}/skills` | 全量链接；Pi 等标准兼容 harness 共用，第三方实体不动             |
+| OpenCode         | `%USERPROFILE%/.config/opencode/skills`                             | `~/.config/opencode/skills`            | 全量链接仓库中的 skill                                           |
+| Codex            | `%USERPROFILE%/.codex/skills`                                       | `~/.codex/skills`                      | 全量链接; 自带的`.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
+| Claude           | `%USERPROFILE%/.claude/skills`                                      | `~/.claude/skills`                     | 全量链接                                                         |
+| DeepSeek Harness | `%DSH_HOME%/skills`（默认 `%USERPROFILE%/.dsh/skills`）           | `${DSH_HOME:-~/.dsh}/skills`           | 全量链接；dsh 原生用户级（rank 高于通用位置）                    |
 
 ## 链接方式：Junction（Win）/ symlink（Linux）
 
@@ -79,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -VerifyOnly
 
 # 只处理部分 skill
-powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Include doc-polish,htmlmini
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Include doc-rewrite-review,htmlmini
 
 # 移除本仓库创建的链接 (实体不受影响)
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Unlink
@@ -97,13 +97,15 @@ cd ~/repos/skills-for-developer
 
 # 只检查 / 只处理部分 / 移除
 ./scripts/link-skills.sh --verify-only
-./scripts/link-skills.sh --include doc-polish,htmlmini
+./scripts/link-skills.sh --include doc-rewrite-review,htmlmini
 ./scripts/link-skills.sh --unlink
 ```
 
-## 全局 AGENTS.md（一行引用，新机恢复）
+## 全局 AGENTS.md同步与合并
 
-真源：`config/global-AGENTS.md`（与目标文件字节一致）。链接脚本不碰各 harness 的 `AGENTS.md`，新机 clone 后跑一次下面命令；已存在且不一致时只提示，需手工合并，不覆盖。
+> 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
+
+真源：`config/global-AGENTS.md`（与目标文件字节一致）。链接脚本不碰各 harness 的 `AGENTS.md`，新机 clone 后跑一次下面命令；已存在且不一致时只提示，需agent对比后合并(或手工合并，不是直接覆盖)。
 
 Windows（PowerShell）：
 
@@ -133,7 +135,6 @@ else echo 'differs, merge manually (one line), will not overwrite'; fi
 2. 新增 skill: 在 `skills/` 下新建目录 + `SKILL.md`, 然后在**每台机器**上运行一次该平台的链接脚本。
 3. 删除 skill: 先运行 `-Unlink` / `--unlink` (或手工删除各 harness 下对应链接), 再删仓库目录。注意删除链接只删链接不删实体：Win 用 `Remove-Item <junction>`（不要加 `-Recurse`），Linux 用 `rm <symlink>`（不要加 `-r`，且路径末尾不要加 `/`）。
 4. 原位置的实体在首次替换为链接时会自动备份到 `~/.skills-migration-backup/<时间戳>/<harness>/<name>`（Win 下即 `%USERPROFILE%/.skills-migration-backup/...`），备份移出 skills 目录是为了避免被 harness 误扫为重复 skill，确认无误后可手工删除备份。
-
 5. 跑 skill-creator 评估时，过程产物（`outputs/`、`benchmark.json`、`review.html` 等 `*-workspace/` 目录）统一放仓库根 `.workspaces/<skill-name>-workspace/`（已在 `.gitignore` 忽略，本地独占）；**禁止**放入 `skills/` 下（链接脚本会对无 `SKILL.md` 目录告警，且过程产物不许进入真源同步）。留到 skill 稳定作回归基线，过时后整目录删除。
 
 ## 开源许可
