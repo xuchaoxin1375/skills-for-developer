@@ -26,7 +26,8 @@
   移除本仓库创建的 Junction (仅移除指向本仓库的链接, 实体目录不动)。
 
 .PARAMETER VerifyOnly
-  只检查链接状态, 不做任何修改, 有异常时以非零退出码返回。
+  只检查链接状态与全局 AGENTS.md 是否漂移, 不做任何修改,
+  有异常时以非零退出码返回 (AGENTS 缺失计异常, 内容不一致只警告)。
 
 .PARAMETER ApplyRecommendedCli
   直接应用仓库推荐的 opencode cli.json (config/opencode/cli.json),
@@ -250,6 +251,21 @@ if (-not $Unlink -and -not $VerifyOnly) {
         Copy-Item -LiteralPath $repoCli -Destination $dstCli -Force
         Write-Host '推荐 cli.json 已应用。'
       }
+    }
+  }
+}
+
+if ($VerifyOnly) {
+  $repoAgents = Join-Path (Join-Path $RepoRoot 'config') 'global-AGENTS.md'
+  $liveAgents = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
+  if (Test-Path -LiteralPath $repoAgents -PathType Leaf) {
+    if (-not (Test-Path -LiteralPath $liveAgents -PathType Leaf)) {
+      Write-Warning '全局 AGENTS.md 缺失 (期望按 README 从 config/global-AGENTS.md 恢复)'
+      $failures++
+    } elseif ((Get-FileHash -LiteralPath $repoAgents).Hash -ne (Get-FileHash -LiteralPath $liveAgents).Hash) {
+      Write-Warning '全局 AGENTS.md 与真源不一致, 按 README 手工合并 (不自动覆盖)'
+    } else {
+      Write-Host '全局 AGENTS.md 与真源一致。'
     }
   }
 }
