@@ -15,10 +15,12 @@
 # 不会动 harness 自带内容（如 Codex 的 .system/、AGENTS.md）。
 #
 # 用法：
-#   scripts/link-skills.sh                    # 全量链接
+#   scripts/link-skills.sh                    # 全量链接（交互终端下会询问是否应用推荐 cli.json）
 #   scripts/link-skills.sh --verify-only      # 只检查，不修改
 #   scripts/link-skills.sh --unlink           # 移除本仓库创建的链接（实体不受影响）
 #   scripts/link-skills.sh --include a,b      # 只处理部分 skill
+#   scripts/link-skills.sh --apply-recommended-cli  # 直接应用推荐 cli.json，不询问
+#   scripts/link-skills.sh --skip-recommended-cli   # 跳过推荐 cli.json
 #
 set -euo pipefail
 
@@ -36,11 +38,15 @@ TARGETS=(
 VERIFY_ONLY=0
 UNLINK=0
 INCLUDE=""
+APPLY_RECOMMENDED=0
+SKIP_RECOMMENDED=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --verify-only) VERIFY_ONLY=1; shift ;;
     --unlink) UNLINK=1; shift ;;
+    --apply-recommended-cli) APPLY_RECOMMENDED=1; shift ;;
+    --skip-recommended-cli) SKIP_RECOMMENDED=1; shift ;;
     --include) INCLUDE="${2:-}"; shift 2 ;;
     --include=*) INCLUDE="${1#--include=}"; shift ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
@@ -161,6 +167,46 @@ for target in "${TARGETS[@]}"; do
     fi
   done
 done
+
+apply_recommended_cli() {
+  # 推荐 cli.json：缺失或与真源不一致时，交互终端下询问是否应用；
+  # 非交互环境默认跳过（用 --apply-recommended-cli 显式应用）。
+  [[ $UNLINK -eq 1 || $VERIFY_ONLY -eq 1 ]] && return 0
+  local repo_cli="$REPO_ROOT/config/opencode/cli.json"
+  [[ -f "$repo_cli" ]] || return 0
+  local dst="$HOME/.config/opencode/cli.json"
+  if [[ -f "$dst" ]] && cmp -s "$repo_cli" "$dst"; then
+    echo "推荐 cli.json 已是最新。"
+    return 0
+  fi
+  if [[ $SKIP_RECOMMENDED -eq 1 ]]; then
+    echo "已跳过推荐 cli.json（--skip-recommended-cli）。"
+    return 0
+  fi
+  local do_apply=0
+  if [[ $APPLY_RECOMMENDED -eq 1 ]]; then
+    do_apply=1
+  elif [[ -t 0 ]]; then
+    local ans
+    read -r -p "是否应用仓库推荐的 opencode cli.json（覆盖当前配置，原文件先备份）？[y/N] " ans
+    [[ "$ans" =~ ^[yY]([eE][sS])?$ ]] && do_apply=1
+  else
+    echo "非交互环境，跳过推荐 cli.json（用 --apply-recommended-cli 应用）。"
+    return 0
+  fi
+  if [[ $do_apply -eq 1 ]]; then
+    mkdir -p "$(dirname "$dst")"
+    if [[ -f "$dst" ]]; then
+      local bak="$dst.bak-$(date +%Y%m%d-%H%M%S)"
+      cp "$dst" "$bak"
+      echo "原 cli.json 已备份到 $bak"
+    fi
+    cp "$repo_cli" "$dst"
+    echo "推荐 cli.json 已应用。"
+  fi
+}
+
+apply_recommended_cli
 
 if [[ $VERIFY_ONLY -eq 1 ]]; then
   if [[ $failures -gt 0 ]]; then

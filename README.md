@@ -101,6 +101,25 @@ cd ~/repos/skills-for-developer
 ./scripts/link-skills.sh --unlink
 ```
 
+## 推荐的 OpenCode TUI 设置
+
+真源：`config/opencode/cli.json`（图片预览、侧栏、tabs、主题等本机备份）。
+跑链接脚本部署时，交互终端下若目标缺失或不一致会询问是否应用
+（覆盖前原文件备份为同目录 `cli.json.bak-<时间戳>`）；非交互环境默认跳过：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -ApplyRecommendedCli
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipRecommendedCli
+```
+
+```bash
+./scripts/link-skills.sh --apply-recommended-cli
+./scripts/link-skills.sh --skip-recommended-cli
+```
+
+`opencode.json`（供应商）与密钥（`service.json`/`auth.json`）不在此列，
+按需走 `opencode-provider-config` 与 `opencode auth import` 另行处理。
+
 ## 结构校验（frontmatter/索引/红线/安装数）
 
 链接脚本只查 `SKILL.md` 存在与链接指向，不校验内容；

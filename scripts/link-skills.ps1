@@ -28,6 +28,16 @@
 .PARAMETER VerifyOnly
   只检查链接状态, 不做任何修改, 有异常时以非零退出码返回。
 
+.PARAMETER ApplyRecommendedCli
+  直接应用仓库推荐的 opencode cli.json (config/opencode/cli.json),
+  不询问。原文件先备份为同目录 cli.json.bak-<时间戳>。
+
+.PARAMETER SkipRecommendedCli
+  跳过推荐 cli.json 的询问与应用。
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -ApplyRecommendedCli
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1
 .EXAMPLE
@@ -40,7 +50,9 @@ param(
   [string]$RepoRoot = '',
   [string[]]$Include,
   [switch]$Unlink,
-  [switch]$VerifyOnly
+  [switch]$VerifyOnly,
+  [switch]$ApplyRecommendedCli,
+  [switch]$SkipRecommendedCli
 )
 
 $ErrorActionPreference = 'Stop'
@@ -201,6 +213,43 @@ foreach ($targetDir in $targets) {
       Move-Item -LiteralPath $link -Destination $backup -Force
       New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
       Write-Host "$label 实体已备份到 $backup, 链接已创建"
+    }
+  }
+}
+
+if (-not $Unlink -and -not $VerifyOnly) {
+  # 推荐 cli.json: 缺失或与真源不一致时, 交互终端下询问是否应用;
+  # 非交互环境默认跳过 (用 -ApplyRecommendedCli 显式应用)。
+  $repoCli = Join-Path (Join-Path (Join-Path $RepoRoot 'config') 'opencode') 'cli.json'
+  if (Test-Path -LiteralPath $repoCli -PathType Leaf) {
+    $dstDir = Join-Path $env:USERPROFILE '.config\opencode'
+    $dstCli = Join-Path $dstDir 'cli.json'
+    $inSync = (Test-Path -LiteralPath $dstCli -PathType Leaf) -and `
+      ((Get-FileHash -LiteralPath $repoCli).Hash -eq (Get-FileHash -LiteralPath $dstCli).Hash)
+    if ($inSync) {
+      Write-Host '推荐 cli.json 已是最新。'
+    } elseif ($SkipRecommendedCli) {
+      Write-Host '已跳过推荐 cli.json (-SkipRecommendedCli)。'
+    } else {
+      $doApply = $false
+      if ($ApplyRecommendedCli) {
+        $doApply = $true
+      } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+        $ans = Read-Host '是否应用仓库推荐的 opencode cli.json (覆盖当前配置, 原文件先备份)? [y/N]'
+        $doApply = $ans -match '^(y|Y|yes|YES)$'
+      } else {
+        Write-Host '非交互环境, 跳过推荐 cli.json (用 -ApplyRecommendedCli 应用)。'
+      }
+      if ($doApply -and $PSCmdlet.ShouldProcess($dstCli, '应用推荐 cli.json')) {
+        New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
+        if (Test-Path -LiteralPath $dstCli -PathType Leaf) {
+          $bak = "$dstCli.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          Copy-Item -LiteralPath $dstCli -Destination $bak -Force
+          Write-Host "原 cli.json 已备份到 $bak"
+        }
+        Copy-Item -LiteralPath $repoCli -Destination $dstCli -Force
+        Write-Host '推荐 cli.json 已应用。'
+      }
     }
   }
 }
