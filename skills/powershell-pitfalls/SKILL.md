@@ -44,6 +44,17 @@ python -c "from pathlib import Path; import json; print(json.dumps(Path('docs/ex
   判读标准：行号对但中文烂为显示层问题，重跑模板而非换解码；模板无效才走 ASCII JSON 保真通道。
 - 修显示乱码时不静默修改全局 profile、系统代码页或原文件编码。需由 5.1 解析且含非 ASCII 的 UTF-8 `.ps1` 应带 BOM；普通文档无需批量加 BOM。
 
+## 默认 UTF-8（shell 输出与回显）
+
+- 每次 PowerShell 调用先设下面两行（同次调用内、任何输出之前）：`powershell`（5.1）
+  默认 GBK，直接输出中文会被采集侧按 UTF-8 解错；pwsh 7 默认即 UTF-8，设了也无害。
+  ```powershell
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  $OutputEncoding = [System.Text.Encoding]::UTF8
+  ```
+- Python 探针用 `python -X utf8 -c ...`（只影响本次调用），不再依赖控制台代码页。
+- 判读：中文回显可读且退出码正确；纯状态判断仍可用 ASCII 断言。
+
 ## Agent 启动参数与 profile 例外
 
 普通自动化优先直接使用已安装的 pwsh 7，并在实际外壳启动层跳过 profile；工具有相应选项时按其语义配置，无需额外嵌套进程。显式启动时用完整参数名 `-NoLogo -NoProfile`，仅无交互任务加 `-NonInteractive`。

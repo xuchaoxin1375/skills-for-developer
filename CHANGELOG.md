@@ -6,6 +6,7 @@
 
 - 新增 `user-profile`（个人常驻默认值：网络选路与 PowerShell 执行底线，及转调 `network-access`/`powershell-pitfalls` 的指针；仅由全局 AGENTS.md 显式加载，`autoinvoke: false` 不进候选列表；全局 AGENTS.md 收敛为一行）。
 - 全局偏好可恢复：新增 `config/global-AGENTS.md`（与 `~/.config/opencode/AGENTS.md` 字节一致），README 补新机恢复命令；缺才复制、不一致只提示不覆盖。
+- `powershell-pitfalls` 升级默认 UTF-8：每次 PowerShell 调用先设输出编码、Python 探针用 `-X utf8`；`link-skills.ps1` 脚本内默认 UTF-8 回显（5.1 的 GBK 默认不再污染采集侧）。
 - `frontend-design` 与 `adaptive-responsive-guide` 明确整体设计/响应式专项分工，在线框阶段识别空间约束，统一断点、滚动与浮层选型及范围化验收；截图助手支持320px、自定义宽度与实际视口核对。
 - `web-animation-guide` 集中交互实现、退出布局保持与中间帧验证，动效设计预算由 `frontend-design` 维护；补齐可运行弹窗/忙态/下拉示例与15项浏览器回归，同步前端QA清单。
 - `agentic-web-search` 补齐搜索/抓取的并发与频率约束、共享冷却、有限重试与预算控制，区分临时限流和配额耗尽，同步提示词与回归场景。

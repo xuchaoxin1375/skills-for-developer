@@ -45,6 +45,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# 默认 UTF-8：5.1 控制台默认 GBK，直接输出中文会被采集侧按 UTF-8 解错；
+# 脚本内设为 UTF-8（仅影响本进程），pwsh 7 下同样无害。
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   $base = $PSScriptRoot
   if ([string]::IsNullOrWhiteSpace($base)) { $base = Split-Path -Parent $MyInvocation.MyCommand.Path }

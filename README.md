@@ -23,7 +23,7 @@
 | `skills/web-app-testing` | 前后端 Web 测试规划、编写与维护：有效断言、真实 API/存储、隔离与 CI，含幂等/副作用和兼容回归；工程设计按应用治理，交付证据按 ai-verified-delivery | Web 测试、该测什么、什么时候写测试、单元/组件/集成/E2E、API 契约、数据库、权限回归、幂等/兼容回归、过度 Mock、测试隔离、不稳定测试、CI 分层 |
 | `skills/arena-preview` | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告；展示截图用于验收时转共用协议 | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看 |
 | `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味；对比度与截图行为复用共用规范，保留整体品味和模板覆盖评审 | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique |
-| `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 执行与排障：编写/运行脚本片段、读取选择、编码保真、启动和安全底线，诊断与版本细节按需读取；原生 read 常规查看无需加载 | PowerShell 读文件、编写脚本、Get-Content/type/cat、UTF-8、NoProfile、profile、PowerShell 开发测试、退出码、原生参数、Start-Process、LiteralPath、管道输出、中文乱码、BOM、引号、别名、junction |
+| `skills/powershell-pitfalls` | PowerShell 5.1/pwsh 执行与排障：编写/运行脚本片段、读取选择、编码保真、启动和安全底线，诊断与版本细节按需读取；原生 read 常规查看无需加载 | PowerShell 读文件、编写脚本、Get-Content/type/cat、UTF-8、默认UTF-8输出、NoProfile、profile、PowerShell 开发测试、退出码、原生参数、Start-Process、LiteralPath、管道输出、中文乱码、BOM、引号、别名、junction |
 | `skills/agentic-web-search` | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制、搜索/抓取请求节奏与 429 冷却、输出规范，含工具参数与评测参考 | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search |
 | `skills/web-animation-guide` | Web动画技术实现：选型、示例、退出布局保持、中间帧验证、打断清理、兼容、性能与减弱动效；读取项目令牌，截图取景与查看复用共用协议，与 frontend-design 分工维护 | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿 |
 | `skills/adaptive-responsive-guide` | 响应式专项：视口/容器阈值、clamp流体、Flex/Grid、媒体、操作收纳、滚动与浮层场景、范围化验收；可独立使用，与 frontend-design 合并交付，动效与截图引用共用规则 | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层 |
@@ -110,6 +110,8 @@ Windows（PowerShell）：
 ```powershell
 $src = Join-Path (git rev-parse --show-toplevel) 'config\global-AGENTS.md'
 $dst = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null; Copy-Item -LiteralPath $src -Destination $dst; 'restored' }
 elseif ((Get-FileHash -LiteralPath $src).Hash -eq (Get-FileHash -LiteralPath $dst).Hash) { 'already in sync' }
 else { 'differs, merge manually (one line), will not overwrite' }
