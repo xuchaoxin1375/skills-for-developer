@@ -33,15 +33,17 @@
 | `skills/skill-patcher` | 存量 skill 实战补丁：把真实漏验、误判或执行失败修成增量条目；一般写作审查按编写入口，内容与语言复用仓库规范 | 实战复盘、修补 skill、真实逃逸、补丁措辞审查、去污染、项目无关性 |
 | `skills/reference-to-skill` | 多份参考文档/模型报告提炼成 skill：贡献比较、证据分类、目标审查、冲突裁决、规则落点与验证；支持建议、新建和改进，内容写作复用仓库规范 | 多文档提炼、提取精华、参考资料转 skill、对比报告完善 skill、规则整合、reference to skill |
 | `skills/codex-model-config` | Codex 接第三方/自定义模型：建 profile、写模型目录、窗口档位与工具字段（独立仓库，submodule 引用） | 接模型、自定义模型、第三方模型、model_providers、models.json、context window、profile、codex config |
-| `skills/local-env` | 国内试验与海外生产的网络访问：直连/代理/镜像、Windows 与 *nix 配置、GitHub/文档访问、Python/Node.js/conda 依赖及额外下载、超时/403/限流分流与加速核验，附带日期的本机观测 | 出网、外网资源、GitHub、文档访问、依赖下载、安装脚本、下载慢、超时、403、回退、镜像源、文件加速、代理、mihomo、直连、pip、uv、npm、pnpm、Yarn、conda、miniforge、Python、Node.js、联网、网络环境 |
+| `skills/network-access` | 国内试验与海外生产的网络访问：直连/代理/镜像、Windows 与 *nix 配置、GitHub/文档访问、Python/Node.js/conda 依赖及额外下载、超时/403/限流分流与加速核验，附带日期的本机观测 | 出网、外网资源、GitHub、文档访问、依赖下载、安装脚本、下载慢、超时、403、回退、镜像源、文件加速、代理、mihomo、直连、pip、uv、npm、pnpm、Yarn、conda、miniforge、Python、Node.js、联网、网络环境 |
 | `skills/opencode-provider-config` | 第三方 AI API（中转站/NewAPI/OpenAI 兼容网关）接入 OpenCode：拉 `/v1/models` 筛模型、DNS/代理诊断、多源查模型参数（OpenRouter/models.dev/LiteLLM，自带零依赖 Python 脚本 model_info.py，含 Windows 与 *nix 手工取法）、写 providers 配置、service set env 持久化代理与密钥、三步端到端验证 | 接入 opencode、自定义供应商、配 provider、中转站、NewAPI、one-api、第三方模型、/v1/models、models.dev、openrouter、litellm、上下文窗口、模态、model_info.py、baseURL、service set env、OpenCode 接模型 |
 | `skills/mermaid-fix` | Mermaid 渲染失败诊断与修复：提块复现 Parse error、修节点引号与转义、mmdc/kroki 复验回写；语法正本走 markdown-style | mermaid 渲染失败、Parse error、got SQS、图挂了、节点方括号、修图、复验 |
+| `skills/user-profile` | 个人常驻默认值：网络选路与 PowerShell 执行底线，及转调 network-access/powershell-pitfalls 的指针；仅由全局 AGENTS.md 显式加载 | 常驻偏好、个人默认值、user-profile、全局偏好、动手前加载 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
 ## 维护文档
 
 - [仓库维护入口](AGENTS.md)：供代理读取的短入口。
+- [全局 AGENTS.md 真源](config/global-AGENTS.md)：个人常驻引用（一行），新机恢复用；链接脚本不碰各 harness 的 AGENTS.md。
 - [Skill 仓库治理](docs/skill-governance.md)：规则归属、职责划分、变更流程与分级验证。
 - [Skill 内容与语言规范](docs/skill-content-guidelines.md)：约束强度、正文与参考落点、指令措辞、术语、例子和写作复核。
 - [更新日志](CHANGELOG.md)：迁移历史与重要变更记录。
@@ -97,6 +99,30 @@ cd ~/repos/skills-for-developer
 ./scripts/link-skills.sh --verify-only
 ./scripts/link-skills.sh --include doc-polish,htmlmini
 ./scripts/link-skills.sh --unlink
+```
+
+## 全局 AGENTS.md（一行引用，新机恢复）
+
+真源：`config/global-AGENTS.md`（与目标文件字节一致）。链接脚本不碰各 harness 的 `AGENTS.md`，新机 clone 后跑一次下面命令；已存在且不一致时只提示，需手工合并，不覆盖。
+
+Windows（PowerShell）：
+
+```powershell
+$src = Join-Path (git rev-parse --show-toplevel) 'config\global-AGENTS.md'
+$dst = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
+if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null; Copy-Item -LiteralPath $src -Destination $dst; 'restored' }
+elseif ((Get-FileHash -LiteralPath $src).Hash -eq (Get-FileHash -LiteralPath $dst).Hash) { 'already in sync' }
+else { 'differs, merge manually (one line), will not overwrite' }
+```
+
+Linux：
+
+```bash
+src="$(git rev-parse --show-toplevel)/config/global-AGENTS.md"
+dst=~/.config/opencode/AGENTS.md
+if [ ! -f "$dst" ]; then mkdir -p "$(dirname "$dst")"; cp "$src" "$dst"; echo 'restored';
+elif cmp -s "$src" "$dst"; then echo 'already in sync';
+else echo 'differs, merge manually (one line), will not overwrite'; fi
 ```
 
 ## 日常工作流

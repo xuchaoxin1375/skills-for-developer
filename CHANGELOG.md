@@ -4,11 +4,13 @@
 
 ### 未发布
 
+- 新增 `user-profile`（个人常驻默认值：网络选路与 PowerShell 执行底线，及转调 `network-access`/`powershell-pitfalls` 的指针；仅由全局 AGENTS.md 显式加载，`autoinvoke: false` 不进候选列表；全局 AGENTS.md 收敛为一行）。
+- 全局偏好可恢复：新增 `config/global-AGENTS.md`（与 `~/.config/opencode/AGENTS.md` 字节一致），README 补新机恢复命令；缺才复制、不一致只提示不覆盖。
 - `frontend-design` 与 `adaptive-responsive-guide` 明确整体设计/响应式专项分工，在线框阶段识别空间约束，统一断点、滚动与浮层选型及范围化验收；截图助手支持320px、自定义宽度与实际视口核对。
 - `web-animation-guide` 集中交互实现、退出布局保持与中间帧验证，动效设计预算由 `frontend-design` 维护；补齐可运行弹窗/忙态/下拉示例与15项浏览器回归，同步前端QA清单。
 - `agentic-web-search` 补齐搜索/抓取的并发与频率约束、共享冷却、有限重试与预算控制，区分临时限流和配额耗尽，同步提示词与回归场景。
-- `local-env` 扩展国内试验与海外生产的跨平台网络指导，覆盖 GitHub 加速核验、超时/403 分流和 Python/Node.js 依赖及额外下载；相关调研与构建 skill 统一引用，归档带日期的目标实测。
-- 新增 `local-env`（国内用户出网与下载偏好：镜像优先、代理次之、裸连兜底的回退流程，附本机实测环境；仅供参考，实际不一致时以实际为准）。
+- `network-access`（原目录 `local-env` 已更名收尾，目录与 frontmatter `name` 一致）：扩展国内试验与海外生产的跨平台网络指导，覆盖 GitHub 加速核验、超时/403 分流和 Python/Node.js 依赖及额外下载；相关调研与构建 skill 统一引用，归档带日期的目标实测；各 harness 侧 `local-env` 重复链接移除，只保留 `network-access`。
+- `network-access`（原 `local-env`，国内用户出网与下载偏好：镜像优先、代理次之、裸连兜底的回退流程，附本机实测环境；仅供参考，实际不一致时以实际为准）。
 - `htmlmini` 可靠性：远程抓取默认 30s 超时（之前无超时可挂起），空/脏 HTML 不再崩（linkedom 空文档 `title` 抛错已修），终端裸跑无管道时直接提示；`npm test` 现跑 smoke 17 + MCP 自检 + 新增 `reliability` 36 断言（编解码、本地回环 HTTP、CLI 退出码、MCP 错误路径，全无外部依赖）。
 
 - `admin-console-design` 改为整体主题或完整局部模板复用：保留有依据的 fable 设计偏好，明确业务接线、依赖边界和参考缺口；归档三工程源码及哈希，同步 sonnet 舞台和 fable 侧栏修复后的预览/截图；补齐设计与交互功能目录，区分各稿的已实现、演示和占位能力。
