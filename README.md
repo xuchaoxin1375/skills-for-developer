@@ -50,6 +50,7 @@
 - [更新日志](CHANGELOG.md)：迁移历史与重要变更记录。
 - [Skill 编写、提炼与维护协作](docs/skill-authoring-workflow.md)：`reference-to-skill`、社区版 `skill-creator`、`skill-patcher` 与 `skill-authoring-sync` 的职责、引用方式和维护取舍，含社区版/系统版区分与验证边界。
 - [测试相关 Skill 的职责与维护边界](skills/web-app-testing/references/skill-boundaries.md)：测试设计、交付等级与证据、UI 专项、工具打包和仓库 CI 的唯一维护位置；按需协作并复用计划与有效证据。
+- [测试资源预算与回收](skills/web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)：测试与验收先设容量、并发及期限，登记资源归属，验明异常回收再重试；web-app-testing、ai-verified-delivery与frontend-ux-qa共用。
 - [共用截图与视觉验收协议](skills/ai-verified-delivery/references/visual-acceptance.md)：截图触发、取景优先级、采集、实际查看与证据的唯一维护位置；相关 skill 引用，不各自维护完整截图规则。
 
 ## Harness 映射（Win / Linux 路径同构，只是家目录写法不同）

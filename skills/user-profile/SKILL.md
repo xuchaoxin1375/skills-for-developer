@@ -3,7 +3,6 @@ name: user-profile
 description: >
   全局偏好记录,重点阅读并实践,任何会话都要确保读取这里的常驻默认值：优先由全局 AGENTS.md 显式加载.
 ---
-
 # User Profile（个人常驻默认值）
 
 本 skill 只存个人高频偏好与域指针，优先由全局 `AGENTS.md` 显式加载；涉及网络选路或 PowerShell 时也可按关键词加载兜底，不依赖单一入口。
@@ -16,20 +15,31 @@ description: >
   （`--noproxy '*'` vs `--proxy`，连接 5s/单次 20s 上限）再抓取，结论同一任务复用；
   确认抓取工具的实际出口。需代理先读 `~/.config/proxy-resources.json` 并轻量核验，
   无可用代理直接问用户，不盲试端口、不静默放弃。
-- **PowerShell**：带逻辑的脚本片段一律用 PowerShell。读非 ASCII 文件用 `-LiteralPath`
-  加显式 `-Encoding`；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；
-  退出码 0 或纯英文输出不能证明读取正确。
+- **PowerShell**：带逻辑的片段一律用 PowerShell，运行前先加载 `powershell-pitfalls`。任何可能输出非 ASCII 的调用（含读文件、`Get-ChildItem` 枚举、`Select-String` 结果）同次先设输出编码再输出；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；退出码 0 或纯英文输出不能证明读取正确。
 - **脚本（非 PowerShell）**：默认 UTF-8。Python 一律 `-X utf8`（父子多层时父进程先设
   `PYTHONUTF8=1`）、读写显式 `encoding="utf-8"`；新脚本文件 UTF-8 无 BOM、换行 LF。
   细节见 `scripting-best-practices`。
 
+### 重点技能
+
+常用,重要的事集中强调. 现成的技能利用起来.
+
+动词命中即加载：
+
+1. 写PowerShell 命令/脚本/片段/防乱码: `powershell-pitfalls`；
+2. 访问网络/请求失败/出网慢/镜像: `network-access`；
+3. 验收/复现/回归/门禁/交付质量: `ai-verified-delivery`；
+4. 测试代码/编写测试: `web-app-testing`
+5. 存量页找错/截图验收/溢出/断点: `frontend-ux-qa`；
+<!-- 6. 写脚本: `scripting-best-practices`。 -->
+
 ## 域指针（需细节时加载，不预读）
 
-| 情况 | 加载 |
-|---|---|
-| 出网慢/失败、GitHub/文档抓取、依赖下载、镜像/加速、超时·403·限流分流 | `network-access`（含其 `references/network-access.md` 命令与分流表） |
-| 编写/运行 PowerShell 片段、非 ASCII 乱码、静默失败、退出码、启动/profile、引号路径 | `powershell-pitfalls`（按其“按需读取”表只读相关章节） |
-| 编写/审查/重构 `.sh`/`.bash`/`.py` 脚本、脚本执行侧与文件侧 UTF-8 默认、换行/BOM、子进程输出编码 | `scripting-best-practices`（先读其 Python“文件读写/执行侧编码”两节） |
+| 情况                                                                                                  | 加载                                                                     |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 出网慢/失败、GitHub/文档抓取、依赖下载、镜像/加速、超时·403·限流分流                                | `network-access`（含其 `references/network-access.md` 命令与分流表） |
+| 编写/运行 PowerShell 片段、非 ASCII 乱码、静默失败、退出码、启动/profile、引号路径                    | `powershell-pitfalls`（按其“按需读取”表只读相关章节）                |
+| 编写/审查/重构`.sh`/`.bash`/`.py` 脚本、脚本执行侧与文件侧 UTF-8 默认、换行/BOM、子进程输出编码 | `scripting-best-practices`（先读其 Python“文件读写/执行侧编码”两节） |
 
 ## 约束
 
