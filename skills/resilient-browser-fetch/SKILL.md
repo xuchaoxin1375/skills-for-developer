@@ -1,6 +1,8 @@
 ---
 name: resilient-browser-fetch
-description: 通过 Scrapling 的 Cloudflare 挑战处理和可选 CloakBrowser CDP 浏览器采集受反爬保护的网站，保存浏览器渲染后的 HTML、截图与诊断元数据。用于代理连通性验证、Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间验证、拦截页识别、会话复用，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；面向中文用户输出中文说明。
+description: >
+  通过 Scrapling 的 Cloudflare 挑战处理和可选 CloakBrowser CDP 浏览器采集经 network-access 分流确认为挑战页的网站，保存浏览器渲染后的 HTML、截图与诊断元数据。
+  用于 Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间验证、拦截页识别、会话复用，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
 ---
 
 # 稳健浏览器采集
@@ -8,6 +10,8 @@ description: 通过 Scrapling 的 Cloudflare 挑战处理和可选 CloakBrowser 
 仅采集用户有权访问的公开或获授权页面。遵守目标服务条款、robots/速率限制和适用法律；不要自动执行登录、下单、账户创建、凭据测试或其他改变外部状态的操作。Cloudflare 通过与否受出口 IP、指纹、地区一致性和站点策略共同影响，不承诺通用通过率。
 
 ## 工作流
+
+前置：先确认已走 `network-access` 双路探测排除选路问题；普通超时/直连失败不直接启动浏览器，仅当探测显示网络可达但正文为挑战/拦截特征时才用本 skill，选路结论同一任务内复用。
 
 1. 如果需要将本 Skill 安装到 Codex、Claude Code、Cursor 或 Gemini CLI，先读取 [references/installation.md](references/installation.md)。随后根据当前系统读取 [references/platforms.md](references/platforms.md)，选定独立 Python 3.10+ 环境并安装浏览器依赖。环境可以由 Conda、`venv` 或 `uv venv` 管理；Linux 是默认部署目标。先运行 `uv --version`；可用时优先执行 `uv pip install --python <目标环境解释器> ...`，不可用时回退到该环境的 `python -m pip`，不要混用两个安装器修改同一环境。
 2. 运行只读环境诊断：

@@ -220,6 +220,25 @@ vel += (-k * (pos - target) - c * vel) * dt; pos += vel * dt;
 el.style.transform = `translateX(${pos}px)`; // 只写 transform
 ```
 
+## SVG 定位与动画分层
+
+```html
+<!-- 外层定位置（属性保留），内层跑动画；两者不可压到同一元素 -->
+<g transform="translate(120,80)">
+  <g class="spin">…</g>
+</g>
+```
+
+```css
+.spin { transform-box: fill-box; transform-origin: center; animation: spin 1s linear infinite; }
+```
+
+验证：冻结动画到典型相位（首尾与中间帧），取关键元素 `getBoundingClientRect()` 换算回 SVG 坐标，与设计锚点核对；只看截图会漏掉被裁在屏外的缺件。
+
+## SVG 一体性画法
+
+解剖相连的部位共用外轮廓，内部不画分割线：肢体用变宽填充多边形（根部宽、末端窄）而非等宽描边；相连体共用同一填充（用户空间渐变保证同色场），肢体自身不画描边、只靠遮挡关系表达前后；过渡缝用天然遮盖物（围巾、衣领、阴影）藏住。例：大腿根部深埋入躯干路径内部再出头，根部不出头不画线；脚画成小腿末端的膨大，而非独立椭圆压在线端。
+
 ## SVG 描边 + Canvas DPR
 
 ```js

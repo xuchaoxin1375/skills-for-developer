@@ -64,6 +64,7 @@ description: Web动画应用指导：选型、性能与无障碍落地。Wheneve
 - 弹簧物理：`F = -k(x-target) - c·v`，`v += F*dt; x += v*dt`，dt 秒且钳 ≤0.032~0.05；过冲克制（按钮/危险操作无回弹）。
 - 全局控制用 `document.getAnimations()` 批量 `pause()/updatePlaybackRate()`，做全站暂停与慢放，不必逐个持有引用。
 - SVG 原点加 `transform-box:fill-box`；SMIL 暂停须 `pauseAnimations()`，CSS 停不住它。
+- SVG 同一元素不同时承载 `transform` 属性与 CSS `transform` 动画：运行中的动画替换该元素自身的属性位移（静态祖先的位移保留），部件会被画到未位移处或屏外。外层 `g` 用属性定位置，内层 `g` 跑 `@keyframes`；`transform-box` 只定动画原点，不恢复被替换的位移。写法见 `references/snippets.md`“SVG 定位与动画分层”。
 - 减弱策略统一见 `references/performance-a11y.md`；关闭非必要位移/循环，保留静态信息，JS 动画也处理偏好变化。例：保存中的 spinner 停转，文字仍说明正在保存。
 - 中文逐字用 chars 或 `Intl.Segmenter('zh')`；竖排注意轴对调；npm/CDN 走 npmmirror（用前验证）；微信/X5/iOS 实测。
 
@@ -87,6 +88,8 @@ description: Web动画应用指导：选型、性能与无障碍落地。Wheneve
 - 关闭/取消/零时长是否仍落正确终态，隐藏区域是否不可聚焦，旧动画是否不能覆盖最后命令？
 - 退出可见期间是否保留内容与布局，移除开合标记是否不会改变排列、尺寸或裁切？
 - 是否按 `references/performance-a11y.md` 检查中间帧与正常速度连续性，而非只验首尾和帧率？
+- 严格 SVG（多部件联动、接触或跟随约束）是否冻结典型相位、用包围盒换算回 SVG 坐标核对了关键锚点，而非只看全屏截图（被裁在屏外的缺件肉眼易漏）？
+- 定向运动（行进/旋转/流动）是否过了一遍方向链：主体朝向→旋转件转向→传动与尾迹走向→背景退行及视差方向，有一处相反即返工？
 - reduce 初始与运行中切换时是否保留静态信息，清理是否覆盖 JS 动画与监听？
 - 时长是否读取项目令牌，示例默认值是否没有变成第二套设计预算？
 
