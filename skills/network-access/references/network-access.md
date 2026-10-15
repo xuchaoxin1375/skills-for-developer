@@ -63,7 +63,7 @@ curl.exe --silent --show-error --location --proxy $taskProxyUrl --connect-timeou
 
 curl 的 `--noproxy '*'` 绕过 curl 所配置的显式代理，但不能绕过透明代理或 TUN 路由；“直连”记录需说明实际出口是否确认。CMD 可用同样的参数，字符串改用双引号，代理变量写 `%task_proxy_url%`；写入 `.bat` 时 `--write-out` 中的 `%` 需写成 `%%`。
 
-双路探测只为选路，两条探测可并行发起以缩短判断时间；选定后正文抓取显式沿用获胜路线（`--proxy` 或 `--noproxy '*'`），同一任务内不重复探测。内置网页抓取等工具走宿主进程默认网络环境，其路线不受本节参数控制；需要指定路线时改用带显式参数的 curl 取回。工具按从轻到重：内置抓取→显式 `curl`→需 TLS 伪装时 `curl_cffi`（同路线复用代理）→确认挑战页才转 `resilient-browser-fetch`；`curl` 已 200 落盘即交付，不逐级重试。
+双路探测只为选路，两条探测可并行发起以缩短判断时间；选定后正文抓取显式沿用获胜路线（`--proxy` 或 `--noproxy '*'`），同一任务内不重复探测。内置网页抓取等工具走宿主进程默认网络环境，其路线不受本节参数控制；需要指定路线时改用带显式参数的 curl 取回。工具按从轻到重：内置抓取→显式 `curl`→需 TLS 伪装时 `curl_cffi`（同路线复用代理）→确认挑战页（含 5xx 异构后现挑战特征）才转 `resilient-browser-fetch`；`curl` 已 200 落盘即交付，不逐级重试；`curl` 5xx 未做异构对照前不判源站死。
 
 同时检查退出码、HTTP 状态、最终 URL、正文或文件格式；HTTP 200 可能是登录页、拦截页或加速站首页，TCP 端口通只证明存在监听服务。curl 默认不会把 HTTP 403 判为进程失败，下载交付可用 `--fail` 并仍保存必要的错误诊断；不要用 HEAD 成功代替实际 GET 核验。
 
@@ -78,6 +78,7 @@ curl 的 `--noproxy '*'` 绕过 curl 所配置的显式代理，但不能绕过�
 | HTTP 401/403，正文提示权限或登录 | 检查认证、资源权限和目标 URL；代理/镜像不能修复凭据或授权，停止重复请求 |
 | HTTP 403，正文为 WAF/挑战/区域拦截 | 保留失败来源与页面信息；确需渲染取证时转 `resilient-browser-fetch`，不默认套 GitHub 加速前缀 |
 | HTTP 403/429 且正文或响应头明确提示限流 | 遵守 `Retry-After`、供应商重置时间和共享冷却；按 `agentic-web-search` 调度，不换出口绕过 |
+| HTTP 5xx（含 500/502/503/504 及 Cloudflare 520 系） | 简头 curl 的 5xx 可能是反爬指纹拦截，不是源站死的充分证据。先保留状态码、正文与 `cf-ray`/`server` 头等证据，再换出口有界对照一次（直连↔代理，沿用“有界诊断与超时”的单次上限，不叠加自动重试）；另一路成功即沿用该路。两路一致 5xx 时补一次异构对照：补全浏览器头（Accept/Accept-Language/Upgrade-Insecure-Requests/Sec-Fetch-*）重测，或同路线 `curl_cffi`，或真实浏览器；出现 302 跳 `/_sc/challenge`、`/_sec/`、`challenge`、`captcha`、`turnstile`，或 403 带 `sct`/`cf_clearance` cookie、`X-Robots-Tag: noindex`，即按挑战页转 `resilient-browser-fetch`。异构仍 5xx 才判源站故障并记录，不逐个出口轮询，不转镜像加速 |
 | HTTP 404 或加速站拒绝 URL | 检查原始链接、分支/标签、服务支持范围；GitHub 私有资源也可能以 404 隐藏权限问题 |
 
 GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-remaining`、`x-ratelimit-reset` 与 `retry-after`。官方规则要求等待指定冷却；已确认次级限流且无等待值时至少等 1 分钟，后续再指数退避。供应商明确规则优先于通用退避起点，不能将所有 403 当作网络不通。
