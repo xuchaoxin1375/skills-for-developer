@@ -1,8 +1,8 @@
 ---
 name: scripting-best-practices
 description: >
-  Shell (Bash) 与 Python 脚本的编写、审查与重构规范。
-  当用户要求编写新脚本、审查或重构 .sh/.bash/.py 脚本、
+  Shell、Python 与 Node 脚本/小工具 CLI 的编写、审查与重构规范，通用约束语言无关。
+  当用户要求编写新脚本、审查或重构 .sh/.bash/.py/.mjs/.js 脚本（含 Node CLI 工具）、
   或排查脚本健壮性问题时使用此 Skill。
 ---
 
@@ -10,7 +10,7 @@ description: >
 
 你是一位资深 DevOps / 平台工程师，输出的脚本必须在生产环境可靠运行。
 
-**适用范围**：单文件自动化脚本（Shell / Python）。大型应用项目另按工程脚手架处理，不套用本规范。
+**适用范围**：单文件自动化脚本与小工具 CLI（Shell / Python / Node.js）。大型应用项目另按工程脚手架处理，不套用本规范。各语言章节是通用约束的实例化，有冲突以通用约束为准。
 
 以下规则分为两级：`必须` 表示无条件遵守，除非用户明确要求例外（有冲突时先向用户确认）；
 `推荐` 表示默认照做，有正当理由可偏离并在交付时说明。
@@ -21,14 +21,14 @@ description: >
 
 接到脚本任务时，按以下顺序执行：
 
-1. **确认需求**：目标环境（Linux / macOS / 跨平台）、解释器约束（Bash 可用还是仅 POSIX sh、有无第三方依赖）、参数与输入来源、是否需要 Tab 补全（见“补全支持”节决策表）。
-2. **按骨架编写**：Shell 用 `main "$@"` 骨架，Python 用 `main() + argparse` 骨架，不从空白起稿。
+1. **确认需求**：目标环境（Linux / macOS / Windows / 跨平台）、解释器约束（Bash 可用还是仅 POSIX sh、Python/Node 版本、有无第三方依赖）、参数与输入来源、是否需要 Tab 补全（见“补全支持”节决策表）。
+2. **按骨架编写**：Shell 用 `main "$@"` 骨架，Python 用 `main() + argparse` 骨架，Node 用参数解析 `+ main() +` 退出码骨架，不从空白起稿。
 3. **对照自检**：用文末反模式清单逐项检查。
 4. **运行验证**：按“验证协议”执行工具检查与正/异常路径测试，有告警必须清零或向用户说明。
 
 ---
 
-## 通用约束（Shell 与 Python 共通）
+## 通用约束（语言无关，Shell / Python / Node 共通）
 
 1. **必须：为人类编写代码**。优先可读性和可维护性，不写炫技式单行代码。
 2. **必须：快速失败（Fail Fast）**。错误发生时立即停止并报告，不静默继续。
@@ -37,7 +37,7 @@ description: >
 5. **必须：输入校验**。检查参数数量、类型与边界；非法输入输出明确错误信息并以非零退出码退出。
 6. **必须：提供 usage/help**。每个脚本可通过 `--help`（或 `usage()`）说明用途、参数与示例。
 7. **推荐：日志优于裸输出**。带时间戳和级别；错误与警告输出到 stderr，使 stdout 保持可管道化。
-8. **推荐：资源清理**。临时文件、临时目录、锁文件在正常与异常退出时均被清理（Shell 用 `trap`，Python 用 `try/finally`）。
+8. **推荐：资源清理**。临时文件、临时目录、锁文件在正常与异常退出时均被清理（Shell 用 `trap`，Python/Node 用 `try/finally`）。
 9. **推荐：配置外置**。路径、URL、端口等环境相关值使用变量、环境变量或配置文件，默认值为常量声明。
 10. **推荐：版本控制**。脚本纳入 Git；含 `.sh` 文件的仓库在 `.gitattributes` 中声明 `*.sh text eol=lf`，防止 Windows CRLF 导致 `\r: command not found`。
 
@@ -328,6 +328,66 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
 ---
 
+## Node.js (CLI 工具) 规范
+
+单文件或小目录的 Node CLI（`.mjs` 优先 ESM），与 MCP server、构建脚本同理。
+
+### 头部与入口
+
+```js
+#!/usr/bin/env node
+// tool.mjs - 一句话功能描述，用法见 --help。
+```
+
+### 脚本骨架（标准库优先）
+
+```js
+#!/usr/bin/env node
+import { readFile, writeFile } from 'node:fs/promises';
+
+const HELP = `tool - 一句话功能描述
+
+USAGE
+  tool <必填> [选项]
+OPTIONS
+  --mode <name>  取值说明
+  -o, --output <f>  写文件而非 stdout
+  -h, --help
+`;
+
+const args = parseArgs(process.argv.slice(2)); // 支持 --opt value 与 --opt=value
+validateOrExit(args); // 非法输入：stderr 提示 + exit 2，先于业务执行
+
+try {
+  const out = await run(args);
+  process.stdout.write(out + '\n');
+} catch (err) {
+  console.error(`tool: ${err.message}`);
+  process.exit(1);
+}
+```
+
+设计要点：参数解析与业务分离（`parseArgs` 可单测）；`--help` 自带完整用法；
+退出码固定含义——`0` 成功、`1` 运行失败、`2` 用法错误；错误带工具名前缀走 stderr，stdout 保持可管道化。
+
+### 强制规则
+
+| 规则 | 说明 |
+| ---- | ---- |
+| **退出码三档** | `0` 成功、`1` 运行失败、`2` 用法错误；用量校验先于业务执行 |
+| **错误走 stderr** | `console.error('tool: ...')`，stdout 只放可管道化的结果 |
+| **子进程数组传参** | `spawn/execFile` 用参数数组，不拼接 shell 字符串；Windows 下用户触发的子进程加 `windowsHide` |
+| **解码显式** | 文件与子进程字节显式解码；中文 Windows 按“本地工具：文件遍历与子进程”第 3 条双解码 |
+| **避免全局可变状态** | 配置经函数参数传递；可复用逻辑导出函数而非仅 CLI 可用 |
+| **依赖锁定** | 有第三方依赖则 `package.json` + lock 文件进版本控制；无依赖优先标准库 |
+
+### 质量工具
+
+- **`node --check <script>`**：语法检查，改完必跑。
+- **既有测试套件**：有 smoke/可靠性测试的仓库按其命令全跑（如 `pnpm test`）；无架子时至少覆盖正常路径与一个异常路径，断言退出码与输出。
+
+---
+
 ## 补全支持（Tab Completion）
 
 ### 何时需要
@@ -430,12 +490,23 @@ argcomplete 用自定义 Completer（如 `.completer = argcomplete.DirectoriesCo
 - [ ] 是否通过 Ruff 零告警？
 - [ ] 需要补全时是否已接入（Click 内建 / argcomplete / Typer）并在 README 说明激活方式？
 
+### Node
+
+- [ ] 非法参数是否 exit 2 且先于业务执行？
+- [ ] 错误是否走 stderr（带工具名前缀），stdout 是否保持可管道化？
+- [ ] 退出码是否为 0/1/2 三档含义？
+- [ ] 临时文件是否 `try/finally` 清理？
+- [ ] 子进程是否数组传参、无拼接，Windows 下是否 `windowsHide`？
+- [ ] 文本解码是否显式（非 ASCII 必测）？
+- [ ] 是否跑过 `node --check` 与正/异常路径测试？
+
 ---
 
 ## 验证协议
 
 1. Shell：运行 `shellcheck <script>` 和 `shfmt -d <script>`，确认无警告、无格式差异。
 2. Python：运行 `ruff check <script>` 和 `mypy <script>`（或 `pyright`），确认无错误。
-3. 测试 `--help` 输出是否完整（用途、参数、示例缺一不可）。
-4. 测试正常路径和至少一个异常路径（如缺少参数、目标路径不存在），确认退出码与错误信息符合预期。
-5. 补全（如提供）：`source` 加载补全脚本后按 Tab 抽查候选（选项名、取值各抽一处）；Python 框架按对应激活命令验证一次。
+3. Node：运行 `node --check <script>`，确认无语法错误；有测试套件时按其命令全跑。
+4. 测试 `--help` 输出是否完整（用途、参数、示例缺一不可）。
+5. 测试正常路径和至少一个异常路径（如缺少参数、目标路径不存在），确认退出码与错误信息符合预期。
+6. 补全（如提供）：`source` 加载补全脚本后按 Tab 抽查候选（选项名、取值各抽一处）；Python 框架按对应激活命令验证一次。

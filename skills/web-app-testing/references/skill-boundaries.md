@@ -18,7 +18,7 @@
 | 界面设计与呈现规则 | [frontend-design](../../frontend-design/SKILL.md)及其领域路由 | 测试验证产品已确定的设计，不通过测试规范重选设计 |
 | 轻量工具形态、打包/安装和 CLI/桌面专有基线 | [lightweight-app-builder](../../lightweight-app-builder/SKILL.md)及其 quality-gates | 本地 Web 按产品模型借用测试方法；不把轻量形态限制推广到普通服务端应用 |
 | 仓库工作流、合并保护、依赖/密钥审计与构建供应链 | [repo-governance](../../repo-governance/SKILL.md)及其 CI 参考 | 请求仓库治理时使用；普通补测试不自动补社区文件或改分支政策 |
-| Shell/Python 脚本健壮性与风格 | [scripting-best-practices](../../scripting-best-practices/SKILL.md) | 编写相关测试/编排脚本时使用，不代替业务测试设计 |
+| Shell/Python/Node 脚本健壮性与风格 | [scripting-best-practices](../../scripting-best-practices/SKILL.md) | 编写相关测试/编排脚本时使用，不代替业务测试设计 |
 
 保留简短的相同底线，例如“Mock 不证明真实持久化”，有助于局部阅读；可变的等级表、状态表、阈值、报告字段和详细实施矩阵只在归属位置维护。领域清单列出要验的结果，测试实施指引解释如何得到有效证据，两者不是重复测试要求。
 
