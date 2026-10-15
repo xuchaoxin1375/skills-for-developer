@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """真源 skill 快速校验（零依赖，仅标准库）。
 
-查四件事，对应上次踩坑的盲区（链接脚本只查 SKILL.md 存在性，不校验内容）：
+查五件事，对应上次踩坑的盲区（链接脚本只查 SKILL.md 存在性，不校验内容）：
   1. frontmatter：定界符、`name` 与目录一致且 kebab、`description` 非空、
      多行 description 必须用 `>`/`|` 折叠块并缩进（顶格续行曾导致服务端静默丢弃）。
   2. README 索引：每个 skill 在 README.md 有 `skills/<name>` 入口。
   3. 红线路径：skill 正文/引用/示例/配套脚本不得出现仓库外真实路径。
   4. 各 harness 安装数：每个真源 skill 在 5 个 harness 侧都是指向真源的链接。
+  5. 推荐部署名单：config/recommended-skills.txt 的名字须有对应真源目录；
+     含 package.json（需依赖安装）却不在名单中的给出提醒。
 
 用法（仓库根）：
   python3 scripts/check-skills.py
@@ -194,6 +196,21 @@ def link_target(path):
     return rp if rp != ap else None
 
 
+def read_recommended(repo):
+    """读取推荐部署名单，返回名字列表；文件缺失/不可读返回 None。"""
+    p = repo / "config" / "recommended-skills.txt"
+    try:
+        text = p.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        return None
+    names = []
+    for raw in text.splitlines():
+        name = raw.split("#", 1)[0].strip()
+        if name:
+            names.append(name)
+    return names
+
+
 def harness_targets():
     home = Path.home()
     agents = Path(
@@ -246,6 +263,20 @@ def main(argv=None):
         e, _ = check_skill(s)
         errors.extend(e)
         errors.extend(redline_scan(s))
+
+    # 推荐部署名单（只在全量检查时核对，--include 过滤后名单天然不全）
+    if not want:
+        rec = read_recommended(repo)
+        if rec is None:
+            warnings.append("config/recommended-skills.txt 不存在或不可读，跳过推荐名单检查")
+        else:
+            have = {s.name for s in skills}
+            for n in rec:
+                if n not in have:
+                    errors.append(f"推荐名单 {n} 在 skills/ 下无对应目录（含 SKILL.md）")
+            for s in skills:
+                if (s / "package.json").is_file() and s.name not in rec:
+                    warnings.append(f"{s.name} 含 package.json（需依赖安装？）但不在推荐名单中")
 
     # README 索引
     readme = repo / "README.md"

@@ -36,6 +36,12 @@
 .PARAMETER SkipRecommendedCli
   跳过推荐 cli.json 的询问与应用。
 
+.PARAMETER ApplyRecommendedSkills
+  直接安装推荐 skill (config/recommended-skills.txt) 的依赖，不询问。
+
+.PARAMETER SkipRecommendedSkills
+  跳过推荐 skill 的依赖与命令安装（含 VerifyOnly 中的对应检查)。
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -ApplyRecommendedCli
 
@@ -53,7 +59,9 @@ param(
   [switch]$Unlink,
   [switch]$VerifyOnly,
   [switch]$ApplyRecommendedCli,
-  [switch]$SkipRecommendedCli
+  [switch]$SkipRecommendedCli,
+  [switch]$ApplyRecommendedSkills,
+  [switch]$SkipRecommendedSkills
 )
 
 $ErrorActionPreference = 'Stop'
@@ -218,6 +226,124 @@ foreach ($targetDir in $targets) {
   }
 }
 
+# --- 推荐 skill（需依赖/命令安装，名单见 config/recommended-skills.txt） ---
+
+function Get-RecommendedSkills {
+  # 返回推荐名单与 -Include 交集后的 skill 名数组；
+  # 名单中有但仓库无目录的不返回（由 check-skills.py 报错）。
+  $listFile = Join-Path $RepoRoot 'config\recommended-skills.txt'
+  if (-not (Test-Path -LiteralPath $listFile -PathType Leaf)) { return @() }
+  $out = @()
+  foreach ($raw in (Get-Content -LiteralPath $listFile -Encoding UTF8)) {
+    $name = ($raw -split '#', 2)[0].Trim()
+    if ([string]::IsNullOrWhiteSpace($name)) { continue }
+    if ($Include -and $Include.Count -gt 0 -and -not ($Include -contains $name)) { continue }
+    if (Test-Path (Join-Path $skillsDir $name) -PathType Container) { $out += $name }
+  }
+  return $out
+}
+
+function Get-SkillCommandName([string]$Skill) {
+  # 有 CLI 入口的 skill 在此登记命令名；无命令入口返回空
+  switch ($Skill) { 'htmlmini' { return 'htmlmini' } }
+  return ''
+}
+
+function Get-SkillCommandEntry([string]$Skill) {
+  # 命令包装的入口脚本绝对路径；无则返回空
+  switch ($Skill) { 'htmlmini' { return (Join-Path $skillsDir 'htmlmini\src\cli.js') } }
+  return ''
+}
+
+function Install-RecommendedSkillDeps([string]$Skill) {
+  # 含 package.json 则跑包管理器安装（优先 pnpm）；返回是否成功
+  $dir = Join-Path $skillsDir $Skill
+  if (-not (Test-Path (Join-Path $dir 'package.json') -PathType Leaf)) { return $true }
+  Write-Host "  [$Skill] 安装依赖…"
+  $pm = $null
+  if (Get-Command pnpm -ErrorAction SilentlyContinue) { $pm = 'pnpm' }
+  elseif (Get-Command npm -ErrorAction SilentlyContinue) { $pm = 'npm' }
+  if ($null -eq $pm) {
+    Write-Warning "  [$Skill] 未找到 pnpm/npm，跳过依赖安装"
+    return $false
+  }
+  try {
+    Push-Location -LiteralPath $dir
+    & $pm install
+    if ($LASTEXITCODE -ne 0) { throw "$pm install 退出码 $LASTEXITCODE" }
+    return $true
+  } catch {
+    Write-Warning "  [$Skill] 依赖安装失败，跳过：$_"
+    return $false
+  } finally {
+    Pop-Location
+  }
+}
+
+function Get-CommandBinDir {
+  return (Join-Path $env:USERPROFILE '.local\bin')
+}
+
+function Ensure-BinInUserPath([string]$BinDir) {
+  # 用户 PATH 缺该目录则追加（用户级，无需管理员；新开终端生效）
+  $cur = [Environment]::GetEnvironmentVariable('Path', 'User')
+  if ([string]::IsNullOrEmpty($cur)) { $cur = '' }
+  $hit = ($cur -split ';') | Where-Object { $_.TrimEnd('\') -ieq $BinDir.TrimEnd('\') -and $_ -ne '' }
+  if ($hit) { return }
+  if ($PSCmdlet.ShouldProcess('用户 PATH', "追加 $BinDir")) {
+    [Environment]::SetEnvironmentVariable('Path', ($cur.TrimEnd(';') + ';' + $BinDir), 'User')
+    if (($env:Path -split ';') -notcontains $BinDir) { $env:Path += ';' + $BinDir }
+    Write-Host "  已把 $BinDir 加入用户 PATH（新开终端生效）。"
+  }
+}
+
+function Install-SkillCommand([string]$Skill) {
+  # 默认把 CLI 装成 <binDir>\<cmd>.cmd 包装（幂等）；入口路径含非 ASCII 时跳过
+  #（cmd 对 shim 编码敏感，报出来比写坏 shim 好）
+  $cmd = Get-SkillCommandName $Skill
+  $entry = Get-SkillCommandEntry $Skill
+  if ([string]::IsNullOrWhiteSpace($cmd) -or [string]::IsNullOrWhiteSpace($entry)) { return }
+  if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) {
+    Write-Warning "  [$Skill] 入口不存在，跳过命令安装: $entry"
+    return
+  }
+  if ($entry -match '[^\x00-\x7F]') {
+    Write-Warning "  [$Skill] 入口路径含非 ASCII，跳过命令安装: $entry"
+    return
+  }
+  $binDir = Get-CommandBinDir
+  New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+  $shim = Join-Path $binDir "$cmd.cmd"
+  $body = "@node `"$entry`" %*"
+  $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
+    ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
+  if ($isOurs) {
+    Write-Host "  [$Skill] 命令已就绪: $shim"
+  } elseif ($PSCmdlet.ShouldProcess($shim, "安装 $cmd 命令")) {
+    Set-Content -LiteralPath $shim -Value $body -Encoding ASCII
+    Write-Host "  [$Skill] 命令已安装: $shim"
+  }
+  Ensure-BinInUserPath $binDir
+}
+
+function Remove-SkillCommand([string]$Skill) {
+  # 只删本仓库安装的包装（内容含真源入口路径），不动他人命令
+  $cmd = Get-SkillCommandName $Skill
+  $entry = Get-SkillCommandEntry $Skill
+  if ([string]::IsNullOrWhiteSpace($cmd)) { return }
+  $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
+  $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
+    ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
+  if ($isOurs) {
+    if ($PSCmdlet.ShouldProcess($shim, "移除 $cmd 命令")) {
+      Remove-Item -LiteralPath $shim -Force
+      Write-Host "  [$Skill] 命令已移除: $shim"
+    }
+  } else {
+    Write-Host "  [$Skill] 命令不存在或非本仓库安装，不动: $shim"
+  }
+}
+
 if (-not $Unlink -and -not $VerifyOnly) {
   # 推荐 cli.json: 缺失或与真源不一致时, 交互终端下询问是否应用;
   # 非交互环境默认跳过 (用 -ApplyRecommendedCli 显式应用)。
@@ -253,6 +379,43 @@ if (-not $Unlink -and -not $VerifyOnly) {
       }
     }
   }
+
+  # 推荐 skill（需依赖/命令）：依赖走询问/显式开关，命令默认安装
+  $recSkills = @(Get-RecommendedSkills)
+  if ($recSkills.Count -gt 0) {
+    if ($SkipRecommendedSkills) {
+      Write-Host "已跳过推荐 skill 部署（-SkipRecommendedSkills）：$($recSkills -join ', ')"
+    } else {
+      Write-Host "== 推荐 skill（需依赖/命令）：$($recSkills -join ', ') =="
+      $doDeps = $false
+      if ($ApplyRecommendedSkills) {
+        $doDeps = $true
+      } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+        $ans = Read-Host '是否安装推荐 skill 的依赖（如 htmlmini 的 pnpm install）？[Y/n]'
+        $doDeps = $ans -match '^([yY]([eE][sS])?)?$'
+      } else {
+        Write-Host '非交互环境，跳过依赖安装（用 -ApplyRecommendedSkills 执行）；命令仍默认安装。'
+      }
+      foreach ($s in $recSkills) {
+        if ($doDeps) {
+          if (-not (Install-RecommendedSkillDeps $s)) {
+            Write-Warning "  [$s] 依赖安装未完成，命令照常安装"
+          }
+        }
+        Install-SkillCommand $s
+      }
+    }
+  }
+}
+
+if ($Unlink) {
+  # --unlink 时同步移除本仓库安装的命令；依赖目录（node_modules）保留
+  if ($VerifyOnly) {
+    foreach ($s in @(Get-RecommendedSkills)) { Write-Host "  [$s] 命令将被移除 (VerifyOnly)" }
+  } else {
+    foreach ($s in @(Get-RecommendedSkills)) { Remove-SkillCommand $s }
+    Write-Host '注：推荐 skill 的依赖目录（如 node_modules）已保留，按需手工删除。'
+  }
 }
 
 if ($VerifyOnly) {
@@ -266,6 +429,30 @@ if ($VerifyOnly) {
       Write-Warning '全局 AGENTS.md 与真源不一致, 按 README 手工合并 (不自动覆盖)'
     } else {
       Write-Host '全局 AGENTS.md 与真源一致。'
+    }
+  }
+
+  if (-not $SkipRecommendedSkills) {
+    foreach ($s in @(Get-RecommendedSkills)) {
+      if ((Test-Path (Join-Path $skillsDir "$s\package.json") -PathType Leaf) -and `
+          -not (Test-Path (Join-Path $skillsDir "$s\node_modules") -PathType Container)) {
+        Write-Warning "推荐 skill [$s] 依赖未安装（缺 node_modules，用 -ApplyRecommendedSkills 部署）"
+        $failures++
+      }
+      $cmd = Get-SkillCommandName $s
+      $entry = Get-SkillCommandEntry $s
+      if (-not [string]::IsNullOrWhiteSpace($cmd)) {
+        $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
+        $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
+          ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
+        $onPath = $null -ne (Get-Command $cmd -ErrorAction SilentlyContinue)
+        if ($isOurs -and $onPath) {
+          Write-Host "推荐 skill [$s] 命令 OK：$cmd"
+        } else {
+          Write-Warning "推荐 skill [$s] 命令缺失（期望 $shim 可用，重跑链接脚本安装）"
+          $failures++
+        }
+      }
     }
   }
 }

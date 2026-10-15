@@ -84,6 +84,10 @@ powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -VerifyOnly
 # 只处理部分 skill
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Include doc-rewrite-review,htmlmini
 
+# 推荐 skill（依赖显式安装 / 依赖与命令都不装）
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -ApplyRecommendedSkills
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipRecommendedSkills
+
 # 移除本仓库创建的链接 (实体不受影响)
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Unlink
 ```
@@ -102,6 +106,12 @@ cd ~/repos/skills-for-developer
 ./scripts/link-skills.sh --verify-only
 ./scripts/link-skills.sh --include doc-rewrite-review,htmlmini
 ./scripts/link-skills.sh --unlink
+
+# 推荐 skill（需依赖/命令，名单见 config/recommended-skills.txt，当前为 htmlmini）：
+# 依赖交互询问（缺省 Yes），非交互默认跳过；命令默认装成直接可调用
+# （Linux ~/.local/bin，Windows %USERPROFILE%\.local\bin 并补用户 PATH）
+./scripts/link-skills.sh --apply-recommended-skills  # 显式安装依赖（代理执行同一次带上）
+./scripts/link-skills.sh --skip-recommended-skills   # 依赖与命令都不装（含 verify 中的对应检查）
 ```
 
 ## 部署清单（新机 / 首次 / 代理执行）
@@ -114,6 +124,11 @@ cd ~/repos/skills-for-developer
    ./scripts/link-skills.sh --skip-recommended-cli   # 保持本机 TUI 配置
    ```
    Windows 对应 `scripts\link-skills.ps1 -ApplyRecommendedCli` / `-SkipRecommendedCli`。
+   推荐 skill（`config/recommended-skills.txt`，当前为 htmlmini）同次一并处理：
+   依赖（`pnpm install`）交互询问缺省 Yes、非交互默认跳过（同一次带
+   `--apply-recommended-skills` 显式安装）；命令（`htmlmini`）默认装成直接可调用
+   （Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH），
+   用 `--skip-recommended-skills` 两者都不装。
 2. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——缺才复制；不一致只提示，由人或代理对比后合并，不直接覆盖。
 3. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径与五 harness 安装数全过，见「结构校验」。
 4. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」。

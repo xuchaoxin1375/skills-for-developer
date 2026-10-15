@@ -1,0 +1,13 @@
+# 推荐部署 skill 列表（需外部依赖或命令安装的复杂 skill）。
+#
+# 链接脚本（scripts/link-skills.sh / link-skills.ps1）在链接完成后处理此列表：
+#   - 依赖安装：如 skills/<name>/package.json 存在，跑包管理器安装；
+#     交互终端默认询问（缺省 Yes），非交互环境默认跳过
+#     （用 --apply-recommended-skills / -ApplyRecommendedSkills 显式执行）。
+#   - 命令安装：有 CLI 入口的 skill 默认装成直接可用的命令
+#     （Linux: ~/.local/bin/<cmd>；Windows: %USERPROFILE%\.local\bin\<cmd>.cmd），
+#     用 --skip-recommended-skills / -SkipRecommendedSkills 跳过。
+#
+# 每行一个 skill 名，`#` 开头为注释。新增需依赖的 skill 时把名字加进来，
+# 并在链接脚本的命令安装分支补对应入口；校验脚本会检查名单与真源是否一致。
+htmlmini

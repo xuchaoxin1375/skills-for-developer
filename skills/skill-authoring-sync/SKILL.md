@@ -62,6 +62,10 @@ skills-for-developer/
 3. **更新索引**：在仓库 `README.md` “Skill 目录”表追加一行（一句话说明 + 关键词）。
 4. **本机分发**：Windows 跑 `scripts\link-skills.ps1`（可先 `-VerifyOnly` 预检，
    可用 `-Include <name>` 只处理新 skill）；Linux 跑 `./scripts/link-skills.sh`。
+   如 skill 需外部依赖或提供 CLI 命令：将其加入 `config/recommended-skills.txt`，
+   并在链接脚本的命令登记分支补入口（sh 的 `skill_command_name` /
+   `skill_command_entry`，ps1 的 `Get-SkillCommandName` /
+   `Get-SkillCommandEntry`）；部署时会自动推荐安装依赖、默认装成命令。
 5. **验证同步**：链接脚本全量 `-VerifyOnly` 通过；skill 在 harness 可见/可加载。
 6. **跨机器**：`git push` 推实体；其他机器 `pull` 后跑一遍自己平台的链接脚本。
    **不要把链接本体提交到 git**。
