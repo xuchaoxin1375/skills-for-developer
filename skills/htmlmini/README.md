@@ -94,7 +94,15 @@ python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.
 htmlmini app.html --json
 ```
 
-`--render` 只在静态 403/5xx 时触发（404/超时/断网直接抛错）；渲染日志以 `htmlmini: [render]` 为前缀实时打到 stderr（子进程经 `-X utf8` + `PYTHONUTF8=1` 强制 UTF-8 输出；Windows 控制台查看中文时按 powershell-pitfalls 的 UTF-8 模板设置输出编码）。`save_page` 的真实 URL 即原 URL，直接提取即可。
+连续/成批多页不要循环调 `htmlmini URL --render`——每页一次浏览器创建/销毁，
+又慢又多新指纹，`--render` 只适合单页/零星几页。同站多页走
+`resilient-browser-fetch` 的批量会话（见其 `references/batch-workflows.md`：
+单浏览器预热屏障 + 会话复用 + 受限并发），落盘后再逐个 `htmlmini_extract_file`。
+临时 profile 默认随会话关闭自动清理；只有跨重启保留人工验证才用专用
+`--profile-dir`（会积累缓存涨磁盘，不跨进程共用，用后确认再删）。
+
+`--render` 只在静态 403/5xx 时触发（404/超时/断网直接抛错）；
+渲染日志以 `htmlmini: [render]` 为前缀实时打到 stderr（子进程经 `-X utf8` + `PYTHONUTF8=1` 强制 UTF-8 输出；Windows 控制台查看中文时按 powershell-pitfalls 的 UTF-8 模板设置输出编码）。`save_page` 的真实 URL 即原 URL，直接提取即可。
 
 ## MCP 接入
 
@@ -164,7 +172,7 @@ claude mcp add htmlmini -- node <仓库>/skills/htmlmini/src/mcp.js
 ## 自检
 
 ```bash
-pnpm test                         # smoke 17 + MCP 自检 + 可靠性 93，全内置合成输入与本地回环，无外部网络依赖
+pnpm test                         # smoke 17 + MCP 自检 + 可靠性 95，全内置合成输入与本地回环，无外部网络依赖
 node tests/test-batch.mjs <目录>  # 本地 HTML 目录批量抽查（fixture 不入库）
 ```
 

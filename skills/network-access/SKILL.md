@@ -26,7 +26,10 @@ description: >
 | 国内普通文档/其他资源，无代理 | 有界直连 → 已核验且内容对应的官方镜像/替代渠道；GitHub 加速前缀不适用于任意 URL |
 | 海外生产服务器 | 原站直连优先，按真实出口验证；失败再诊断，不能假定海外一定可达或继承本机代理 |
 
-**陌生链接先探测后抓取**：无先验的外部链接不盲发单路默认访问——先按有界诊断同时测直连与代理两条路线（命令见 [references/network-access.md](references/network-access.md)"有界诊断与超时"），选可用且更快的一路抓取正文，探测结论同一任务内复用，不逐次重测。例：直连 20 秒超时、代理 1 秒返回，正文抓取直接走代理，不再等第二次直连。与网页提取/总结类 skill 搭配时，探测即取正文：胜出路线落盘的文件直接交提取方读，不让其按 URL 重抓。例：代理 curl 200 存好正文，总结 skill 直接读该文件。
+**陌生链接先探测后抓取**：无先验的外部链接不盲发单路默认访问——先按有界诊断同时测直连与代理两条路线（命令见 [references/network-access.md](references/network-access.md)"有界诊断与超时"），选可用且更快的一路抓取正文，探测结论同一任务内复用，不逐次重测。
+例：直连 20 秒超时、代理 1 秒返回，正文抓取直接走代理，不再等第二次直连。
+与网页提取/总结类 skill 搭配时，探测即取正文：胜出路线落盘的文件直接交提取方读，不让其按 URL 重抓。
+例：代理 curl 200 存好正文，总结 skill 直接读该文件。
 
 ## 约束
 
@@ -35,11 +38,15 @@ description: >
 - **必须**：核验可用的代理登记到本机登记文件（`~/.config/proxy-resources.json`，格式与流程见 [references/proxy-registry.md](references/proxy-registry.md)），后续任务先读登记再发现；登记是线索，用前做一次有界核验。例：登记本机混合端口后，新任务直接核验该端口，不再全盘重扫。
 - **必须**：需要代理而登记与探测都找不到可用代理时，向用户询问代理地址或申请授权，按回复继续；不反复盲试端口、不静默放弃。例：常见端口无监听、登记已失效，就问"本机代理地址是多少？"拿到后先核验再登记。
 - **必须**：按超时、权限/拦截、5xx 和限流响应分类回退，所有尝试设耗时上限；限流遵守冷却，不靠换出口绕过。例：GitHub 403 若提示限流，先等待而非换镜像连发。
-- **必须**：HTTP 5xx（含 500/502/503/504 及 Cloudflare 520 系）先视为可能与出口或指纹有关，换出口有界对照一次（直连↔代理）并保留首次失败证据；curl 两路一致 5xx 不能直接判源站死，必须再做一次异构对照（补全浏览器头重测，或同路线 `curl_cffi`，或真实浏览器），异构仍失败才判源站故障。例：简头 curl 两路 502，但补头后现 302 跳 `/_sc/challenge`，即转浏览器而非判死。
+- **必须**：HTTP 5xx（含 500/502/503/504 及 Cloudflare 520 系）先视为可能与出口或指纹有关，换出口有界对照一次（直连↔代理）并保留首次失败证据；curl 两路一致 5xx 不能直接判源站死，必须再做一次异构对照（补全浏览器头重测，或同路线 `curl_cffi`，或真实浏览器），异构仍失败才判源站故障。
+例：简头 curl 两路 502，但补头后现 302 跳 `/_sc/challenge`，即转浏览器而非判死。
 - **必须**：外网慢/403/5xx先做双路有界探测与错误分流（见 `references/network-access.md`“错误分流”）；仅当正文确认为 WAF/挑战/区域拦截且需渲染取证时才转 `resilient-browser-fetch`，不一见 403 就上浏览器。例：代理 `curl` 已 200 取回正文即直接交付，不启动浏览器。
 - **必须**：引用镜像/加速服务前核验对应目标及适用范围，保留原始来源；未能核验时明确说明。例：一个 raw 文件可下载，不能证明整站文档或 git clone 都可用。
 
-代理、超时、错误分流及 GitHub 加速细节见 [references/network-access.md](references/network-access.md)；本机代理登记见 [references/proxy-registry.md](references/proxy-registry.md)；带日期的本机记录见 [references/local-observations.md](references/local-observations.md)。搜索与抓取的并发、频率、重试预算及共享冷却遵循 `agentic-web-search`。
+代理、超时、错误分流及 GitHub 加速细节见 [references/network-access.md](references/network-access.md)；
+本机代理登记见 [references/proxy-registry.md](references/proxy-registry.md)；
+带日期的本机记录见 [references/local-observations.md](references/local-observations.md)。
+搜索与抓取的并发、频率、重试预算及共享冷却遵循 `agentic-web-search`。
 
 - 单次任务优先使用进程环境变量或客户端的本次调用参数（如 `PIP_INDEX_URL`、`UV_DEFAULT_INDEX`、`--proxy`）；不为诊断静默改系统代理或全局 Git 配置。
 - 不把本机端口、镜像或一次测量写成永久默认值；实际环境与历史记录不一致时，以实测为准，仅将与本机有关的观测更新到参考记录。

@@ -2,7 +2,7 @@
 // 全内置合成输入 + 本地回环 HTTP/临时文件，无外部网络依赖。
 import { strict as assert } from 'node:assert';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -430,7 +430,7 @@ async function cli(args, { input } = {}) {
   if (!py) {
     console.log('skip render tests (no python)');
   } else {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-render-'));
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t13-'));
     try {
       const stub = path.join(dir, 'stub_save.py');
       await writeFile(
@@ -450,6 +450,10 @@ if os.getenv('STUB_ARGV'):
     open(os.getenv('STUB_ARGV'), 'w').write(json.dumps(argv))
 if os.getenv('STUB_RENDER_FAIL') == '1':
     sys.stderr.write('stub render failed: challenge unsolvable\\n')
+if os.getenv('STUB_RESIDUE') == '1' and out:
+    open(out + '.attempts.json', 'w').write('{}')
+    open(out + '.fake.blocked.html', 'w').write('<p>blocked</p>')
+if os.getenv('STUB_RENDER_FAIL') == '1':
     sys.exit(3)
 marker = os.getenv('STUB_MARKER') or ''
 if marker:
@@ -466,7 +470,7 @@ open(out, 'w', encoding='utf-8').write(
       const marker = path.join(dir, 'calls.log');
       const argvLog = path.join(dir, 'argv.json');
       const saved = {};
-      for (const k of ['HTMLMINI_RENDER_SCRIPT', 'STUB_RENDER_FAIL', 'STUB_MARKER', 'STUB_ARGV']) {
+      for (const k of ['HTMLMINI_RENDER_SCRIPT', 'STUB_RENDER_FAIL', 'STUB_MARKER', 'STUB_ARGV', 'STUB_RESIDUE']) {
         saved[k] = process.env[k];
       }
       process.env.HTMLMINI_RENDER_SCRIPT = stub;
@@ -498,6 +502,21 @@ open(out, 'w', encoding='utf-8').write(
         }
         ok(er && /browser render failed/.test(er.message), '渲染失败报错点名渲染');
         delete process.env.STUB_RENDER_FAIL;
+
+        const leftoversOf = () => readdirSync(os.tmpdir()).filter((e) => e.startsWith('htmlmini-render-'));
+        process.env.STUB_RESIDUE = '1';
+        const mdRes = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+        ok(mdRes.includes('渲染正文内容足够长') && leftoversOf().length === 0, '成功时诊断残留一并清理');
+        let erRes = null;
+        process.env.STUB_RENDER_FAIL = '1';
+        try {
+          await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+        } catch (e) {
+          erRes = e;
+        }
+        ok(erRes && /browser render failed/.test(erRes.message) && leftoversOf().length === 0, '失败时诊断残留一并清理');
+        delete process.env.STUB_RENDER_FAIL;
+        delete process.env.STUB_RESIDUE;
 
         process.env.HTMLMINI_RENDER_SCRIPT = path.join(dir, '不存在.py');
         process.env.HTMLMINI_CHROME_BIN = path.join(dir, '也没有-chrome');
@@ -541,7 +560,7 @@ open(out, 'w', encoding='utf-8').write(
 
 // ---- 14. Chrome 直渲通路：零依赖回退 / headful 限制 / save_page 优先 ----
 {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-chrome-'));
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t14-'));
   try {
     const fakeChrome = path.join(dir, 'fake-chrome.mjs');
     await writeFile(

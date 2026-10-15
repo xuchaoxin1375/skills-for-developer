@@ -1,4 +1,4 @@
-import { readFile, unlink } from 'node:fs/promises';
+import { readFile, readdir, unlink } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
@@ -511,7 +511,8 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
     while (tailSize > TAIL_CAP && tail.length > 1) tailSize -= tail.shift().length + 1;
   };
   const limit = renderTimeoutMs + 60_000;
-  await new Promise((resolve, reject) => {
+  try {
+    await new Promise((resolve, reject) => {
     let child;
     try {
       child = spawn(python, args, {
@@ -563,14 +564,32 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
       resolve();
     });
   });
-  try {
     const html = decodeHtml(await readFile(out));
     if (!html.trim()) throw new Error(`browser render returned empty page for ${url}`);
     return html;
   } finally {
-    await unlink(out).catch(() => {});
-    await unlink(`${out}.meta.json`).catch(() => {});
+    // save_page 成功/失败都会在 out 旁落文件（正文、.meta.json、.attempts.json、
+    // .<engine>.blocked.html）；basename 唯一，按前缀全清，不留残留。
+    // finally 包住 spawn（失败早抛也清），读文件在 finally 之前（先读后删）。
+    await cleanupRenderArtifacts(out);
   }
+}
+
+/** 清理某次渲染落到临时目录的全部产物（正文、meta 与诊断文件）。 */
+export async function cleanupRenderArtifacts(out) {
+  const dir = dirname(out);
+  const base = out.split(/[\\/]/).pop();
+  let entries;
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return;
+  }
+  await Promise.all(
+    entries
+      .filter((e) => e === base || e.startsWith(`${base}.`))
+      .map((e) => unlink(join(dir, e)).catch(() => {})),
+  );
 }
 
 export function isRenderableError(e) {
