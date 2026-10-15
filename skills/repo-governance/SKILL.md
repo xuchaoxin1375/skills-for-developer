@@ -176,7 +176,7 @@ git ls-files -c -i --exclude-standard                     # 已追踪却应忽�
 - 项目已采用时遵守真实 commitlint 配置。`feat`、`fix` 是核心类型，`docs refactor test chore ci perf build revert` 等按项目允许；不维护跨仓库封闭枚举。
 - scope 可选，名称、语言和长度沿用项目政策；描述说明具体结果，避免 `update stuff` 等模糊词。
 - 不兼容变更用 `!` 或 `BREAKING CHANGE:` 标识，并说明迁移；版本增量须核对真实公共契约及发布政策，不仅由提交前缀自动证明。
-- 本地校验：`npx commitlint --from HEAD~1 --to HEAD`（或接入 commitlint hook 后直接提交验证）。
+- 本地校验：`pnpm exec commitlint --from HEAD~1 --to HEAD`（未安装时用 `pnpm dlx commitlint`；npm 项目对应用 `npx commitlint`，或接入 commitlint hook 后直接提交验证）。
 
 ### 分支与评审保护
 

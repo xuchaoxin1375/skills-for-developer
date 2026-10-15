@@ -14,10 +14,12 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.14.0",
     "defuddle": "^0.19.3",
-    "linkedom": "^0.18.9"
+    "linkedom": "^0.18.9",
+    "zod": "^4.6.5"
   },
   "engines": {
     "node": ">=18.0.0"
   },
+  "packageManager": "pnpm@12.4.1",
   "license": "MIT"
 }

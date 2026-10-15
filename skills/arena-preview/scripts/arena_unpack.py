@@ -96,15 +96,15 @@ def suggest(fp: dict) -> list[str]:
     fw = fp["framework"]
     s = fp["scripts"]
     if fw.startswith("Vite") or fw in ("Next.js", "VueCLI"):
-        cmds = ["npm install", "npm run build"]
-        cmds.append("npx serve dist 或 npm run preview（静态预览，默认先看这个）")
+        cmds = ["pnpm install（有 package-lock.json 时改用 npm ci）", "pnpm run build"]
+        cmds.append("pnpm dlx serve dist 或 pnpm run preview（静态预览，默认先看这个）")
         if "dev" in s:
-            cmds.append("改代码才用：npm run dev（后台，Vite 默认 5173/Next 默认 3000）")
+            cmds.append("改代码才用：pnpm run dev（后台，Vite 默认 5173/Next 默认 3000）")
         return cmds
     if fw == "static":
         return ["直接用浏览器打开 index.html，或 python3 -m http.server 起本地服务"]
     if fp["scripts"]:
-        return [f"npm run {k}" for k in s]
+        return [f"pnpm run {k}" for k in s]
     return ["无可识别的运行入口，先读 docs/ 与 README"]
 
 

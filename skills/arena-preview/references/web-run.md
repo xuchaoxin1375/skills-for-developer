@@ -10,12 +10,14 @@
 
 ## 静态预览链（默认）
 
+包管理器按锁文件沿用，无锁时优先 pnpm；下例以 pnpm 写，npm 项目把 `pnpm` 换成对应 `npm` 命令即可（安装用 `npm ci`，单次执行用 `npx`）。
+
 ```sh
 cd <项目目录>
-npm install
-npm run build
-npx serve dist          # 默认 http://localhost:3000；或 python3 -m http.server 8000
-# vite 项目也可用：npm run preview （默认 http://localhost:4173）
+pnpm install
+pnpm run build
+pnpm dlx serve dist    # 默认 http://localhost:3000；或 python3 -m http.server 8000
+# vite 项目也可用：pnpm run preview （默认 http://localhost:4173）
 ```
 
 验证：`curl -s -o /dev/null -w "%{http_code}" http://localhost:PORT` 期望 200。
@@ -25,25 +27,25 @@ npx serve dist          # 默认 http://localhost:3000；或 python3 -m http.ser
 ## 改代码才 dev（Vite/Next/Vue）
 
 ```sh
-npm run dev             # 后台启动；Vite 默认 5173，Next 默认 3000
+pnpm run dev             # 后台启动；Vite 默认 5173，Next 默认 3000
 ```
 
-- 指定端口：`npm run dev -- --port 5174`（被占时用）。
+- 指定端口：`pnpm run dev -- --port 5174`（被占时用）。
 - Next 首次启动慢（编译），等 `Ready` 再验 200。
 
 ## 单文件导出（发给别人看）
 
 ```sh
-npm i -D vite-plugin-singlefile
+pnpm add -D vite-plugin-singlefile
 ```
 
-`vite.config.ts` 加 `plugins: [viteSingleFile()]` 后 `npm run build`，`dist/index.html` 即单文件，双击即开。限制：`public/` 大图不内联（外链，离线裂图）；路由只能 hash 模式。
+`vite.config.ts` 加 `plugins: [viteSingleFile()]` 后 `pnpm run build`，`dist/index.html` 即单文件，双击即开。限制：`public/` 大图不内联（外链，离线裂图）；路由只能 hash 模式。
 
 ## 静态页（无 package.json，有 index.html）
 
 ```sh
 python3 -m http.server 8000
-# 或：npx serve .
+# 或：pnpm dlx serve .
 ```
 
 纯展示页可直接浏览器打开 `index.html`，但有模块导入/fetch 时必须走 http 服务。
@@ -59,7 +61,7 @@ python3 -m http.server 8000
 | 现象 | 先查 |
 | --- | --- |
 | `EADDRINUSE` 端口被占 | 换 `--port`，不要杀未知进程 |
-| `npm install` 失败 | `node -v`（Vite 5+ 要 Node ≥18）；`npm config get registry` 看源；删 `node_modules` + lock 重装只限一次 |
+| `pnpm install`（或对应 `npm ci`）失败 | `node -v`（Vite 5+ 要 Node ≥18）；`pnpm config get registry` 看源（npm 项目用 `npm config get registry`）；删 `node_modules` + lock 重装只限一次 |
 | 白屏但 200 | 看浏览器控制台报错；多为 base 路径或 API 地址问题，记入报告不深修 |
 | `vite: command not found` | 依赖没装好，回上一步 |
 

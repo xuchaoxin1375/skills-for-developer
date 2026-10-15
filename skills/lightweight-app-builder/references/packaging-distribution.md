@@ -121,7 +121,7 @@
 | **Scoop Bucket(自建)** | Windows | `scoop bucket add <name> <url>` 后 `scoop install <app>` | 低,自动生成清单 |
 | **apt / dnf 仓库** | Debian/Fedora 系 | `apt install <app>` | 中,要维护仓库与 GPG 签名 |
 | **PyPI** | 跨平台 Python | `pipx install <pkg>` / `uv tool install <pkg>` | 低 |
-| **npm** | 跨平台 Node | `npm i -g <pkg>` | 低,记得 `files` 字段控制包内容 |
+| **pnpm** | 跨平台 Node | `pnpm add -g <pkg>`（npm 项目用 `npm i -g <pkg>`） | 低,记得 `files` 字段控制包内容 |
 | **crates.io** | Rust | `cargo install <crate>` | 低 |
 | **Go** | 跨平台 | `go install 模块路径@版本` | 极低,打好 tag 就能装 |
 | **Docker Hub / GHCR** | 服务端 | `docker run <image>` | 低 |
@@ -343,7 +343,7 @@ main "$@"
 | --- | --- |
 | GitHub Release 下载慢 | 配置当前可用的镜像代理包裹原链接(镜像代理示例见上文 install.sh 用法注释);**镜像可用性会变化,引用前务必实测**,且生产环境不应长期依赖第三方镜像 |
 | 自建分发 | 把产物同步到国内可达的对象存储(阿里云 OSS、腾讯云 COS、七牛),自建下载页,这是**最可靠**的做法 |
-| npm/pnpm/Yarn | 按 `network-access` 的 `references/dependency-downloads.md` 使用版本对应的任务级 registry/代理配置；默认不改用户全局设置 |
+| pnpm/npm/Yarn | 按 `network-access` 的 `references/dependency-downloads.md` 使用版本对应的任务级 registry/代理配置；默认不改用户全局设置 |
 | pip/uv | 按 `network-access` 使用任务级索引配置；镜像缺包显式回退，保留私有源绑定与锁文件 |
 | Homebrew | 设置 `HOMEBREW_API_DOMAIN`、`HOMEBREW_BOTTLE_DOMAIN` 指向中科大或清华镜像 |
 | Go 模块 | `go env -w GOPROXY=https://goproxy.cn,direct` |

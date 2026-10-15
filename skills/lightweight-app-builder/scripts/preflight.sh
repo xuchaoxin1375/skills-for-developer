@@ -173,7 +173,7 @@ if [ "$LANG_STACK" = "auto" ] || [ "$LANG_STACK" = "node" ]; then
   if [ "$JSON" -eq 0 ]; then log "${C_BOLD}[Node / TypeScript]${C_RESET}"; fi
   check_tool node required "https://nodejs.org 或用 fnm/volta 管理版本"
   check_tool npm required "随 Node 一同安装"
-  check_tool pnpm optional "corepack enable  /  npm i -g pnpm"
+  check_tool pnpm optional "corepack enable（新项目优先 pnpm；无 corepack 时 npm i -g pnpm）"
 fi
 
 if [ "$LANG_STACK" = "auto" ] || [ "$LANG_STACK" = "go" ]; then
@@ -222,7 +222,7 @@ esac
 # ---------- 国内镜像提示 ----------
 if [ "$MIRROR" = "china" ]; then
   if [ "$JSON" -eq 0 ]; then log "${C_BOLD}[国内镜像配置提示]${C_RESET}"; fi
-  record info "npm" "npm config set registry https://registry.npmmirror.com" ""
+  record info "pnpm/npm" "pnpm config set registry https://registry.npmmirror.com（npm 项目用 npm config set registry …）" ""
   record info "PyPI" "pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple" ""
   record info "Go" "go env -w GOPROXY=https://goproxy.cn,direct" ""
   record info "Homebrew" "设置 HOMEBREW_API_DOMAIN 与 HOMEBREW_BOTTLE_DOMAIN 指向镜像" ""

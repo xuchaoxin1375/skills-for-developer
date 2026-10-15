@@ -93,11 +93,11 @@ def tone_of(colors: list[str]) -> str:
 def dev_cmd(framework: str, port: int) -> list[str]:
     """点绿徽标要敲的命令：每个项目独立服务，监听 exactly 分配到的端口。"""
     if framework.startswith("Vite"):
-        return ["npm install", f"npm run dev -- --port {port}"]
+        return ["pnpm install", f"pnpm run dev -- --port {port}"]
     if framework == "Next.js":
-        return ["npm install", f"npm run dev -- -p {port}"]
+        return ["pnpm install", f"pnpm run dev -- -p {port}"]
     if framework == "VueCLI":
-        return ["npm install", f"npm run serve -- --port {port}"]
+        return ["pnpm install", f"pnpm run serve -- --port {port}"]
     return []
 
 

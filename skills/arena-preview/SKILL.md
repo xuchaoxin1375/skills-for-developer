@@ -20,10 +20,10 @@ metadata:
 
 ## 关键认知（先读三行）
 
-这类包是**纯静态前端**：逻辑全在浏览器跑，无服务端代码。`npm run dev` 起的不是应用后端，只是**本地静态文件服务器**（绕过浏览器对 `file://` 下 ES 模块与 fetch 的限制）。所以：
+这类包是**纯静态前端**：逻辑全在浏览器跑，无服务端代码。`pnpm run dev` 起的不是应用后端，只是**本地静态文件服务器**（绕过浏览器对 `file://` 下 ES 模块与 fetch 的限制）。包管理器按锁文件沿用，无锁时优先 pnpm。所以：
 
-- **只看效果**：优先 `npm run build` + 静态服务预览（`npx serve dist`），甚至导出单 HTML 双击即开。
-- **要改代码**：才用 `npm run dev`（热更新）。
+- **只看效果**：优先 `pnpm run build` + 静态服务预览（`pnpm dlx serve dist`），甚至导出单 HTML 双击即开。
+- **要改代码**：才用 `pnpm run dev`（热更新）。
 - **发给别人**：单 HTML（`vite-plugin-singlefile`）最省事；注意 `public/` 大图不会被内联。
 
 ## 工作流
@@ -43,12 +43,12 @@ flowchart TD
 
 ### Step 2 — 运行（静态优先）
 
-只看效果走静态链（详见 `references/web-run.md`）：`npm install` → `npm run build` → `npx serve dist`（或 `vite preview`），验 200。改代码才后台起 `dev`。规则：
+只看效果走静态链（详见 `references/web-run.md`）：`pnpm install` → `pnpm run build` → `pnpm dlx serve dist`（或 `vite preview`），验 200。改代码才后台起 `dev`。规则：
 
 - 用 background 方式启动，记录**地址 + 停止方法**，两者都必须告诉用户。
 - 端口被占就换端口，不要杀用户机器上未知进程。
 - 默认**保留运行**（用户要看页面），报告里写清地址和关闭命令。
-- `npm install` 失败先看 `references/web-run.md` 故障表，不要反复裸重装。
+- `pnpm install`（或对应 `npm ci`）失败先看 `references/web-run.md` 故障表，不要反复裸重装。
 
 ### Step 3 — 分析
 

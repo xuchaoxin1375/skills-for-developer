@@ -30,7 +30,7 @@ flowchart LR
 | 语言 | 格式化 | 静态检查/Lint | 类型检查 | 测试 | 依赖审计 |
 | --- | --- | --- | --- | --- | --- |
 | **Python** | **Ruff format** | **Ruff check**(整合了 flake8/isort/pyupgrade 等) | **mypy** 或 pyright | pytest | `pip-audit`、`uv pip audit` |
-| **JavaScript / TypeScript** | **Prettier** 或 Biome | **ESLint**(或 Biome 一体) | `tsc --noEmit` | Vitest / Node test runner | `npm audit`、`pnpm audit` |
+| **JavaScript / TypeScript** | **Prettier** 或 Biome | **ESLint**(或 Biome 一体) | `tsc --noEmit` | Vitest / Node test runner | `pnpm audit`、`npm audit` |
 | **Go** | **gofmt** / gofumpt | **golangci-lint**(聚合数十个检查器) | 语言内置 | `go test` + testify | `govulncheck` |
 | **Rust** | `cargo fmt`(rustfmt) | `cargo clippy -- -D warnings` | 语言内置 | `cargo test` | `cargo audit`、`cargo deny` |
 | **Shell** | **shfmt**(`-i 2 -ci`) | **shellcheck** | — | bats-core | — |
@@ -38,7 +38,7 @@ flowchart LR
 
 **关于 Biome**:用 Rust 编写的 JS/TS 工具链,把 Lint 与 Format 合成一个工具,速度远快于 ESLint + Prettier 组合,新项目可以考虑;但插件生态与规则覆盖度仍不及 ESLint,复杂项目需评估。
 
-**统一建议**:所有检查通过一个入口命令触发,例如 `make check` 或 `npm run check`,内部依次跑 format 校验、lint、类型检查、测试。**用户(和未来的你)只需要记住一条命令。**
+**统一建议**:所有检查通过一个入口命令触发,例如 `make check` 或 `pnpm run check`,内部依次跑 format 校验、lint、类型检查、测试。**用户(和未来的你)只需要记住一条命令。**
 
 ## 测试策略:轻量程序该测什么
 
@@ -74,7 +74,7 @@ flowchart LR
 
 | 检查项 | 要求 |
 | --- | --- |
-| 依赖漏洞扫描 | CI 中运行 `govulncheck` / `cargo audit` / `pip-audit` / `npm audit --audit-level=high` |
+| 依赖漏洞扫描 | CI 中运行 `govulncheck` / `cargo audit` / `pip-audit` / `pnpm audit --audit-level high` |
 | 密钥硬编码 | 仓库内不得出现 Token、密码、私钥;加 `gitleaks` 或 `detect-secrets` 扫描 |
 | 外部输入 | 所有来自文件、网络、参数的数据都当作不可信,做长度与类型校验 |
 | 命令注入 | 禁止把用户输入拼进 shell 字符串;用参数数组形式调用子进程 |

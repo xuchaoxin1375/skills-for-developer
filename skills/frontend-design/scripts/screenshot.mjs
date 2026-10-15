@@ -2,7 +2,7 @@
 // scripts/screenshot.mjs —— 基础宽度截图助手（验收范围见响应式专项 acceptance.md）
 //
 // 用法:
-//   npx playwright install chromium   # 一次性安装浏览器
+//   pnpm exec playwright install chromium   # 一次性安装浏览器（未安装时用 pnpm dlx playwright install chromium）
 //   node scripts/screenshot.mjs <URL> [--out shots] [--widths 320,390,768,1440]
 //
 // 产出: shots/320.png shots/390.png shots/768.png shots/1440.png（整页截图）
@@ -35,7 +35,7 @@ let chromium;
 try {
   ({ chromium } = await import('playwright'));
 } catch {
-  console.error('缺 playwright：先跑 npm i -D playwright && npx playwright install chromium');
+  console.error('缺 playwright：先跑 pnpm add -D playwright && pnpm exec playwright install chromium');
   process.exit(1);
 }
 

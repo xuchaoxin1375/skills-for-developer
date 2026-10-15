@@ -20,10 +20,10 @@ description: >
    ```powershell
    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
    $OutputEncoding = [System.Text.Encoding]::UTF8
-   npx mmdc -p <puppeteer-config.json> -i <block.mmd> -o <block.svg> 2>&1 | Out-String
+   pnpm exec mmdc -p <puppeteer-config.json> -i <block.mmd> -o <block.svg> 2>&1 | Out-String
    Write-Output ("EXIT=" + $LASTEXITCODE)
    ```
-   `puppeteer-config.json` 指向本机浏览器可执行文件（示例：`%ProgramFiles%\Google\Chrome\Application\chrome.exe`），免下载 Chromium。
+   `puppeteer-config.json` 指向本机浏览器可执行文件（示例：`%ProgramFiles%\Google\Chrome\Application\chrome.exe`），免下载 Chromium。未安装时用 `pnpm dlx @mermaid-js/mermaid-cli` 单次运行；npm 项目对应用 `npx mmdc`。
 3. **修**：每次只改报错行及同类行。最高频根因是节点文本里的 `[` 未加引号
    （报错常为 `got 'SQS'`），修法是给整个节点文本加双引号，
    如 `G["...[Console]::OutputEncoding..."]`。其余转义查 markdown-style 正本。

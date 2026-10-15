@@ -225,7 +225,7 @@ flowchart TD
 - **PyInstaller 不能交叉编译**：Win exe 必须 Win 上打，或 GH Actions 三平台矩阵；另有杀软误报风险，提前告知。
 - **Tauri WebView 系统自带**（Win WebView2 / mac WKWebView / Linux WebKitGTK）：同 CSS 渲染不同，关键样式兼容测；Linux 需装 WebKitGTK；Win10 老机器需引导装 WebView2。
 - **macOS 分发链不可拆**：签名 → 公证 → 才能静默更新；未签名报"已损坏"，交付时给右键打开 / `xattr -dr com.apple.quarantine` 说明，优先签名公证；签名与平台绑定，CI 需三平台矩阵。
-- **国内网络**：按 `network-access` 为 npm/pip/cargo/Go 选择镜像或代理，Windows 与 *nix 分别说明；GitHub 下载加速先核验对应目标与服务支持范围，代理变量按实际客户端生效，海外生产直连仍需实测。
+- **国内网络**：按 `network-access` 为 Node.js（无锁时优先 pnpm）/pip/cargo/Go 选择镜像或代理，Windows 与 *nix 分别说明；GitHub 下载加速先核验对应目标与服务支持范围，代理变量按实际客户端生效，海外生产直连仍需实测。
 - **改存量先还原理由**：每个现存设计背后有正当理由。
   动手前先书面说出它为什么是现在这样，说不清先问用户不许猜。
   反例：给为直连而设的探测加代理复测，路线反了还误导决策。
@@ -233,7 +233,7 @@ flowchart TD
   测量与结论必须标明测的是哪条路，不把 A 路结论用于 B 路决策。
 - **长列表不分页**：整页长列表默认分页（筛选页码联动、换页回到顶）。
   弹窗/面板内列表改用定高滚动，不撑窗。
-- **版本号不写死正文**，写"以官方为准 + 查询命令"（如 `npm view tauri version`）；`description` 是触发器，改 skill 时同步写清"做什么 + 何时用"。
+- **版本号不写死正文**，写"以官方为准 + 查询命令"（如 `pnpm view tauri version`）；`description` 是触发器，改 skill 时同步写清"做什么 + 何时用"。
 - **替用户拼的参数，按执行者验证**：包管理器/壳会改写参数（如 pnpm 把 `--` 原样透给脚本导致丢参），拼完必须用真实目标跑一遍；看"事办成了"不看"进程起了"。
 - **本机地址与消费方一致**：`localhost` 可能落 IPv6（`::1`），而探针/浏览器走 IPv4 会连接拒绝；本地服务要么显式绑 `127.0.0.1`，要么用消费方的地址实际连一次确认。
 
