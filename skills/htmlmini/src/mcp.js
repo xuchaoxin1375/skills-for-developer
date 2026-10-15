@@ -7,18 +7,18 @@ import { EXTRACTORS, MODES, extractHtml, readSiblingMeta, readSource, runExtract
 const modeEnum = z.enum(MODES);
 const extractorEnum = z.enum(EXTRACTORS);
 const extractorDesc =
-  'Extraction engine. Default: auto (Defuddle -> Trafilatura if installed, silently skipped otherwise -> semantic -> UI inventory). Force one to get its raw result without silent switching.';
+  'Extraction engine. Default: auto (non-HTML passthrough -> Defuddle -> Trafilatura if installed, silently skipped otherwise -> semantic -> UI inventory). Non-HTML input is passed through untouched; force one to get its raw result without silent switching.';
 const modeDesc = 'Output style. Default: markdown';
 
 async function handleSource(src, mode, extractor) {
-  const { html, source } = await readSource(src);
+  const { html, source, contentType } = await readSource(src);
   const sibling = await readSiblingMeta(source);
   const url = /^https?:/i.test(source)
     ? source
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (source === 'stdin' ? 'stdin' : source.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor });
+  const res = await extractHtml(html, { url, extractor, contentType });
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
 }

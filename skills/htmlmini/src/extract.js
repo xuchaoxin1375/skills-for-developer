@@ -7,7 +7,7 @@ import { Defuddle } from 'defuddle/node';
 const execFileAsync = promisify(execFile);
 
 export const MODES = ['markdown', 'skeleton', 'text', 'json', 'title', 'ui'];
-export const EXTRACTORS = ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui'];
+export const EXTRACTORS = ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'passthrough'];
 
 export const DEFAULT_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15 htmlmini/0.2';
@@ -56,7 +56,7 @@ function readStdin() {
 
 export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS } = {}) {
   if (source === '-' || source == null) {
-    return { html: decodeHtml(await readStdin()), source: 'stdin' };
+    return { html: decodeHtml(await readStdin()), source: 'stdin', contentType: null };
   }
   if (/^https?:\/\//i.test(source)) {
     let res;
@@ -71,9 +71,20 @@ export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS } = {}) 
       throw e;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${source}`);
-    return { html: decodeHtml(Buffer.from(await res.arrayBuffer())), source };
+    const contentType = res.headers.get('content-type');
+    return { html: decodeHtml(Buffer.from(await res.arrayBuffer())), source, contentType };
   }
-  return { html: decodeHtml(await readFile(source)), source };
+  return { html: decodeHtml(await readFile(source)), source, contentType: guessContentTypeFromPath(source) };
+}
+
+/** 按文件扩展名猜内容类型（仅提示作用，最终由正文启发式裁决）。 */
+export function guessContentTypeFromPath(p) {
+  const lower = String(p || '').toLowerCase();
+  if (/\.(md|markdown)$/.test(lower)) return 'text/markdown';
+  if (/\.txt$/.test(lower)) return 'text/plain';
+  if (/\.json$/.test(lower)) return 'application/json';
+  if (/\.(html?|xhtml)$/.test(lower)) return 'text/html';
+  return null;
 }
 
 /**
@@ -413,16 +424,90 @@ function isWeakArticle(content, html) {
   return content.length < UI_SWITCH_CHARS && uiSignalCount(html) >= 3;
 }
 
+const HTML_TAG_RE =
+  /<(html|head|body|div|p|span|a|h1|h2|h3|h4|h5|h6|table|thead|tbody|tr|td|th|ul|ol|li|form|input|select|textarea|button|article|main|section|nav|header|footer|img|figure|figcaption|video|audio|canvas|script|style|link|meta|title)\b/gi;
+
+function hasMarkdownSignals(s) {
+  return /^#{1,6}\s+\S/m.test(s) || /```/.test(s) || /^\s*\|.*\|\s*$/m.test(s);
+}
+
 /**
- * 回退链：auto = Defuddle -> Trafilatura(可选) -> semantic -> ui。
- * 强制指定 extractor 时返回该引擎的原始结果（不静默切换），便于排查。
+ * 非 HTML 启发式：gitee 这类 `Content-Type: text/plain` 直接返回 markdown、
+ * 纯文本/JSON 日志等都不该被硬塞进 HTML 解析器。
+ * 只认白名单 HTML 标签，避免 markdown 里的 `<skill-name>` 占位符误判。
  */
-export async function extractHtml(html, { url = 'about:blank', extractor = 'auto' } = {}) {
+export function looksLikeHtml(s, contentType) {
+  const text = String(s || '');
+  const head = text.slice(0, 2000);
+  if (/<!doctype\s+html/i.test(head)) return true;
+  if (/<html[\s>]/i.test(head)) return true;
+  const tags = text.match(HTML_TAG_RE);
+  const tagCount = tags ? tags.length : 0;
+  // 没有任何白名单标签：一定不是 HTML（扩展名/content-type 说是 html 也不算，
+  // 如 curl 把 text/plain 正文存成了 .html 文件）。
+  if (tagCount === 0) return false;
+  const ct = String(contentType || '').toLowerCase();
+  if (ct.includes('text/html') || ct.includes('application/xhtml')) return true;
+  // 明确的非 HTML 类型：除非标签多到明显是 HTML，否则透传。
+  if (ct.includes('text/markdown') || ct.includes('text/plain') || ct.includes('application/json') || ct.includes('text/csv')) {
+    return tagCount >= 5;
+  }
+  // markdown 信号强（标题/代码块/表格）且标签少：是“讲 HTML 的 markdown”，不是 HTML。
+  if (hasMarkdownSignals(text) && tagCount < 5) return false;
+  return true;
+}
+
+/** 从纯文本/markdown 第一行提标题：优先 `# 标题`，否则首个非空行。 */
+export function titleFromText(s) {
+  const text = String(s || '').replace(/\r\n/g, '\n');
+  const m = text.match(/^#{1,6}\s+(.+?)\s*$/m);
+  if (m) return m[1].replace(/[*_`~]/g, '').trim().slice(0, 120);
+  for (const line of text.split('\n')) {
+    const t = line.trim().replace(/^[#>*\-\s]+/, '').trim();
+    if (t) return t.slice(0, 120);
+  }
+  return '';
+}
+
+/**
+ * 回退链：auto = 非HTML透传 -> Defuddle -> Trafilatura(可选) -> semantic -> ui。
+ * 非 HTML 输入（markdown/纯文本/JSON）任何模式下都透传原文，不硬抽；
+ * 强制指定 extractor 时同理（硬把 markdown 当 HTML 解析只会得到空标题）。
+ */
+export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null } = {}) {
   if (!EXTRACTORS.includes(extractor)) {
     throw new Error(`unknown extractor "${extractor}"（可选: ${EXTRACTORS.join(', ')}）`);
   }
   const t0 = Date.now();
-  const document = parseOnce(html);
+  const raw = String(html ?? '');
+  const finishPassthrough = () => {
+    const text = raw.replace(/\r\n/g, '\n').trim();
+    const title = titleFromText(text);
+    return {
+      title,
+      description: '',
+      published: '',
+      site: '',
+      domain: '',
+      language: '',
+      wordCount: countWords(text),
+      requested: extractor,
+      used: 'passthrough',
+      contentType: contentType ?? null,
+      content: text,
+      stats: {
+        inputChars: raw.length,
+        outputChars: text.length,
+        reductionPct: raw.length ? Math.round((1 - text.length / raw.length) * 1000) / 10 : 0,
+        parseMs: Date.now() - t0,
+      },
+    };
+  };
+
+  if (extractor === 'passthrough') return finishPassthrough();
+  if (!looksLikeHtml(raw, contentType)) return finishPassthrough();
+
+  const document = parseOnce(raw);
 
   const finish = (content, used, base = {}) => ({
     title: base.title ?? safeTitle(document),
@@ -569,6 +654,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
   let html;
   let src;
   let sibling = null;
+  let contentType = null;
   if (forceContent != null) {
     html = forceContent;
     src = 'content';
@@ -576,6 +662,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     const r = await readSource(source, timeoutMs == null ? {} : { timeoutMs });
     html = r.html;
     src = r.source;
+    contentType = r.contentType ?? guessContentTypeFromPath(src);
     if (!/^https?:\/\//i.test(src) && src !== 'stdin') {
       sibling = await readSiblingMeta(src);
     }
@@ -585,7 +672,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (src === 'stdin' || src === 'content' ? src : src.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : extractor });
+  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : extractor, contentType });
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
 }

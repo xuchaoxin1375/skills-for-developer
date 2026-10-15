@@ -29,7 +29,7 @@ description: >
 | `text` | 纯文本、去掉所有标记 |
 | `title` | 只要页面标题 |
 
-`extractor` 默认 `auto`（Defuddle → 有则用 Trafilatura → semantic → ui），不用指定；只有排查抽取质量时才强制单个引擎（`--json` 看 `used` 字段确认实际命中）。
+`extractor` 默认 `auto`（非HTML透传 → Defuddle → 有则用 Trafilatura → semantic → ui），不用指定；只有排查抽取质量时才强制单个引擎（`--json` 看 `used` 字段确认实际命中）。非 HTML（markdown/纯文本/JSON，如 gitee 直接返回的 `text/plain`）任何模式下都原样透传（`used=passthrough`）。
 
 ## 动态页流水线（静态抓取不够时）
 

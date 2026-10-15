@@ -2,7 +2,7 @@
 
 把 HTML 网页（含大量 CSS/JS 样板）压成"核心骨架"，以 Markdown 输出，专为 **LLM 总结省 token** 设计。实测本地设计稿：原始 24KB~99KB → 提取后 300B~1.3KB，**节省约 75%~99.5%**。
 
-- 引擎链（`auto` 默认）：**Defuddle** 正文提取 → **Trafilatura**（可选，见下）→ **semantic** 纯 JS 语义回退 → **UI 组件清单**（面板/仪表盘/设计稿）。
+- 引擎链（`auto` 默认）：**非 HTML 透传** → **Defuddle** 正文提取 → **Trafilatura**（可选，见下）→ **semantic** 纯 JS 语义回退 → **UI 组件清单**（面板/仪表盘/设计稿）。`text/plain` 直接返回的 markdown（如某些 gitee 链接）、纯文本、JSON 不硬抽，原样返回（`used=passthrough`）。
 - 双形态交付：**CLI**（任意 harness/终端可用）+ **MCP server**（opencode / Claude / Cursor 等当工具调用），共用同一核心，行为一致。
 
 ## 为什么是这个选型（结论）
@@ -23,8 +23,8 @@ UI/面板页是所有静态提取器的共同短板：没有"文章正文"可抽
 
 ```bash
 cd skills/htmlmini
-npm install
-npm link        # 可选：全局注册 htmlmini 命令（Windows 会生成 .cmd 垫片）
+pnpm install
+# 无需全局安装：用 pnpm exec htmlmini 或 node src/cli.js 直接跑
 ```
 
 可选增强：`pip install trafilatura`（`auto` 链自动检测，有则用，无则跳过，不报错）。
@@ -78,7 +78,7 @@ htmlmini app.html --json
 | `htmlmini_extract_html(html_content, mode?, extractor?)` | 就地清洗一段已抓取的 HTML 字符串 |
 
 `mode`：`markdown`(默认) | `skeleton` | `text` | `json` | `title` | `ui`；
-`extractor`：`auto`(默认) | `defuddle` | `trafilatura` | `semantic` | `ui`。
+`extractor`：`auto`(默认) | `defuddle` | `trafilatura` | `semantic` | `ui` | `passthrough`。
 
 opencode（`opencode.json`，路径按本机仓库位置改）：
 
@@ -118,7 +118,8 @@ claude mcp add htmlmini -- node <仓库>/skills/htmlmini/src/mcp.js
 ```
                   ┌─────────────────────────────────┐
   HTML/URL/stdin  │ src/extract.js                   │──▶ Markdown / JSON / 大纲
-  (+同目录.meta   │  1. linkedom 解析                 │
+  (+同目录.meta   │  0. 非HTML透传（md/txt/json）      │──▶ used=passthrough
+   .json可选)     │  1. linkedom 解析                 │
    .json可选)     │  2. Defuddle 正文                 │──▶ used=defuddle
   ─────────────▶  │  3. Trafilatura（可选，有则用）    │──▶ used=trafilatura
                   │  4. semantic 语义回退             │──▶ used=semantic
@@ -134,7 +135,7 @@ claude mcp add htmlmini -- node <仓库>/skills/htmlmini/src/mcp.js
 ## 自检
 
 ```bash
-npm test                        # smoke 17 + MCP 自检 + 可靠性 36，全内置合成输入与本地回环，无外部网络依赖
+pnpm test                         # smoke 17 + MCP 自检 + 可靠性 36，全内置合成输入与本地回环，无外部网络依赖
 node tests/test-batch.mjs <目录>  # 本地 HTML 目录批量抽查（fixture 不入库）
 ```
 

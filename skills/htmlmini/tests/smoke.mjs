@@ -1,4 +1,4 @@
-// 自检：node tests/smoke.mjs（需先 npm install）。无外部 fixture，全内置合成 HTML。
+// 自检：node tests/smoke.mjs（需先 pnpm install）。无外部 fixture，全内置合成 HTML。
 import { strict as assert } from 'node:assert';
 import { extractHtml, runExtract } from '../src/extract.js';
 
@@ -82,7 +82,7 @@ const ok = (cond, msg) => {
 // 6. 无 trafilatura 环境下 auto 不崩（本机未安装即覆盖此分支）。
 {
   const r = await extractHtml(ARTICLE);
-  ok(['defuddle', 'trafilatura', 'semantic', 'ui'].includes(r.used), `auto 收敛到已知引擎（实得 ${r.used}）`);
+  ok(['defuddle', 'trafilatura', 'semantic', 'ui', 'passthrough'].includes(r.used), `auto 收敛到已知引擎（实得 ${r.used}）`);
 }
 
 console.log(`\nPASS ${n} assertions`);

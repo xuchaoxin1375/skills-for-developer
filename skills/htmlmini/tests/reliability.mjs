@@ -1,4 +1,4 @@
-// 可靠性回归：node tests/reliability.mjs（已接入 npm test）。
+// 可靠性回归：node tests/reliability.mjs（已接入 pnpm test）。
 // 全内置合成输入 + 本地回环 HTTP/临时文件，无外部网络依赖。
 import { strict as assert } from 'node:assert';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -265,6 +265,22 @@ async function cli(args, { input } = {}) {
   });
   ok(good.result && good.result.content[0].text.includes('按我'), '出错后服务仍可用');
   child.kill();
+}
+
+// ---- 9. 非 HTML 透传：markdown/纯文本/JSON 不硬抽 ----
+{
+  const md = '# skills-for-developer\n\n正文含 <skill-name> 占位符\n';
+  const r = await extractHtml(md, { url: 'https://gitee.com/x/x', contentType: 'text/plain; charset=utf-8' });
+  ok(r.used === 'passthrough' && r.content.includes('skills-for-developer'), 'text/plain markdown 透传');
+  ok(r.title === 'skills-for-developer', `透传标题取首个#（实得 ${r.title}）`);
+  const forced = await extractHtml(md, { url: 'file:///x', extractor: 'ui', contentType: 'text/plain' });
+  ok(forced.used === 'passthrough', '强制 ui 遇非 HTML 仍透传，不给空标题');
+  const j = await extractHtml('{"a":1}', { contentType: 'application/json' });
+  ok(j.used === 'passthrough' && j.content.includes('"a"'), 'JSON 透传');
+  const t = await runExtract(null, 'title', { forceContent: md });
+  ok(t.trim() === 'skills-for-developer', 'title 模式取 markdown 首标题');
+  const sk = await runExtract(null, 'skeleton', { forceContent: md });
+  ok(sk.includes('skills-for-developer'), 'skeleton 模式兼容 markdown 透传');
 }
 
 await new Promise((resolve) => server.close(resolve));

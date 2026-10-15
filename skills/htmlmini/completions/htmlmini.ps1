@@ -3,7 +3,7 @@
 Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
   param($wordToComplete, $commandAst, $cursorPosition)
   $modes = @('markdown', 'json', 'skeleton', 'ui', 'text', 'title')
-  $extractors = @('auto', 'defuddle', 'trafilatura', 'semantic', 'ui')
+  $extractors = @('auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'passthrough')
   $flags = @('--markdown', '--json', '--skeleton', '--ui', '--text', '--title',
     '--mode', '--extractor', '--output', '--list-modes', '--list-extractors',
     '--completion', '--help', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-h')

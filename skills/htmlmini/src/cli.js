@@ -23,9 +23,10 @@ OPTIONS
   -T, --title      print only the page title
   --mode <name>    same as the flags above; explicit form for agents/scripts
   --extractor <name>
-                   extraction engine: auto (default) | defuddle | trafilatura | semantic | ui
-                   auto chain: Defuddle -> Trafilatura (only if "pip install trafilatura"
+                   extraction engine: auto (default) | defuddle | trafilatura | semantic | ui | passthrough
+                   auto chain: non-HTML passthrough -> Defuddle -> Trafilatura (only if "pip install trafilatura"
                    is present, silently skipped otherwise) -> semantic -> ui inventory.
+                   Non-HTML (markdown/plain/JSON) is passed through untouched in any mode.
                    Forcing an engine returns its raw result (no silent switching).
   --list-modes       print available modes
   --list-extractors  print available extractors

@@ -7,7 +7,7 @@ _htmlmini() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
   modes="markdown json skeleton ui text title"
-  extractors="auto defuddle trafilatura semantic ui"
+  extractors="auto defuddle trafilatura semantic ui passthrough"
   case "$prev" in
     --mode) COMPREPLY=( $(compgen -W "$modes" -- "$cur") ); return 0 ;;
     --extractor) COMPREPLY=( $(compgen -W "$extractors" -- "$cur") ); return 0 ;;
