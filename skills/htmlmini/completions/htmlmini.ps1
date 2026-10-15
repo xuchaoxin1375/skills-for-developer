@@ -5,7 +5,8 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
   $modes = @('markdown', 'json', 'skeleton', 'ui', 'text', 'title')
   $extractors = @('auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'passthrough')
   $flags = @('--markdown', '--json', '--skeleton', '--ui', '--text', '--title',
-    '--mode', '--extractor', '--output', '--list-modes', '--list-extractors',
+    '--mode', '--extractor', '--proxy', '--noproxy', '--render', '--headful', '--render-timeout-ms',
+    '--chrome-bin', '--output', '--list-modes', '--list-extractors',
     '--completion', '--help', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-h')
   $tokens = $commandAst.ToString() -split '\s+'
   $prev = if ($tokens.Count -ge 2) { $tokens[$tokens.Count - 2] } else { '' }

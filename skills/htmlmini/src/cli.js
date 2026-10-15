@@ -22,6 +22,23 @@ OPTIONS
   -t, --text       plain text (no markup)
   -T, --title      print only the page title
   --mode <name>    same as the flags above; explicit form for agents/scripts
+  --proxy <url>    proxy override for URL fetch: http(s) URL, or "direct" to
+                   bypass env proxy (default follows HTTP_PROXY/HTTPS_PROXY/NO_PROXY)
+  --noproxy        force direct connection, ignoring env proxy
+  --render         on static 403/5xx, fall back to browser rendering, then extract.
+                   Chain: save_page (needs its Python env) -> system Chrome
+                   headless dump-dom (zero-dep) -> friendly error.
+                   404/timeout/network errors still throw without rendering
+  --headful        show the browser window during fallback rendering
+                   (implies --render; only supported by the save_page path,
+                   for first-time manual verification)
+  --render-timeout-ms <ms>
+                   timeout for the fallback browser render (default 300000;
+                   chrome dump-dom is capped at 120000)
+  --chrome-bin <path>
+                   explicit Chrome/Chromium binary for the zero-dep chrome
+                   fallback (default auto-detects: PATH, common paths,
+                   Playwright browser cache; or HTMLMINI_CHROME_BIN)
   --extractor <name>
                    extraction engine: auto (default) | defuddle | trafilatura | semantic | ui | passthrough
                    auto chain: non-HTML passthrough -> Defuddle -> Trafilatura (only if "pip install trafilatura"
@@ -82,6 +99,11 @@ let source = '-';
 let mode = 'markdown';
 let extractor = 'auto';
 let output = null;
+let proxy;
+let render = false;
+let renderTimeoutMs;
+let headful = false;
+let chromeBin;
 
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -100,7 +122,7 @@ for (let i = 0; i < argv.length; i++) {
       console.error('htmlmini: --output needs a file argument');
       process.exit(2);
     }
-  } else if (a === '--mode' || a === '--extractor' || a === '--completion') {
+  } else if (a === '--mode' || a === '--extractor' || a === '--completion' || a === '--proxy' || a === '--chrome-bin') {
     const v = argv[++i];
     if (!v) {
       console.error(`htmlmini: ${a} needs a value`);
@@ -108,13 +130,37 @@ for (let i = 0; i < argv.length; i++) {
     }
     if (a === '--mode') mode = v;
     else if (a === '--extractor') extractor = v;
+    else if (a === '--proxy') proxy = v;
+    else if (a === '--chrome-bin') chromeBin = v;
     else await printCompletion(v);
-  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--output=') || a.startsWith('--completion=')) {
+  } else if (a === '--noproxy') {
+    proxy = 'direct';
+  } else if (a === '--render') {
+    render = true;
+  } else if (a === '--headful') {
+    headful = true;
+    render = true;
+  } else if (a === '--render-timeout-ms') {
+    const v = argv[++i];
+    renderTimeoutMs = Number(v);
+    if (!Number.isFinite(renderTimeoutMs) || renderTimeoutMs <= 0) {
+      console.error(`htmlmini: --render-timeout-ms needs a positive number of ms (got "${v ?? ''}")`);
+      process.exit(2);
+    }
+  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--render-timeout-ms=')) {
     const [k, v] = splitEq(a);
     if (k === '--mode') mode = v;
     else if (k === '--extractor') extractor = v;
     else if (k === '--output') output = v;
-    else await printCompletion(v);
+    else if (k === '--proxy') proxy = v;
+    else if (k === '--chrome-bin') chromeBin = v;
+    else if (k === '--render-timeout-ms') {
+      renderTimeoutMs = Number(v);
+      if (!Number.isFinite(renderTimeoutMs) || renderTimeoutMs <= 0) {
+        console.error(`htmlmini: --render-timeout-ms needs a positive number of ms (got "${v ?? ''}")`);
+        process.exit(2);
+      }
+    } else await printCompletion(v);
   } else if (MODE_FLAGS[a]) {
     mode = MODE_FLAGS[a];
   } else if (a === '-' || !a.startsWith('-')) {
@@ -141,7 +187,7 @@ if (source === '-' && process.stdin.isTTY) {
 }
 
 try {
-  const out = await runExtract(source, mode, { extractor });
+  const out = await runExtract(source, mode, { extractor, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render: true } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }) });
   if (output) {
     await writeFile(output, out + '\n', 'utf8');
     console.error(`htmlmini: wrote ${output}`);

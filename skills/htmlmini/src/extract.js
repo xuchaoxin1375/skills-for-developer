@@ -1,8 +1,14 @@
-import { readFile } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
+import { readFile, unlink } from 'node:fs/promises';
+import { existsSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFile, execFileSync, spawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import { promisify } from 'node:util';
 import { parseHTML } from 'linkedom';
 import { Defuddle } from 'defuddle/node';
+import { ProxyAgent } from 'undici';
 
 const execFileAsync = promisify(execFile);
 
@@ -54,27 +60,546 @@ function readStdin() {
   });
 }
 
-export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+// ---- 远程抓取：代理选路、浏览器头重试与挑战识别 ----
+// htmlmini 只做静态抓取：默认跟随任务/宿主的 HTTP(S)_PROXY 环境代理（NO_PROXY 豁免），
+// 可经 proxy 显式覆盖（"direct" 强制直连）；403/5xx 补一次浏览器头重试（同路线、同单次超时），
+// 仍失败才按分类抛错，不换出口轮询、不判源站死（选路决策归 network-access，渲染归 resilient-browser-fetch）。
+
+const BROWSER_HEADERS = {
+  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'accept-language': 'en-GB,en;q=0.9',
+  'upgrade-insecure-requests': '1',
+  'sec-fetch-dest': 'document',
+  'sec-fetch-mode': 'navigate',
+  'sec-fetch-site': 'none',
+  'sec-fetch-user': '?1',
+};
+
+/** NO_PROXY 匹配：`*`、精确主机、`example.com` 兼配其子域；忽略大小写与端口。 */
+export function hostBypassed(hostname, noProxy) {
+  const host = String(hostname || '').toLowerCase();
+  for (const raw of String(noProxy || '').split(/[,\s]+/)) {
+    const e = raw.trim().toLowerCase().replace(/:\d+$/, '');
+    if (!e) continue;
+    if (e === '*') return true;
+    const domain = e.startsWith('.') ? e.slice(1) : e;
+    if (host === domain || host.endsWith(`.${domain}`)) return true;
+  }
+  return false;
+}
+
+/**
+ * 选出本次抓取的代理（纯函数，便于测试）。
+ * proxy 省略走环境（https 用 HTTPS_PROXY，否则 HTTP_PROXY，皆无用 ALL_PROXY）；
+ * proxy 为 "direct" 强制直连；proxy 为 URL 则显式覆盖并校验协议。
+ */
+export function resolveProxy(target, { proxy, env = process.env } = {}) {
+  if (proxy === 'direct') return null;
+  if (typeof proxy === 'string' && proxy) {
+    if (!/^https?:\/\//i.test(proxy)) throw new Error(`proxy 须是 http(s) URL 或 "direct"（实得 ${proxy}）`);
+    return proxy;
+  }
+  let u;
+  try {
+    u = new URL(target);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  if (hostBypassed(u.hostname, env.NO_PROXY ?? env.no_proxy ?? '')) return null;
+  const fromEnv =
+    u.protocol === 'https:'
+      ? (env.HTTPS_PROXY ?? env.https_proxy ?? env.ALL_PROXY ?? env.all_proxy)
+      : (env.HTTP_PROXY ?? env.http_proxy ?? env.ALL_PROXY ?? env.all_proxy);
+  const v = (fromEnv ?? '').trim();
+  return v || null;
+}
+
+/** 代理 URL 脱敏：只留协议与主机，不回显凭据与路径。 */
+export function maskProxy(proxyUrl) {
+  try {
+    const u = new URL(proxyUrl);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return '(invalid proxy)';
+  }
+}
+
+const proxyAgentCache = new Map();
+function proxyDispatcher(proxyUrl) {
+  let d = proxyAgentCache.get(proxyUrl);
+  if (!d) {
+    d = new ProxyAgent(proxyUrl);
+    proxyAgentCache.set(proxyUrl, d);
+  }
+  return d;
+}
+
+/** 挑战信号（只看最终响应头，不读正文）：命中即按挑战页指引，不判源站死。 */
+export function challengeSignals(headers) {
+  const sigs = [];
+  const get = (n) => headers?.get?.(n) ?? '';
+  if (/sct=|cf_clearance=|__cf_bm|cf-chl/i.test(get('set-cookie'))) sigs.push('challenge cookie');
+  if (/challenge/i.test(get('cf-mitigated'))) sigs.push('cf-mitigated: challenge');
+  if (/challenge|_sc\/|_sec\/|captcha|turnstile/i.test(get('location'))) sigs.push('challenge redirect');
+  if (/noindex/i.test(get('x-robots-tag')) && /cloudflare/i.test(get('server'))) sigs.push('cloudflare noindex');
+  return sigs;
+}
+
+function failureHint(res) {
+  const status = res.status;
+  if (status === 429) {
+    return '; rate-limited: honor Retry-After/cooldown, do not bypass by switching egress or reader';
+  }
+  if (status === 403) {
+    const sigs = challengeSignals(res.headers);
+    if (sigs.length) {
+      return `; challenge suspected (${sigs.join(', ')}): static fetch cannot solve JS/cookie challenges – render via resilient-browser-fetch save_page (same proxy), then extract the saved file with htmlmini_extract_file`;
+    }
+  }
+  if (status === 403 || (status >= 500 && status <= 599)) {
+    return '; static fetch only (minimal + browser headers both tried on 403/5xx): verify route via network-access dual-route, TLS-level disguise via curl_cffi, or render challenge pages via resilient-browser-fetch save_page then extract the saved file';
+  }
+  return '';
+}
+
+async function fetchOnce(source, { headers, timeoutMs, dispatcher }) {
+  const init = { headers, redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) };
+  if (dispatcher) init.dispatcher = dispatcher;
+  return fetch(source, init);
+}
+
+export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS, proxy } = {}) {
   if (source === '-' || source == null) {
     return { html: decodeHtml(await readStdin()), source: 'stdin', contentType: null };
   }
   if (/^https?:\/\//i.test(source)) {
+    const proxyUrl = resolveProxy(source, { proxy });
+    const via = proxyUrl ? ` via proxy ${maskProxy(proxyUrl)}` : '';
+    let dispatcher = null;
+    if (proxyUrl) {
+      try {
+        dispatcher = proxyDispatcher(proxyUrl);
+      } catch (e) {
+        throw new Error(`unusable proxy ${maskProxy(proxyUrl)} for ${source}: ${e.message}`);
+      }
+    }
+    const doFetch = (extra) =>
+      fetchOnce(source, {
+        headers: { 'user-agent': DEFAULT_UA, 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8', ...extra },
+        timeoutMs,
+        dispatcher,
+      });
+    const fail = (e) => {
+      if (e && e.name === 'TimeoutError') throw new Error(`fetch timeout after ${timeoutMs}ms: ${source}${via}`);
+      if (proxyUrl) throw new Error(`${e.message} (via proxy ${maskProxy(proxyUrl)} for ${source})`);
+      throw e;
+    };
     let res;
     try {
-      res = await fetch(source, {
-        headers: { 'user-agent': DEFAULT_UA, 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8' },
-        redirect: 'follow',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      res = await doFetch();
     } catch (e) {
-      if (e && e.name === 'TimeoutError') throw new Error(`fetch timeout after ${timeoutMs}ms: ${source}`);
-      throw e;
+      fail(e);
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${source}`);
+    let firstStatus = 0;
+    if (res.status === 403 || (res.status >= 500 && res.status <= 599)) {
+      firstStatus = res.status;
+      try {
+        res = await doFetch(BROWSER_HEADERS);
+      } catch (e) {
+        fail(e);
+      }
+    }
+    if (!res.ok) {
+      const initial = firstStatus && firstStatus !== res.status ? ` (initial ${firstStatus} with minimal headers)` : '';
+      const err = new Error(`HTTP ${res.status} fetching ${source}${initial}${via}${failureHint(res)}`);
+      err.statusCode = res.status;
+      throw err;
+    }
     const contentType = res.headers.get('content-type');
     return { html: decodeHtml(Buffer.from(await res.arrayBuffer())), source, contentType };
   }
   return { html: decodeHtml(await readFile(source)), source, contentType: guessContentTypeFromPath(source) };
+}
+
+// ---- 按需浏览器渲染（显式 opt-in：--render / render:true）----
+// 静态抓取报 403/5xx 才回退到浏览器（404/超时/断网直接抛，不烧浏览器时间）。
+// 渲染仍由 resilient-browser-fetch 的 save_page 执行（同代理），本文件只负责调度和提取。
+export const RENDER_TIMEOUT_MS = 300_000;
+const RENDER_SCRIPT_ENV = 'HTMLMINI_RENDER_SCRIPT';
+
+function findRenderScript() {
+  const override = (process.env[RENDER_SCRIPT_ENV] ?? '').trim();
+  if (override) {
+    if (!existsSync(override)) throw new Error(`render requested but renderer not found: ${override} (${RENDER_SCRIPT_ENV})`);
+    return override;
+  }
+  const sibling = resolvePath(
+    dirname(fileURLToPath(import.meta.url)),
+    '..',
+    '..',
+    'resilient-browser-fetch',
+    'scripts',
+    'example_save_page.py',
+  );
+  if (existsSync(sibling)) return sibling;
+  throw new Error(
+    'render requested but resilient-browser-fetch renderer not found next to htmlmini; install it per its SKILL references/installation.md, or set HTMLMINI_RENDER_SCRIPT to a compatible save_page script',
+  );
+}
+
+export async function findPython() {
+  const cands = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
+  for (const bin of cands) {
+    try {
+      await execFileAsync(bin, ['--version'], { timeout: 10_000, windowsHide: true });
+      return bin;
+    } catch {
+      // 换下一个候选解释器
+    }
+  }
+  throw new Error('render requested but no python found (tried python/python3); install Python 3.10+ to use --render');
+}
+
+let renderSeq = 0;
+
+// ---- 系统 Chrome 直渲（零依赖兼容通路）----
+// 不需要 cloak，也不需要 Python：只要本机有普通 Chrome/Chromium，就用
+// 无头 --dump-dom 取渲染后源码。已在 britvanlife 这类挑战站验证可用。
+// 局限：无头模式不支持人工介入验证；--headful 只能走 save_page 通路。
+const CHROME_BIN_ENV = 'HTMLMINI_CHROME_BIN';
+const CHROME_EXTRA_ARGS_ENV = 'HTMLMINI_CHROME_EXTRA_ARGS';
+
+export function findChromeBin() {
+  const override = (process.env[CHROME_BIN_ENV] ?? '').trim();
+  if (override) {
+    if (!existsSync(override)) throw new Error(`chrome binary not found: ${override} (${CHROME_BIN_ENV})`);
+    return { bin: override, source: 'env' };
+  }
+  return findChromeAuto();
+}
+
+/** 自动探测：PATH → 固定路径 → Playwright 浏览器缓存。返回 {bin, source} 或 null。 */
+export function findChromeAuto() {
+  const onPath = findOnPathSync(['google-chrome', 'google-chrome-stable', 'chrome', 'chromium', 'chromium-browser']);
+  if (onPath) return { bin: onPath, source: 'path' };
+  for (const p of fixedChromePaths()) {
+    if (existsSync(p)) return { bin: p, source: 'fixed' };
+  }
+  const pw = pickPlaywrightChrome(playwrightBrowsersRoot(), process.platform);
+  if (pw) return { bin: pw, source: 'playwright' };
+  return null;
+}
+
+function fixedChromePaths() {
+  if (process.platform === 'win32') {
+    const out = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ];
+    const pf = process.env['ProgramFiles'];
+    if (pf) out.push(join(pf, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+    return out;
+  }
+  if (process.platform === 'darwin') return ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'];
+  return ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/snap/bin/chromium'];
+}
+
+function findOnPathSync(names) {
+  const which = process.platform === 'win32' ? 'where' : 'which';
+  for (const n of names) {
+    try {
+      const out = execFileSync(which, [n], { timeout: 5000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      const first = String(out).split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
+      if (first && existsSync(first)) return first;
+    } catch {
+      // 不在 PATH，试下一个
+    }
+  }
+  return null;
+}
+
+function playwrightBrowsersRoot() {
+  const custom = (process.env['PLAYWRIGHT_BROWSERS_PATH'] ?? '').trim();
+  if (custom) return custom;
+  if (process.platform === 'win32') {
+    const base = process.env['LOCALAPPDATA'] || join(process.env['USERPROFILE'] ?? '', 'AppData', 'Local');
+    return join(base, 'ms-playwright');
+  }
+  if (process.platform === 'darwin') return join(process.env['HOME'] ?? '', 'Library', 'Caches', 'ms-playwright');
+  return join(process.env['HOME'] ?? '', '.cache', 'ms-playwright');
+}
+
+/**
+ * 从 Playwright 浏览器缓存选 Chromium（纯函数，便于测试）。
+ * 布局按平台而异，目录名带版本号（chromium-1208）；取版本最大者，
+ * 完整版优先，无头 shell 版兜底。
+ */
+export function pickPlaywrightChrome(root, platform = process.platform) {
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const layout =
+    platform === 'win32'
+      ? { re: /^chromium-(\d+)$/, full: ['chrome-win', 'chrome.exe'], shell: ['chrome-headless-shell-win64', 'chrome-headless-shell.exe'] }
+      : platform === 'darwin'
+        ? { re: /^chromium-(\d+)$/, full: ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'], shell: ['chromium_headless_shell', 'chrome-headless-shell'] }
+        : { re: /^chromium-(\d+)$/, full: ['chrome-linux', 'chrome'], shell: ['chromium_headless_shell', 'chrome-headless-shell'] };
+  const versions = [];
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const m = layout.re.exec(e.name);
+    if (m) versions.push({ name: e.name, ver: Number(m[1]) });
+  }
+  versions.sort((a, b) => b.ver - a.ver);
+  for (const v of versions) {
+    const full = join(root, v.name, ...layout.full);
+    if (existsSync(full)) return full;
+  }
+  for (const v of versions) {
+    const sh = join(root, v.name, ...layout.shell);
+    if (existsSync(sh)) return sh;
+  }
+  return null;
+}
+
+function chromeExtraArgs() {
+  // 高级/测试钩子：前置透传参数（如用 node 跑桩脚本）。生产一般留空。
+  return (process.env[CHROME_EXTRA_ARGS_ENV] ?? '').split(/\s+/).filter(Boolean);
+}
+
+export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin, chromeSource = 'explicit' } = {}) {
+  const bin = chromeBin ?? findChromeBin();
+  if (!bin) throw new Error('no system Chrome/Chromium found; set HTMLMINI_CHROME_BIN to its path to use chrome rendering');
+  const proxyUrl = resolveProxy(url, { proxy });
+  const args = [...chromeExtraArgs(), '--headless=new', '--disable-gpu', '--no-sandbox', '--hide-scrollbars', '--virtual-time-budget=15000'];
+  if (proxyUrl) {
+    const masked = maskProxy(proxyUrl);
+    if (/^https?:\/\/[^/@]+@/.test(proxyUrl)) {
+      throw new Error(`chrome --proxy-server cannot carry credentials; use credential-less proxy or save_page path (${masked})`);
+    }
+    args.push(`--proxy-server=${proxyUrl}`);
+  }
+  args.push('--dump-dom', url);
+  process.stderr.write(`htmlmini: [render] engine=chrome-dump src=${chromeSource} bin=${bin}${proxyUrl ? ` proxy=${maskProxy(proxyUrl)}` : ''}\n`);
+  let stdout = '';
+  await new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(bin, args, { windowsHide: true });
+    } catch (e) {
+      reject(new Error(`chrome render failed to start for ${url}: ${e.message}`));
+      return;
+    }
+    let done = false;
+    const timer = setTimeout(() => {
+      done = true;
+      child.kill();
+      reject(new Error(`chrome render timed out after ${timeoutMs}ms for ${url}`));
+    }, timeoutMs);
+    timer.unref?.();
+    const decoder = new StringDecoder('utf8');
+    let stderrTail = '';
+    child.stdout.on('data', (b) => {
+      stdout += decoder.write(b);
+      if (stdout.length > 32 * 1024 * 1024) {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          child.kill();
+          reject(new Error(`chrome render output exceeded 32MB for ${url}; page too large for static extraction`));
+        }
+      }
+    });
+    child.stderr.on('data', (b) => {
+      stderrTail = (stderrTail + decoder.write(b)).slice(-2000);
+    });
+    child.on('error', (e) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(new Error(`chrome render failed to start for ${url}: ${e.message}`));
+    });
+    child.on('close', (code) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(`chrome render failed for ${url} (exit ${code ?? '?'}): ${stderrTail}`));
+        return;
+      }
+      resolve();
+    });
+  });
+  const html = stdout.trim();
+  if (!html) throw new Error(`chrome render returned empty page for ${url}`);
+  process.stderr.write(`htmlmini: [render] chrome dump-dom done (${html.length} chars)\n`);
+  return html;
+}
+
+export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin } = {}) {
+  const script = await savePageUsable();
+  if (script) return runSavePage(url, { script, proxy, renderTimeoutMs, headful });
+  if (headful) {
+    throw new Error(
+      '--headful needs the save_page renderer for manual verification, but its Python env is not ready here; install per resilient-browser-fetch references/installation.md, then retry',
+    );
+  }
+  let found = null;
+  if (chromeBin) {
+    if (!existsSync(chromeBin)) throw new Error(`chrome binary not found: ${chromeBin} (--chrome-bin)`);
+    found = { bin: chromeBin, source: 'explicit' };
+  } else {
+    try {
+      found = findChromeBin();
+    } catch {
+      found = null;
+    }
+  }
+  if (!found) {
+    throw new Error(
+      'render requested but neither save_page env (scrapling) nor system Chrome/Chromium (PATH, common paths, Playwright cache) is available; install per resilient-browser-fetch references/installation.md, or specify one with --chrome-bin / HTMLMINI_CHROME_BIN',
+    );
+  }
+  return runChromeDump(url, { proxy, timeoutMs: Math.min(renderTimeoutMs, 120_000), chromeBin: found.bin, chromeSource: found.source });
+}
+
+// save_page 可用性探测：从不抛错，不可用返回 null（调用方再定去向）。
+async function savePageUsable() {
+  let script;
+  try {
+    script = findRenderScript();
+  } catch {
+    return null;
+  }
+  // 显式覆盖（测试桩/自备渲染器）视为可用，不探依赖。
+  if ((process.env[RENDER_SCRIPT_ENV] ?? '').trim()) return script;
+  let python;
+  try {
+    python = await findPython();
+  } catch {
+    return null;
+  }
+  try {
+    await execFileAsync(python, ['-X', 'utf8', '-c', 'import scrapling'], { timeout: 60_000, windowsHide: true });
+    return script;
+  } catch {
+    return null;
+  }
+}
+
+async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
+  const python = await findPython();
+  const proxyUrl = resolveProxy(url, { proxy });
+  const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
+  // -X utf8 + PYTHONUTF8：子进程日志强制 UTF-8 输出，本侧按 UTF-8 增量解码、
+  // 逐行透传（Windows 控制台查看侧按 powershell-pitfalls 的 UTF-8 模板设置）。
+  const args = ['-X', 'utf8', script, url, '--out', out, '--engine', 'auto', '--timeout-ms', String(renderTimeoutMs)];
+  if (proxyUrl) args.push('--proxy', proxyUrl);
+  else args.push('--discover-proxy');
+  if (headful) args.push('--headful');
+  process.stderr.write(`htmlmini: [render] engine=save-page${headful ? ' headful' : ''}${proxyUrl ? ` proxy=${maskProxy(proxyUrl)}` : ' discover-proxy'}\n`);
+  const tail = [];
+  let tailSize = 0;
+  const TAIL_CAP = 256 * 1024;
+  const remember = (line) => {
+    tail.push(line);
+    tailSize += line.length + 1;
+    while (tailSize > TAIL_CAP && tail.length > 1) tailSize -= tail.shift().length + 1;
+  };
+  const limit = renderTimeoutMs + 60_000;
+  await new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(python, args, {
+        cwd: dirname(script),
+        env: { ...process.env, PYTHONUTF8: '1' },
+        windowsHide: true,
+      });
+    } catch (e) {
+      reject(new Error(`browser render failed to start for ${url}: ${e.message}`));
+      return;
+    }
+    let done = false;
+    const timer = setTimeout(() => {
+      done = true;
+      child.kill();
+      reject(new Error(`browser render timed out after ${limit}ms for ${url}`));
+    }, limit);
+    timer.unref?.();
+    const decoder = new StringDecoder('utf8');
+    let rest = '';
+    const emit = (buf) => {
+      const parts = (rest + decoder.write(buf)).split('\n');
+      rest = parts.pop();
+      for (const line of parts) {
+        remember(line);
+        process.stderr.write(`htmlmini: [render] ${line}\n`);
+      }
+    };
+    child.stderr.on('data', emit);
+    child.on('error', (e) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(new Error(`browser render failed to start for ${url}: ${e.message}`));
+    });
+    child.on('close', (code) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (rest) {
+        remember(rest);
+        process.stderr.write(`htmlmini: [render] ${rest}\n`);
+        rest = '';
+      }
+      if (code !== 0) {
+        reject(new Error(`browser render failed for ${url} (exit ${code ?? '?'}): ${tail.join('\n').slice(-2000)}`));
+        return;
+      }
+      resolve();
+    });
+  });
+  try {
+    const html = decodeHtml(await readFile(out));
+    if (!html.trim()) throw new Error(`browser render returned empty page for ${url}`);
+    return html;
+  } finally {
+    await unlink(out).catch(() => {});
+    await unlink(`${out}.meta.json`).catch(() => {});
+  }
+}
+
+export function isRenderableError(e) {
+  const s = e?.statusCode;
+  return s === 403 || (s >= 500 && s <= 599);
+}
+
+export async function readWithRender(
+  source,
+  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {},
+) {
+  if (!/^https?:\/\//i.test(source ?? '') || !render) {
+    return readSource(source, { timeoutMs, proxy });
+  }
+  try {
+    return await readSource(source, { timeoutMs, proxy });
+  } catch (e) {
+    if (!isRenderableError(e)) throw e;
+    const html = await renderViaBrowser(
+      source,
+      {
+        proxy,
+        ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
+        ...(headful ? { headful: true } : {}),
+        ...(chromeBin == null ? {} : { chromeBin }),
+      },
+    );
+    return { html, source, contentType: 'text/html', rendered: true };
+  }
 }
 
 /** 按文件扩展名猜内容类型（仅提示作用，最终由正文启发式裁决）。 */
@@ -647,7 +1172,7 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', timeoutMs } = {}) {
+export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -659,7 +1184,17 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     html = forceContent;
     src = 'content';
   } else {
-    const r = await readSource(source, timeoutMs == null ? {} : { timeoutMs });
+    const r = await readWithRender(
+      source,
+      {
+        ...(timeoutMs == null ? {} : { timeoutMs }),
+        ...(proxy === undefined ? {} : { proxy }),
+        ...(render ? { render: true } : {}),
+        ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
+        ...(headful ? { headful: true } : {}),
+        ...(chromeBin == null ? {} : { chromeBin }),
+      },
+    );
     html = r.html;
     src = r.source;
     contentType = r.contentType ?? guessContentTypeFromPath(src);

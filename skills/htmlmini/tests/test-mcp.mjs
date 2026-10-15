@@ -61,6 +61,11 @@ const parsed = JSON.parse(call.result.content[0].text);
 console.log(`extract_html: used=${parsed.used} title=${parsed.title} saved=${parsed.stats.reductionPct}%`);
 if (parsed.used !== 'ui') throw new Error(`expected ui, got ${parsed.used}`);
 
+const urlTool = tools.result.tools.find((t) => t.name === 'htmlmini_extract_url');
+const urlProps = (urlTool && urlTool.inputSchema && urlTool.inputSchema.properties) || {};
+if (!urlProps.proxy || !urlProps.render || !urlProps.headful || !urlProps.chrome_bin) throw new Error('extract_url missing proxy/render/headful/chrome_bin params');
+console.log('ok - extract_url 含 proxy/render/headful/chrome_bin 参数');
+
 const alias = await rpc('tools/call', {
   name: 'htmmini_extract_html',
   arguments: { html_content: DASH, mode: 'markdown' },

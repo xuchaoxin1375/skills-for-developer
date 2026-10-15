@@ -33,7 +33,7 @@ description: >
 
 ## 动态页流水线（静态抓取不够时）
 
-`htmlmini_extract_url` 只做静态抓取。抓 URL 报 403/超时：先走 `network-access` 双路探测（直连+代理并行 curl，正文落盘），用胜出路线落盘的正文按文件模式提取，不按 URL 重抓；两路皆取不到可用正文才用 `resilient-browser-fetch` 的 `save_page` 保存渲染后 HTML，再用 `htmlmini_extract_file` 读该文件（同目录 `<name>.html.meta.json` 会被自动利用，无需手动传 URL）。例：直连 403、代理 200 落盘，直接提取该文件，不启浏览器。
+`htmlmini_extract_url` 只做静态抓取：默认跟随任务/宿主的代理环境变量，可经 `proxy` 参数覆盖（URL 或 `"direct"`）；403/5xx 自动补一次浏览器头重试（同路线）。一步到位的用法：`htmlmini <URL> --render` 或 MCP `render:true`——静态优先，静态 403/5xx 才自动回退浏览器渲染再按文件模式提取；渲染链为 save_page（环境就绪时用，同代理，cloak 不必接）→ 本机普通 Chrome 无头 dump-dom（零依赖）→ 友好报错，实际走了哪条会打 `htmlmini: [render] engine=…` 日志；Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` → PATH → 系统常用路径 → Playwright 缓存（`PLAYWRIGHT_BROWSERS_PATH` 可改位置，完整版优先取版本最大者）选择；首次人工验证用 `--headful` / `headful:true`（仅 save_page 通路支持）；404/超时/断网直接抛错，不烧浏览器时间。手工两步（存量/排查用）：先走 `network-access` 双路对照（直连+代理并行 curl，必要时 `curl_cffi` 做 TLS 级伪装），用胜出路线落盘的正文按文件模式提取，不按 URL 重抓；静态皆取不到可用正文（含挑战特征）才用 `save_page` 保存渲染后 HTML（同代理），再用 `htmlmini_extract_file` 读该文件（同目录 `<name>.html.meta.json` 会被自动利用，无需手动传 URL）。例：直连 403、代理 200 落盘，直接提取该文件，不启浏览器；简头 curl 两路 502 但补头现挑战跳转，即转浏览器而非判死。
 
 ## 不用 htmlmini 的情况（选型结论）
 
@@ -46,7 +46,8 @@ description: >
 ## 自检
 
 - CLI 缺失时是否用 `node` 跑本 skill 目录的 `cli.js`，而非找全局安装？
-- URL 抓取 403/超时，是否先双路探测落盘、按文件模式提取，而非直接上浏览器渲染？
+- URL 抓取优先用 `--render` / `render:true` 一条命令（静态优先、403/5xx 自动回退渲染）；手工排查才走双路对照落盘。挑战特征出现才上浏览器，而非 curl 5xx 直接判死？
+- 是否按需用 `proxy` 参数或环境代理走指定路线，而非默认直连硬闯？
 
 ## 输出后
 

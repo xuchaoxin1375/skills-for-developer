@@ -2,16 +2,24 @@
 // 全内置合成输入 + 本地回环 HTTP/临时文件，无外部网络依赖。
 import { strict as assert } from 'node:assert';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  challengeSignals,
   decodeHtml,
   extractHtml,
+  findPython,
+  hostBypassed,
+  maskProxy,
+  pickPlaywrightChrome,
   readSiblingMeta,
   readSource,
   renderResult,
+  renderViaBrowser,
+  resolveProxy,
   runExtract,
   skeletonFromMarkdown,
   tryTrafilatura,
@@ -93,6 +101,27 @@ let base;
           Buffer.from('</p></body></html>', 'latin1'),
         ]),
       );
+    } else if (req.url === '/pickier') {
+      // 简头 502，浏览器头 200：模拟按指纹拦截的站点。
+      // 注意：undici 会把 fetch 的 sec-fetch-mode 强制改写为 cors，故门控不用它。
+      if (req.headers['upgrade-insecure-requests'] === '1') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(`<!doctype html><html><head><title>浏览器页</title></head><body>${ARTICLE_BODY}</body></html>`);
+      } else {
+        res.writeHead(502, { 'content-type': 'text/plain' });
+        res.end('error code: 502');
+      }
+    } else if (req.url === '/challenge403') {
+      res.writeHead(403, {
+        'content-type': 'text/html',
+        server: 'cloudflare',
+        'set-cookie': 'sct=xyz1792061208; Path=/; Max-Age=120; Domain=127.0.0.1; Secure',
+        'x-robots-tag': 'noindex',
+      });
+      res.end('<html><head><title>Just a moment</title></head><body>challenge</body></html>');
+    } else if (req.url === '/always502') {
+      res.writeHead(502, { 'content-type': 'text/plain', server: 'cloudflare' });
+      res.end('error code: 502');
     } else if (req.url === '/slow') {
       setTimeout(() => {
         try {
@@ -281,6 +310,357 @@ async function cli(args, { input } = {}) {
   ok(t.trim() === 'skills-for-developer', 'title 模式取 markdown 首标题');
   const sk = await runExtract(null, 'skeleton', { forceContent: md });
   ok(sk.includes('skills-for-developer'), 'skeleton 模式兼容 markdown 透传');
+}
+
+// ---- 10. resolveProxy：显式覆盖 / direct / 环境 / NO_PROXY ----
+{
+  const t = 'http://example.com/a';
+  const s = 'https://example.com/a';
+  ok(resolveProxy(t, { proxy: 'http://127.0.0.1:7897', env: {} }) === 'http://127.0.0.1:7897', '显式代理覆盖环境');
+  ok(resolveProxy(t, { proxy: 'direct', env: { HTTP_PROXY: 'http://127.0.0.1:7897' } }) === null, '"direct" 忽略环境强制直连');
+  let bad = null;
+  try {
+    resolveProxy(t, { proxy: 'socks://x', env: {} });
+  } catch (e) {
+    bad = e;
+  }
+  ok(bad && /proxy 须是/.test(bad.message), '非法代理协议给出提示');
+  ok(resolveProxy(s, { env: { HTTPS_PROXY: 'http://127.0.0.1:7897' } }) === 'http://127.0.0.1:7897', 'https 走 HTTPS_PROXY');
+  ok(resolveProxy(t, { env: { HTTP_PROXY: 'http://127.0.0.1:7897' } }) === 'http://127.0.0.1:7897', 'http 走 HTTP_PROXY');
+  ok(resolveProxy(t, { env: {} }) === null, '无环境变量直连');
+  ok(resolveProxy(s, { env: { ALL_PROXY: 'http://127.0.0.1:7897' } }) === 'http://127.0.0.1:7897', 'ALL_PROXY 兜底');
+  ok(
+    resolveProxy('http://127.0.0.1:9/a', { env: { HTTP_PROXY: 'http://127.0.0.1:7897', NO_PROXY: '127.0.0.1' } }) === null,
+    'NO_PROXY 精确主机豁免',
+  );
+  ok(
+    resolveProxy('http://sub.example.com/a', { env: { HTTP_PROXY: 'http://127.0.0.1:7897', NO_PROXY: 'example.com' } }) === null,
+    'NO_PROXY 后缀匹配子域',
+  );
+  ok(
+    resolveProxy(t, { env: { HTTP_PROXY: 'http://127.0.0.1:7897', NO_PROXY: '*' } }) === null,
+    'NO_PROXY 星号全豁免',
+  );
+  ok(hostBypassed('Example.COM', 'example.com') === true, 'NO_PROXY 大小写不敏感');
+  ok(maskProxy('http://user:pass@127.0.0.1:7897/') === 'http://127.0.0.1:7897', '代理脱敏不泄凭据');
+}
+
+// ---- 11. 浏览器头重试与挑战识别 ----
+{
+  const md = await runExtract(`${base}/pickier`, 'markdown');
+  ok(md.includes('正文内容足够长'), '简头 502 时浏览器头重试救回正文');
+
+  let c403 = null;
+  try {
+    await runExtract(`${base}/challenge403`, 'markdown');
+  } catch (e) {
+    c403 = e;
+  }
+  ok(c403 && /HTTP 403/.test(c403.message), '挑战页 403 抛错带状态码');
+  ok(c403 && /challenge suspected/.test(c403.message), '挑战信号被点名');
+  ok(c403 && /resilient-browser-fetch/.test(c403.message), '挑战页指引渲染流水线');
+
+  let e502 = null;
+  try {
+    await runExtract(`${base}/always502`, 'markdown');
+  } catch (e) {
+    e502 = e;
+  }
+  ok(e502 && /HTTP 502/.test(e502.message), '持续 502 抛错带状态码');
+  ok(e502 && /both tried/.test(e502.message), '5xx 指引说明两种头都已试过');
+}
+
+// ---- 12. 代理跟随：显式 / 环境 / NO_PROXY / 黑洞 ----
+// 说明：不用自造转发代理做集成测试——本机实测其会触发异常连接风暴；
+// 生产代码已用真实代理（127.0.0.1:7897）验证：example.com 经代理 200 取回正常，
+// britvanlife 经代理自动走浏览器头重试并点名挑战。测试内用黑洞代理（秒拒）与
+// 直连成功/失败的可观测差异覆盖选路逻辑，不依赖外部网络。
+{
+  const savedEnv = {};
+  for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy']) {
+    savedEnv[k] = process.env[k];
+    delete process.env[k];
+  }
+  // 源站直连探针：黑洞代理秒拒，直连成功，二者差异即选路证据。
+  try {
+    process.env.HTTP_PROXY = 'http://127.0.0.1:1/';
+    let viaProxy = null;
+    try {
+      await readSource(`${base}/article`, {});
+    } catch (e) {
+      viaProxy = e;
+    }
+    ok(viaProxy && /via proxy http:\/\/127\.0\.0\.1:1/.test(viaProxy.message), '环境代理被采用，失效时报错点名代理');
+
+    const rDirect = await readSource(`${base}/article`, { proxy: 'direct' });
+    ok(rDirect.html.includes('正文内容足够长'), '显式 direct 越过失效环境代理');
+
+    process.env.NO_PROXY = '127.0.0.1';
+    const rBypass = await readSource(`${base}/article`, {});
+    ok(rBypass.html.includes('正文内容足够长'), 'NO_PROXY 豁免越过失效环境代理');
+    delete process.env.NO_PROXY;
+
+    delete process.env.HTTP_PROXY;
+    process.env.HTTPS_PROXY = 'http://127.0.0.1:1/';
+    const rScheme = await readSource(`${base}/article`, {});
+    ok(rScheme.html.includes('正文内容足够长'), 'http 目标不受 HTTPS_PROXY 影响');
+    delete process.env.HTTPS_PROXY;
+
+    const cw = await cli([`${base}/article`, '--title', '--proxy', 'http://127.0.0.1:1/']);
+    ok(cw.code === 1 && /via proxy/.test(cw.stderr), 'CLI --proxy 生效，失效时指引到代理');
+    process.env.HTTP_PROXY = 'http://127.0.0.1:1/';
+    const cn = await cli([`${base}/article`, '--title', '--noproxy']);
+    ok(cn.code === 0 && cn.stdout.trim() === '本地页', 'CLI --noproxy 越过失效环境代理');
+  } finally {
+    for (const k of Object.keys(savedEnv)) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  }
+}
+
+// ---- 13. --render 回退：静态优先 / 403·5xx 回退 / 404 不回退 / 渲染失败 ----
+{
+  let py = null;
+  try {
+    py = await findPython();
+  } catch {
+    py = null;
+  }
+  if (!py) {
+    console.log('skip render tests (no python)');
+  } else {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-render-'));
+    try {
+      const stub = path.join(dir, 'stub_save.py');
+      await writeFile(
+        stub,
+        `import json, os, sys
+argv = sys.argv[1:]
+url = argv[0] if argv else ''
+out = None
+i = 1
+while i < len(argv):
+    if argv[i] == '--out' and i + 1 < len(argv):
+        out = argv[i + 1]
+        i += 2
+    else:
+        i += 1
+if os.getenv('STUB_ARGV'):
+    open(os.getenv('STUB_ARGV'), 'w').write(json.dumps(argv))
+if os.getenv('STUB_RENDER_FAIL') == '1':
+    sys.stderr.write('stub render failed: challenge unsolvable\\n')
+    sys.exit(3)
+marker = os.getenv('STUB_MARKER') or ''
+if marker:
+    open(marker, 'a').write(url + '\\n')
+sys.stderr.write('stub log line: rendering ' + url + '\\n')
+open(out, 'w', encoding='utf-8').write(
+    '<!doctype html><html><head><title>渲染页</title></head><body>'
+    '<article><h1>渲染标题</h1><p>' + '渲染正文内容足够长可以被识别为主体。' * 10 + '</p></article>'
+    '</body></html>'
+)
+`,
+        'utf8',
+      );
+      const marker = path.join(dir, 'calls.log');
+      const argvLog = path.join(dir, 'argv.json');
+      const saved = {};
+      for (const k of ['HTMLMINI_RENDER_SCRIPT', 'STUB_RENDER_FAIL', 'STUB_MARKER', 'STUB_ARGV']) {
+        saved[k] = process.env[k];
+      }
+      process.env.HTMLMINI_RENDER_SCRIPT = stub;
+      process.env.STUB_MARKER = marker;
+      process.env.STUB_ARGV = argvLog;
+      try {
+        const ok1 = await runExtract(`${base}/article`, 'title', { render: true, renderTimeoutMs: 30000 });
+        ok(ok1.trim() === '本地页', '静态成功时不走渲染');
+        ok(!existsSync(marker), '静态成功未调用渲染脚本');
+
+        const md = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+        ok(md.includes('渲染正文内容足够长'), '静态 502 回退渲染取回正文');
+        ok(existsSync(marker), '回退时调用了渲染脚本');
+
+        let e404 = null;
+        try {
+          await runExtract(`${base}/missing`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+        } catch (e) {
+          e404 = e;
+        }
+        ok(e404 && /HTTP 404/.test(e404.message), '404 不触发渲染回退');
+
+        process.env.STUB_RENDER_FAIL = '1';
+        let er = null;
+        try {
+          await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+        } catch (e) {
+          er = e;
+        }
+        ok(er && /browser render failed/.test(er.message), '渲染失败报错点名渲染');
+        delete process.env.STUB_RENDER_FAIL;
+
+        process.env.HTMLMINI_RENDER_SCRIPT = path.join(dir, '不存在.py');
+        process.env.HTMLMINI_CHROME_BIN = path.join(dir, '也没有-chrome');
+        let en = null;
+        try {
+          await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+        } catch (e) {
+          en = e;
+        }
+        ok(en && /neither save_page/.test(en.message), '双通路皆无给出安装指引');
+        delete process.env.HTMLMINI_CHROME_BIN;
+
+        process.env.HTMLMINI_RENDER_SCRIPT = stub;
+        const cr = await cli([`${base}/always502`, '--title', '--render', '--render-timeout-ms', '30000']);
+        ok(cr.code === 0 && cr.stdout.trim() === '渲染页', 'CLI --render 回退成功');
+        ok(cr.stderr.includes('htmlmini: [render]'), '渲染日志透传到 stderr 供参考');
+
+        const hf = await runExtract(`${base}/always502`, 'title', { render: true, headful: true, renderTimeoutMs: 30000 });
+        ok(hf.trim() === '渲染页', '--headful 透传后仍取回正文');
+        const gotArgv = JSON.parse(await readFile(argvLog, 'utf8'));
+        ok(gotArgv.includes('--headful'), 'headful 透传给渲染脚本');
+
+        const pxHtml = await renderViaBrowser(`${base}/always502`, { proxy: 'http://127.0.0.1:1/', renderTimeoutMs: 30000 });
+        ok(pxHtml.includes('渲染标题'), '代理随渲染透传（直调 renderViaBrowser，不经过静态）');
+        const gotArgv2 = JSON.parse(await readFile(argvLog, 'utf8'));
+        ok(gotArgv2.includes('--proxy') && gotArgv2.includes('http://127.0.0.1:1/'), '代理 URL 透传给渲染脚本');
+
+        const cb = await cli(['-', '--render-timeout-ms', '0']);
+        ok(cb.code === 2 && /render-timeout-ms/.test(cb.stderr), '非法渲染超时退出 2');
+      } finally {
+        for (const k of Object.keys(saved)) {
+          if (saved[k] === undefined) delete process.env[k];
+          else process.env[k] = saved[k];
+        }
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+}
+
+// ---- 14. Chrome 直渲通路：零依赖回退 / headful 限制 / save_page 优先 ----
+{
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-chrome-'));
+  try {
+    const fakeChrome = path.join(dir, 'fake-chrome.mjs');
+    await writeFile(
+      fakeChrome,
+      `import { appendFileSync } from 'node:fs';
+const marker = process.env.CHROME_MARKER;
+if (marker) appendFileSync(marker, 'chrome-invoked\\n');
+process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head><body>'
+  + '<article><h1>Chrome标题</h1><p>' + 'Chrome正文内容足够长可以被识别为主体。'.repeat(10) + '</p></article>'
+  + '</body></html>');
+`,
+      'utf8',
+    );
+    const chromeMarker = path.join(dir, 'chrome.log');
+    const saveMarker = path.join(dir, 'save.log');
+    const stub = path.join(dir, 'stub_save.py');
+    await writeFile(
+      stub,
+      `import os, sys
+argv = sys.argv[1:]
+out = None
+i = 1
+while i < len(argv):
+    if argv[i] == '--out' and i + 1 < len(argv):
+        out = argv[i + 1]
+        i += 2
+    else:
+        i += 1
+open(os.getenv('STUB_MARKER'), 'a').write('save-page\\n')
+open(out, 'w', encoding='utf-8').write(
+    '<!doctype html><html><head><title>Save页</title></head><body>'
+    '<article><h1>Save标题</h1><p>' + 'Save正文内容足够长可以被识别为主体。' * 10 + '</p></article>'
+    '</body></html>'
+)
+`,
+      'utf8',
+    );
+    const saved = {};
+    for (const k of ['HTMLMINI_RENDER_SCRIPT', 'HTMLMINI_CHROME_BIN', 'HTMLMINI_CHROME_EXTRA_ARGS', 'CHROME_MARKER', 'STUB_MARKER']) {
+      saved[k] = process.env[k];
+    }
+    try {
+      process.env.HTMLMINI_RENDER_SCRIPT = path.join(dir, '不存在.py');
+      process.env.HTMLMINI_CHROME_BIN = process.execPath;
+      process.env.HTMLMINI_CHROME_EXTRA_ARGS = fakeChrome;
+      process.env.CHROME_MARKER = chromeMarker;
+      const t = await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 30000 });
+      ok(t.trim() === 'Chrome页', 'save_page 不可用时回退 Chrome 直渲');
+      ok(existsSync(chromeMarker), 'Chrome 通路被实际调用');
+
+      let eh = null;
+      try {
+        await runExtract(`${base}/always502`, 'title', { render: true, headful: true, renderTimeoutMs: 30000 });
+      } catch (e) {
+        eh = e;
+      }
+      ok(eh && /--headful needs the save_page/.test(eh.message), 'Chrome 通路下 headful 给出明确限制');
+
+      const cbad = await cli([`${base}/always502`, '--title', '--render', '--chrome-bin', path.join(dir, '不存在.exe')]);
+      ok(cbad.code === 1 && /chrome binary not found/.test(cbad.stderr), 'CLI --chrome-bin 不存在给出提示');
+
+      process.env.HTMLMINI_CHROME_EXTRA_ARGS = fakeChrome;
+      const cexp = await cli([`${base}/always502`, '--title', '--render', '--chrome-bin', process.execPath]);
+      ok(cexp.code === 0 && cexp.stdout.trim() === 'Chrome页', 'CLI --chrome-bin 显式指定生效');
+      delete process.env.HTMLMINI_CHROME_EXTRA_ARGS;
+
+      process.env.HTMLMINI_RENDER_SCRIPT = stub;
+      process.env.STUB_MARKER = saveMarker;
+      if (existsSync(chromeMarker)) await rm(chromeMarker, { force: true });
+      let py14 = null;
+      try {
+        py14 = await findPython();
+      } catch {
+        py14 = null;
+      }
+      if (!py14) {
+        console.log('skip save_page-preferred (no python)');
+      } else {
+        const s = await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 30000 });
+        ok(s.trim() === 'Save页', 'save_page 可用时优先走 save_page');
+        ok(existsSync(saveMarker) && !existsSync(chromeMarker), '优先顺序下 Chrome 未被调用');
+      }
+    } finally {
+      for (const k of Object.keys(saved)) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// ---- 15. Playwright 缓存探测：三平台布局 / 版本排序 / 无头壳兜底 ----
+{
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-pw-'));
+  try {
+    const touch = async (...parts) => {
+      const f = path.join(dir, ...parts);
+      await import('node:fs/promises').then((m) => m.mkdir(path.dirname(f), { recursive: true }));
+      await writeFile(f, 'x');
+      return f;
+    };
+    const winFull1200 = await touch('win', 'chromium-1200', 'chrome-win', 'chrome.exe');
+    const winFull1210 = await touch('win', 'chromium-1210', 'chrome-win', 'chrome.exe');
+    ok(pickPlaywrightChrome(path.join(dir, 'win'), 'win32') === winFull1210, 'win 取版本最大者');
+    ok(pickPlaywrightChrome(path.join(dir, 'empty'), 'win32') === null, '空缓存返回 null');
+    const winShell = await touch('win-shell', 'chromium-1200', 'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
+    ok(pickPlaywrightChrome(path.join(dir, 'win-shell'), 'win32') === winShell, 'win 无完整版时用无头壳兜底');
+
+    const linFull = await touch('lin', 'chromium-1180', 'chrome-linux', 'chrome');
+    ok(pickPlaywrightChrome(path.join(dir, 'lin'), 'linux') === linFull, 'linux 布局命中');
+    const macFull = await touch('mac', 'chromium-1190', 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
+    ok(pickPlaywrightChrome(path.join(dir, 'mac'), 'darwin') === macFull, 'mac 布局命中');
+    ok(pickPlaywrightChrome(path.join(dir, 'lin'), 'win32') === null, '平台布局错配不命中');
+    void winFull1200;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 await new Promise((resolve) => server.close(resolve));

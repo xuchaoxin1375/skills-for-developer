@@ -46,6 +46,19 @@ htmlmini <文件|URL|-stdin> [选项]
   --extractor <n>  auto（默认）| defuddle | trafilatura | semantic | ui
                    强制指定返回该引擎原始结果（不静默切换），便于排查；
                    auto 失败不抛错，只在强制 trafilatura 缺模块时提示安装。
+  --proxy <url>      本次抓取的代理覆盖：http(s) URL，或 "direct" 强制直连；
+                   省略则跟随 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量
+  --noproxy          强制直连，忽略环境代理
+  --render           静态 403/5xx 时回退浏览器渲染再提取：
+                   save_page（需其 Python 环境）→ 系统 Chrome 无头 dump-dom
+                   （零依赖）→ 友好报错；404/超时/断网直接抛错，不渲染
+  --headful          回退渲染时显示浏览器窗口（隐含 --render；仅 save_page
+                   通路支持，用于首次人工验证）
+  --render-timeout-ms <ms>
+                   回退渲染的超时（默认 300000；Chrome 通路封顶 120000）
+  --chrome-bin <path>
+                   Chrome/Chromium 可执行文件显式路径（覆盖自动探测；
+                   或设环境变量 HTMLMINI_CHROME_BIN）
   --list-modes / --list-extractors / --completion <shell>
   -o, --output <文件>
 
@@ -60,12 +73,28 @@ htmlmini <文件|URL|-stdin> [选项]
 
 ## 与 resilient-browser-fetch 的流水线
 
-动态/受保护页面先渲染，再提取（`save_page` 会在 HTML 旁生成 `<name>.html.meta.json`，htmlmini 自动读取其中的真实 URL 参与提取并回填到 `--json` 的 `meta` 字段）：
+静态抓取先跟随环境代理、403/5xx 自动补一次浏览器头；仍失败时两种走法：
 
 ```bash
-python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html
+# 一条命令（静态优先，403/5xx 自动回退渲染；cloak 不必接，
+# save_page 环境就绪用它，否则用本机普通 Chrome 无头直渲）
+htmlmini "https://example.com/app" --render --proxy 'http://127.0.0.1:7897' --json
+
+# 浏览器选择（Chrome 通路）：显式 --chrome-bin / HTMLMINI_CHROME_BIN 优先，
+# 否则自动探测——PATH（google-chrome、chrome、chromium 等）→ 系统常用路径 →
+# Playwright 浏览器缓存（ms-playwright，完整版优先、无头壳兜底，取版本最大者；
+# 自定义缓存位置走 PLAYWRIGHT_BROWSERS_PATH）。实际用了哪个看
+# `htmlmini: [render] engine=… src=…` 日志。
+
+# 首次人工验证（save_page 通路开有头窗口；Chrome 通路不支持有头）
+htmlmini "https://example.com/app" --render --headful
+
+# 手工两步（渲染产物旁的 <name>.html.meta.json 会被自动利用）
+python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html --proxy 'http://127.0.0.1:7897'
 htmlmini app.html --json
 ```
+
+`--render` 只在静态 403/5xx 时触发（404/超时/断网直接抛错）；渲染日志以 `htmlmini: [render]` 为前缀实时打到 stderr（子进程经 `-X utf8` + `PYTHONUTF8=1` 强制 UTF-8 输出；Windows 控制台查看中文时按 powershell-pitfalls 的 UTF-8 模板设置输出编码）。`save_page` 的真实 URL 即原 URL，直接提取即可。
 
 ## MCP 接入
 
@@ -74,7 +103,7 @@ htmlmini app.html --json
 | 工具 | 说明 |
 |---|---|
 | `htmlmini_extract_file(path, mode?, extractor?)` | 提取本地 HTML 文件（含渲染后产物） |
-| `htmlmini_extract_url(url, mode?, extractor?)` | 抓取并提取远程 URL（静态抓取；动态页走上面流水线） |
+| `htmlmini_extract_url(url, mode?, extractor?, proxy?, render?, render_timeout_ms?)` | 抓取并提取远程 URL（静态抓取：跟随环境代理，403/5xx 补一次浏览器头；`render` 为 true 时静态 403/5xx 自动回退浏览器渲染；动态页也可走上面流水线） |
 | `htmlmini_extract_html(html_content, mode?, extractor?)` | 就地清洗一段已抓取的 HTML 字符串 |
 
 `mode`：`markdown`(默认) | `skeleton` | `text` | `json` | `title` | `ui`；
@@ -135,11 +164,11 @@ claude mcp add htmlmini -- node <仓库>/skills/htmlmini/src/mcp.js
 ## 自检
 
 ```bash
-pnpm test                         # smoke 17 + MCP 自检 + 可靠性 36，全内置合成输入与本地回环，无外部网络依赖
+pnpm test                         # smoke 17 + MCP 自检 + 可靠性 93，全内置合成输入与本地回环，无外部网络依赖
 node tests/test-batch.mjs <目录>  # 本地 HTML 目录批量抽查（fixture 不入库）
 ```
 
-远程抓取默认 30s 超时（`fetch timeout after …`），终端裸跑无管道时直接提示而不挂等 stdin。
+远程抓取默认 30s 超时（`fetch timeout after …`），终端裸跑无管道时直接提示而不挂等 stdin。抓取跟随 HTTP_PROXY/HTTPS_PROXY/NO_PROXY（`--proxy` 覆盖、`--noproxy` 强制直连）；403/5xx 自动补一次浏览器头重试，仍失败在状态码后带下一步指引，挑战特征会点名，429 遵守冷却。
 
 ## 从 v0.1 迁移
 
