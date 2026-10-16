@@ -19,6 +19,7 @@ description: >
 - **脚本（非 PowerShell）**：默认 UTF-8。Python 一律 `-X utf8`（父子多层时父进程先设
   `PYTHONUTF8=1`）、读写显式 `encoding="utf-8"`；新脚本文件 UTF-8 无 BOM、换行 LF。
   细节见 `scripting-best-practices`。
+- **本地提炼skill**：聚焦规则与执行所需内容，不默认保留原材料、来源引用或指纹；具体边界按[内容与语言规范](../skill-authoring-sync/references/skill-content-guidelines.md#正文与参考的组织)。
 
 ### 重点技能
 

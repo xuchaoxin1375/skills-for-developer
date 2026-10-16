@@ -32,7 +32,7 @@ skills-for-developer/
   skills/
     <skill-name>/
       SKILL.md                 # 必需：frontmatter + 正文
-      references/              # 可选：长篇参考材料（外部材料优先归档于此，而非引用外部路径）
+      references/              # 可选：执行所需的详细规则与示例
       scripts/                 # 可选：配套脚本
   scripts/
     link-skills.ps1            # Windows：创建 / 校验 / 移除 Junction（幂等）
@@ -47,7 +47,7 @@ skills-for-developer/
   两处语义保持一致。
 - 推荐：正文按“适用范围 → 工作流程 → 约束/规范 → 自检 → 验证协议”组织；
   正文即工件，不套嵌套代码围栏，不夹带安装教程与链接聚合。
-- 推荐：skill 确需引用真源外部材料时，将其复制/归档为 `references/` 内参考资料并注明来源 URL 与快照日期；体积大、有版权限制或需跟随上游更新时例外，此时引用 URL。
+- 材料保留按[内容与语言规范](references/skill-content-guidelines.md#正文与参考的组织)处理；从本地资料或项目提取时，不默认复制原材料或保存来源与指纹。执行确需的外部资源按实际依赖及许可要求决定归档或引用。
 
 各 harness 的 skill 发现差异（如 dsh 的 rank、单层扫描、kebab 严格校验）见
 `references/dsh-skills.md`，写 skill 时遵守即可。
