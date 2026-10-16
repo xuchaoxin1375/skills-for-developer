@@ -152,7 +152,7 @@ Windows PowerShell：
 $Python = (conda run -n scrapling python -c "import sys; print(sys.executable)" | Select-Object -Last 1).Trim()
 uv pip install --python $Python -r (Join-Path $SkillDir "requirements.txt")
 conda run -n scrapling scrapling install
-conda run -n scrapling python (Join-Path $SkillDir "scripts\check_environment.py") --proxy "http://127.0.0.1:7897"
+conda run -n scrapling python (Join-Path $SkillDir "scripts\check_environment.py") --proxy "http://127.0.0.1:<port>"
 ```
 
 Linux/macOS：
@@ -161,7 +161,7 @@ Linux/macOS：
 PYTHON="$(conda run -n scrapling python -c 'import sys; print(sys.executable)')"
 uv pip install --python "$PYTHON" -r "$SKILL_DIR/requirements.txt"
 conda run -n scrapling scrapling install
-conda run -n scrapling python "$SKILL_DIR/scripts/check_environment.py" --proxy 'http://127.0.0.1:7897'
+conda run -n scrapling python "$SKILL_DIR/scripts/check_environment.py" --proxy 'http://127.0.0.1:<port>'
 ```
 
 没有 Conda 时，将 `<目标环境解释器>` 替换为 `.venv/bin/python` 或 Windows 的 `.venv\Scripts\python.exe`。没有 `uv` 时，在同一环境中使用 `python -m pip install -r requirements.txt`。

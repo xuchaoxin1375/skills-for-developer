@@ -316,8 +316,8 @@ async function cli(args, { input } = {}) {
 {
   const t = 'http://example.com/a';
   const s = 'https://example.com/a';
-  ok(resolveProxy(t, { proxy: 'http://127.0.0.1:7897', env: {} }) === 'http://127.0.0.1:7897', '显式代理覆盖环境');
-  ok(resolveProxy(t, { proxy: 'direct', env: { HTTP_PROXY: 'http://127.0.0.1:7897' } }) === null, '"direct" 忽略环境强制直连');
+  ok(resolveProxy(t, { proxy: 'http://127.0.0.1:18080', env: {} }) === 'http://127.0.0.1:18080', '显式代理覆盖环境');
+  ok(resolveProxy(t, { proxy: 'direct', env: { HTTP_PROXY: 'http://127.0.0.1:18080' } }) === null, '"direct" 忽略环境强制直连');
   let bad = null;
   try {
     resolveProxy(t, { proxy: 'socks://x', env: {} });
@@ -325,24 +325,24 @@ async function cli(args, { input } = {}) {
     bad = e;
   }
   ok(bad && /proxy 须是/.test(bad.message), '非法代理协议给出提示');
-  ok(resolveProxy(s, { env: { HTTPS_PROXY: 'http://127.0.0.1:7897' } }) === 'http://127.0.0.1:7897', 'https 走 HTTPS_PROXY');
-  ok(resolveProxy(t, { env: { HTTP_PROXY: 'http://127.0.0.1:7897' } }) === 'http://127.0.0.1:7897', 'http 走 HTTP_PROXY');
+  ok(resolveProxy(s, { env: { HTTPS_PROXY: 'http://127.0.0.1:18080' } }) === 'http://127.0.0.1:18080', 'https 走 HTTPS_PROXY');
+  ok(resolveProxy(t, { env: { HTTP_PROXY: 'http://127.0.0.1:18080' } }) === 'http://127.0.0.1:18080', 'http 走 HTTP_PROXY');
   ok(resolveProxy(t, { env: {} }) === null, '无环境变量直连');
-  ok(resolveProxy(s, { env: { ALL_PROXY: 'http://127.0.0.1:7897' } }) === 'http://127.0.0.1:7897', 'ALL_PROXY 兜底');
+  ok(resolveProxy(s, { env: { ALL_PROXY: 'http://127.0.0.1:18080' } }) === 'http://127.0.0.1:18080', 'ALL_PROXY 兜底');
   ok(
-    resolveProxy('http://127.0.0.1:9/a', { env: { HTTP_PROXY: 'http://127.0.0.1:7897', NO_PROXY: '127.0.0.1' } }) === null,
+    resolveProxy('http://127.0.0.1:9/a', { env: { HTTP_PROXY: 'http://127.0.0.1:18080', NO_PROXY: '127.0.0.1' } }) === null,
     'NO_PROXY 精确主机豁免',
   );
   ok(
-    resolveProxy('http://sub.example.com/a', { env: { HTTP_PROXY: 'http://127.0.0.1:7897', NO_PROXY: 'example.com' } }) === null,
+    resolveProxy('http://sub.example.com/a', { env: { HTTP_PROXY: 'http://127.0.0.1:18080', NO_PROXY: 'example.com' } }) === null,
     'NO_PROXY 后缀匹配子域',
   );
   ok(
-    resolveProxy(t, { env: { HTTP_PROXY: 'http://127.0.0.1:7897', NO_PROXY: '*' } }) === null,
+    resolveProxy(t, { env: { HTTP_PROXY: 'http://127.0.0.1:18080', NO_PROXY: '*' } }) === null,
     'NO_PROXY 星号全豁免',
   );
   ok(hostBypassed('Example.COM', 'example.com') === true, 'NO_PROXY 大小写不敏感');
-  ok(maskProxy('http://user:pass@127.0.0.1:7897/') === 'http://127.0.0.1:7897', '代理脱敏不泄凭据');
+  ok(maskProxy('http://user:pass@127.0.0.1:18080/') === 'http://127.0.0.1:18080', '代理脱敏不泄凭据');
 }
 
 // ---- 11. 浏览器头重试与挑战识别 ----
@@ -371,10 +371,8 @@ async function cli(args, { input } = {}) {
 }
 
 // ---- 12. 代理跟随：显式 / 环境 / NO_PROXY / 黑洞 ----
-// 说明：不用自造转发代理做集成测试——本机实测其会触发异常连接风暴；
-// 生产代码已用真实代理（127.0.0.1:7897）验证：example.com 经代理 200 取回正常，
-// britvanlife 经代理自动走浏览器头重试并点名挑战。测试内用黑洞代理（秒拒）与
-// 直连成功/失败的可观测差异覆盖选路逻辑，不依赖外部网络。
+// 说明：不用自造转发代理做集成测试——曾观察到其触发异常连接风暴；
+// 选路逻辑只用测试内黑洞代理（秒拒）与直连成功/失败的可观测差异覆盖，不依赖外部网络。
 {
   const savedEnv = {};
   for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy']) {

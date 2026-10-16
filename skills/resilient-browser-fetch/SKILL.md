@@ -17,17 +17,17 @@ description: >
 2. 运行只读环境诊断：
 
    ```bash
-   python <skill-dir>/scripts/check_environment.py --proxy 'http://127.0.0.1:7897'
+   python <skill-dir>/scripts/check_environment.py --proxy 'http://127.0.0.1:<port>'
    ```
 
-   明确需要本地代理但未设置 `SCRAPE_PROXY` 时，可在抓取命令中添加 `--discover-proxy`，依次探测 HTTP `7897`、HTTP `7890` 和 SOCKS5 `10808`。端口开放只代表存在候选服务，仍需用目标请求验证协议与出口。
+   明确需要本地代理但未设置 `SCRAPE_PROXY` 时，可在抓取命令中添加 `--discover-proxy`，按本机登记文件中的候选依次探测。端口开放只代表存在候选服务，仍需用目标请求验证协议与出口。
 
 3. 先使用 `auto`。它在隔离子进程中依次尝试 Scrapling Python API 和 CloakBrowser + Scrapling CDP；每个引擎有硬超时，失败不会无限阻塞后续回退。
 
    ```bash
    python <skill-dir>/scripts/resilient_fetch.py \
      --url 'https://example.com/product' --out './product.html' \
-     --proxy 'http://127.0.0.1:7897' --timeout-ms 300000 \
+     --proxy 'http://127.0.0.1:<port>' --timeout-ms 300000 \
      --expect-text 'Product name'
    ```
 
@@ -66,7 +66,7 @@ python <skill-dir>/scripts/example_extract_page_info.py 'https://example.com/' \
 
 ```bash
 python <skill-dir>/scripts/example_greentradingxxl_batch.py \
-  --proxy 'http://127.0.0.1:7897' \
+  --proxy 'http://127.0.0.1:<port>' \
   --output-dir './greentradingxxl-pages'
 ```
 
@@ -97,7 +97,7 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 
 ## 代理与凭据
 
-使用 `SCRAPE_PROXY` 可避免重复输入代理。常见本地入口包括 `7897`、`7890` 和 `10808`；明确需要代理时可使用 `--discover-proxy`。脚本只预检代理端口；端口可连通不代表协议、出口 IP、ASN、DNS 和地区正确，必要时通过代理访问外部 IP 检测页再核对。默认代理不可达或发现失败时退出码为 `2`，不会静默直连；只有用户明确接受本机出口时才添加 `--allow-direct`。
+使用 `SCRAPE_PROXY` 可避免重复输入代理。需要代理解析本机入口时，先读本机登记文件再用 `--discover-proxy` 探测登记中的候选。脚本只预检代理端口；端口可连通不代表协议、出口 IP、ASN、DNS 和地区正确，必要时通过代理访问外部 IP 检测页再核对。默认代理不可达或发现失败时退出码为 `2`，不会静默直连；只有用户明确接受本机出口时才添加 `--allow-direct`。
 
 不要把带用户名和密码的代理 URL 写入源码、持久日志或元数据。脚本日志会遮蔽代理凭据，但操作系统进程列表仍可能看到用户传入的命令行参数；敏感凭据优先放入当前进程的 `SCRAPE_PROXY` 环境变量。
 

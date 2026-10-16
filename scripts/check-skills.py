@@ -38,6 +38,14 @@ PATH_PATTERNS = [
     (re.compile(r"/home/"), "/home/…"),
     (re.compile(r"(?<![\w$<{])/tmp/"), "写死的 /tmp/…"),
 ]
+# 端口字面量模式（127.0.0.1/localhost 后跟具体端口）。
+# 本机代理端口因机器而异，不得写进真源；真实值走登记文件或环境变量。
+# 豁免：占位写法（<port>、<实际端口>、…举例）、黑洞 :1、动态 :0。
+PORT_PATTERNS = [
+    re.compile(r"127\.0\.0\.1:(?!0\b|1\b)\d+"),
+    re.compile(r"localhost:(?!0\b|1\b)\d+"),
+]
+PORT_PLACEHOLDERS = ("<port>", "<实际端口>", "…")
 REDLINE_EXEMPT_DIRS = {"codex-model-config"}  # submodule，上游来源边界，不改写上游
 
 
@@ -180,6 +188,44 @@ def redline_scan(skill_dir):
     return errors
 
 
+def port_scan(skill_dir):
+    """端口字面量扫描，返回 (errors, warnings)。
+
+    scripts/** 命中记错误（行为级绑定）；SKILL.md/references/** 命中记警告
+    （文档示例，逐步收敛）。tests/ 不在扫描范围。
+    """
+    errors, warnings = [], []
+    if skill_dir.name in REDLINE_EXEMPT_DIRS:
+        return errors, warnings
+    groups = [
+        ([skill_dir / "SKILL.md"], warnings, "文档示例疑似写死本地端口"),
+    ]
+    for sub, bucket, label in (
+        ("references", warnings, "文档示例疑似写死本地端口"),
+        ("scripts", errors, "脚本疑似写死本地端口"),
+    ):
+        d = skill_dir / sub
+        if d.is_dir():
+            groups.append(
+                ([f for f in d.rglob("*") if f.is_file()], bucket, label)
+            )
+    for targets, bucket, label in groups:
+        for f in targets:
+            try:
+                content = f.read_text(encoding="utf-8-sig", errors="strict")
+            except (OSError, UnicodeError):
+                continue
+            rel = f.relative_to(skill_dir.parent.parent)
+            for no, ln in enumerate(content.splitlines(), 1):
+                if any(ph in ln for ph in PORT_PLACEHOLDERS):
+                    continue
+                for rx in PORT_PATTERNS:
+                    if rx.search(ln):
+                        bucket.append(f"{rel}:{no} {label}（真实值走登记/环境变量）")
+                        break
+    return errors, warnings
+
+
 def link_target(path):
     """返回链接目标（规范化后），实体/不存在返回 None。
 
@@ -263,6 +309,9 @@ def main(argv=None):
         e, _ = check_skill(s)
         errors.extend(e)
         errors.extend(redline_scan(s))
+        pe, pw = port_scan(s)
+        errors.extend(pe)
+        warnings.extend(pw)
 
     # 推荐部署名单（只在全量检查时核对，--include 过滤后名单天然不全）
     if not want:

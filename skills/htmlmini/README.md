@@ -78,7 +78,7 @@ htmlmini <文件|URL|-stdin> [选项]
 ```bash
 # 一条命令（静态优先，403/5xx 自动回退渲染；cloak 不必接，
 # save_page 环境就绪用它，否则用本机普通 Chrome 无头直渲）
-htmlmini "https://example.com/app" --render --proxy 'http://127.0.0.1:7897' --json
+htmlmini "https://example.com/app" --render --proxy 'http://127.0.0.1:<port>' --json
 
 # 浏览器选择（Chrome 通路）：显式 --chrome-bin / HTMLMINI_CHROME_BIN 优先，
 # 否则自动探测——PATH（google-chrome、chrome、chromium 等）→ 系统常用路径 →
@@ -90,7 +90,7 @@ htmlmini "https://example.com/app" --render --proxy 'http://127.0.0.1:7897' --js
 htmlmini "https://example.com/app" --render --headful
 
 # 手工两步（渲染产物旁的 <name>.html.meta.json 会被自动利用）
-python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html --proxy 'http://127.0.0.1:7897'
+python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html --proxy 'http://127.0.0.1:<port>'
 htmlmini app.html --json
 ```
 

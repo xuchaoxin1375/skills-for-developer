@@ -11,7 +11,7 @@
 export UV_DEFAULT_INDEX='https://pypi.tuna.tsinghua.edu.cn/simple'
 # pip 用户改为设置这一项
 export PIP_INDEX_URL='https://pypi.tuna.tsinghua.edu.cn/simple'
-export HTTPS_PROXY='http://127.0.0.1:7897'
+export HTTPS_PROXY='http://127.0.0.1:<port>'
 ```
 
 PowerShell 使用：
@@ -21,7 +21,7 @@ PowerShell 使用：
 $env:UV_DEFAULT_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
 # pip 用户改为设置这一项
 $env:PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
-$env:HTTPS_PROXY = "http://127.0.0.1:7897"
+$env:HTTPS_PROXY = "http://127.0.0.1:<port>"
 ```
 
 只设置实际使用的安装器对应变量。镜像用于 Python 包索引，`HTTPS_PROXY` 同时可帮助浏览器二进制下载；镜像不可用或包版本滞后时临时回到官方 PyPI。
@@ -102,7 +102,7 @@ powershell -NoProfile
 py -3.12 -m venv .venv
 uv pip install --python .\.venv\Scripts\python.exe -r <skill-dir>\requirements.txt
 .\.venv\Scripts\scrapling.exe install
-$env:SCRAPE_PROXY = "http://127.0.0.1:7897"
+$env:SCRAPE_PROXY = "http://127.0.0.1:<port>"
 .\.venv\Scripts\python.exe <skill-dir>\scripts\resilient_fetch.py --url "https://example.com" --out ".\page.html"
 ```
 
@@ -116,7 +116,7 @@ WSL 内的 `127.0.0.1` 不应假定等同 Windows 宿主。先确认 Mihomo 的�
 python3 -m venv .venv
 uv pip install --python .venv/bin/python -r <skill-dir>/requirements.txt
 .venv/bin/scrapling install
-export SCRAPE_PROXY='http://127.0.0.1:7897'
+export SCRAPE_PROXY='http://127.0.0.1:<port>'
 .venv/bin/python <skill-dir>/scripts/resilient_fetch.py --url 'https://example.com' --out './page.html'
 ```
 
@@ -137,7 +137,7 @@ Windows 将解释器路径改为 `.\.venv\Scripts\python.exe`。没有 `uv` 时�
 国内网络下载依赖时，浏览器安装命令也应继承 `HTTPS_PROXY`：
 
 ```bash
-export HTTPS_PROXY='http://127.0.0.1:7897'
+export HTTPS_PROXY='http://127.0.0.1:<port>'
 uv pip install --python .venv/bin/python -r <skill-dir>/requirements-cloak.txt
 .venv/bin/python -m cloakbrowser install
 ```

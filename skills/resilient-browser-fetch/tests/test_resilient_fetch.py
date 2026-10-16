@@ -28,7 +28,7 @@ def make_result(**overrides: Any) -> subject.FetchResult:
 @pytest.mark.parametrize(
     ("proxy", "endpoint"),
     [
-        ("http://127.0.0.1:7897", ("127.0.0.1", 7897)),
+        ("http://127.0.0.1:18080", ("127.0.0.1", 18080)),
         ("socks5://user:pass@example.com:1080", ("example.com", 1080)),
         ("https://[::1]:8443", ("::1", 8443)),
     ],
@@ -37,7 +37,7 @@ def test_parse_proxy_endpoint(proxy: str, endpoint: tuple[str, int]) -> None:
     assert subject.parse_proxy_endpoint(proxy) == endpoint
 
 
-@pytest.mark.parametrize("proxy", ["127.0.0.1:7897", "ftp://host:21", "http://host"])
+@pytest.mark.parametrize("proxy", ["127.0.0.1:18080", "ftp://host:21", "http://host"])
 def test_parse_proxy_endpoint_rejects_invalid_values(proxy: str) -> None:
     with pytest.raises(ValueError):
         subject.parse_proxy_endpoint(proxy)
@@ -45,10 +45,10 @@ def test_parse_proxy_endpoint_rejects_invalid_values(proxy: str) -> None:
 
 def test_redact_proxy_hides_credentials() -> None:
     assert (
-        subject.redact_proxy("http://alice:secret@127.0.0.1:7897")
-        == "http://***:***@127.0.0.1:7897"
+        subject.redact_proxy("http://alice:secret@127.0.0.1:18080")
+        == "http://***:***@127.0.0.1:18080"
     )
-    assert subject.redact_proxy("http://127.0.0.1:7897") == "http://127.0.0.1:7897"
+    assert subject.redact_proxy("http://127.0.0.1:18080") == "http://127.0.0.1:18080"
     assert subject.redact_proxy(None) is None
 
 
@@ -56,6 +56,7 @@ def test_discover_local_proxy_uses_first_reachable_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     attempted_ports: list[int] = []
+    candidates = ("http://127.0.0.1:18081", "http://127.0.0.1:18082")
 
     class Connection:
         def __enter__(self) -> None:
@@ -66,13 +67,53 @@ def test_discover_local_proxy_uses_first_reachable_candidate(
 
     def connect(endpoint: tuple[str, int], timeout: float) -> Connection:
         attempted_ports.append(endpoint[1])
-        if endpoint[1] != 7890:
+        if endpoint[1] != 18082:
             raise OSError("closed")
         return Connection()
 
     monkeypatch.setattr(subject.socket, "create_connection", connect)
-    assert subject.discover_local_proxy() == "http://127.0.0.1:7890"
-    assert attempted_ports == [7897, 7890]
+    assert subject.discover_local_proxy(candidates) == "http://127.0.0.1:18082"
+    assert attempted_ports == [18081, 18082]
+
+
+def test_discover_local_proxy_reads_registry_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    registry = tmp_path / "proxy-resources.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "default": "second",
+                "proxies": [
+                    {"name": "first", "url": "http://127.0.0.1:18081"},
+                    {"name": "second", "url": "http://127.0.0.1:18082"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(subject, "PROXY_REGISTRY_PATH", registry)
+
+    class Connection:
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *args: Any) -> None:
+            return None
+
+    monkeypatch.setattr(
+        subject.socket,
+        "create_connection",
+        lambda endpoint, timeout: Connection(),
+    )
+    assert subject.discover_local_proxy() == "http://127.0.0.1:18082"
+
+
+def test_discover_local_proxy_without_registry_finds_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(subject, "PROXY_REGISTRY_PATH", tmp_path / "missing.json")
+    assert subject.discover_local_proxy() is None
 
 
 def test_extract_title_decodes_entities_and_whitespace() -> None:

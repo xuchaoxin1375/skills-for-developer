@@ -17,6 +17,7 @@ description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已�
   布局→`L`；假数据极值→`C`；缺状态→`S`；跳动卡顿→`V`；对比度焦点语义→`A`；表单→`F`；URL后退→`N`；动效toast→`I`；间距色彩深色→`D`；Win/Mac/iOS/微信→`P`；约束agent→`G`；欺骗性模式→`H`。
 - 需要可执行检查时读 `scripts/` 下对应脚本（控制台粘贴或进 CI），不要背诵。
 - 启动浏览器、服务或重复截图验收前，读[测试资源预算与回收](../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)，按可用容量限制worker/实例并发，登记并验明异常收尾；不得叠加未回收的失败轮。
+- 截图前先解析真实浏览器二进制再启动：显式参数 → 环境覆盖 → PATH → 固定安装路径 → Playwright 缓存（版本最大者，完整版优先）；命中注入额外参数的包装器/垫片时绕过取真实目标；图形界面浏览器用等待式进程退出码断言，不单独依赖 shell 退出码变量。
 - 需要 UI 完成清单时读 `references/definition-of-done.md`，按适用范围纳入项目 `AGENTS.md`/`DESIGN.md`；优先引用，需项目快照时标注来源与版本，不把 UI 清单当整个产品的完成标准。
 - 对比度/可读性读取 [共用规范](../frontend-design/references/contrast-readability.md)，按实际背景测量并补测自动未判项；例：图片上白字不能因axe无报错而放行。
 

@@ -71,4 +71,4 @@ async def fetch_batch(home_url: str, urls: list[str], proxy: str) -> list[str]:
 
 ## GreenTradingXXL 示例
 
-运行 `scripts/example_greentradingxxl_batch.py`。脚本先访问首页，允许在可见窗口完成人工验证，然后复用同一 context 抓取三个指定商品页，将渲染后 HTML 和 `summary.json` 写入输出目录。默认使用全新临时 profile 和宽松检查；只有明确需要业务断言时添加 `--strict`。默认探测本地 `7897`、`7890` 和 `10808`，代理不可用时不会静默直连。
+运行 `scripts/example_greentradingxxl_batch.py`。脚本先访问首页，允许在可见窗口完成人工验证，然后复用同一 context 抓取三个指定商品页，将渲染后 HTML 和 `summary.json` 写入输出目录。默认使用全新临时 profile 和宽松检查；只有明确需要业务断言时添加 `--strict`。默认按本机登记文件中的候选探测本地代理，代理不可用时不会静默直连。

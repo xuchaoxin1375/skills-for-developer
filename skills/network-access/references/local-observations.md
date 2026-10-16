@@ -1,23 +1,25 @@
 # 本机网络观测
 
-仅记录当前工作机器的带日期事实，不作为其他机器、平台或生产服务器的默认配置。端口、协议、路由和公共服务状态都可能变化，任务前重新核验。
+仅记录某台工作机器的带日期事实，不作为其他机器、平台或生产服务器的默认配置。端口、协议、路由和公共服务状态都可能变化，任务前重新核验。
+
+本文件所有端口、进程名、登记条目名均为单机示例（已脱敏为占位），禁止复制为配置；用前按 [proxy-registry.md](proxy-registry.md) 流程重新核验本机。
 
 ## 2026-10-09 历史记录
 
-- 本地代理 `http://localhost:10808` TCP 可达，经代理取 `https://pypi.org/simple/` 返回 200。
+- 本地代理 `http://localhost:<port>` TCP 可达，经代理取 `https://pypi.org/simple/` 返回 200。
 - pip 已配 USTC（`%APPDATA%\pip\pip.ini`）；uv 当时无用户级镜像配置，依靠代理访问官方源。
 - 当时 `HTTP_PROXY`/`HTTPS_PROXY` 已设置；这些观测不证明后续请求或其他客户端仍使用同一路线。
 
 ## 2026-10-10 目标核验
 
-执行环境：Windows PowerShell 调用 `curl.exe`。`10808` 和 `7897` 存在 TCP 监听，仅验证 `http://127.0.0.1:10808` 的 HTTP 代理协议；未核验 `7897` 协议或出口。`HTTP_PROXY`/`HTTPS_PROXY` 已配置，`ALL_PROXY`/`NO_PROXY` 未配置；没有输出代理凭据。
+执行环境：Windows PowerShell 调用 `curl.exe`。两个本地端口存在 TCP 监听，仅验证其中一个的 HTTP 代理协议；另一端口未核验协议或出口。`HTTP_PROXY`/`HTTPS_PROXY` 已配置，`ALL_PROXY`/`NO_PROXY` 未配置；没有输出代理凭据。
 
 原始目标：`https://raw.githubusercontent.com/hunshcn/gh-proxy/master/README.md`。使用连接超时 5 秒；直连总期限 12 秒、代理 20 秒、加速 15 秒；无自动重试。
 
 | 路线 | 设置 | HTTP / 退出码 | 耗时 | 内容 |
 | --- | --- | --- | --- | --- |
 | 绕过显式代理 | `--noproxy '*'` | 200 / 0 | 1.84 秒 | 3,637 字节 README |
-| 本地 HTTP 代理 | `--proxy http://127.0.0.1:10808` | 200 / 0 | 1.18 秒 | 3,637 字节 README |
+| 本地 HTTP 代理 | `--proxy http://127.0.0.1:<port>` | 200 / 0 | 1.18 秒 | 3,637 字节 README |
 | 加速服务，绕过显式代理 | 原链接前加 `https://gh-proxy.com/`，`--noproxy '*'` | 200 / 0 | 1.02 秒 | 3,637 字节 README |
 
 代理原站与加速文件 SHA-256 一致：`7805A315A56A4182499A736E29C486BFF90D68F6CC228713D3DA09D272EF283E`。小样本耗时用于记录取回事实，不作为线路性能排名；未确认底层 TUN/透明路由，不能断言“无任何代理”。
@@ -58,7 +60,7 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 执行环境：国内 Windows，`curl.exe` + UA `Mozilla/5.0`，连接超时 5 秒、总期限 20 秒；为 opencode-provider-config 选备用数据源（models.dev 访问慢），总结任务触发。
 
-| 数据源 | 直连 | 代理(7897) | 备注 |
+| 数据源 | 直连 | 代理(登记默认条目) | 备注 |
 | --- | --- | --- | --- |
 | openrouter.ai/api/v1/models | 200 / 3.5s / 766KB | 200 / 3.1s | 458 模型，无需鉴权；字段最全（`context_length`、模态、`supported_parameters`） |
 | models.dev/api.json | 200 / 18.0s / 5.4MB | 200 / 18.1s | 直连代理都慢，印证"访问慢"体感 |
@@ -69,9 +71,9 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 ## 2026-10-11 代理资源核验与登记
 
-- 进程 `verge-mihomo.exe`（mihomo 类工具图形封装）监听 `127.0.0.1:7897`；用 `curl.exe -x http://127.0.0.1:7897` 访问境外网关 `/v1/models` 返回 200（0.87 秒），补上 2026-10-10 "未核验 7897 协议"的缺口。
-- 同日核验 OpenCode 服务端已持久化全局 `HTTP_PROXY`/`HTTPS_PROXY=http://127.0.0.1:7897`，`NO_PROXY` 含回环地址与一条直连业务域名；shell 环境变量仍指向 `localhost:10808`，本次未核验其监听与协议。
-- 已创建登记文件 `~/.config/proxy-resources.json`（`verge-mihomo-7897` 为默认条目，`source: registry`）；约定与流程见 [proxy-registry.md](proxy-registry.md)，后续任务先读登记再做有界核验。
+- 某代理工具进程监听本地回环端口；用 `curl.exe -x http://127.0.0.1:<port>` 访问境外网关 `/v1/models` 返回 200，补上此前"未核验该端口协议"的缺口。
+- 同日核验服务端已持久化全局 `HTTP_PROXY`/`HTTPS_PROXY`（值为本机回环代理地址），`NO_PROXY` 含回环地址与一条直连业务域名；shell 环境变量仍指向另一本地端口，本次未核验其监听与协议。
+- 已创建登记文件 `~/.config/proxy-resources.json`（默认条目见该文件，`source: registry`）；约定与流程见 [proxy-registry.md](proxy-registry.md)，后续任务先读登记再做有界核验。
 - 真直连对照（`--noproxy '*'`）：被阻断域名三次 15 秒超时；shell 代理变量曾让同命令"假直连成功"，测直连必须显式绕过代理变量。
 
 - 同日修正：服务端 `NO_PROXY` 原为空格分隔，已改为逗号分隔（放行域名不变）并重启服务生效；空格写法可能被 HTTP 客户端解析失败而使放行域名静默走代理。修正后官方 Go 端点经代理调用验证通过。
@@ -83,6 +85,6 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 | 路线 | 设置 | HTTP / 耗时 | 结果 |
 | --- | --- | --- | --- |
 | 直连 | `--noproxy '*'` | 403 / 0.5 秒 | 拦截，未取到正文 |
-| 默认代理 | `--proxy http://127.0.0.1:7897` | 200 / 1.9 秒 | 取得正文，最终 URL 重定向为 `https://arena.ai/company/about` |
+| 默认代理 | `--proxy http://127.0.0.1:<port>` | 200 / 1.9 秒 | 取得正文，最终 URL 重定向为 `https://arena.ai/company/about` |
 
 代理路线落盘正文经网页骨架提取（htmlmini）成功取得完整页面内容，未启用浏览器渲染；`resilient-browser-fetch` 对该站未验证。单站点单路径观测，不推广到该域其他路径或其他拦截站点。

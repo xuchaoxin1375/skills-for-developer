@@ -83,7 +83,7 @@ print([attempt.as_metadata() for attempt in outcome.attempts])
 from resilient_fetch import FetchOptions, save_page
 
 outcome = save_page(
-    FetchOptions(url="https://example.com/", proxy="http://127.0.0.1:7897"),
+    FetchOptions(url="https://example.com/", proxy="http://127.0.0.1:<port>"),
     "./example.html",
 )
 ```
@@ -119,7 +119,7 @@ from site_session import SiteRequest, SiteSessionManager, SiteSessionOptions
 
 options = SiteSessionOptions(
     home_url="https://example.com/",
-    proxy="http://127.0.0.1:7897",
+    proxy="http://127.0.0.1:<port>",
     headless=False,
     max_pages=3,
     concurrency=2,

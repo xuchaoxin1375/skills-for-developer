@@ -32,11 +32,7 @@ from urllib.request import ProxyHandler, build_opener
 
 DEFAULT_TIMEOUT_MS = 300_000
 MIN_SOLVER_TIMEOUT_MS = 60_000
-LOCAL_PROXY_CANDIDATES = (
-    "http://127.0.0.1:7897",
-    "http://127.0.0.1:7890",
-    "socks5://127.0.0.1:10808",
-)
+PROXY_REGISTRY_PATH = Path.home() / ".config" / "proxy-resources.json"
 BLOCK_HINTS = (
     "access denied",
     "attention required",
@@ -215,9 +211,42 @@ def wait_for_proxy(proxy: str | None, attempts: int = 3, delay: float = 1.0) -> 
     return False
 
 
+def registry_proxy_candidates() -> tuple[str, ...]:
+    """Return proxy URLs from the machine-local registry, default entry first.
+
+    The registry lives outside this repo (one file per machine); an absent or
+    unparsable registry simply yields no candidates instead of guessing ports.
+    """
+
+    try:
+        data = json.loads(PROXY_REGISTRY_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ()
+    if not isinstance(data, dict) or not isinstance(data.get("proxies"), list):
+        return ()
+    ordered: list[str] = []
+    default = data.get("default")
+    if isinstance(default, str):
+        for entry in data["proxies"]:
+            if (
+                isinstance(entry, dict)
+                and entry.get("name") == default
+                and isinstance(entry.get("url"), str)
+                and entry["url"]
+            ):
+                ordered.append(entry["url"])
+    for entry in data["proxies"]:
+        if isinstance(entry, dict) and isinstance(entry.get("url"), str) and entry["url"]:
+            if entry["url"] not in ordered:
+                ordered.append(entry["url"])
+    return tuple(ordered)
+
+
 def discover_local_proxy(
-    candidates: tuple[str, ...] = LOCAL_PROXY_CANDIDATES, timeout: float = 0.75
+    candidates: tuple[str, ...] | None = None, timeout: float = 0.75
 ) -> str | None:
+    if candidates is None:
+        candidates = registry_proxy_candidates()
     for candidate in candidates:
         host, port = parse_proxy_endpoint(candidate)
         try:
@@ -729,7 +758,10 @@ def resolve_proxy(options: FetchOptions) -> str | None:
     if not proxy and options.discover_proxy:
         proxy = discover_local_proxy()
         if not proxy:
-            raise ProxyUnavailableError("未在本机 7897、7890 或 10808 端口发现可用代理。")
+            raise ProxyUnavailableError(
+                "未发现可用本地代理 (已按本机登记候选探测)。"
+                "请用 --proxy 指定代理 URL，或设置 SCRAPE_PROXY，或先登记可用代理后重试。"
+            )
     if not proxy:
         return None
     try:
@@ -894,7 +926,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--discover-proxy",
         action="store_true",
-        help="未指定代理时依次探测本机 7897、7890 和 SOCKS5 10808 端口。",
+        help="未指定代理时按本机登记文件 (~/.config/proxy-resources.json) 中的候选依次探测。",
     )
     parser.add_argument(
         "--engine",

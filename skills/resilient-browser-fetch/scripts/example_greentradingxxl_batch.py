@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--discover-proxy",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="未显式提供代理时探测本机 7897、7890、10808 (默认启用)。",
+        help="未显式提供代理时按本机登记文件中的候选探测 (默认启用)。",
     )
     parser.add_argument(
         "--allow-direct",

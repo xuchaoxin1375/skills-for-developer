@@ -15,7 +15,7 @@
   "default": "<proxies[0].name>",
   "proxies": [
     {
-      "name": "<短名，如 mihomo-mixed-7897>",
+      "name": "<短名，如 mihomo-mixed>",
       "type": "http | socks5",
       "url": "http://127.0.0.1:<port>",
       "source": "registry | env | user | manual",
