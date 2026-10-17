@@ -15,7 +15,7 @@
 | 字号、主题、视口高度与输入 | 新建界面或改变对应行为 | 200%缩放、已支持的浅/深/系统主题、reduced-motion；按影响追加横屏、键盘、安全区或 forced-colors |
 | 目标环境 | 新特性、最低支持变更或已知平台风险 | 按 `compat-testing.md` 验目标引擎/真机、字体与滚动条；未实测平台明确列出 |
 
-布局、交互与状态变化的关键态先自动化断言再查看截图；已有页面深查与 CI 门禁按需使用 `frontend-ux-qa`。动效正常模式与中间帧验证引用 `web-animation-guide/references/performance-a11y.md`，不以减弱模式静态截图证明正常过渡。
+布局、交互与状态变化的关键态先自动化断言再查看截图；已有页面深查与 CI 门禁按需使用 `frontend-qa`。动效正常模式与中间帧验证引用 `web-animation-guide/references/performance-a11y.md`，不以减弱模式静态截图证明正常过渡。
 
 ### 设计验收
 

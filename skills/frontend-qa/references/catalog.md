@@ -526,7 +526,7 @@ Minimal（全空最短）/Typical（真实）/Maximal（上限+中英+长 URL）
 
 ### 工具链
 
-静态 `eslint-plugin-jsx-a11y/vuejs-accessibility`；样式 `stylelint+declaration-strict-value`（D-02/G-09）；运行时 `axe-core/@axe-core/playwright/addon-a11y/pa11y-ci`；插件 axe DevTools/WAVE/Lighthouse；性能 Lighthouse CI + `web-vitals` RUM；视觉 Playwright 截图比对（免费自托管，Chromatic/Argos 备选）；真机自备 Win+Mac+iOS+低端 Android；对比度 WebAIM Checker/`culori` CI。国内：npm `registry.npmmirror.com`，`PLAYWRIGHT_DOWNLOAD_HOST` 指镜像；Win 注意 `core.autocrlf` 误判快照。
+静态 `eslint-plugin-jsx-a11y/vuejs-accessibility`；样式 `stylelint+declaration-strict-value`（D-02/G-09）；运行时 `axe-core/@axe-core/playwright/addon-a11y/pa11y-ci`；插件 axe DevTools/WAVE/Lighthouse；性能 Lighthouse CI + `web-vitals` RUM；视觉 Playwright 截图比对（免费自托管，Chromatic/Argos 备选）；真机自备 Win+Mac+iOS+低端 Android；对比度 WebAIM Checker/`culori` CI。国内包源和浏览器下载分别按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 配置；Win 注意 `core.autocrlf` 误判快照。
 
 ### Definition of Done（UI 清单入口）
 

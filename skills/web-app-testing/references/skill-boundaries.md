@@ -13,8 +13,8 @@
 | 例外字段、风险接受与正式批准事实 | [交付例外与责任](../../ai-verified-delivery/references/spec-driven-delivery.md#例外与责任) | 运行/安全例外沿用项目权限与同一字段，不把原失败改成通过 |
 | 验证入口契约、证据版本、零用例/跳过/重试判定 | [验证入口与模板](../../ai-verified-delivery/references/verify-and-templates.md) | 测试 CI 与专项 job 接入同一汇总政策 |
 | 截图触发、取景优先级、采集、实际查看与视觉证据 | [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md) | 设计、响应式、动效与 UI QA 提供判断内容，复用取景、证据与触发政策 |
-| UI 缺陷分类、诊断与专项验收方法 | [frontend-ux-qa/catalog](../../frontend-ux-qa/references/catalog.md) | 测试计划引用相关类别；不把完整 UI 扫描强加给每个后端任务 |
-| UI 完成清单模板 | [UI DoD](../../frontend-ux-qa/references/definition-of-done.md) | catalog 只链接模板；按适用范围纳入总体 DoD，不另判整个产品完成 |
+| UI 缺陷分类、诊断与专项验收方法 | [frontend-qa/catalog](../../frontend-qa/references/catalog.md) | 测试计划引用相关类别；不把完整 UI 扫描强加给每个后端任务 |
+| UI 完成清单模板 | [UI DoD](../../frontend-qa/references/definition-of-done.md) | catalog 只链接模板；按适用范围纳入总体 DoD，不另判整个产品完成 |
 | 界面设计与呈现规则 | [frontend-design](../../frontend-design/SKILL.md)及其领域路由 | 测试验证产品已确定的设计，不通过测试规范重选设计 |
 | 轻量工具形态、打包/安装和 CLI/桌面专有基线 | [lightweight-app-builder](../../lightweight-app-builder/SKILL.md)及其 quality-gates | 本地 Web 按产品模型借用测试方法；不把轻量形态限制推广到普通服务端应用 |
 | 仓库工作流、合并保护、依赖/密钥审计与构建供应链 | [repo-governance](../../repo-governance/SKILL.md)及其 CI 参考 | 请求仓库治理时使用；普通补测试不自动补社区文件或改分支政策 |
@@ -29,7 +29,7 @@
 | 测什么、补回归、测试难维护 | web-app-testing | 有交付定级/验收需求才读交付政策；有 UI 专项才读 QA |
 | 建立应用规范、架构/接口演进、运行与长期维护 | app-engineering | 工程约束交给测试验证；仓库配置和交付判断分别按需协作 |
 | 功能是否完整、能否交付、证据是否足够 | ai-verified-delivery | Web 测试设计/环境缺口交给测试 skill，UI 专项交给 QA |
-| 已有页面交互/布局/可访问性缺陷 | frontend-ux-qa | 跨到真实 API、存储或业务回归时借用测试方法 |
+| 已有页面交互/布局/可访问性缺陷 | frontend-qa | 跨到真实 API、存储或业务回归时借用测试方法 |
 | 新建或改版界面 | frontend-design | 设计完成后按风险验 UI；新增业务行为时规划对应测试 |
 | 模糊的轻量小工具需求 | lightweight-app-builder | 先确定形态；仅对适用 Web/GUI 引用专项，不让 CLI 套 UI 全流程 |
 | 建 CI、提交前治理 | repo-governance | 根据项目测试命令接入；有测试设计问题再读取测试方法 |

@@ -1,9 +1,9 @@
 ---
-name: frontend-ux-qa
-description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已有页面找错、页面空白或内容不显示、Agent 看截图做初步视觉理解、Playwright 用户流程验收、复现定位布局溢出挤压横向滚动、响应式断点、弹窗关闭/焦点回归、CLS/LCP/INP、无障碍 axe 对比度焦点、文字/图标与背景难辨、页面可读性、表单校验 label、深色模式、导航后退、微信 iOS 跨平台、欺骗模式、AGENTS.md UI 约束与 Definition of Done、CI 质量拦截时使用；新建/改版/美化先走 frontend-design。截图按变更风险触发：纯文案且无几何/状态影响可记录 N/A，布局/交互/状态变化必须先自动化再由 Agent 查看关键态截图。覆盖缺陷评审与生成约束两类任务，即使没点名本 skill 也要主动调用。
+name: frontend-qa
+description: 存量 Web 前端缺陷诊断与验收门禁。凡是评审已有页面找错、页面空白或内容不显示、Agent 看截图做初步视觉理解、Playwright 用户流程验收、复现定位布局溢出挤压横向滚动、响应式断点、弹窗关闭/焦点回归、CLS/LCP/INP、无障碍 axe 对比度焦点、文字/图标与背景难辨、页面可读性、表单校验 label、深色模式、导航后退、微信 iOS 跨平台、欺骗模式、AGENTS.md UI 约束与 Definition of Done、CI 质量拦截时使用；新建/改版/美化先走 frontend-design。截图按变更风险触发：纯文案且无几何/状态影响可记录 N/A，布局/交互/状态变化必须先自动化再由 Agent 查看关键态截图。覆盖缺陷评审与生成约束两类任务，即使没点名本 skill 也要主动调用。
 ---
 
-# Frontend UX QA（存量 UI 缺陷诊断与验收门禁）
+# Frontend  QA（存量前端缺陷诊断与验收门禁）
 
 你按资深前端质量工程师兼 Design QA 负责人行事。UI 分类与专项诊断以本 skill 的 `references/catalog.md`（合并版盘点，`L/C/S/V/A/F/N/I/D/P/G/H` 编号体系）为准，阈值争议以 catalog 开头“来源声明”和所引用领域正本为准；UI 完成清单只在 `references/definition-of-done.md` 维护。
 
@@ -17,7 +17,7 @@ description: 存量 Web 前端 UI 缺陷诊断与验收门禁。凡是评审已�
   布局→`L`；假数据极值→`C`；缺状态→`S`；跳动卡顿→`V`；对比度焦点语义→`A`；表单→`F`；URL后退→`N`；动效toast→`I`；间距色彩深色→`D`；Win/Mac/iOS/微信→`P`；约束agent→`G`；欺骗性模式→`H`。
 - 需要可执行检查时读 `scripts/` 下对应脚本（控制台粘贴或进 CI），不要背诵。
 - 启动浏览器、服务或重复截图验收前，读[测试资源预算与回收](../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)，按可用容量限制worker/实例并发，登记并验明异常收尾；不得叠加未回收的失败轮。
-- 截图前先解析真实浏览器二进制再启动：显式参数 → 环境覆盖 → PATH → 固定安装路径 → Playwright 缓存（版本最大者，完整版优先）；命中注入额外参数的包装器/垫片时绕过取真实目标；图形界面浏览器用等待式进程退出码断言，不单独依赖 shell 退出码变量。
+- 截图前先解析真实浏览器二进制再启动：显式参数 → 环境覆盖 → PATH → 固定安装路径 → Playwright 缓存（版本最大者，完整版优先）；命中注入额外参数的包装器/垫片时绕过取真实目标；图形界面浏览器用等待式进程退出码断言，不单独依赖 shell 退出码变量。无 Playwright 的 Win10 设备按 [截图工作流](references/screenshot-workflow.md) 选脚本与降级。
 - 需要 UI 完成清单时读 `references/definition-of-done.md`，按适用范围纳入项目 `AGENTS.md`/`DESIGN.md`；优先引用，需项目快照时标注来源与版本，不把 UI 清单当整个产品的完成标准。
 - 对比度/可读性读取 [共用规范](../frontend-design/references/contrast-readability.md)，按实际背景测量并补测自动未判项；例：图片上白字不能因axe无报错而放行。
 

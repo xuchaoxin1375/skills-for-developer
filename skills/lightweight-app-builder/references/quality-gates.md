@@ -117,4 +117,4 @@ flowchart LR
 - [ ] 构建产物有校验和,安装脚本支持 `--dry-run` 与 `--mirror`
 - [ ] 交付说明包含"被系统安全机制拦截时怎么办"
 
-> 含 Web/GUI 的变更按需读取 [frontend-ux-qa](../../frontend-ux-qa/SKILL.md) 的 UI 专项；CLI/脚本不套 UI 清单。Web 测试设计读取 [web-app-testing](../../web-app-testing/SKILL.md)，整体交付结论读取 [ai-verified-delivery](../../ai-verified-delivery/SKILL.md)，不将 UI 规范作为所有形态的新功能交付总标准。
+> 含 Web/GUI 的变更按需读取 [frontend-qa](../../frontend-qa/SKILL.md) 的 UI 专项；CLI/脚本不套 UI 清单。Web 测试设计读取 [web-app-testing](../../web-app-testing/SKILL.md)，整体交付结论读取 [ai-verified-delivery](../../ai-verified-delivery/SKILL.md)，不将 UI 规范作为所有形态的新功能交付总标准。

@@ -3,8 +3,9 @@
 .SYNOPSIS
   外部单页轻量截图：一发式 headless chrome，只拍首屏视口，不启常驻浏览器会话。
 .DESCRIPTION
-  适用：纯信息类首屏速看（取数、确认页面可达）。不适用：需滚动第二屏、注入冻结、
-  验收证据链——那些走脚本化浏览器会话（见调用方 skill）。
+  适用：纯信息类首屏速看（取数、确认页面可达）。需第二屏及以下时用同目录
+  shot_scroll.py（一次 Playwright 会话连拍）；注入冻结、验收证据链走调用方
+  skill 的脚本化浏览器会话。
   调用方按 network-access 规则定代理（有可用登记直接传 -Proxy，无则直连熔断），
   按 visual-acceptance 决定取景与是否免拍；本脚本只管一次拍好并自证。
 .PARAMETER Url

@@ -4,7 +4,7 @@ description: >
   前后端 Web 应用的测试规划、用例编写与长期维护。用于建立测试体系、判断该测什么和何时写测试，
   或在新功能、缺陷修复、重构、API/数据库变化中设计单元、组件、集成与端到端测试；
   也用于审查无效断言、过度 Mock、测试数据隔离、不稳定测试与 CI 分层。
-  纯静态文案/样式微调不默认新增测试；UI 缺陷诊断转 frontend-ux-qa，交付定级与证据门禁转 ai-verified-delivery。
+  纯静态文案/样式微调不默认新增测试；UI 缺陷诊断转 frontend-qa，交付定级与证据门禁转 ai-verified-delivery。
 ---
 
 ## Web 应用测试
@@ -17,7 +17,7 @@ description: >
 - **实施**：在已授权项目中补测试及必要环境，运行并报告结果；先复用现有工具与命令。
 - **评审**：检查断言是否验证承诺、环境能证明什么、用例是否稳定；不只数测试或看覆盖率。
 
-本 skill 管“测什么、怎么写、什么时候写、如何维护”。项目已有政策优先；需要交付定级时读 [唯一等级矩阵](../ai-verified-delivery/references/levels-and-gates.md)，需要汇总验收证据时读 [验证入口与模板](../ai-verified-delivery/references/verify-and-templates.md)，不在此重建等级、状态或完成条件。涉及 UI 缺陷或体验专项时按需读 [frontend-ux-qa](../frontend-ux-qa/SKILL.md)，纯后端测试不启动 UI 全流程。
+本 skill 管“测什么、怎么写、什么时候写、如何维护”。项目已有政策优先；需要交付定级时读 [唯一等级矩阵](../ai-verified-delivery/references/levels-and-gates.md)，需要汇总验收证据时读 [验证入口与模板](../ai-verified-delivery/references/verify-and-templates.md)，不在此重建等级、状态或完成条件。涉及 UI 缺陷或体验专项时按需读 [frontend-qa](../frontend-qa/SKILL.md)，纯后端测试不启动 UI 全流程。
 
 一个任务共用 AC、测试计划、项目入口和有效证据，不因多个 skill 命中而重复执行完整流程。协作引用只补当前缺少的部分，不递归返回父流程。需要审查职责或维护关联文件时读 [职责与维护边界](references/skill-boundaries.md)。
 

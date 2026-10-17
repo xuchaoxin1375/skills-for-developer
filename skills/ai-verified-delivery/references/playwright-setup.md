@@ -19,35 +19,13 @@ pnpm exec playwright install chromium
 
 ### 网络与可信来源
 
-优先官方源、已授权代理或受控制品库。浏览器制品和 npm 包是不同下载链路，修改 npm registry 不等于解决浏览器下载。公共镜像的路径、版本覆盖与可用性必须现场核验，不把某个地址永久写为推荐默认。
-
-Playwright 可用 `HTTPS_PROXY` 和 `PLAYWRIGHT_DOWNLOAD_HOST` 指定下载条件；后者必须是已确认兼容的制品来源。以下是语法示例，尖括号由实际授权配置替换：
-
-```powershell
-$env:HTTPS_PROXY = '<approved-proxy-url>'
-$env:PLAYWRIGHT_DOWNLOAD_HOST = '<approved-artifact-base-url>'
-```
-
-```bash
-export HTTPS_PROXY='<approved-proxy-url>'
-export PLAYWRIGHT_DOWNLOAD_HOST='<approved-artifact-base-url>'
-```
-
-这些变量仅在需要的进程/会话中使用，避免无意改变其他任务。企业 CA 按下载器支持方式配置；不通过关闭 TLS 验证解决下载失败。下载设超时，保留真实错误，记录来源与匹配的构建身份。
+下载选路、跨平台命令、镜像覆盖、超时与 CA 统一按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md)。国内浏览器大包优先已登记代理访问官方 CDN，包镜像另配；不默认同时设置代理与制品镜像。`--dry-run` 只证明下载计划，不能代替制品取回和启动验证。
 
 ### 已有浏览器与手动缓存
 
 已有系统浏览器可以作为有条件的替代：确认项目支持对应 channel，用最小用例验证，再明确其版本与证明范围。它不能默认替代产品承诺的其他浏览器或原视觉基线环境。`playwright install chrome` 本身会安装浏览器，不属于“免下载探测”。
 
-必须手动准备缓存时，从可信来源取得包版本匹配的制品，核对构建、目录布局、平台和解压完整性，再实际启动。若配置了 `PLAYWRIGHT_BROWSERS_PATH`，以其值为准；常见默认位置如下：
-
-| 系统 | 默认缓存位置 |
-|---|---|
-| Windows | `%LOCALAPPDATA%\ms-playwright\` |
-| macOS | `$HOME/Library/Caches/ms-playwright/` |
-| Linux | `$HOME/.cache/ms-playwright/` |
-
-不要假设 macOS 与 Linux 缓存相同。目录存在不证明匹配版本或系统依赖齐备，手动缓存仍须启动验证。
+必须手动准备缓存时，从可信来源取得包版本匹配的制品，核对构建、目录布局、平台和解压完整性，再实际启动。缓存位置、`PLAYWRIGHT_BROWSERS_PATH` 与 CI 复用按共用安装参考，不因目录存在判定可运行。
 
 ### 诊断与验收边界
 

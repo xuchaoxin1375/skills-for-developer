@@ -3,7 +3,7 @@ name: skill-authoring-sync
 description: >
   在 agent harness 中新建自定义 skill 并同步到真源仓库集中管理。
     包括skill真源提交操作,skill真源治理规则定义和修改;
-  当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、或复盘/同步/分发/校验已有 skill 时使用此 Skill。
+  当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、或复盘/同步/分发/校验/查变更已有 skill 时使用此 Skill。
 ---
 
 # Skill 新建与真源同步规范
@@ -75,6 +75,8 @@ skills-for-developer/
 直接改真源实体，改完即对本机所有 harness 生效，无需重新链接；
 跨机器用 `git push/pull` 同步。改后同步更新 `README.md` 检索表（如语义变化）。
 
+- 必须：用户提及 skill 变更/改动时，先定位真源再查改动：在真源内用 `git status --short`、`git log --oneline -N`、`git diff` 核对实体改动，不得以 harness 侧目录时间判定。例：查近期改动先跑状态与差异，再按名加载对应正文。
+
 ### 删除 skill
 
 1. 先运行链接脚本 `-Unlink` / `--unlink`（或手工删各 harness 下对应链接），再删仓库目录。
@@ -104,8 +106,9 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 1. Windows：`scripts\link-skills.ps1 -VerifyOnly` 全量通过；
    Linux：`./scripts/link-skills.sh --verify-only` 全量通过。
 2. 新 skill 在 harness 中可见/可加载（出现在可用 skill 列表即算通过；dsh 差异见 `references/dsh-skills.md`）。
-3. 抽查正文：描述的触发条件在对应请求下能命中加载。
+3. 抽查正文：描述的触发条件在对应请求下能命中加载，含 skill 变更/查变更触发。
 4. `git status` 确认无链接本体被误暂存。
+5. 查变更请求已在真源用 `git status`/`log`/`diff` 核对，未用 harness 时间判定。
 
 ## 红线
 

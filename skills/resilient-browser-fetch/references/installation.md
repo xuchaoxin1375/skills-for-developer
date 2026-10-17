@@ -144,7 +144,7 @@ Gemini 的默认发现位置是：
 
 ## 安装 Python 与浏览器依赖
 
-先选择实际运行脚本的环境。Conda 环境示例：
+先选择实际运行脚本的环境，并按 [平台与依赖](platforms.md) 准备包源和浏览器下载路线；国内浏览器安装前先设置下载代理，不能用后续抓取的 `--proxy` 替代。`scrapling install` 还会执行 Playwright 系统依赖步骤，影响因平台而异，执行前核对该版本行为与权限。Conda 环境示例：
 
 Windows PowerShell：
 
@@ -180,7 +180,7 @@ uv pip install --python <目标环境解释器> -r "$SKILL_DIR/requirements-cloa
 安装后验证三层：
 
 1. Agent 能发现 `SKILL.md`。
-2. 目标 Python 环境能导入 Scrapling，浏览器诊断通过。
-3. 实际调用脚本或模块成功返回结构化结果。
+2. 目标 Python 环境能导入 Scrapling、定位同环境 CLI，运行 `check_environment.py` 完成只读诊断；该脚本不证明 Scrapling 浏览器已启动。
+3. 实际调用脚本或模块启动所需引擎，取回受控页面并断言内容，再验证任务目标及运行时代理。
 
 更新源码时，链接安装会自动看到变化；复制安装需要重新复制 Skill 目录。更新依赖或浏览器版本后，重新运行环境诊断和最小 smoke test。不要把真实 profile 当作源码同步目录，也不要在多个浏览器进程之间共享同一个持久 profile。

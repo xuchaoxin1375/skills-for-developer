@@ -4,27 +4,19 @@
 
 先运行 `uv --version`。Python 环境可由 Conda、`venv` 或 `uv venv` 创建；如果 `uv` 可用，优先使用 `uv pip` 并通过 `--python` 明确该环境的解释器。只有 `uv` 不可用时才在激活的同一环境中回退到 `python -m pip`。不要在一次安装流程中交替使用两个安装器，也不要因为使用 `uv pip` 就另建环境。保留用户现有的 `uv.toml`、环境变量和 pip 配置，不要无条件覆盖国内源。
 
-国内网络下载失败且用户尚未配置镜像时，可在当前 shell 临时设置国内 PyPI 镜像与代理：
+国内安装前按 [依赖下载](../../network-access/references/dependency-downloads.md) 选择包源，按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 准备浏览器下载路线，再执行下方对应平台命令。包可用已核验的国内镜像；浏览器优先已登记代理访问官方源，镜像仅作已核验的回退，不等到长时间下载失败后才配置。
 
-```bash
-# uv 用户设置这一项
-export UV_DEFAULT_INDEX='https://pypi.tuna.tsinghua.edu.cn/simple'
-# pip 用户改为设置这一项
-export PIP_INDEX_URL='https://pypi.tuna.tsinghua.edu.cn/simple'
-export HTTPS_PROXY='http://127.0.0.1:<port>'
-```
+`UV_DEFAULT_INDEX` / `PIP_INDEX_URL` 只控制对应安装器的包源；浏览器下载的 `HTTPS_PROXY` 需在启动 `scrapling install` **之前**设置并由子进程继承。`SCRAPE_PROXY` / 抓取 `--proxy` 只控制页面访问，不解决安装下载。
 
-PowerShell 使用：
+## Scrapling 安装行为
 
-```powershell
-# uv 用户设置这一项
-$env:UV_DEFAULT_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
-# pip 用户改为设置这一项
-$env:PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
-$env:HTTPS_PROXY = "http://127.0.0.1:<port>"
-```
+已核对的 Scrapling 0.4.11 与 0.4.15 中，`scrapling install` 依次调用当前解释器的 `playwright install chromium`、`playwright install-deps chromium`，再更新 TLD 数据，并写入包目录下的安装标记。因此它不只是浏览器下载：Linux 上可能触及系统包与提权；Windows 的 Playwright CLI 可能调用 Media Feature Pack 安装脚本。执行前核对本地 `scrapling install --help`、`python -m playwright install-deps --dry-run chromium` 输出、系统权限及代理继承。其他版本检查本地实现，不从命令名推断行为。
 
-只设置实际使用的安装器对应变量。镜像用于 Python 包索引，`HTTPS_PROXY` 同时可帮助浏览器二进制下载；镜像不可用或包版本滞后时临时回到官方 PyPI。
+需要完整初始化且系统依赖步骤已确认适用于当前平台时，沿用该版本官方 `scrapling install` 入口。若系统依赖已由镜像/管理员提供、任务只需修复缺失浏览器，可在同一目标环境单独运行 `python -m playwright install chromium`，并明确系统依赖与其他初始化未由这条命令覆盖；不要给包安装或整个抓取过程一律加 `sudo`。
+
+出现 `The dependencies are already installed` 只表示命中安装标记，不证明当前缓存、Playwright 版本或系统库可用。升级包、换运行用户或缓存路径后先实际启动；缺浏览器时定向补齐，确需重跑完整初始化才核对 `--force`，不默认强制重装或手工伪造标记。
+
+`check_environment.py` 检查解释器、包导入、CLI、代理端口和可选 CloakBrowser 文件信息，不启动 Scrapling 浏览器；它通过后仍须用实际 fetcher 取回一个受控页面并断言内容。
 
 ## Conda 环境配合 uv
 
@@ -80,7 +72,7 @@ uv pip install --python .venv/bin/python -r <skill-dir>/requirements-cloak.txt
 .venv/bin/python <skill-dir>/scripts/check_environment.py --require-cloak
 ```
 
-`scrapling install` 安装 Scrapling fetcher 所需浏览器；CloakBrowser 使用自己的已签名 Chromium，`python -m cloakbrowser install` 预下载它，运行时不应临时下载。CloakBrowser 不需要 `playwright install chromium`，但精简 Linux 镜像需要 `playwright install-deps chromium` 提供系统库。
+`scrapling install` 的浏览器与系统依赖步骤见上方说明。CloakBrowser 使用自己的 Chromium，按该版本发行与校验机制验证，使用 `python -m cloakbrowser install` 预下载，不在首次业务抓取时才发现缺失。它的二进制下载与 Playwright 独立；精简 Linux 镜像仍可能需要 `playwright install-deps chromium` 提供系统库，这一步不下载 Playwright 浏览器。
 
 无桌面服务器保持默认无头。需要有头排障时配置真实 X11/Wayland，或使用 Xvfb：
 
@@ -134,13 +126,7 @@ uv pip install --python .venv/bin/python -r <skill-dir>/requirements-dev.txt
 
 Windows 将解释器路径改为 `.\.venv\Scripts\python.exe`。没有 `uv` 时激活虚拟环境并使用 `python -m pip install -r ...`。
 
-国内网络下载依赖时，浏览器安装命令也应继承 `HTTPS_PROXY`：
-
-```bash
-export HTTPS_PROXY='http://127.0.0.1:<port>'
-uv pip install --python .venv/bin/python -r <skill-dir>/requirements-cloak.txt
-.venv/bin/python -m cloakbrowser install
-```
+代理下载按共用安装参考配置；CloakBrowser 的下载器另查当前版本支持项并验证实际下载，不能假定 `PLAYWRIGHT_DOWNLOAD_HOST` 对它生效。
 
 代理出口国家应与语言、时区和 WebRTC/DNS 行为一致。`cloakbrowser[geoip]` 会增加 GeoIP 依赖和首次数据库下载，只在确有需要时安装：
 

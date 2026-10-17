@@ -35,7 +35,7 @@ description: >
 | 视口/容器阈值、流体与媒体实现、操作收纳、滚动归属、浮层响应式形态、专项验证 | 本 skill 的对应参考；基线见 `responsive-core.md`，场景见 `page-patterns.md`，验收见 `acceptance.md` |
 | 反馈目的、默认视觉稳定性与工具界面动效预算 | [动效设计规则](../frontend-design/references/motion.md) |
 | 动效技术、退出布局保持、打断清理、性能与减弱处理 | `web-animation-guide` 的对应参考 |
-| 存量缺陷编号深查与 CI 门禁、视觉方向发散 | 分别由 `frontend-ux-qa`、`distinctive-design-director` 维护 |
+| 存量缺陷编号深查与 CI 门禁、视觉方向发散 | 分别由 `frontend-qa`、`distinctive-design-director` 维护 |
 
 与 `frontend-design` 同用时，在线框阶段识别空间约束，实施时按 A/B 读取专项，验收归入一份报告；不重复跑两套完整流程。独立适配任务按本流程执行，不要求重做视觉设计；其他 skill 不可用时，保留本文件的原生语义、键盘与可访问名底线，动效使用项目令牌和可瞬时切换的简单反馈。
 
@@ -48,7 +48,7 @@ description: >
 - B 通用响应式：视口高度被遮（100vh/100dvh）、软键盘盖住底部操作栏、断点怎么定、字号间距跳变、网格换行、
 图片模糊/流量大/CLS 跳动、深色/reduced-motion、强制颜色、RTL/竖排、vw 无限放大、1px 细线、
 侧栏/面板三态（展开↔图标轨↔抽屉）。
-不用本 skill：纯视觉风格发散（转 `distinctive-design-director`）、存量页按编号根因深查（转 `frontend-ux-qa`）。
+不用本 skill：纯视觉风格发散（转 `distinctive-design-director`）、存量页按编号根因深查（转 `frontend-qa`）。
 
 ### 流程（生成模式按 0–5，验收模式只走 5）
 

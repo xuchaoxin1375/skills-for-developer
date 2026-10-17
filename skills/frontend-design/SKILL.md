@@ -1,11 +1,11 @@
 ---
 name: frontend-design
-description: Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、可用性铁律。凡是新建/改版/美化网页、组件、表单、仪表盘、落地页，或提到界面丑、布局乱、适配手机、加载动画、文字/图标难辨、对比度与页面可读性要求时使用，覆盖生成与交付验收两种模式；存量页面缺陷深查与CI门禁转frontend-ux-qa。
+description: Web/桌面小工具界面设计：布局栅格、渐进式披露、响应式、克制动效、可用性铁律。凡是新建/改版/美化网页、组件、表单、仪表盘、落地页，或提到界面丑、布局乱、适配手机、加载动画、文字/图标难辨、对比度与页面可读性要求时使用，覆盖生成与交付验收两种模式；存量页面缺陷深查与CI门禁转frontend-qa。
 ---
 
 ## 前端界面设计
 
-两种模式：**生成**（按步骤1–6）与**交付验收**（只走验收清单）。另有可选**协助式**模式（多方案出稿 + 用户参与选择）与**重设计**模式（改版默认推倒重来 + 保留举证，见文末）。标准依据：`prompts/前端设计合并版.md`。分工：存量页面缺陷深查（按编号根因/复现/验收）与CI门禁转 `frontend-ux-qa`，本 skill 不重复其编号体系；后台控制台/管理面板骨架（外壳侧边栏/数据表格/表单设置向导）转 `admin-console-design`，本 skill 只留通用主张/线框/令牌。
+两种模式：**生成**（按步骤1–6）与**交付验收**（只走验收清单）。另有可选**协助式**模式（多方案出稿 + 用户参与选择）与**重设计**模式（改版默认推倒重来 + 保留举证，见文末）。标准依据：`prompts/前端设计合并版.md`。分工：存量页面缺陷深查（按编号根因/复现/验收）与CI门禁转 `frontend-qa`，本 skill 不重复其编号体系；后台控制台/管理面板骨架（外壳侧边栏/数据表格/表单设置向导）转 `admin-console-design`，本 skill 只留通用主张/线框/令牌。
 
 本 skill 维护任务、信息层级、页面结构、视觉令牌、通用交互与无障碍基线，以及整体交付。空间变化时的重排、操作收纳、视口/容器实现与专项验证由 `adaptive-responsive-guide` 维护，入口见 `references/responsive.md`。线框阶段识别约束，实施时只读相关专项，验收合并为一份报告，不重复执行两套完整流程。
 
@@ -54,7 +54,7 @@ description: Web/桌面小工具界面设计：布局栅格、渐进式披露、
 
 ### 步骤6——审查与交付
 
-先跑 `scripts/scan.py` 扫低级违例，再按 `assets/design-review-checklist.md` 与 `references/checklist.md` 逐项打勾（含 `taste.md` 主张项），顺序：任务→主张→恢复→键盘窄屏→视觉→装饰。需按编号深查缺陷根因/复现/验收时，转 `frontend-ux-qa` 的 catalog（`L/C/S/V/A/F/N/I/D/P/G/H`）；动效缺陷深查方法见 `web-animation-guide` 的验证清单。结论分三级：阻断（MUST/NEVER违反）/建议（SHOULD）/细节，每条注明文件与规则。交付物：线框、令牌差异、实际视口/容器验证记录与截图、清单打勾、已知问题；响应式专项合并到同一报告，未执行项明确记录。
+先跑 `scripts/scan.py` 扫低级违例，再按 `assets/design-review-checklist.md` 与 `references/checklist.md` 逐项打勾（含 `taste.md` 主张项），顺序：任务→主张→恢复→键盘窄屏→视觉→装饰。需按编号深查缺陷根因/复现/验收时，转 `frontend-qa` 的 catalog（`L/C/S/V/A/F/N/I/D/P/G/H`）；动效缺陷深查方法见 `web-animation-guide` 的验证清单。结论分三级：阻断（MUST/NEVER违反）/建议（SHOULD）/细节，每条注明文件与规则。交付物：线框、令牌差异、实际视口/容器验证记录与截图、清单打勾、已知问题；响应式专项合并到同一报告，未执行项明确记录。
 可增长列表按滚动归属验：页面列表可自然增长，受限弹窗/面板条目翻倍也不突破可见高度；诊断结论验条件标注。
 浮层类（fixed/overlay/portal）页面级断言查不到，须单列断言。
 换元素类型必查元素前缀选择器；dialog 保留原生关闭隐藏机制，退出所需布局不能只依赖 `[open]`，写法见 `web-animation-guide/references/interactions.md`。
@@ -63,7 +63,7 @@ description: Web/桌面小工具界面设计：布局栅格、渐进式披露、
 
 ### NEVER（两种模式通用）
 
-无替代的`outline:none`、`div onClick`按钮、仅hover功能、`window.alert`、素按钮/素开关（按钮与开关必须带图标，纯文字按钮不得放行；动态生成的按钮同样适用）、禁用提交代替校验（表单场景；状态门见 `references/interaction.md` 二选一）、禁粘贴/禁缩放、未经主张检验的纯装饰渐变/满屏毛玻璃/标题emoji/卡片套卡片（有主张支撑且通过减法检验的见 `references/taste.md`，可用）、任何欺骗模式。详见 `references/anti-patterns.md`；需按编号深查时转 `frontend-ux-qa`。
+无替代的`outline:none`、`div onClick`按钮、仅hover功能、`window.alert`、素按钮/素开关（按钮与开关必须带图标，纯文字按钮不得放行；动态生成的按钮同样适用）、禁用提交代替校验（表单场景；状态门见 `references/interaction.md` 二选一）、禁粘贴/禁缩放、未经主张检验的纯装饰渐变/满屏毛玻璃/标题emoji/卡片套卡片（有主张支撑且通过减法检验的见 `references/taste.md`，可用）、任何欺骗模式。详见 `references/anti-patterns.md`；需按编号深查时转 `frontend-qa`。
 
 ### 协助式模式（可选）
 

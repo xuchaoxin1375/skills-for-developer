@@ -1,10 +1,10 @@
 ---
 name: htmlmini
 description: >
-  Use when the user wants to summarize, analyze, review, or extract information from HTML files or web pages — local design mockups, dashboards, panels, page source code, or URLs.
+  Use when the user wants to summarize, analyze, review, view, or extract information from HTML files or web pages — local design mockups, dashboards, panels, page source code, or URLs. Always consult this skill first for any URL/page + view/extract/scores/tables request, even if phrased casually without naming HTML (e.g. "看一下...分数/表格/榜单"), and before using generic fetch or hand-written regex on raw HTML.
   Forces core-content extraction (strips CSS/JS/boilerplate, ~75-99% token savings) before any summarizing.
   Engine chain is automatic: Defuddle article -> optional Trafilatura -> semantic -> UI-component inventory for dashboards.
-  Trigger keywords: html, 网页, 页面, 设计稿, 面板, 仪表盘, 总结, 分析, 审查, summarize, review, parse, 渲染后.
+  Trigger keywords: html, URL, 网页, 页面, 设计稿, 面板, 仪表盘, 总结, 分析, 审查, 查看, 看一下, 提取, 取数, 分数, 评分, 表格, 榜单, 排名, summarize, review, parse, view, extract, 渲染后.
 ---
 
 # htmlmini — 网页核心骨架提取
@@ -12,6 +12,7 @@ description: >
 ## 何时触发（必须）
 
 用户要求**总结 / 分析 / 审查 / 理解**任何 HTML 文件或网页（本地设计稿、面板、页面源码、URL）时。
+URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数据、分数、表格、榜单时，先走提取再回答，不得直接手抓原文正则取数。例：给 URL 问其中表格分数，先提取核对覆盖度再取值。
 **禁止直接 Read 原始 HTML**——CSS/JS 常占 90%+ 体积，纯浪费 token。
 
 ## 调用方式（按优先级）
@@ -60,6 +61,7 @@ Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` →
 
 ## 自检
 
+- URL 或页面取数是否先走提取再回答，未因口语未命中而手抓原文？
 - CLI 缺失时是否用 `node` 跑本 skill 目录的 `cli.js`，而非找全局安装？
 - URL 抓取优先用 `--render` / `render:true` 一条命令（静态优先、403/5xx 自动回退渲染）；手工排查才走双路对照落盘。挑战特征出现才上浏览器，而非 curl 5xx 直接判死？
 - 是否按需用 `proxy` 参数或环境代理走指定路线，而非默认直连硬闯？
@@ -67,3 +69,4 @@ Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` →
 ## 输出后
 
 直接基于 htmlmini 的输出总结/回答；**不要回读原文验证**。若输出明显为空或标题缺失，可加 `--ui` 或 `--json` 重试一次（`json` 的 `used` 会告诉你命中了哪级引擎）。
+图表类数值在提取输出中缺失时如实说明缺失，不回读原文手写正则抠内嵌脚本数据补数；需动态值时按“动态页流水线”重提。
