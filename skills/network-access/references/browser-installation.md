@@ -2,6 +2,8 @@
 
 国内安装浏览器、`playwright install` / `scrapling install` 下载失败时读取。先确认实际执行位置、目标解释器或项目包管理器，再按本文件选路；包索引的设置见 [依赖下载](dependency-downloads.md)，Scrapling 的环境与安装行为见 [平台与依赖](../../resilient-browser-fetch/references/platforms.md)。
 
+普通 Chrome/Edge 可以直接通过开发者工具截图，无需 Playwright；自动化可以由 Playwright 控制这些已安装的浏览器。**Playwright 包与浏览器制品分别安装**：使用已安装 Chrome/Edge 的 channel 可省去浏览器下载，仍需目标环境中的 Playwright 包。人工截图、自动化、测试运行器及资源托管的选择见 [普通浏览器与 Playwright 的区别](../../frontend-qa/references/screenshot-workflow.md#普通浏览器与-playwright-的区别)。
+
 ### 分清四个阶段
 
 | 阶段 | 配置与检查 | 常见误判 |

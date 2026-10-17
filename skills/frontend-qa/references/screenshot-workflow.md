@@ -1,6 +1,45 @@
 ## 受托管的截图工作流
 
-首屏和滚动多屏统一用 `scripts/shot_scroll.py`，默认只拍首屏。`shot-quick.ps1` 是同一入口的 PowerShell 兼容包装，不再直接创建 Chrome 进程。截图触发、取景和实际查看按 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md)，资源政策按 [测试资源预算与回收](../../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)。
+Agent 独立采集首屏和滚动多屏时统一用 `scripts/shot_scroll.py`，默认只拍首屏。`shot-quick.ps1` 是同一入口的 PowerShell 兼容包装，不再直接创建 Chrome 进程。截图触发、取景和实际查看按 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md)，资源政策按 [测试资源预算与回收](../../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)。
+
+### 普通浏览器与 Playwright 的区别
+
+**普通 Chrome/Edge 本身就能截图、打印 PDF、滚动、点击和填写表单。** 人可以直接操作，也可以通过浏览器的自动化接口控制。Playwright 是操作浏览器的 Python/Node 等语言库；它负责把这些能力组织成可重复的脚本，截图仍由浏览器渲染生成。
+
+| 比较项 | 直接使用普通浏览器 | 通过 Playwright 操作浏览器 |
+|---|---|---|
+| 截图 | 开发者工具可拍视口、区域、元素和整页；不要求安装 Playwright | 可编程选择视口、元素、区域和整页，便于批量重复 |
+| 交互与就绪 | 人判断何时操作和截图；无头命令本身不表达业务流程 | 用定位器操作，支持自动等待；仍需明确业务就绪条件和结果断言 |
+| 环境与隔离 | 日常窗口通常带有个人登录、扩展和设置 | 可固定视口、配置和独立 browser context（浏览器上下文），减少会话干扰 |
+| 回归与证据 | 手动截图适合观察和沟通；单张图片不证明流程正确 | 配合测试 runner（运行器）执行断言，按配置收集截图、trace（执行轨迹）和失败信息 |
+| 资源回收 | 人关闭窗口；命令启动的后台进程需另管 | 正常路径可显式关闭；调用端被强杀时仍需外层进程托管 |
+
+**浏览器、自动化库、测试运行器和资源托管各有职责。** 浏览器负责页面渲染与执行，Playwright 库负责控制，测试运行器负责用例编排、断言与报告，guardian 或 CI/容器负责相应范围的期限和回收。Python 使用 pytest 等运行器，Node 项目可用 Playwright Test；安装 Playwright 包不会自动获得完整测试体系或异常退出后的进程回收保障。
+
+有头/无头（headful/headless）只表示是否显示浏览器界面，与是否使用 Playwright 是两个选择。普通 Chrome 支持无头运行，Playwright 也可以显示窗口；无头运行仍会占用 CPU、内存并创建进程。具体能力见 [Chrome 无头模式](https://developer.chrome.com/docs/chromium/headless)与 [Playwright 截图接口](https://playwright.dev/python/docs/screenshots)。
+
+### 如何选择
+
+- **临时看图或人工复现**：直接使用已安装浏览器的开发者工具，无需为截图安装 Playwright。手动证据可用于诊断；验收要求自动断言时，另补对应检查。
+- **Agent 首屏或滚动多屏采集**：使用下文受托管入口，统一输出、总期限和本轮进程回收。裸浏览器无头截图命令虽然能出图，但若没有外层托管，不能作为本入口的自动回退。
+- **登录、交互、多视口或持续回归**：沿用项目的 Playwright 等自动化与测试运行器，按业务状态等待和断言；固定浏览器、OS、字体等视觉基线。
+- **已有浏览器工具或远程托管服务**：先复用其实际可用能力，确认会话所有者、总期限、并发限制及释放方式。服务端托管能减少本地进程负担，仍需核对断线后的会话回收；“远程”本身不证明资源已释放。
+
+Chrome 手动截图的最短路径如下；Edge 可在对应开发者工具中查找截图命令，菜单随版本和语言变化：
+
+1. 打开目标页面和开发者工具，让开发者工具获得焦点。
+2. Windows/Linux 按 `Ctrl+Shift+P`，macOS 按 `Command+Shift+P`，打开[命令菜单](https://developer.chrome.com/docs/devtools/command-menu/)，输入 `screenshot`。
+3. 选择所需截图命令；区域截图使用 **Capture area screenshot**，再拖动选择范围。整页、元素及设备模拟取景见 [Chrome 开发者工具截图说明](https://developer.chrome.com/blog/devtools-tips-33)。
+
+整页截图只覆盖当前渲染内容，不保证触发全部懒加载，也不等于滚动多屏；虚拟列表和页面内部滚动容器需按目标状态另取景。
+
+### 复用已安装浏览器与连接已有会话
+
+**免下载浏览器不等于免装自动化库。** 下文 `--channel msedge` / `--channel chrome` 让 Playwright 启动本机已安装的 Edge/Chrome；目标 Python 环境仍需 Playwright 包，但不必另下载默认 Chromium。它启动独立自动化实例，不会自动接管用户已开的窗口或继承个人登录；系统浏览器自动更新后也需复核视觉基线。Firefox/WebKit 依赖 Playwright 对应制品，不能照搬这两个 channel 替换成任意本机 Firefox/Safari。兼容性和企业策略限制见 [受支持浏览器](https://playwright.dev/python/docs/browsers)。
+
+连接现有浏览器属于另一种所有权模式。Playwright 的 `connect_over_cdp()` 使用 Chrome DevTools Protocol（CDP，Chrome 开发者工具协议）连接已暴露端点的 Chromium 浏览器；它仅支持 Chromium 系浏览器，部分高级功能的兼容性低于原生 Playwright 协议连接，见 [CDP 连接说明](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp)。原始 CDP 也能实现交互和截图，但等待、错误恢复、证据和资源管理需要调用方组织。
+
+仅在任务明确需要且端点受控时复用现有会话，确认页面和浏览器由谁关闭；不要接管日常个人 profile 或按浏览器名称批量结束进程。本截图入口只管理自己启动的进程树，**不提供连接现有 CDP 会话的选项**，其回收保证不覆盖外部浏览器。
 
 ### 使用
 
@@ -23,7 +62,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 
 代理按 `--proxy` → `SCRAPE_PROXY` →（指定 `--discover-proxy` 时）机外登记解析；没有代理设置且未要求发现时直连。只验证登记端点监听，不据此宣称出口可用。日志不打印代理凭据和页面查询参数。`--channel chrome/msedge` 与 `--executable-path` 互斥，后者必须指向真实浏览器文件，不传包装脚本或垫片。
 
-国内安装按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 区分包源和制品源。本机有 Edge/Chrome 时可只补目标环境的 Playwright 包；拒绝安装且没有可用 runner 时记录未执行，不回退到无期限的裸浏览器命令。
+国内安装按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 区分包源和制品源。本机有 Edge/Chrome 时可只补目标环境的 Playwright 包；不允许补包且没有可用自动化工具时，记录自动化未执行。人工仍可通过开发者工具截图，是否满足验收取决于任务要求；Agent 不回退到无期限的裸浏览器命令。
 
 ### 生命周期与托管边界
 
