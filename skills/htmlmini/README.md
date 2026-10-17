@@ -4,6 +4,7 @@
 
 - 引擎链（`auto` 默认）：**非 HTML 透传** → **Defuddle** 正文提取 → **Trafilatura**（可选，见下）→ **semantic** 纯 JS 语义回退 → **UI 组件清单**（面板/仪表盘/设计稿）。`text/plain` 直接返回的 markdown（如某些 gitee 链接）、纯文本、JSON 不硬抽，原样返回（`used=passthrough`）。
 - 双形态交付：**CLI**（任意 harness/终端可用）+ **MCP server**（opencode / Claude / Cursor 等当工具调用），共用同一核心，行为一致。
+- 需要"结构"而不是"摘要"时用 `--mode html`：保守清洗后的 HTML（去脚本/样式/表头属性，保留完整 DOM 与文本顺序），比 markdown 费 token，但看表格、嵌套层级与表单初始态时不必回读原始 HTML。
 
 ## 为什么是这个选型（结论）
 
@@ -46,8 +47,14 @@ htmlmini <文件|URL|-stdin> [选项]
   -u, --ui         强制 UI 组件清单
   -t, --text       纯文本
   -T, --title      仅标题
-  --mode <name>    上述模式的显式写法（--mode=json 与 -j 等价）
-  --extractor <n>  auto（默认）| defuddle | trafilatura | semantic | ui
+  --mode <name>    上述模式的显式写法（--mode=json 与 -j 等价）；
+                   `html` = 保守清洗后的 HTML：保留完整 DOM 与文本顺序，
+                   剥脚本/样式/模板/图标与注释，属性按 --attrs 处理
+  --attrs <策略>   html 模式的属性策略（默认 semantic）：
+                   semantic 保语义属性（href/src/alt/colspan/rowspan 与表格/表单状态）
+                   | none 清空全部属性（最省，丢链接目标与合并单元格）
+                   | all 保留全部属性，只去脚本样式
+  --extractor <n>  auto（默认）| defuddle | trafilatura | semantic | ui | sanitize
                    强制指定返回该引擎原始结果（不静默切换），便于排查；
                    auto 失败不抛错，只在强制 trafilatura 缺模块时提示安装。
   --proxy <url>      本次抓取的代理覆盖：http(s) URL，或 "direct" 强制直连；
@@ -118,8 +125,9 @@ htmlmini app.html --json
 | `htmlmini_extract_url(url, mode?, extractor?, proxy?, render?, render_timeout_ms?)` | 抓取并提取远程 URL（静态抓取：跟随环境代理，403/5xx 补一次浏览器头；`render` 为 true 时静态 403/5xx 自动回退浏览器渲染；动态页也可走上面流水线） |
 | `htmlmini_extract_html(html_content, mode?, extractor?)` | 就地清洗一段已抓取的 HTML 字符串 |
 
-`mode`：`markdown`(默认) | `skeleton` | `text` | `json` | `title` | `ui`；
-`extractor`：`auto`(默认) | `defuddle` | `trafilatura` | `semantic` | `ui` | `passthrough`。
+`mode`：`markdown`(默认) | `skeleton` | `text` | `json` | `title` | `ui` | `html`；
+`extractor`：`auto`(默认) | `defuddle` | `trafilatura` | `semantic` | `ui` | `sanitize` | `passthrough`；
+`attrs`（仅 `html` 模式）：`semantic`(默认) | `none` | `all`。
 
 opencode（`opencode.json`，路径按本机仓库位置改）：
 
@@ -165,6 +173,7 @@ claude mcp add htmlmini -- node <仓库>/skills/htmlmini/src/mcp.js
   ─────────────▶  │  3. Trafilatura（可选，有则用）    │──▶ used=trafilatura
                   │  4. semantic 语义回退             │──▶ used=semantic
                   │  5. UI 可访问语义清单             │──▶ used=ui
+                  │  · 保守清洗（--mode html）        │──▶ used=sanitize
                   └──────────────┬──────────────────┘
           src/cli.js（CLI）       │     src/mcp.js（stdio MCP server）
          + completions/          │     正式名 htmlmini_* + 别名 htmmini_*
