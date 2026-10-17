@@ -21,6 +21,7 @@ URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数�
    - 旧拼写 `htmmini_*` 是兼容别名，行为相同；新配置一律用 `htmlmini_*`。
 2. CLI：`htmlmini <文件|URL|stdin> [--mode <模式>] [--extractor <引擎>]`（详见本目录 `README.md`；支持 `--completion bash|powershell`）。
    - CLI 不在 PATH 时用 `node <本 skill 目录>/src/cli.js <同样参数>`，无需全局安装。例：`htmlmini` 命令报无法识别，直接 node 跑本 skill 目录里的 cli.js。
+   - 报 `ERR_MODULE_NOT_FOUND`（如缺 `linkedom`）是依赖未装，不是选型问题：本目录有 `pnpm-lock.yaml`，`package.json` 也声明了 `packageManager`，按锁文件装一次即可，缺 pnpm 时**不必先全局安装**——`corepack pnpm install --frozen-lockfile` 随 Node 分发、按 `packageManager` 取版本（详见 `README.md`「安装」）。装完重跑，不改走其他工具，也不换包管理器。
 
 ## 模式选择
 
@@ -63,6 +64,7 @@ Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` →
 
 - URL 或页面取数是否先走提取再回答，未因口语未命中而手抓原文？
 - CLI 缺失时是否用 `node` 跑本 skill 目录的 `cli.js`，而非找全局安装？
+- CLI 报 `ERR_MODULE_NOT_FOUND` 时是否先按 lockfile 装依赖再重跑，而非改换工具或手写正则抠原文？
 - URL 抓取优先用 `--render` / `render:true` 一条命令（静态优先、403/5xx 自动回退渲染）；手工排查才走双路对照落盘。挑战特征出现才上浏览器，而非 curl 5xx 直接判死？
 - 是否按需用 `proxy` 参数或环境代理走指定路线，而非默认直连硬闯？
 

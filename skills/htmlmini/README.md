@@ -23,9 +23,13 @@ UI/面板页是所有静态提取器的共同短板：没有"文章正文"可抽
 
 ```bash
 cd skills/htmlmini
-pnpm install
+pnpm install --frozen-lockfile
 # 无需全局安装：用 pnpm exec htmlmini 或 node src/cli.js 直接跑
 ```
+
+没装 pnpm 时不必先全局安装：Node 自带 Corepack，在项目目录执行 `corepack pnpm install --frozen-lockfile` 会按 `package.json` 的 `packageManager` 取对应 pnpm 版本（首次会下载 pnpm 本体，其来源独立于 npm registry）。需要 `pnpm` 命令常驻时再用 `corepack enable`（写 Node 安装目录，Windows 下可能需要管理员）或 `npm i -g pnpm`——装全局工具、改 PATH 属机器变更，先向用户说明命令与影响再执行。
+
+确实拿不到 pnpm 时，`npm install --no-package-lock --omit=dev` 不读 `pnpm-lock.yaml`，依赖版本可能与锁定不一致，只能作临时通路。国内镜像与 Corepack 下载源见 `network-access` 的 [依赖下载](../network-access/references/dependency-downloads.md)。
 
 可选增强：`pip install trafilatura`（`auto` 链自动检测，有则用，无则跳过，不报错）。
 
