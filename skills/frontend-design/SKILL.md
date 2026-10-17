@@ -56,7 +56,7 @@ description: Web/桌面小工具界面设计：布局栅格、渐进式披露、
 
 先跑 `scripts/scan.py` 扫低级违例，再按 `assets/design-review-checklist.md` 与 `references/checklist.md` 逐项打勾（含 `taste.md` 主张项），顺序：任务→主张→恢复→键盘窄屏→视觉→装饰。需按编号深查缺陷根因/复现/验收时，转 `frontend-qa` 的 catalog（`L/C/S/V/A/F/N/I/D/P/G/H`）；动效缺陷深查方法见 `web-animation-guide` 的验证清单。结论分三级：阻断（MUST/NEVER违反）/建议（SHOULD）/细节，每条注明文件与规则。交付物：线框、令牌差异、实际视口/容器验证记录与截图、清单打勾、已知问题；响应式专项合并到同一报告，未执行项明确记录。
 可增长列表按滚动归属验：页面列表可自然增长，受限弹窗/面板条目翻倍也不突破可见高度；诊断结论验条件标注。
-独立首屏或滚动视口采集复用 [托管截图入口](../frontend-qa/references/screenshot-workflow.md)。本 skill 的 `scripts/screenshot.mjs` 是项目内多宽度/整页采集模板，须置于已有总期限与进程回收的 runner 中使用；`finally` 不等于启动者异常退出也能收尾。
+独立首屏或滚动视口采集复用 [托管截图入口](../browser-automation/references/screenshot-workflow.md)。本 skill 的 `scripts/screenshot.mjs` 是项目内多宽度/整页采集模板，须置于已有总期限与进程回收的 runner 中使用；`finally` 不等于启动者异常退出也能收尾。
 浮层类（fixed/overlay/portal）页面级断言查不到，须单列断言。
 换元素类型必查元素前缀选择器；dialog 保留原生关闭隐藏机制，退出所需布局不能只依赖 `[open]`，写法见 `web-animation-guide/references/interactions.md`。
 截图触发、取景、采集与实际查看统一按 [视觉验收协议](../ai-verified-delivery/references/visual-acceptance.md)，局部验收优先特写，整体评审按问题选择全景；浮层与滚动关系保留视口上下文。大改/新 UI 覆盖相关交互态（开/关/空/满/错），由 Agent 实际查看；必要的人类设计判断另行记录。DOM 断言不代替视觉验收。

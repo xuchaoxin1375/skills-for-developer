@@ -1,6 +1,6 @@
 """Lifecycle integration tests; only browser tests require installed Playwright.
 
-Run: python -X utf8 -m unittest discover -s skills/frontend-qa/tests -v
+Run: python -X utf8 -m unittest discover -s skills/browser-automation/tests -v
 All network traffic stays on the local HTTP fixture. No public sites are used.
 """
 
@@ -23,6 +23,7 @@ import unittest
 from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+LEGACY_SCRIPTS = SCRIPTS.parents[1] / "frontend-qa/scripts"
 sys.path.insert(0, str(SCRIPTS))
 import managed_browser as manager  # noqa: E402
 
@@ -242,11 +243,19 @@ class BrowserTests(unittest.TestCase):
         cls.server.server_close()
         cls.temporary.cleanup()
 
-    def cli(self, *arguments: str) -> subprocess.CompletedProcess:
+    def cli(
+        self, *arguments: str, script: Path | None = None
+    ) -> subprocess.CompletedProcess:
         env = os.environ.copy()
         env.pop("SCRAPE_PROXY", None)
         return subprocess.run(
-            [sys.executable, "-X", "utf8", str(SCRIPTS / "shot_scroll.py"), *arguments],
+            [
+                sys.executable,
+                "-X",
+                "utf8",
+                str(script or SCRIPTS / "shot_scroll.py"),
+                *arguments,
+            ],
             capture_output=True,
             encoding="utf-8",
             env=env,
@@ -286,6 +295,52 @@ class BrowserTests(unittest.TestCase):
         self.assertIn("BROWSER version=", result.stderr)
         self.assertIn("CLEANUP verified", result.stderr)
         self.assertFalse(list(manager.STATE_ROOT.glob("run-*")))
+
+    def test_legacy_python_cli_delegates_capture_and_inventory(self) -> None:
+        inventory = self.cli(
+            "--list-browsers", script=LEGACY_SCRIPTS / "shot_scroll.py"
+        )
+        self.assertEqual(inventory.returncode, 0, inventory.stderr)
+        self.assertIn("candidates", json.loads(inventory.stdout))
+        output = self.root / "旧入口 Python.png"
+        result = self.cli(
+            "--url",
+            self.url,
+            "--out",
+            str(output),
+            script=LEGACY_SCRIPTS / "shot_scroll.py",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+        self.assertEqual(int.from_bytes(output.read_bytes()[16:20], "big"), 1440)
+        self.assertIn("CLEANUP verified", result.stderr)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 required")
+    def test_legacy_powershell_delegates_bound_parameters(self) -> None:
+        output = self.root / "旧入口 PowerShell.png"
+        result = subprocess.run(
+            [
+                shutil.which("pwsh"),
+                "-NoProfile",
+                "-File",
+                str(LEGACY_SCRIPTS / "shot-quick.ps1"),
+                "-Url",
+                self.url,
+                "-Out",
+                str(output),
+                "-Python",
+                sys.executable,
+                "-Width",
+                "800",
+            ],
+            capture_output=True,
+            encoding="utf-8",
+            timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+        self.assertEqual(int.from_bytes(output.read_bytes()[16:20], "big"), 800)
+        self.assertIn("CLEANUP verified", result.stderr)
 
     def test_timeout_preserves_previous_artifact(self) -> None:
         output = self.root / "previous.png"

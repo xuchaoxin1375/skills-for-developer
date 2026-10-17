@@ -3,8 +3,8 @@ name: network-access
 description: >
   网络访问路线决策，国内试验与海外生产通用：按资源选择直连、代理或镜像；陌生链接先双路有界探测（直连+代理）再抓取，并确认抓取工具的实际出口；
   本机代理资源登记于 ~/.config/proxy-resources.json，找不到可用代理时向用户询问；区分超时、403、5xx 与限流，提供 Windows 与 *nix 配置及核验方法。
-  凡是访问或抓取外网链接、网页、GitHub、文档慢或失败，Python/Node.js/conda 依赖下载（pip/uv/npm/pnpm/Yarn/conda）慢或超时、Playwright/Scrapling 浏览器安装与额外下载、
-  配镜像源、走代理出网、无代理加速、网络错误回退、确认本机代理端口或代理工具（mihomo 等），或技术方案需要说明网络环境影响时使用；纯代码问题不加载。
+  凡是访问或抓取外网链接、网页、GitHub、文档慢或失败，Python/Node.js/conda 依赖下载（pip/uv/npm/pnpm/Yarn/conda）慢或超时、Playwright/Scrapling 浏览器安装（playwright install、scrapling install）及国内浏览器下载、制品镜像与额外下载、
+  配镜像源、走代理出网、无代理加速、网络错误回退、确认本机代理端口或代理工具（mihomo 等），或技术方案需要说明网络环境影响时使用。单独浏览器发现、工具选型、截图与浏览器操作走 browser-automation；纯代码问题不加载。
 ---
 
 # Network Access（网络环境与资源访问）
@@ -62,7 +62,7 @@ description: >
 
 pip/uv/npm/pnpm/Yarn/conda 的配置、并发与超时、额外下载及验收方法见 [references/dependency-downloads.md](references/dependency-downloads.md)。包管理器内部并发由其自身设置控制，Agent 逐条启动命令不能保证下载逐条发生。
 
-`playwright install` / `scrapling install`、浏览器下载受阻或首次准备测试浏览器时，读 [浏览器安装与国内网络](references/browser-installation.md)：复用目标环境，区分包、浏览器制品、系统依赖与页面代理，下载后实际启动验证。系统浏览器不在 PATH 时，先按 [浏览器发现](../frontend-qa/references/browser-discovery.md) 查常用安装位置，不直接判未安装。
+`playwright install` / `scrapling install`、浏览器下载受阻或首次准备测试浏览器时，读 [浏览器安装与国内网络](references/browser-installation.md)：复用目标环境，区分包、浏览器制品、系统依赖与页面代理，下载后实际启动验证。系统浏览器不在 PATH 时，先按 [浏览器发现](../browser-automation/references/browser-discovery.md) 查常用安装位置，不直接判未安装。
 
 ## 自检
 

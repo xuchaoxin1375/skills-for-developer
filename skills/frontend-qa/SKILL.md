@@ -1,24 +1,26 @@
 ---
 name: frontend-qa
-description: 存量 Web 前端缺陷诊断与验收门禁。凡是评审已有页面找错、页面空白或内容不显示、Agent 看截图做初步视觉理解、Playwright 用户流程验收、复现定位布局溢出挤压横向滚动、响应式断点、弹窗关闭/焦点回归、CLS/LCP/INP、无障碍 axe 对比度焦点、文字/图标与背景难辨、页面可读性、表单校验 label、深色模式、导航后退、微信 iOS 跨平台、欺骗模式、AGENTS.md UI 约束与 Definition of Done、CI 质量拦截时使用；新建/改版/美化先走 frontend-design。截图按变更风险触发：纯文案且无几何/状态影响可记录 N/A，布局/交互/状态变化必须先自动化再由 Agent 查看关键态截图。覆盖缺陷评审与生成约束两类任务，即使没点名本 skill 也要主动调用。
+description: >
+  存量 Web 前端缺陷诊断与视觉验收。用于页面空白、布局溢出/响应式、弹窗/焦点、可读性/对比度、无障碍 axe、表单、导航、深色模式、CLS/LCP/INP、跨平台、欺骗模式、AGENTS.md UI 约束及 DoD/CI 门禁，也用于 Agent 查看截图判断 UI 缺陷。
+  新建或美化界面先走 frontend-design；单独浏览器发现、截图工具使用与自动化操作走 browser-automation；测试用例与回归体系走 web-app-testing；安装下载走 network-access。
 ---
 
 # Frontend  QA（存量前端缺陷诊断与验收门禁）
 
 你按资深前端质量工程师兼 Design QA 负责人行事。UI 分类与专项诊断以本 skill 的 `references/catalog.md`（合并版盘点，`L/C/S/V/A/F/N/I/D/P/G/H` 编号体系）为准，阈值争议以 catalog 开头“来源声明”和所引用领域正本为准；UI 完成清单只在 `references/definition-of-done.md` 维护。
 
-分工：新建/改版/美化（线框、令牌、UX 文案）先调 `frontend-design`；本 skill 只做**查错与门禁**，不重复设计决策。
+分工：新建/改版/美化（线框、令牌、UX 文案）先调 `frontend-design`；本 skill 负责**存量 UI 诊断与专项门禁**，不重复设计决策。浏览器发现、工具选型、截图和自动化操作复用 [browser-automation](../browser-automation/SKILL.md)。
 
 需要规划前后端测试、编写业务回归或建立真实 API/数据库测试环境时按需读 [web-app-testing](../web-app-testing/SKILL.md)；本 skill 继续负责 UI 缺陷与体验专项，共用计划和有效证据，不重新启动测试或交付全流程。快慢分层不另定放行政策；完整交付按 [唯一等级矩阵](../ai-verified-delivery/references/levels-and-gates.md)，截图触发、取景与证据按 [视觉验收](../ai-verified-delivery/references/visual-acceptance.md)，局部缺陷优先特写，遮挡与滚动关系保留视口上下文。
 
 ## 何时读什么（渐进加载）
 
-- 任何任务先读 `references/catalog.md` 的对应类别节，不要通读全文：
+- 单独浏览器选型、截图、安装位置或截图进程回收任务转 `browser-automation`，不启动 UI catalog、DoD 或完整测试流程；询问安装/下载则转 `network-access` 的安装参考。
+- 诊断页面缺陷时先读 `references/catalog.md` 的对应类别节，不要通读全文：
   布局→`L`；假数据极值→`C`；缺状态→`S`；跳动卡顿→`V`；对比度焦点语义→`A`；表单→`F`；URL后退→`N`；动效toast→`I`；间距色彩深色→`D`；Win/Mac/iOS/微信→`P`；约束agent→`G`；欺骗性模式→`H`。
 - 需要可执行检查时读 `scripts/` 下对应脚本（控制台粘贴或进 CI），不要背诵。
 - 启动浏览器、服务或重复截图验收前，读[测试资源预算与回收](../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)，按可用容量限制worker/实例并发，登记并验明异常收尾；不得叠加未回收的失败轮。
-- 截图方式先按 [普通浏览器与 Playwright 的区别](references/screenshot-workflow.md#普通浏览器与-playwright-的区别)选择；人工可直接用开发者工具。Agent 首屏与滚动多屏按同文档使用统一托管入口：目标环境 Playwright、匹配缓存或明确指定的系统浏览器；不猜最大缓存版本。独立 guardian 负责总期限、调用端异常退出与本轮进程树回收；资源未确认释放时阻止继续启动，不回退到无期限的裸 Chrome 命令。
-- 不知道浏览器安装位置时按 [浏览器发现](references/browser-discovery.md) 使用 `--list-browsers` 只读查常用位置；任务允许系统浏览器时显式用 `--discover-browser`。跳过脚本与 shim，不自动下载或在失败后轮流启动候选，保留项目锁定的默认浏览器。
+- 需要采集 UI 证据时，截图方式和执行按 [托管截图工作流](../browser-automation/references/screenshot-workflow.md)；需要定位系统浏览器时读 [浏览器发现](../browser-automation/references/browser-discovery.md)。本 skill 判断页面缺陷与证据是否足够，不另维护浏览器候选、超时或回收实现。
 - 需要 UI 完成清单时读 `references/definition-of-done.md`，按适用范围纳入项目 `AGENTS.md`/`DESIGN.md`；优先引用，需项目快照时标注来源与版本，不把 UI 清单当整个产品的完成标准。
 - 对比度/可读性读取 [共用规范](../frontend-design/references/contrast-readability.md)，按实际背景测量并补测自动未判项；例：图片上白字不能因axe无报错而放行。
 

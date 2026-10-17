@@ -2,7 +2,7 @@
 
 国内安装浏览器、`playwright install` / `scrapling install` 下载失败时读取。先确认实际执行位置、目标解释器或项目包管理器，再按本文件选路；包索引的设置见 [依赖下载](dependency-downloads.md)，Scrapling 的环境与安装行为见 [平台与依赖](../../resilient-browser-fetch/references/platforms.md)。
 
-普通 Chrome/Edge 可以直接通过开发者工具截图，无需 Playwright；自动化可以由 Playwright 控制这些已安装的浏览器。**Playwright 包与浏览器制品分别安装**：使用已安装 Chrome/Edge 的 channel 可省去浏览器下载，仍需目标环境中的 Playwright 包。人工截图、自动化、测试运行器及资源托管的选择见 [普通浏览器与 Playwright 的区别](../../frontend-qa/references/screenshot-workflow.md#普通浏览器与-playwright-的区别)。
+普通 Chrome/Edge 可以直接通过开发者工具截图，无需 Playwright；自动化可以由 Playwright 控制这些已安装的浏览器。**Playwright 包与浏览器制品分别安装**：使用已安装 Chrome/Edge 的 channel 可省去浏览器下载，仍需目标环境中的 Playwright 包。人工截图、自动化、测试运行器及资源托管的选择见 [普通浏览器与 Playwright 的区别](../../browser-automation/references/screenshot-workflow.md#普通浏览器与-playwright-的区别)。
 
 ### 分清四个阶段
 
@@ -16,7 +16,7 @@
 ### 安装前先复用已有环境
 
 1. 检查项目依赖、锁文件、目标解释器与所需浏览器。Python 用该环境的 `python -m playwright`，Node 用项目实际包管理器的本地 CLI，如 `pnpm exec playwright`；先确认包已安装，避免把可能自动取包的 `npx` / `pnpm dlx` 当只读探针。
-   不确定系统浏览器位置时，按 [查找已安装的浏览器](../../frontend-qa/references/browser-discovery.md) 只读列候选，覆盖常见注册表/目录、Scoop、应用包和 Linux 安装；不因 PATH 没有命令便直接下载。
+   不确定系统浏览器位置时，按 [查找已安装的浏览器](../../browser-automation/references/browser-discovery.md) 只读列候选，覆盖常见注册表/目录、Scoop、应用包和 Linux 安装；不因 PATH 没有命令便直接下载。
 2. 已有 runner 能启动目标浏览器时直接复用。包升级后再由同一包版本安装匹配制品；临时下载另一个 CLI 版本可能装出当前项目用不了的浏览器。
 3. 默认只补当前任务需要的浏览器。无参数 `install` 可能安装多种浏览器；测试要求 Firefox/WebKit 时仍需补齐。`--only-shell` / `--no-shell` 先核对本地帮助与启动方式，不因使用 headless 就假定只需 headless shell。
 4. 已有 Chrome/Edge 且任务允许时可用对应 `channel`，先实际启动；它不自动等同于项目原有视觉基线。`playwright install chrome` 会安装浏览器，不能用来探测现有 Chrome。

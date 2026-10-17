@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/screenshot.mjs —— 基础宽度截图助手（验收范围见响应式专项 acceptance.md）
 // 项目模板：放在已有总期限与进程回收的 runner 中运行；本文件自身不提供进程级托管。
-// 独立首屏/滚动视口采集复用 ../../frontend-qa/references/screenshot-workflow.md。
+// 独立首屏/滚动视口采集复用 ../../browser-automation/references/screenshot-workflow.md。
 //
 // 用法:
 //   先确认项目可导入 playwright；缺包时沿用项目包管理器安装，不用 dlx 临时版本代替。

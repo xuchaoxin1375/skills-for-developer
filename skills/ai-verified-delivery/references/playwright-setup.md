@@ -25,9 +25,9 @@ pnpm exec playwright install chromium
 
 已有系统浏览器可以作为有条件的替代：确认项目支持对应 channel，用最小用例验证，再明确其版本与证明范围。它不能默认替代产品承诺的其他浏览器或原视觉基线环境。`playwright install chrome` 本身会安装浏览器，不属于“免下载探测”。
 
-使用已安装 Chrome/Edge 仍需目标环境的 Playwright 包；channel 启动独立实例，不等于连接用户已开的窗口。只需人工截图时可直接用浏览器开发者工具；自动化与回归的选择按 [普通浏览器与 Playwright 的区别](../../frontend-qa/references/screenshot-workflow.md#普通浏览器与-playwright-的区别)，不要因浏览器未下载便认定所有截图方式都不可用。
+使用已安装 Chrome/Edge 仍需目标环境的 Playwright 包；channel 启动独立实例，不等于连接用户已开的窗口。只需人工截图时可直接用浏览器开发者工具；自动化与回归的选择按 [普通浏览器与 Playwright 的区别](../../browser-automation/references/screenshot-workflow.md#普通浏览器与-playwright-的区别)，不要因浏览器未下载便认定所有截图方式都不可用。
 
-未知安装位置时，按 [浏览器发现](../../frontend-qa/references/browser-discovery.md) 只读检索常见渠道；PATH 无结果不证明浏览器未安装，文件存在也不证明可用于当前验收。
+未知安装位置时，按 [浏览器发现](../../browser-automation/references/browser-discovery.md) 只读检索常见渠道；PATH 无结果不证明浏览器未安装，文件存在也不证明可用于当前验收。
 
 必须手动准备缓存时，从可信来源取得包版本匹配的制品，核对构建、目录布局、平台和解压完整性，再实际启动。缓存位置、`PLAYWRIGHT_BROWSERS_PATH` 与 CI 复用按共用安装参考，不因目录存在判定可运行。
 
