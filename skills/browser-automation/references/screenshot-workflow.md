@@ -31,7 +31,7 @@ Chrome 手动截图的最短路径如下；Edge 可在对应开发者工具中�
 2. Windows/Linux 按 `Ctrl+Shift+P`，macOS 按 `Command+Shift+P`，打开[命令菜单](https://developer.chrome.com/docs/devtools/command-menu/)，输入 `screenshot`。
 3. 选择所需截图命令；区域截图使用 **Capture area screenshot**，再拖动选择范围。整页、元素及设备模拟取景见 [Chrome 开发者工具截图说明](https://developer.chrome.com/blog/devtools-tips-33)。
 
-整页截图只覆盖当前渲染内容，不保证触发全部懒加载，也不等于滚动多屏；虚拟列表和页面内部滚动容器需按目标状态另取景。
+整页截图只覆盖当前渲染内容，不保证触发全部懒加载，也不等于滚动多屏；虚拟列表和页面内部滚动容器需按目标状态另取景。按坐标切片（视口拼接、`captureBeyondViewport` 之类的 clip 取景）只截文档内容，不重绘 `position: fixed/sticky` 元素——固定头部、粘性侧栏只在真实滚动后的视口里出现，取景方式直接决定第 N 屏长什么样。
 
 ### 复用已安装浏览器与连接已有会话
 

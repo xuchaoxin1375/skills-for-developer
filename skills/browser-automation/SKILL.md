@@ -14,13 +14,15 @@ description: >
 
 1. **确定执行环境与目标。**区分宿主、WSL、容器、远程机器和 CI，确定实际用户、解释器及项目目录。确认要查位置、人工截图、脚本操作还是编写持续回归；尊重已有工具选择和任务授权，不把环境检查扩大成登录或修改远端数据。
 2. **只读检查已有能力。**查看项目依赖、锁文件、浏览器配置及当前实际可调用的工具。需要定位系统浏览器时读 [浏览器发现](references/browser-discovery.md)，用 `--list-browsers` 查常见目录、注册表和 Scoop 等渠道；不执行候选程序，不把 PATH 无结果当未安装，不通过可能自动取包的 CLI 探测。
-3. **选择一个方案。**按 [工具与框架决策](references/tool-and-framework-choice.md)复用已有工具；说明选择理由、前置条件和一个必要的回退。缺包或制品时读 [安装与国内网络](../network-access/references/browser-installation.md)，不为检查环境自动下载所有浏览器。
+3. **选择一个方案。**按 [工具与框架决策](references/tool-and-framework-choice.md)复用已有工具；说明选择理由、前置条件和一个必要的回退。缺包或制品时读 [安装与国内网络](../network-access/references/browser-installation.md)，并**先向用户报选项与代价再动手**（复用环境已有的自动化能力；只补 Playwright 包并复用系统 Chrome/Edge；确需匹配制品时才装浏览器，区分包源与制品源；或改人工截图、记录自动化未执行）；不为检查环境自动下载所有浏览器，未获用户同意不安装。
 4. **按任务执行。**独立首屏/滚动截图用 [托管截图工作流](references/screenshot-workflow.md)；点击、填写、导航、登录状态和下载等操作读 [自动化操作](references/browser-operations.md)，使用可用工具或项目运行器。测试用例与断言设计只借用 [web-app-testing](../web-app-testing/SKILL.md)所需部分，不重复建立计划。
 5. **核验结果与回收。**文件、缓存和进程存在均不能证明任务成功。按目标核验页面状态、业务结果或下载文件；报告实际浏览器版本、工具、证据及未运行项。自己启动的浏览器确认回收后再重试；连接外部会话按其所有权释放，不按进程名批量清理。
 
 ### 最短入口
 
 `<skill-dir>` 指本 skill 目录。只读发现仅需 Python 标准库；截图需目标 Python 环境已有 Playwright。
+
+截图前先读 [托管截图工作流](references/screenshot-workflow.md)「如何选择」。目标环境没有 Playwright 包时只有两条合规出路：记录自动化未执行并说明人工出路，或经用户明确授权后执行，并自担期限与回收（声明总期限、显式终止自己启动的进程、核验残留归零，并给出等价于 `SHOT` / `CLEANUP verified` 的采集与清理结果）。**不得把裸 Chrome/Edge 无头命令或 CDP 脚本当作默认回退。**
 
 ```powershell
 # 不启动浏览器，也不要求安装 Playwright
