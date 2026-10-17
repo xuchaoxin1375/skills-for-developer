@@ -62,7 +62,7 @@ description: >
 
 pip/uv/npm/pnpm/Yarn/conda 的配置、并发与超时、额外下载及验收方法见 [references/dependency-downloads.md](references/dependency-downloads.md)。包管理器内部并发由其自身设置控制，Agent 逐条启动命令不能保证下载逐条发生。
 
-`playwright install` / `scrapling install`、浏览器下载受阻或首次准备测试浏览器时，读 [浏览器安装与国内网络](references/browser-installation.md)：复用目标环境，区分包、浏览器制品、系统依赖与页面代理，下载后实际启动验证。
+`playwright install` / `scrapling install`、浏览器下载受阻或首次准备测试浏览器时，读 [浏览器安装与国内网络](references/browser-installation.md)：复用目标环境，区分包、浏览器制品、系统依赖与页面代理，下载后实际启动验证。系统浏览器不在 PATH 时，先按 [浏览器发现](../frontend-qa/references/browser-discovery.md) 查常用安装位置，不直接判未安装。
 
 ## 自检
 

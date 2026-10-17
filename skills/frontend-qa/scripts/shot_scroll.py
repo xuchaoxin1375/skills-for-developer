@@ -22,6 +22,7 @@ from typing import Any
 from urllib.parse import urlparse
 import uuid
 
+from browser_discovery import discover_browsers, native_binary
 from managed_browser import USER_TEMP_ROOT, TaskError, run_managed
 
 PROXY_REGISTRY_PATH = Path.home() / ".config" / "proxy-resources.json"
@@ -90,6 +91,7 @@ def capture(config: dict[str, Any]) -> dict[str, Any]:
             proxy={"server": config["proxy"]} if config["proxy"] else None,
         )
         try:
+            version = browser.version
             context = browser.new_context(
                 viewport={"width": config["width"], "height": config["height"]}
             )
@@ -111,6 +113,7 @@ def capture(config: dict[str, Any]) -> dict[str, Any]:
             browser.close()
     return {
         "code": 0,
+        "browser_version": version,
         "artifacts": [
             {"source": f"shots/{index}.png", "destination": target}
             for index, target in enumerate(config["outputs"])
@@ -163,7 +166,12 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="示例：--url https://example.com --out page.png；多屏加 --screens 2。\n"
         "退出码：0 成功；1 截图失败；2 参数/代理错误；3 忙；4 清理未确认；124 总超时；130 取消。",
     )
-    parser.add_argument("--url", required=True, help="目标 HTTP(S) URL")
+    parser.add_argument("--url", help="目标 HTTP(S) URL；只列浏览器时不需要")
+    parser.add_argument(
+        "--list-browsers",
+        action="store_true",
+        help="只读列出本机浏览器 JSON，不启动、不安装",
+    )
     output = parser.add_mutually_exclusive_group()
     output.add_argument("--out", help="首屏 PNG 文件（仅 --screens 1）")
     output.add_argument("--out-dir", help="截图目录；默认临时目录中的独立运行目录")
@@ -202,6 +210,11 @@ def build_parser() -> argparse.ArgumentParser:
     browser.add_argument(
         "--executable-path", help="指定真实浏览器二进制；不接受包装器/垫片"
     )
+    browser.add_argument(
+        "--discover-browser",
+        action="store_true",
+        help="从常见安装位置选择本机浏览器；不下载、不失败换浏览器",
+    )
     return parser
 
 
@@ -211,6 +224,28 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.list_browsers:
+            if (
+                args.url
+                or args.channel
+                or args.executable_path
+                or args.discover_browser
+            ):
+                parser.error("--list-browsers 单独使用，不与截图或浏览器选择参数组合")
+            print(
+                json.dumps(
+                    {
+                        "platform": sys.platform,
+                        "candidates": [item.as_dict() for item in discover_browsers()],
+                        "note": "只读路径/格式检查；不证明可启动、可信或与项目兼容。",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+        if not args.url:
+            parser.error("截图需要 --url；只读查找使用 --list-browsers")
         parsed = urlparse(args.url)
         if (
             parsed.scheme not in ("http", "https")
@@ -223,12 +258,29 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("最多 20 屏，视口宽高各不超过 8192")
         if args.out and (args.screens != 1 or Path(args.out).suffix.lower() != ".png"):
             parser.error("--out 仅接受单屏 PNG 文件")
-        if args.executable_path and (
-            not Path(args.executable_path).is_file()
-            or Path(args.executable_path).suffix.lower() in (".cmd", ".bat", ".ps1")
-            or Path(args.executable_path).with_suffix(".shim").exists()
-        ):
-            parser.error("--executable-path 需要真实浏览器文件")
+        if args.executable_path:
+            try:
+                valid_binary = native_binary(Path(args.executable_path), sys.platform)
+            except (OSError, RuntimeError):
+                valid_binary = False
+            if not valid_binary:
+                parser.error("--executable-path 需要可读的原生浏览器文件")
+        if args.discover_browser:
+            candidate = next(
+                (item for item in discover_browsers() if item.eligible), None
+            )
+            if candidate is None:
+                raise TaskError(
+                    "常见位置未找到原生浏览器；用 --list-browsers 查看候选，或显式指定 --channel/--executable-path。",
+                    2,
+                )
+            args.executable_path = candidate.path
+            logging.info(
+                "BROWSER discovered=%s source=%s path=%s",
+                candidate.browser,
+                candidate.source,
+                candidate.path,
+            )
         proxy, source = resolve_proxy(args.proxy, discover=args.discover_proxy)
         logging.info("PROXY source=%s", source)
         slug = (
@@ -256,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
             config,
             args.wall_timeout_ms,
         )
+        logging.info("BROWSER version=%s", result.get("browser_version", "unknown"))
         for artifact in result["artifacts"]:
             path = Path(artifact["destination"])
             print(f"SHOT {path} ({path.stat().st_size} bytes)")

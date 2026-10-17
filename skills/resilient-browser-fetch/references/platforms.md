@@ -18,6 +18,8 @@
 
 `check_environment.py` 检查解释器、包导入、CLI、代理端口和可选 CloakBrowser 文件信息，不启动 Scrapling 浏览器；它通过后仍须用实际 fetcher 取回一个受控页面并断言内容。
 
+系统 Chrome 未识别时，可按 [浏览器发现](../../frontend-qa/references/browser-discovery.md) 只读补查注册表、Scoop 等常用位置，再核对当前 fetcher 支持的参数。发现的 Edge/Chromium 不自动等同于 `--real-chrome` 所要求的 Google Chrome，也不能代替 CloakBrowser 专用制品。
+
 ## Conda 环境配合 uv
 
 Conda 负责 Python 版本、环境目录和非 Python 运行库，`uv pip` 只负责向选定解释器安装 Python 包。环境名称可以是 `scrapling`、`main`、`base` 或用户已有名称，不要硬编码。

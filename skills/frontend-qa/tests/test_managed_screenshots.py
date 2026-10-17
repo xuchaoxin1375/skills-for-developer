@@ -273,6 +273,20 @@ class BrowserTests(unittest.TestCase):
         self.assertIn("CLEANUP verified", result.stderr)
         self.assertFalse(list(manager.STATE_ROOT.glob("run-*")))
 
+    def test_discovered_system_browser_is_managed(self) -> None:
+        from browser_discovery import discover_browsers
+
+        if not any(item.eligible for item in discover_browsers()):
+            self.skipTest("No native system browser in supported common locations")
+        output = self.root / "自动发现 浏览器.png"
+        result = self.cli("--url", self.url, "--discover-browser", "--out", str(output))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+        self.assertIn("BROWSER discovered=", result.stderr)
+        self.assertIn("BROWSER version=", result.stderr)
+        self.assertIn("CLEANUP verified", result.stderr)
+        self.assertFalse(list(manager.STATE_ROOT.glob("run-*")))
+
     def test_timeout_preserves_previous_artifact(self) -> None:
         output = self.root / "previous.png"
         output.write_bytes(b"previous")
@@ -333,6 +347,35 @@ class BrowserTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 required")
+    def test_powershell_browser_inventory_and_discovery(self) -> None:
+        base = [
+            shutil.which("pwsh"),
+            "-NoProfile",
+            "-File",
+            str(SCRIPTS / "shot-quick.ps1"),
+            "-Python",
+            sys.executable,
+        ]
+        inventory = subprocess.run(
+            base + ["-ListBrowsers"], capture_output=True, encoding="utf-8", timeout=10
+        )
+        self.assertEqual(inventory.returncode, 0, inventory.stderr)
+        candidates = json.loads(inventory.stdout)["candidates"]
+        if not any(item["eligible"] for item in candidates):
+            self.skipTest("No native system browser for PowerShell discovery")
+        output = self.root / "包装器 自动发现.png"
+        result = subprocess.run(
+            base + ["-Url", self.url, "-DiscoverBrowser", "-Out", str(output)],
+            capture_output=True,
+            encoding="utf-8",
+            timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+        self.assertIn("CLEANUP verified", result.stderr)
+        self.assertFalse(list(manager.STATE_ROOT.glob("run-*")))
 
 
 if __name__ == "__main__":

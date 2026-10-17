@@ -18,6 +18,7 @@ description: 存量 Web 前端缺陷诊断与验收门禁。凡是评审已有�
 - 需要可执行检查时读 `scripts/` 下对应脚本（控制台粘贴或进 CI），不要背诵。
 - 启动浏览器、服务或重复截图验收前，读[测试资源预算与回收](../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)，按可用容量限制worker/实例并发，登记并验明异常收尾；不得叠加未回收的失败轮。
 - 截图方式先按 [普通浏览器与 Playwright 的区别](references/screenshot-workflow.md#普通浏览器与-playwright-的区别)选择；人工可直接用开发者工具。Agent 首屏与滚动多屏按同文档使用统一托管入口：目标环境 Playwright、匹配缓存或明确指定的系统浏览器；不猜最大缓存版本。独立 guardian 负责总期限、调用端异常退出与本轮进程树回收；资源未确认释放时阻止继续启动，不回退到无期限的裸 Chrome 命令。
+- 不知道浏览器安装位置时按 [浏览器发现](references/browser-discovery.md) 使用 `--list-browsers` 只读查常用位置；任务允许系统浏览器时显式用 `--discover-browser`。跳过脚本与 shim，不自动下载或在失败后轮流启动候选，保留项目锁定的默认浏览器。
 - 需要 UI 完成清单时读 `references/definition-of-done.md`，按适用范围纳入项目 `AGENTS.md`/`DESIGN.md`；优先引用，需项目快照时标注来源与版本，不把 UI 清单当整个产品的完成标准。
 - 对比度/可读性读取 [共用规范](../frontend-design/references/contrast-readability.md)，按实际背景测量并补测自动未判项；例：图片上白字不能因axe无报错而放行。
 

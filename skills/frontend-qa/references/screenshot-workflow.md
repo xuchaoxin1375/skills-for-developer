@@ -43,6 +43,8 @@ Chrome 手动截图的最短路径如下；Edge 可在对应开发者工具中�
 
 ### 使用
 
+不知道本机浏览器装在哪里时，先用 `--list-browsers` 只读列出候选；任务允许任一系统 Chromium 浏览器时可用 `--discover-browser` 自动选择。Windows 注册表、Scoop、macOS 应用包、Linux 包安装及包装器边界按 [查找已安装的浏览器](browser-discovery.md)，不传选择参数时仍使用匹配的 Playwright 默认制品。
+
 目标 Python 环境需已有 Playwright；先复用项目环境，不自动安装依赖。`<skill-dir>` 指本 skill 目录：
 
 ```powershell
@@ -60,7 +62,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 
 默认视口 `1440×900`，单次操作超时 30 秒，整个 worker 总期限 60 秒，收尾另留最多约 8 秒。可用 `--width`、`--height`、`--timeout-ms`、`--wall-timeout-ms` 调整；最多 20 屏、宽高各不超过 8192。`--settle-ms` / `--step-wait-ms` 默认 500 毫秒，只是采集等待，不是业务就绪断言；需要交互、登录或精确状态等待时使用项目的受管测试 runner。
 
-代理按 `--proxy` → `SCRAPE_PROXY` →（指定 `--discover-proxy` 时）机外登记解析；没有代理设置且未要求发现时直连。只验证登记端点监听，不据此宣称出口可用。日志不打印代理凭据和页面查询参数。`--channel chrome/msedge` 与 `--executable-path` 互斥，后者必须指向真实浏览器文件，不传包装脚本或垫片。
+代理按 `--proxy` → `SCRAPE_PROXY` →（指定 `--discover-proxy` 时）机外登记解析；没有代理设置且未要求发现时直连。只验证登记端点监听，不据此宣称出口可用。日志不打印代理凭据和页面查询参数。`--channel chrome/msedge`、`--executable-path`、`--discover-browser` 互斥；显式路径必须指向可读的原生浏览器文件，不传包装脚本或垫片。
 
 国内安装按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 区分包源和制品源。本机有 Edge/Chrome 时可只补目标环境的 Playwright 包；不允许补包且没有可用自动化工具时，记录自动化未执行。人工仍可通过开发者工具截图，是否满足验收取决于任务要求；Agent 不回退到无期限的裸浏览器命令。
 
@@ -94,6 +96,7 @@ Linux 使用独立进程组及 subreaper，回收被重新托管的后代；用 
 
 - `shot_scroll.py` 的默认屏数由 2 改为 1；多屏显式传 `--screens 2`。
 - `shot-quick.ps1` 现在需要 Python Playwright，移除按 PATH/最大缓存版本猜浏览器、隐式环境浏览器覆盖及裸 Chrome 回退。`-Chrome` 映射到 `--executable-path`，推荐 `-Channel msedge/chrome` 或匹配项目版本的缓存。
+- 常用安装位置的查找通过显式 `--discover-browser` / `-DiscoverBrowser` 启用；`--list-browsers` / `-ListBrowsers` 可在未安装 Playwright 时只读列候选。它们不恢复旧入口的隐式选版本与失败回退。
 - 旧 `-VirtualBudget` 已移除，改用 `-TimeoutMs` 与 `-WallTimeoutMs`。页面虚拟时间不能作为进程总期限。
 - 其他 skill 的单次视口截图可引用本入口。复杂测试沿用项目 runner；`resilient-browser-fetch` 的挑战处理、持久会话及 `htmlmini` 渲染回退不因本次改动自动获得相同托管保障。
 

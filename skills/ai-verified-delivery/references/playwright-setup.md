@@ -27,6 +27,8 @@ pnpm exec playwright install chromium
 
 使用已安装 Chrome/Edge 仍需目标环境的 Playwright 包；channel 启动独立实例，不等于连接用户已开的窗口。只需人工截图时可直接用浏览器开发者工具；自动化与回归的选择按 [普通浏览器与 Playwright 的区别](../../frontend-qa/references/screenshot-workflow.md#普通浏览器与-playwright-的区别)，不要因浏览器未下载便认定所有截图方式都不可用。
 
+未知安装位置时，按 [浏览器发现](../../frontend-qa/references/browser-discovery.md) 只读检索常见渠道；PATH 无结果不证明浏览器未安装，文件存在也不证明可用于当前验收。
+
 必须手动准备缓存时，从可信来源取得包版本匹配的制品，核对构建、目录布局、平台和解压完整性，再实际启动。缓存位置、`PLAYWRIGHT_BROWSERS_PATH` 与 CI 复用按共用安装参考，不因目录存在判定可运行。
 
 ### 诊断与验收边界
