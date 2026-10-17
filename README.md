@@ -12,7 +12,7 @@
 | `skills/scripting-best-practices`    | Shell / Python / Node 脚本与小工具 CLI 的编写、审查与重构规范，通用约束语言无关，生产级健壮性要求（原 opencode） | 写脚本、审脚本、重构`.sh` / `.bash` / `.py` / `.mjs` / `.js`、Node CLI、排查脚本健壮性、UTF-8 编码默认 |
 | `skills/resilient-browser-fetch`     | 采集经 network-access 分流确认为挑战页的网站：Scrapling 过 Cloudflare 挑战、可选 CloakBrowser CDP 浏览器，保存渲染后 HTML、截图与诊断元数据；平台安装区分下载代理、系统依赖与实际启动，中文输出（原 codex） | 反爬、Cloudflare、Turnstile、抓取、采集、挑战页、会话复用、Scrapling 环境安装、不做首跳选路 |
 | `skills/htmlmini`                    | 网页核心骨架提取：Defuddle→Trafilatura(可选)→semantic→UI清单自动回退，省约 75–99% token；CLI+MCP双形态（原 claude）                                                                                                                                                                     | html、URL、网页、页面、设计稿、面板、仪表盘、总结、分析、审查、查看、看一下、提取、取数、分数、表格、榜单                                                                                                                                              |
-| `skills/skill-authoring-sync`        | agent harness 新建自定义 skill 并同步到真源仓库：新建必要性判断、真源唯一、链接分发、跨机器 git 同步；本地提炼默认不归档原材料与指纹，内容写作引用仓库规范                                                                                                                                                                  | 新建 skill、是否新建 skill、安装 skill、同步 skill、链接校验、真源管理、skill 变更、查变更                                                                                                                                                                    |
+| `skills/skill-authoring-sync`        | agent harness 新建自定义 skill 并同步到真源仓库：新建必要性判断、真源唯一、链接分发、跨机器 git 同步、本机配置偏好回写真源；本地提炼默认不归档原材料与指纹，内容写作引用仓库规范                                                                                                                                                                  | 新建 skill、是否新建 skill、安装 skill、同步 skill、同步配置、同步 opencode 设置/偏好、回写配置、链接校验、真源管理、skill 变更、查变更                                                                                                                                                                    |
 | `skills/repo-governance`             | 公开/私有仓库治理与安全提交：按用途选文件，保留隐私底线，复用提交/分支政策；补 CI 权限、评审保护、依赖和构建供应链控制                                                                                                                                                                      | 新建仓库、规范化改造、提交检查、CONTRIBUTING、CI、分支保护、供应链、审计密钥                                                                                                                                  |
 | `skills/app-engineering`             | 长期应用工程基线：模块/数据/状态归属、异步任务恢复、ADR、契约兼容、进程容量与运行恢复、文档/技术债及效能反馈；按需复用测试、仓库和交付政策 | 应用开发规范、架构治理、状态管理、异步任务、进程治理、ADR、契约演进、兼容迁移、幂等副作用、SLO、恢复、技术债、持续维护 |
 | `skills/tech-learning-research`      | 技术话题系统讲解、联网调研与选型推荐：搜索先行、方案权衡、详略与深度分级                                                                                                                                                                                                                    | 学习、技术调研、方案对比、选型推荐、research、tutorial、comparison                                                                                                                                            |
@@ -160,6 +160,8 @@ powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipRecommende
 
 `opencode.json`（供应商）与密钥（`service.json`/`auth.json`）不在此列，
 按需走 `opencode-provider-config` 与 `opencode auth import` 另行处理。
+
+本机偏好改动后如何回写真源、哪些项只留本机，见 `skills/skill-authoring-sync/SKILL.md` 的「同步 harness 配置偏好（本机 → 真源）」；本页只维护分发命令。
 
 ## 结构校验（frontmatter/索引/红线/安装数）
 

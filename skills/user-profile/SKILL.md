@@ -33,6 +33,7 @@ description: >
 4. 测试代码/编写测试: `web-app-testing`
 5. 存量页找错/截图验收/溢出/断点: `frontend-qa`；
 6. 看HTML/网页/URL并总结/取数/查分查表: `htmlmini`（先提取再回答，禁直接读原文或手写正则取数；需代理/渲染落盘时与 `network-access` 配合，落盘后再按文件模式提取）；
+7. 同步配置/同步opencode设置(偏好)/回写配置真源: `skill-authoring-sync`（先比对本机与真源，只把可跨机的项合入 `config/opencode/cli.json` 等真源，走仓库脚本校验；提交按明确指示）；
 
 ## 域指针（需细节时加载，不预读）
 

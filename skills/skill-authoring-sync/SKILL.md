@@ -1,9 +1,10 @@
 ---
 name: skill-authoring-sync
 description: >
-  在 agent harness 中新建自定义 skill 并同步到真源仓库集中管理。
-    包括skill真源提交操作,skill真源治理规则定义和修改;
-  当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、或复盘/同步/分发/校验/查变更已有 skill 时使用此 Skill。
+  在 agent harness 中新建自定义 skill 并同步到真源仓库集中管理：skill 真源提交、治理规则的定义与修改，
+  以及把本机 harness 配置偏好（如 OpenCode TUI `cli.json`）回写真源、按真源恢复本机配置。
+  当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、说“同步配置”“同步 opencode 设置/偏好”，
+  或复盘/同步/分发/校验/查变更已有 skill 时使用此 Skill。
 ---
 
 # Skill 新建与真源同步规范
@@ -16,7 +17,8 @@ description: >
 改完即对本机所有 harness 生效；跨机器靠 `git push/pull` 同步实体，
 每台机器跑一遍自己平台的链接脚本即可。
 
-**适用范围**：各 agent harness（OpenCode / Codex / Claude / Agents 通用 / dsh）的自定义 skill。
+**适用范围**：各 agent harness（OpenCode / Codex / Claude / Agents 通用 / dsh）的自定义 skill，
+以及 harness 侧配置偏好（如 OpenCode TUI `cli.json`、全局 `AGENTS.md`）的真源同步。
 分发与校验统一走仓库 `scripts/` 下的链接脚本，不手写零散命令。
 
 维护本仓库先读 [治理规范](references/skill-governance.md)；职责设计、正文约束与语言风格按 [内容与语言规范](references/skill-content-guidelines.md)。本 skill 继续维护真源、路径、索引和分发规则，不另复制写作规范；新建前核对邻近能力，适合扩展已有 skill 时不强行新建。
@@ -100,6 +102,24 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 `~/.skills-migration-backup/<时间戳>/<harness>/<name>`（备份移出 skills 目录，
 避免被 harness 误扫为重复 skill），再替换为正确链接。备份确认无误后手工删除。
 备份目录永不纳入版本控制。
+
+### 同步 harness 配置偏好（本机 → 真源）
+
+用户说“同步配置”“同步 opencode 设置/偏好”时，指把本机 TUI 偏好回写真源：OpenCode 侧真源是
+`config/opencode/cli.json`，对应本机 `%USERPROFILE%/.config/opencode/cli.json`
+（Linux `~/.config/opencode/cli.json`）；全局偏好真源是 `config/global-AGENTS.md`。
+仓库 `config/` 只收非密配置；`opencode.json`（providers）与密钥（`service.json`、`auth.json`）不入库。
+
+1. **比对**：逐字段比较本机与真源（JSON 展平后分新增 / 缺失 / 值不同三类），不只看文件是否相同。
+2. **取舍**：环境相关或临时调试项留在本机；可跨机的偏好合入真源。
+3. **写入**：让真源与本机字节一致（链接脚本按文件 hash 判断“已是最新”，不一致时下次部署会提示覆盖）。
+4. **校验**：`python3 scripts/check-skills.py --no-harness`，以及
+   `scripts\link-skills.ps1 -VerifyOnly`（Linux `./scripts/link-skills.sh --verify-only`）。
+5. **报告**：列出采纳与保留项及依据；`git commit/push` 仅在用户明确指示时执行。
+
+反向分发（真源 → 本机）由链接脚本承担：`-ApplyRecommendedCli`（Linux `--apply-recommended-cli`）
+应用推荐配置，覆盖前备份为同目录 `cli.json.bak-<时间戳>`；`-SkipRecommendedCli` 跳过，
+非交互环境默认跳过。`-VerifyOnly` 只提示 `config/global-AGENTS.md` 漂移，不检查 `cli.json`。
 
 ## 验证协议
 

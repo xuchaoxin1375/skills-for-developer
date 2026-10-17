@@ -4,6 +4,9 @@
 
 ### 未发布
 
+- `repo-governance` 补存量仓库判断与代理交接记录：改造轨道要求先读既有 git 状态（`git status`/`git diff`/`git ls-files`/`.gitignore`）作判断依据，发现口径不一致（未追踪且无规则覆盖的大目录、已入库的应忽略产物、规则互相矛盾）作为问题列给用户而不擅自改口径；代理上下文一节要求把已确认的项目级约定与偏好（是否入库、改动后跑哪些检查、提交与推送方式、需先问的范围）写进 `AGENTS.md`，避免后续代理重复调研与重复提问。
+- `repo-governance` 补提交范围与产物默认策略：`.gitignore` 一节把构建产物与缓存的默认排除引到红线节并给出 Node 侧清单（`.next/`、`.nuxt/`、`.svelte-kit/`、`.turbo/`、`.vite/`、`coverage/`、`*.tsbuildinfo`），要求由规则明文表达，说明隐式排除不可审计；AI 操作约束新增「提交范围拿不准先确认」，澄清未追踪且无忽略规则只说明还没决定，不等于有意排除。
+- `skill-authoring-sync` 扩展职责与触发：新增「同步 harness 配置偏好（本机 → 真源）」流程（逐字段比对、采纳取舍、写入、校验、提交授权），description 与 README 索引补「同步配置」「同步 opencode 设置/偏好」触发词；`user-profile` 动词命中表补同源入口。`config/opencode/cli.json` 真源回写本机现状（补 `keybinds.session.toggle.thinking`、`tabs.mode`，`session.thinking` 改 `hide`）。
 - 新增 `config/recommended-skills.txt`（需依赖/命令的复杂 skill 推荐部署名单，首批 `htmlmini`）：链接脚本在链接完成后处理名单——依赖（`pnpm install`，交互询问缺省 Yes，非交互默认跳过）与命令安装（默认装成直接可调用：Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH；`--verify-only` 一并检查，`--unlink` 同步移除命令、保留依赖目录）。`check-skills.py` 加名单一致性检查（名单孤儿报错，含 `package.json` 却不在名单提醒）。
 - README 新增「部署清单（新机 / 首次 / 代理执行）」：链接安装（非交互须首跑带 `--apply-recommended-cli`/`--skip-recommended-cli`，免二次全量）→ 全局 AGENTS.md 恢复合并 → 结构校验 → 链接校验 → 服务端计数对照五步有序给出；服务端计数补「落盘再解析」的跨平台计数片段（长 JSON 走管道会截断，`missing` 须为 `none`）。新增 `docs/wsl-opencode-reuse.md`：规定 WSL 复用 Windows 侧 providers、密钥与代理的配置分层、三种方式选型、密钥红线与验证，skill 分发仍走链接脚本。
 - 新增 `scripts/check-skills.py`（零依赖，Windows/Linux 通用）：一遍校验 frontmatter（`name` 与目录一致且 kebab、非空 `description`、多行须 `>`/`|` 折叠缩进）、README 检索入口、红线真实路径、五 harness 安装数；补上链接脚本只查存在性不查内容的盲区。用法见 README“结构校验”一节，`--no-harness` 可进 CI。
