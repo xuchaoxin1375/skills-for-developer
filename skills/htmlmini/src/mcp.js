@@ -2,15 +2,19 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { EXTRACTORS, MODES, extractHtml, readSiblingMeta, readWithRender, runExtract, renderResult } from './extract.js';
+import { ATTR_POLICIES, EXTRACTORS, MODES, extractHtml, readSiblingMeta, readWithRender, runExtract, renderResult } from './extract.js';
 
 const modeEnum = z.enum(MODES);
 const extractorEnum = z.enum(EXTRACTORS);
+const attrsEnum = z.enum(ATTR_POLICIES);
 const extractorDesc =
   'Extraction engine. Default: auto (non-HTML passthrough -> Defuddle -> Trafilatura if installed, silently skipped otherwise -> semantic -> UI inventory). Non-HTML input is passed through untouched; force one to get its raw result without silent switching.';
-const modeDesc = 'Output style. Default: markdown';
+const modeDesc =
+  'Output style. Default: markdown. "html" returns cleaned HTML: full DOM structure and text order kept, scripts/styles/templates/icons/comments dropped. Higher token cost than markdown or the UI inventory, but nothing is truncated — use it when structure (tables, form state, nesting) matters.';
+const attrsDesc =
+  'Attribute policy, only meaningful for mode "html". semantic (default): keep href/src/alt/title/colspan/rowspan/scope and table/form state; drop class/style/id/data-*/aria-*. none: strip every attribute (smallest, but loses link targets and merged cells). all: keep every attribute, only drop scripts/styles.';
 
-async function handleSource(src, mode, extractor, proxy, render, renderTimeoutMs, headful, chromeBin) {
+async function handleSource(src, mode, extractor, attrs, proxy, render, renderTimeoutMs, headful, chromeBin) {
   const { html, source, contentType } = await readWithRender(
     src,
     {
@@ -27,7 +31,7 @@ async function handleSource(src, mode, extractor, proxy, render, renderTimeoutMs
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (source === 'stdin' ? 'stdin' : source.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor, contentType });
+  const res = await extractHtml(html, { url, extractor, contentType, attrs });
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
 }
@@ -48,11 +52,13 @@ const shapeFile = {
   path: z.string().describe('Absolute path to a local .html file'),
   mode: modeEnum.optional().describe(modeDesc),
   extractor: extractorEnum.optional().describe(extractorDesc),
+  attrs: attrsEnum.optional().describe(attrsDesc),
 };
 const shapeUrl = {
   url: z.string().describe('http(s) URL'),
   mode: modeEnum.optional().describe(modeDesc),
   extractor: extractorEnum.optional().describe(extractorDesc),
+  attrs: attrsEnum.optional().describe(attrsDesc),
   proxy: z
     .string()
     .optional()
@@ -78,32 +84,33 @@ const shapeHtml = {
   html_content: z.string().describe('Raw HTML source code string'),
   mode: modeEnum.optional().describe(modeDesc),
   extractor: extractorEnum.optional().describe(extractorDesc),
+  attrs: attrsEnum.optional().describe(attrsDesc),
 };
 
 // 正确命名（v2）。旧拼写 htmmini_* 保留为别名以兼容已配置的客户端。
-server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, extractor }) => ({
-  content: [{ type: 'text', text: await handleSource(path, mode ?? 'markdown', extractor ?? 'auto') }],
+server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, extractor, attrs }) => ({
+  content: [{ type: 'text', text: await handleSource(path, mode ?? 'markdown', extractor ?? 'auto', attrs ?? 'semantic') }],
 }));
 
-server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, proxy, render, render_timeout_ms, headful, chrome_bin }) => ({
-  content: [{ type: 'text', text: await handleSource(url, mode ?? 'markdown', extractor ?? 'auto', proxy, render ?? false, render_timeout_ms, headful ?? false, chrome_bin) }],
+server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, proxy, render, render_timeout_ms, headful, chrome_bin }) => ({
+  content: [{ type: 'text', text: await handleSource(url, mode ?? 'markdown', extractor ?? 'auto', attrs ?? 'semantic', proxy, render ?? false, render_timeout_ms, headful ?? false, chrome_bin) }],
 }));
 
-server.tool('htmlmini_extract_html', htmlDesc, shapeHtml, async ({ html_content, mode, extractor }) => ({
-  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto' }) }],
+server.tool('htmlmini_extract_html', htmlDesc, shapeHtml, async ({ html_content, mode, extractor, attrs }) => ({
+  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic' }) }],
 }));
 
 const aliasNote = 'Deprecated alias of the htmlmini_* tool (kept for backward compatibility).';
-server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async ({ path, mode, extractor }) => ({
-  content: [{ type: 'text', text: await handleSource(path, mode ?? 'markdown', extractor ?? 'auto') }],
+server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async ({ path, mode, extractor, attrs }) => ({
+  content: [{ type: 'text', text: await handleSource(path, mode ?? 'markdown', extractor ?? 'auto', attrs ?? 'semantic') }],
 }));
 
-server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, proxy, render, render_timeout_ms, headful, chrome_bin }) => ({
-  content: [{ type: 'text', text: await handleSource(url, mode ?? 'markdown', extractor ?? 'auto', proxy, render ?? false, render_timeout_ms, headful ?? false, chrome_bin) }],
+server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, proxy, render, render_timeout_ms, headful, chrome_bin }) => ({
+  content: [{ type: 'text', text: await handleSource(url, mode ?? 'markdown', extractor ?? 'auto', attrs ?? 'semantic', proxy, render ?? false, render_timeout_ms, headful ?? false, chrome_bin) }],
 }));
 
-server.tool('htmmini_extract_html', `${aliasNote} ${htmlDesc}`, shapeHtml, async ({ html_content, mode, extractor }) => ({
-  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto' }) }],
+server.tool('htmmini_extract_html', `${aliasNote} ${htmlDesc}`, shapeHtml, async ({ html_content, mode, extractor, attrs }) => ({
+  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic' }) }],
 }));
 
 await server.connect(new StdioServerTransport());

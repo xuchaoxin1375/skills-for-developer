@@ -85,4 +85,37 @@ const ok = (cond, msg) => {
   ok(['defuddle', 'trafilatura', 'semantic', 'ui', 'passthrough'].includes(r.used), `auto 收敛到已知引擎（实得 ${r.used}）`);
 }
 
+// 7. html 模式：保守清洗（结构保留，剥脚本/样式与表观属性）。
+{
+  const h = await runExtract(null, 'html', { forceContent: ARTICLE });
+  ok(!h.includes('var a=1') && !h.includes('color:red'), 'html 模式剥掉脚本与样式');
+  ok(h.includes('<h1>主标题</h1>') && h.includes('<article>'), 'html 模式保留 DOM 结构与文本顺序');
+
+  const sem = await runExtract(null, 'html', { forceContent: DASHBOARD });
+  ok(sem.includes('<table>') && sem.includes('<th>城市</th>'), 'html 模式保留 table/th');
+  ok(sem.includes('for="city"') && sem.includes('type="date"') && sem.includes('name="day"'), 'semantic 档保留语义属性');
+  const semAttrs = sem.match(/\s[a-zA-Z-]+="/g) || [];
+  ok(!sem.includes('class=') && !sem.includes('aria-label=') && !sem.includes('id='), 'semantic 档剥掉 class/id/aria-*');
+  ok(semAttrs.length > 0, 'semantic 档并非清空全部属性');
+
+  const none = await runExtract(null, 'html', { forceContent: DASHBOARD, attrs: 'none' });
+  ok(!/\s[a-zA-Z-]+="/.test(none), 'attrs=none 清空全部属性');
+  ok(none.includes('<table>'), 'attrs=none 仍保留标签结构');
+
+  const all = await runExtract(null, 'html', { forceContent: DASHBOARD, attrs: 'all' });
+  ok(all.includes('class="btn"') && all.includes('aria-label="查询数据"'), 'attrs=all 保留全部属性');
+  ok(!all.includes('<script') && !all.includes('<style'), 'attrs=all 仍剥脚本与样式');
+
+  const pt = await runExtract(null, 'html', { forceContent: '# 标题\n正文' });
+  ok(pt.includes('# 标题'), 'html 模式对非 HTML 输入透传');
+
+  let e2 = null;
+  try {
+    await extractHtml(ARTICLE, { extractor: 'sanitize', attrs: 'nope' });
+  } catch (err) {
+    e2 = err;
+  }
+  ok(e2 && /unknown attrs policy/.test(e2.message), '未知 attrs 策略抛错');
+}
+
 console.log(`\nPASS ${n} assertions`);

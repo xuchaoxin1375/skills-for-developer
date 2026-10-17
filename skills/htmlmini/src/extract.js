@@ -12,8 +12,10 @@ import { ProxyAgent } from 'undici';
 
 const execFileAsync = promisify(execFile);
 
-export const MODES = ['markdown', 'skeleton', 'text', 'json', 'title', 'ui'];
-export const EXTRACTORS = ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'passthrough'];
+export const MODES = ['markdown', 'skeleton', 'text', 'json', 'title', 'ui', 'html'];
+export const EXTRACTORS = ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'sanitize', 'passthrough'];
+/** html 模式的属性策略：none 清空全部属性 | semantic（默认）保留语义属性 | all 保留全部属性。 */
+export const ATTR_POLICIES = ['none', 'semantic', 'all'];
 
 export const DEFAULT_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15 htmlmini/0.2';
@@ -729,6 +731,39 @@ function buttonName(doc, el) {
 }
 
 /**
+ * 保守清洗：只剥非内容元素与表观属性，保留完整 DOM 结构与文本顺序。
+ * 与 `ui` 清单的区别：清单是扁平化 + 条数预算（可能截断），清洗是完整结构（token 更高）。
+ * - 剥离：脚本/样式/模板/元信息/图标类（含 svg path 数据）与注释
+ * - 属性：none 全清（最省 token，丢链接目标与合并单元格）/ semantic 保留语义属性 / all 只去脚本样式
+ */
+const SANITIZE_DROP_TAGS = 'script,style,noscript,template,link,meta,base,canvas,svg,path,source,track';
+const SANITIZE_KEEP_ATTRS = new Set([
+  'href', 'src', 'alt', 'title',
+  'colspan', 'rowspan', 'span', 'scope',
+  'type', 'value', 'placeholder', 'name', 'for', 'label',
+  'checked', 'selected', 'disabled', 'readonly', 'multiple',
+  'action', 'method', 'datetime', 'open', 'start', 'lang', 'dir', 'role',
+]);
+
+export function sanitizeHtml(doc, attrs = 'semantic') {
+  if (!ATTR_POLICIES.includes(attrs)) {
+    throw new Error(`unknown attrs policy "${attrs}"（可选: ${ATTR_POLICIES.join(', ')}）`);
+  }
+  for (const el of doc.querySelectorAll(SANITIZE_DROP_TAGS)) el.remove();
+  for (const el of doc.querySelectorAll('*')) {
+    for (const node of [...el.childNodes]) {
+      if (node.nodeType === 8) node.remove(); // 注释
+    }
+    if (attrs === 'all') continue;
+    for (const attr of [...el.attributes]) {
+      if (attrs === 'semantic' && SANITIZE_KEEP_ATTRS.has(attr.name.toLowerCase())) continue;
+      el.removeAttribute(attr.name);
+    }
+  }
+  return doc.toString();
+}
+
+/**
  * UI 组件清单（v2：按可访问语义重写）。
  * 只认语义标签/ARIA，不再用 class*="btn" 之类正则猜，避免样式类误伤。
  */
@@ -1026,9 +1061,12 @@ export function titleFromText(s) {
  * 非 HTML 输入（markdown/纯文本/JSON）任何模式下都透传原文，不硬抽；
  * 强制指定 extractor 时同理（硬把 markdown 当 HTML 解析只会得到空标题）。
  */
-export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null } = {}) {
+export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic' } = {}) {
   if (!EXTRACTORS.includes(extractor)) {
     throw new Error(`unknown extractor "${extractor}"（可选: ${EXTRACTORS.join(', ')}）`);
+  }
+  if (extractor === 'sanitize' && !ATTR_POLICIES.includes(attrs)) {
+    throw new Error(`unknown attrs policy "${attrs}"（可选: ${ATTR_POLICIES.join(', ')}）`);
   }
   const t0 = Date.now();
   const raw = String(html ?? '');
@@ -1079,6 +1117,10 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
       parseMs: Date.now() - t0,
     },
   });
+
+  if (extractor === 'sanitize') {
+    return finish(sanitizeHtml(document, attrs), 'sanitize');
+  }
 
   if (extractor === 'ui') {
     return finish(uiSkeleton(document), 'ui');
@@ -1199,7 +1241,7 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {}) {
+export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -1234,7 +1276,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (src === 'stdin' || src === 'content' ? src : src.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : extractor, contentType });
+  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs });
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
 }

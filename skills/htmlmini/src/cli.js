@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
-import { EXTRACTORS, MODES, runExtract } from './extract.js';
+import { ATTR_POLICIES, EXTRACTORS, MODES, runExtract } from './extract.js';
 
 const HELP = `htmlmini - strip CSS/JS from HTML, keep the core as Markdown (token-efficient for LLMs)
 
@@ -21,7 +21,15 @@ OPTIONS
   -u, --ui         force UI-component inventory (labels/buttons/selects/tables)
   -t, --text       plain text (no markup)
   -T, --title      print only the page title
-  --mode <name>    same as the flags above; explicit form for agents/scripts
+  --mode <name>    same as the flags above; explicit form for agents/scripts.
+                   "html" returns the cleaned HTML itself: full DOM structure and text
+                   order kept, scripts/styles/templates/icons and comments dropped,
+                   appearance attributes stripped by --attrs (higher token cost than
+                   markdown/ui, but nothing is truncated)
+  --attrs <policy> attribute policy for --mode html (default semantic):
+                   semantic = keep href/src/alt/colspan/rowspan/table+form state (recommended)
+                   none     = strip every attribute (smallest; loses link targets)
+                   all      = keep all attributes, only drop scripts/styles
   --proxy <url>    proxy override for URL fetch: http(s) URL, or "direct" to
                    bypass env proxy (default follows HTTP_PROXY/HTTPS_PROXY/NO_PROXY)
   --noproxy        force direct connection, ignoring env proxy
@@ -56,6 +64,8 @@ EXAMPLES
   htmlmini page.html                       # -> markdown to stdout
   htmlmini page.html --json                # -> metadata + extractor + savings %
   htmlmini 报表面板.html -u                 # -> force UI inventory
+  htmlmini page.html --mode html           # -> cleaned HTML (structure kept, scripts/styles/attrs gone)
+  htmlmini page.html --mode html --attrs none
   htmlmini dashboard.html --mode json --extractor ui
   htmlmini "https://example.com/a" -s      # -> outline of remote page
   cat page.html | htmlmini - --text        # -> plain text
@@ -104,6 +114,7 @@ let render = false;
 let renderTimeoutMs;
 let headful = false;
 let chromeBin;
+let attrs = 'semantic';
 
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -122,7 +133,7 @@ for (let i = 0; i < argv.length; i++) {
       console.error('htmlmini: --output needs a file argument');
       process.exit(2);
     }
-  } else if (a === '--mode' || a === '--extractor' || a === '--completion' || a === '--proxy' || a === '--chrome-bin') {
+  } else if (a === '--mode' || a === '--extractor' || a === '--attrs' || a === '--completion' || a === '--proxy' || a === '--chrome-bin') {
     const v = argv[++i];
     if (!v) {
       console.error(`htmlmini: ${a} needs a value`);
@@ -130,6 +141,7 @@ for (let i = 0; i < argv.length; i++) {
     }
     if (a === '--mode') mode = v;
     else if (a === '--extractor') extractor = v;
+    else if (a === '--attrs') attrs = v;
     else if (a === '--proxy') proxy = v;
     else if (a === '--chrome-bin') chromeBin = v;
     else await printCompletion(v);
@@ -147,10 +159,11 @@ for (let i = 0; i < argv.length; i++) {
       console.error(`htmlmini: --render-timeout-ms needs a positive number of ms (got "${v ?? ''}")`);
       process.exit(2);
     }
-  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--render-timeout-ms=')) {
+  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--attrs=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--render-timeout-ms=')) {
     const [k, v] = splitEq(a);
     if (k === '--mode') mode = v;
     else if (k === '--extractor') extractor = v;
+    else if (k === '--attrs') attrs = v;
     else if (k === '--output') output = v;
     else if (k === '--proxy') proxy = v;
     else if (k === '--chrome-bin') chromeBin = v;
@@ -179,6 +192,10 @@ if (!EXTRACTORS.includes(extractor)) {
   console.error(`htmlmini: unknown extractor "${extractor}" (see --list-extractors)`);
   process.exit(2);
 }
+if (!ATTR_POLICIES.includes(attrs)) {
+  console.error(`htmlmini: unknown --attrs policy "${attrs}" (use: ${ATTR_POLICIES.join(' | ')})`);
+  process.exit(2);
+}
 
 // 终端裸跑（无管道、无文件参数）会无限等 stdin：直接给提示而不是挂起。
 if (source === '-' && process.stdin.isTTY) {
@@ -187,7 +204,7 @@ if (source === '-' && process.stdin.isTTY) {
 }
 
 try {
-  const out = await runExtract(source, mode, { extractor, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render: true } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }) });
+  const out = await runExtract(source, mode, { extractor, attrs, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render: true } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }) });
   if (output) {
     await writeFile(output, out + '\n', 'utf8');
     console.error(`htmlmini: wrote ${output}`);

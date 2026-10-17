@@ -64,7 +64,25 @@ if (parsed.used !== 'ui') throw new Error(`expected ui, got ${parsed.used}`);
 const urlTool = tools.result.tools.find((t) => t.name === 'htmlmini_extract_url');
 const urlProps = (urlTool && urlTool.inputSchema && urlTool.inputSchema.properties) || {};
 if (!urlProps.proxy || !urlProps.render || !urlProps.headful || !urlProps.chrome_bin) throw new Error('extract_url missing proxy/render/headful/chrome_bin params');
-console.log('ok - extract_url 含 proxy/render/headful/chrome_bin 参数');
+if (!urlProps.attrs) throw new Error('extract_url missing attrs param');
+console.log('ok - extract_url 含 proxy/render/headful/chrome_bin/attrs 参数');
+
+const MESSY = `<!doctype html><html><head><title>清洗</title><style>a{color:red}</style><script>var x=1;</script></head><body>
+<table class="c"><tr><td colspan="2">A</td></tr></table></body></html>`;
+const cleaned = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: MESSY, mode: 'html' },
+});
+const htmlOut = cleaned.result.content[0].text;
+if (!htmlOut.includes('<table>') || !htmlOut.includes('colspan="2"') || /class=/.test(htmlOut) || htmlOut.includes('var x=1')) {
+  throw new Error('html mode (semantic) failed');
+}
+const stripped = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: MESSY, mode: 'html', attrs: 'none' },
+});
+if (/colspan/.test(stripped.result.content[0].text)) throw new Error('attrs=none did not strip colspan');
+console.log('ok - html 模式与 attrs 参数可用（semantic 保 colspan / none 清空）');
 
 const alias = await rpc('tools/call', {
   name: 'htmmini_extract_html',
