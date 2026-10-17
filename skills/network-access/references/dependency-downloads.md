@@ -16,6 +16,8 @@
 
 优先检查项目声明的包管理器（如 `packageManager`、锁文件）及已安装版本，沿用现有工具。无锁文件、无 `packageManager` 约束且可自由选择时，Node.js 优先用 pnpm：安装用 `pnpm install`（有 `pnpm-lock.yaml` 时加 `--frozen-lockfile`），单次执行用 `pnpm dlx <pkg>` 代替 `npx <pkg>`，全局工具用 `pnpm add -g <pkg>`；有锁文件或已声明工具时沿用现有工具，不删锁换管理器。单次参数优先于修改用户级配置；长期项目设置需要写明用途和适用环境，不能把本机代理地址提交进项目。
 
+目标环境没装该包管理器时，不要静默改用另一个（锁文件与 `packageManager` 声明随之失效）。Node.js 可先用随 Node 分发的 Corepack 免全局安装地运行：在项目目录执行 `corepack pnpm install --frozen-lockfile`，它会按 `package.json` 的 `packageManager` 取对应版本；需要 `pnpm` 命令常驻时才用 `corepack enable`（在 Node 安装目录写 shim，Windows 下可能需要管理员）。Corepack 下载 pnpm 本体走自己的来源，不受 `npm_config_registry` 影响，慢或不可达时用 `COREPACK_NPM_REGISTRY=<已核验registry>`。需要装全局工具或改 PATH 时，先向用户说明命令与影响再执行。
+
 | 工具 | 任务级源配置 | 适用边界 |
 | --- | --- | --- |
 | pip | `python -m pip ... --index-url "<已核验simple源>"` 或 `PIP_INDEX_URL` | 使用目标解释器；Simple 源包含 `/simple`，检查已有 extra index/find-links 配置 |
