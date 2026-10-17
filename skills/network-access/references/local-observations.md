@@ -88,3 +88,20 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 | 默认代理 | `--proxy http://127.0.0.1:<port>` | 200 / 1.9 秒 | 取得正文，最终 URL 重定向为 `https://arena.ai/company/about` |
 
 代理路线落盘正文经网页骨架提取（htmlmini）成功取得完整页面内容，未启用浏览器渲染；`resilient-browser-fetch` 对该站未验证。单站点单路径观测，不推广到该域其他路径或其他拦截站点。
+
+## 2026-10-18 内置网页抓取工具的出口与失败形态
+
+执行环境：国内 Windows；被测对象是 opencode harness 的内置 `webfetch` 工具（只有 `url`、`format=text|markdown|html`、`timeout` 参数，**没有代理与 UA 开关**），对照工具为 `curl.exe`。总结/评估任务触发，探测一次完成。
+
+| 通路 | 目标（出口回显） | 结果 |
+| --- | --- | --- |
+| 内置 `webfetch` | `https://www.cloudflare.com/cdn-cgi/trace` | 200，出口 `240e:…`（IPv6，colo=SJC） |
+| `curl.exe --noproxy '*'` | 同上 | 200，**与内置抓取同一出口 IP** |
+| `curl.exe --proxy http://127.0.0.1:<port>` | 同上 | 200，出口 `120.33.…`（colo=LAX） |
+
+- 该内置抓取**走真直连，不读 `HTTP(S)_PROXY`**（UA 为 opencode 自身标识）。与 `htmlmini`/`curl` 靠环境变量或 `--proxy` 指定路线的方式不同：宿主工具未提供路线开关时，只能通过出口回显判断实际路径。
+- 内容观测（`format=markdown`）：服务端渲染页面能取到正文（营销页首屏与章节结构、定价对比表、文档正文）；**客户端渲染或 CMS 注入的内容取不到**（某产品页的定价卡与 FAQ 答案整块缺失）。
+- 失败形态：Cloudflare 挑战站（`nowsecure.nl`）返回挑战空壳且**不报错**，最易被误当正文；`x.com` 超时以 `{"error":{"type":"unknown","message":"Request timed out"},"content":[]}` 返回而非抛错，调用方需自行判错；`api.ipify.org` 直连与代理均传输层失败，说明直连可达性随目标而异。
+- 格式语义：`format=markdown` 对 HTML 是"HTML→Markdown 转换"（保留转换痕迹：转义字符、列表间空行、协议相对图片地址、表格被拉平为逐行文本）；非 HTML 输入（raw markdown、JSON 端点）原样透传；`format=html` 的属性引号被去除（如 `lang=en`），不是响应原始字节。
+
+未验证：其他 harness 与版本、页面 JS 是否执行、真实浏览器指纹下的挑战页、Linux/macOS、长期可达性与跨日波动。
