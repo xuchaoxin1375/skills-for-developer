@@ -655,17 +655,24 @@ function truncate(s, n) {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
-/** 去重：完全相同或互相包含时保留较长者（输入已截断，O(n^2) 可接受）。 */
+/**
+ * 增量去重：完全相同或互相包含时保留较长者（O(n^2) 可接受）。
+ * 清单类输出按"去重后"计预算，必须边收边去重：否则页头/页脚里的重复样板先占满额度，
+ * 文档顺序靠后的内容（如长页尾部的定价卡）会被整段截断。
+ */
+function dedupeInsert(unique, t) {
+  const i = unique.findIndex((u) => u === t || u.includes(t) || t.includes(u));
+  if (i < 0) {
+    unique.push(t);
+    return;
+  }
+  if (t.length > unique[i].length) unique[i] = t;
+}
+
+/** 去重：输入已截断，语义同 dedupeInsert。 */
 function dedupe(items) {
   const unique = [];
-  for (const t of items) {
-    const i = unique.findIndex((u) => u === t || u.includes(t) || t.includes(u));
-    if (i >= 0) {
-      if (t.length > unique[i].length) unique[i] = t;
-    } else {
-      unique.push(t);
-    }
-  }
+  for (const t of items) dedupeInsert(unique, t);
   return unique;
 }
 
@@ -831,6 +838,7 @@ export function uiSkeleton(doc) {
     dedupe(images).slice(0, CAP.images).forEach((a) => out.push(`- ${truncate(a, 120)}`));
   }
 
+  // 链接预算按去重后计数（页脚导航等重复项不占额度）。
   const links = [];
   for (const a of doc.querySelectorAll('a[href]')) {
     if (links.length >= CAP.links) break;
@@ -838,16 +846,17 @@ export function uiSkeleton(doc) {
     const t = collectText(a);
     if (!t || t.length > 80) continue;
     const href = truncate(a.getAttribute('href') || '', 80);
-    links.push(href && href !== t ? `${t} (${href})` : t);
+    dedupeInsert(links, href && href !== t ? `${t} (${href})` : t);
   }
   if (links.length) {
     out.push('', '## 链接');
-    dedupe(links).slice(0, CAP.links).forEach((l) => out.push(`- ${truncate(l, 160)}`));
+    links.slice(0, CAP.links).forEach((l) => out.push(`- ${truncate(l, 160)}`));
   }
 
-  const texts = [];
+  // 文本预算同样按去重后计数：重复样板不吃额度，长页尾部才不会被截断。
+  const uniqueTexts = [];
   for (const el of doc.querySelectorAll('p,li,td,th,div,span')) {
-    if (texts.length >= CAP.texts) break;
+    if (uniqueTexts.length >= CAP.texts) break;
     if (el.querySelector('p,li,td,th,div,label,button,select,h1,h2,h3,h4,h5,h6,input,table,a')) continue;
     let node = el.parentElement;
     let interactive = false;
@@ -860,12 +869,11 @@ export function uiSkeleton(doc) {
     }
     if (interactive) continue;
     const t = collectText(el);
-    if (t.length >= 2 && t.length <= 150 && !/^[0-9\s%.,]+$/.test(t)) texts.push(t);
+    if (t.length >= 2 && t.length <= 150 && !/^[0-9\s%.,]+$/.test(t)) dedupeInsert(uniqueTexts, t);
   }
-  const uniqueTexts = dedupe(texts);
   if (uniqueTexts.length) {
     out.push('', '## 文本');
-    uniqueTexts.slice(0, CAP.texts).forEach((t) => out.push(`- ${t}`));
+    uniqueTexts.forEach((t) => out.push(`- ${t}`));
   }
   return out.join('\n');
 }
