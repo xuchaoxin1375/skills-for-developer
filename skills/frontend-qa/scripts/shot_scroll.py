@@ -1,216 +1,273 @@
-"""多屏滚动截图：一次 Playwright 会话连拍 N 个视口。
+"""Managed viewport screenshots: one browser, one or more scroll positions.
 
-shot-quick.ps1 只拍首屏；需要第二屏及以下时用本脚本，避免为每屏各起一次浏览器。
-代理契约与 resilient_fetch.py 一致：--proxy / SCRAPE_PROXY 优先，
---discover-proxy 时再读机外登记（~/.config/proxy-resources.json）并做有界 TCP 探测；
-无代理参数且未要求发现时即直连，只有 --discover-proxy 要求代理却无可用候选时
-才报错退出（exit 2），不猜端口、不静默降级。
+Examples:
+  python -X utf8 shot_scroll.py --url https://example.com --out page.png
+  python -X utf8 shot_scroll.py --url https://example.com --screens 2 --channel msedge
 
-示例：
-  python -X utf8 shot_scroll.py --url 'https://example.com/page' --screens 2
-  python -X utf8 shot_scroll.py --url 'https://example.com/page' --screens 2 --discover-proxy
-  python -X utf8 shot_scroll.py --url 'https://example.com/page' --proxy 'http://127.0.0.1:<port>'
-  python -X utf8 shot_scroll.py --url 'https://example.com/page' --screens 2 --channel msedge
-
-本机装有 Chrome/Edge 时加 --channel 直用本机浏览器，免下载；--channel 与
---executable-path 互斥，后者指向任意位置的浏览器可执行文件。
-
-成功打印 SHOT 行并 exit 0；失败 exit 1；代理不可用 exit 2。
+The CLI starts a guardian, not a persistent browser service. See --help and
+references/screenshot-workflow.md for lifecycle guarantees and exit statuses.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
+from pathlib import Path
 import re
 import socket
 import sys
-import tempfile
-from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
+import uuid
+
+from managed_browser import USER_TEMP_ROOT, TaskError, run_managed
 
 PROXY_REGISTRY_PATH = Path.home() / ".config" / "proxy-resources.json"
-WIDTHS = (390, 1440)
-
-
-class ProxyUnavailableError(RuntimeError):
-    """要求代理但无可用候选。"""
-
-
-def slugify(url: str) -> str:
-    """由 URL 派生文件名别名（与 shot-quick.ps1 同规则）。"""
-    slug = re.sub(r"^https?://", "", url.strip().lower())
-    slug = re.sub(r"[^a-z0-9]+", "-", slug).strip("-")
-    return slug[:60] or "page"
 
 
 def registry_default_proxy(registry_path: Path | None = None) -> str | None:
-    """读机外登记，默认条目优先；文件缺失/损坏/无条目返回 None。"""
+    """Return the registered default without guessing local proxy ports."""
     try:
-        data = json.loads(Path(registry_path or PROXY_REGISTRY_PATH).read_text(encoding="utf-8"))
+        data = json.loads(
+            (registry_path or PROXY_REGISTRY_PATH).read_text(encoding="utf-8")
+        )
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict) or not isinstance(data.get("proxies"), list):
         return None
-    proxies = [e for e in data["proxies"] if isinstance(e, dict) and e.get("url")]
-    if not proxies:
-        return None
-    default = data.get("default")
-    for entry in proxies:
-        if entry.get("name") == default:
-            return entry["url"]
-    return proxies[0]["url"]
+    proxies = [
+        entry
+        for entry in data["proxies"]
+        if isinstance(entry, dict) and isinstance(entry.get("url"), str)
+    ]
+    default = next(
+        (entry for entry in proxies if entry.get("name") == data.get("default")), None
+    )
+    return (default or proxies[0])["url"] if proxies else None
 
 
-def tcp_reachable(proxy_url: str, timeout: float = 1.0) -> bool:
-    """对代理端点做一次有界 TCP 探测（只判监听，不验证协议与出口）。"""
+def tcp_reachable(proxy: str) -> bool:
+    """Check only the registered endpoint's listener, with a bounded wait."""
     try:
-        parsed = urlparse(proxy_url)
-        host, port = parsed.hostname, parsed.port
-    except ValueError:
-        return False
-    if not host or not port:
-        return False
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
+        parsed = urlparse(proxy)
+        if not parsed.hostname or not parsed.port:
+            return False
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
             return True
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 
-def resolve_proxy(
-    explicit: str | None, *, discover: bool
-) -> tuple[str | None, str]:
-    """按 显式参数 → SCRAPE_PROXY →（discover 时）登记 → 直连 解析代理。"""
+def resolve_proxy(explicit: str | None, *, discover: bool) -> tuple[str | None, str]:
+    """Explicit -> environment -> optional registry -> direct."""
     if explicit:
         return explicit, "explicit"
-    env = os.getenv("SCRAPE_PROXY")
-    if env:
-        return env, "env:SCRAPE_PROXY"
+    if os.getenv("SCRAPE_PROXY"):
+        return os.environ["SCRAPE_PROXY"], "env:SCRAPE_PROXY"
     if not discover:
         return None, "direct"
     candidate = registry_default_proxy()
     if candidate and tcp_reachable(candidate):
         return candidate, "registry"
-    raise ProxyUnavailableError(
-        "要求代理但未找到可用候选（登记缺失或候选不可达）。"
-        "请用 --proxy 指定代理 URL，或设置 SCRAPE_PROXY，或先登记可用代理后重试。"
-    )
+    raise TaskError("未找到可用的登记代理，请传 --proxy 或设置 SCRAPE_PROXY。", 2)
 
 
-def capture(
-    url: str,
-    *,
-    out_dir: Path,
-    width: int,
-    height: int,
-    screens: int,
-    proxy: str | None,
-    timeout_ms: int,
-    settle_ms: int,
-    step_wait_ms: int,
-    channel: str | None = None,
-    executable_path: str | None = None,
-) -> list[Path]:
-    """一次会话连拍：首屏 + 每次下滚一视口。返回截图路径列表。"""
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as exc:
-        raise RuntimeError("缺少 playwright：请先安装 Playwright Python 包与浏览器。") from exc
-    slug = slugify(url)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    shots: list[Path] = []
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
+def capture(config: dict[str, Any]) -> dict[str, Any]:
+    """Worker-only Playwright session; the guardian owns its hard deadline."""
+    from playwright.sync_api import sync_playwright
+
+    workspace = Path(config["workspace"])
+    shots_dir = workspace / "shots"
+    shots_dir.mkdir()
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
             headless=True,
-            proxy={"server": proxy} if proxy else None,
-            channel=channel,
-            executable_path=executable_path,
+            timeout=config["timeout_ms"],
+            channel=config["channel"],
+            executable_path=config["executable_path"],
+            proxy={"server": config["proxy"]} if config["proxy"] else None,
         )
         try:
-            page = browser.new_context(
-                viewport={"width": width, "height": height}
-            ).new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            context = browser.new_context(
+                viewport={"width": config["width"], "height": config["height"]}
+            )
             try:
-                page.wait_for_load_state("networkidle", timeout=min(15000, timeout_ms))
-            except Exception:
-                pass  # 重 JS 页网络难静默，固定等待后继续，不阻塞后续屏
-            page.wait_for_timeout(settle_ms)
-            for i in range(1, screens + 1):
-                shot = out_dir / f"{slug}-s{i}-{width}.png"
-                page.screenshot(path=str(shot))
-                shots.append(shot)
-                if i < screens:
-                    page.evaluate("window.scrollBy(0, window.innerHeight)")
-                    page.wait_for_timeout(step_wait_ms)
+                context.set_default_timeout(config["timeout_ms"])
+                page = context.new_page()
+                page.goto(config["url"], wait_until="domcontentloaded")
+                page.wait_for_timeout(config["settle_ms"])
+                for index in range(config["screens"]):
+                    page.screenshot(
+                        path=str(shots_dir / f"{index}.png"), full_page=False
+                    )
+                    if index + 1 < config["screens"]:
+                        page.evaluate("window.scrollBy(0, window.innerHeight)")
+                        page.wait_for_timeout(config["step_wait_ms"])
+            finally:
+                context.close()
         finally:
             browser.close()
-    return shots
+    return {
+        "code": 0,
+        "artifacts": [
+            {"source": f"shots/{index}.png", "destination": target}
+            for index, target in enumerate(config["outputs"])
+        ],
+    }
+
+
+def worker_main() -> int:
+    """Wait for containment assignment before importing or launching Playwright."""
+    line = sys.stdin.buffer.readline()
+    if not line:
+        return 130
+    config = json.loads(line)
+    try:
+        result = capture(config)
+    except Exception as exc:
+        # Browser exception strings may contain URLs or proxy credentials.
+        hint = (
+            "缺少 Playwright，请在目标 Python 环境安装该包。"
+            if isinstance(exc, ImportError)
+            else "请检查浏览器安装、目标页面与代理。"
+        )
+        result = {"code": 1, "error": f"截图失败：{type(exc).__name__}；{hint}"}
+    (Path(config["workspace"]) / "result.json").write_text(
+        json.dumps(result), encoding="utf-8"
+    )
+    return result["code"]
+
+
+def positive_int(value: str) -> int:
+    """Reject invalid budgets before starting a guardian."""
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("必须是正整数")
+    return number
+
+
+def nonnegative_int(value: str) -> int:
+    """Allow an explicit zero render wait."""
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("不能为负数")
+    return number
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Expose one interface for first-viewport and scrolling screenshots."""
+    parser = argparse.ArgumentParser(
+        description="托管截图：首屏或滚动多屏，自动回收浏览器。",
+        epilog="示例：--url https://example.com --out page.png；多屏加 --screens 2。\n"
+        "退出码：0 成功；1 截图失败；2 参数/代理错误；3 忙；4 清理未确认；124 总超时；130 取消。",
+    )
+    parser.add_argument("--url", required=True, help="目标 HTTP(S) URL")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--out", help="首屏 PNG 文件（仅 --screens 1）")
+    output.add_argument("--out-dir", help="截图目录；默认临时目录中的独立运行目录")
+    parser.add_argument(
+        "--screens", type=positive_int, default=1, help="视口屏数，1–20，默认 1"
+    )
+    parser.add_argument(
+        "--width", type=positive_int, default=1440, help="CSS 像素宽，最大 8192"
+    )
+    parser.add_argument(
+        "--height", type=positive_int, default=900, help="CSS 像素高，最大 8192"
+    )
+    parser.add_argument(
+        "--timeout-ms", type=positive_int, default=30_000, help="单次浏览器操作超时"
+    )
+    parser.add_argument(
+        "--wall-timeout-ms",
+        type=positive_int,
+        default=60_000,
+        help="整个 worker 的总期限；收尾另留最多约 8 秒",
+    )
+    parser.add_argument(
+        "--settle-ms", type=nonnegative_int, default=500, help="首屏渲染等待，默认 500"
+    )
+    parser.add_argument(
+        "--step-wait-ms", type=nonnegative_int, default=500, help="滚动后等待，默认 500"
+    )
+    parser.add_argument("--proxy", help="运行时代理；缺省读取 SCRAPE_PROXY")
+    parser.add_argument(
+        "--discover-proxy", action="store_true", help="无显式/环境代理时读登记并探测"
+    )
+    browser = parser.add_mutually_exclusive_group()
+    browser.add_argument(
+        "--channel", choices=["chrome", "msedge"], help="使用本机浏览器，免下载制品"
+    )
+    browser.add_argument(
+        "--executable-path", help="指定真实浏览器二进制；不接受包装器/垫片"
+    )
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="一次 Playwright 会话连拍 N 个视口（首屏+滚动屏）。")
-    parser.add_argument("--url", required=True, help="目标 HTTP(S) URL。")
-    parser.add_argument("--out-dir", default="", help="输出目录，缺省为系统临时目录下 shot-scroll/。")
-    parser.add_argument("--width", type=int, choices=list(WIDTHS), default=1440)
-    parser.add_argument("--height", type=int, default=900)
-    parser.add_argument("--screens", type=int, default=2, help="连拍屏数，首屏为 s1。")
-    parser.add_argument("--proxy", default=os.getenv("SCRAPE_PROXY"), help="代理 URL；也可设置 SCRAPE_PROXY。")
-    parser.add_argument("--discover-proxy", action="store_true", help="未指定代理时读本机登记并探测可用候选。")
-    parser.add_argument("--timeout-ms", type=int, default=60000)
-    parser.add_argument("--settle-ms", type=int, default=4000, help="首屏渲染固定等待。")
-    parser.add_argument("--step-wait-ms", type=int, default=1500, help="每次滚动后固定等待。")
-    local_browser = parser.add_mutually_exclusive_group()
-    local_browser.add_argument(
-        "--channel",
-        choices=["chrome", "msedge"],
-        default=None,
-        help="直用本机安装的 Chrome/Edge，免下载浏览器。",
-    )
-    local_browser.add_argument(
-        "--executable-path",
-        default=None,
-        help="直用指定路径的浏览器可执行文件（适用于上述通道之外的位置）。",
-    )
+    """Validate input, start a managed task, print only committed screenshots."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    parser = build_parser()
     args = parser.parse_args(argv)
-
-    if not re.match(r"^https?://", args.url):
-        print(f"Url 须为 http(s) 地址：{args.url}", file=sys.stderr)
-        return 1
-    if args.screens < 1:
-        print("--screens 须 >= 1", file=sys.stderr)
-        return 1
     try:
-        proxy, source = resolve_proxy(args.proxy or None, discover=args.discover_proxy)
-    except ProxyUnavailableError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-
-    out_dir = Path(args.out_dir) if args.out_dir else Path(tempfile.gettempdir()) / "opencode" / "shot-scroll"
-    print(f"PROXY source={source}")
-    try:
-        shots = capture(
-            args.url,
-            out_dir=out_dir,
-            width=args.width,
-            height=args.height,
-            screens=args.screens,
-            proxy=proxy,
-            timeout_ms=args.timeout_ms,
-            settle_ms=args.settle_ms,
-            step_wait_ms=args.step_wait_ms,
-            channel=args.channel,
-            executable_path=args.executable_path,
+        parsed = urlparse(args.url)
+        if (
+            parsed.scheme not in ("http", "https")
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+        ):
+            parser.error("--url 需要不含凭据的 HTTP(S) 地址")
+        if args.screens > 20 or args.width > 8192 or args.height > 8192:
+            parser.error("最多 20 屏，视口宽高各不超过 8192")
+        if args.out and (args.screens != 1 or Path(args.out).suffix.lower() != ".png"):
+            parser.error("--out 仅接受单屏 PNG 文件")
+        if args.executable_path and (
+            not Path(args.executable_path).is_file()
+            or Path(args.executable_path).suffix.lower() in (".cmd", ".bat", ".ps1")
+            or Path(args.executable_path).with_suffix(".shim").exists()
+        ):
+            parser.error("--executable-path 需要真实浏览器文件")
+        proxy, source = resolve_proxy(args.proxy, discover=args.discover_proxy)
+        logging.info("PROXY source=%s", source)
+        slug = (
+            re.sub(r"[^a-z0-9]+", "-", (parsed.hostname + parsed.path).lower()).strip(
+                "-"
+            )[:60]
+            or "page"
         )
-    except Exception as exc:
-        print(f"FAIL {exc}", file=sys.stderr)
+        out_dir = (
+            Path(args.out_dir)
+            if args.out_dir
+            else USER_TEMP_ROOT / "shots" / uuid.uuid4().hex
+        )
+        outputs = (
+            [str(Path(args.out).resolve())]
+            if args.out
+            else [
+                str((out_dir / f"{slug}-s{index + 1}-{args.width}.png").resolve())
+                for index in range(args.screens)
+            ]
+        )
+        config = vars(args) | {"proxy": proxy, "outputs": outputs}
+        result = run_managed(
+            [sys.executable, "-X", "utf8", str(Path(__file__).resolve()), "--worker"],
+            config,
+            args.wall_timeout_ms,
+        )
+        for artifact in result["artifacts"]:
+            path = Path(artifact["destination"])
+            print(f"SHOT {path} ({path.stat().st_size} bytes)")
+        logging.info("CLEANUP verified")
+        return 0
+    except TaskError as exc:
+        logging.error("FAIL %s", exc)
+        return exc.code
+    except (OSError, ValueError) as exc:
+        logging.error("FAIL %s", type(exc).__name__)
         return 1
-    for shot in shots:
-        print(f"SHOT {shot} ({round(shot.stat().st_size / 1024)}KB)")
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(worker_main() if sys.argv[1:] == ["--worker"] else main())

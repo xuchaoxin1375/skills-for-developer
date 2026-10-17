@@ -1,73 +1,67 @@
-# 无 Playwright 设备的截图工作流
+## 受托管的截图工作流
 
-假设条件：一台 Win10 设备，尚未安装 **Playwright**（自动化浏览器库，`shot_scroll.py` 依赖它起浏览器会话）。本文件只讲"用什么拍、按什么顺序拍"，拍不拍、拍什么按 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md) 判定，代理按 [代理登记](../../network-access/references/proxy-registry.md) 流程准备。
+首屏和滚动多屏统一用 `scripts/shot_scroll.py`，默认只拍首屏。`shot-quick.ps1` 是同一入口的 PowerShell 兼容包装，不再直接创建 Chrome 进程。截图触发、取景和实际查看按 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md)，资源政策按 [测试资源预算与回收](../../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)。
 
-```mermaid
-flowchart TD
-    A["按 visual-acceptance 判定是否需要截图"] --> B{"可以免拍"}
-    B -->|是| Z["记录免拍理由，结束"]
-    B -->|否| C["按 network-access 定代理：读登记并做有界核验"]
-    C --> D{"要拍几屏"}
-    D -->|首屏| E["shot-quick.ps1：一发式 headless Chrome"]
-    D -->|多屏| F{"目标环境可启动所需浏览器"}
-    F -->|有| G["shot_scroll.py：一次会话连拍多屏"]
-    F -->|无| W{"本机装有 Chrome 或 Edge"}
-    W -->|有| X["补齐缺失包后，shot_scroll.py 加 --channel，免下载浏览器"]
-    W -->|无| H{"接受安装"}
-    H -->|接受| N["分别准备包源与浏览器下载路线"] --> I["补齐 playwright 包与 chromium，实际启动验证"] --> G
-    H -->|拒绝| J["降级：加高窗口拍长图或只拍首屏，并记录局限"]
-    E --> K["解析浏览器：显式参数优先，逐级回退到 Playwright 缓存"]
-    G --> L["核对 SHOT 行与文件字节数"]
-    X --> L
-    J --> L
-    K --> L
-    L --> M["Agent 目检关键态，回收临时 profile"]
-```
+### 使用
 
-上图分支收敛到同一收尾：脚本打印的 `SHOT` 行与文件字节只证明"拍到了"，**是否符合预期由 Agent 看图判定**，临时浏览器 profile 由脚本自行删除（`shot-quick.ps1` 建后即删，`shot_scroll.py` 用后即关）。
-
-## 两个脚本的分工
-
-| 脚本 | 覆盖 | 最低条件 | 说明 |
-|---|---|---|---|
-| `scripts/shot-quick.ps1` | 仅首屏视口 (viewport) | `pwsh 7` 加任一 Chrome | 不需要 Playwright；按显式参数、环境变量、`PATH`、固定安装路径、`Playwright` 缓存逐级找浏览器 |
-| `scripts/shot_scroll.py` | 首屏加滚动多屏 | 上述加 `playwright` 包（浏览器可免下载，见下） | 一次会话连拍，不为每屏各起一次浏览器 |
-
-Win10 默认自带的是 `powershell 5.1`，而 `shot-quick.ps1` 首行要求 7，必须先装 `pwsh 7`；Python 一律用 `python -X utf8` 启动，避免中文输出乱码。
-
-## 直用本机 Chrome 或 Edge（免下载浏览器）
-
-先确认本机实际安装了 Edge 或 Chrome；可用时免去下载 `chromium` 的一步（仍需目标 Python 环境中的 `playwright` 包）。`--channel` 与 `--executable-path` 互斥：
+目标 Python 环境需已有 Playwright；先复用项目环境，不自动安装依赖。`<skill-dir>` 指本 skill 目录：
 
 ```powershell
-python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com/page' --screens 2 --channel msedge
-python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com/page' --screens 2 --channel chrome
+# 首屏，指定输出文件
+python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --out page.png
+
+# 一次浏览器会话拍两屏；使用已安装的 Edge，免下载浏览器制品
+python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --screens 2 --channel msedge --out-dir shots
+
+# PowerShell 7 兼容入口；-Python 可指定虚拟环境解释器
+& <skill-dir>/scripts/shot-quick.ps1 -Url 'https://example.com' -Channel msedge -Out page.png
 ```
 
-`--channel msedge` 用本机 Edge，`--channel chrome` 用本机 Chrome；浏览器装在非常规位置时改用 `--executable-path` 指向可执行文件。代理参数与连拍逻辑不变，当前机器仍须实际启动验证。
+未指定输出时，每轮使用独立的系统临时目录 `opencode/shots/<run-id>`，成功图片作为结果保留。指定同一输出文件时，仅成功采集并回收浏览器后才替换文件；失败不会预先删除旧图片。多张图片逐文件原子替换，不承诺整批事务，未收到本轮全部 `SHOT` 行不能将旧文件或部分结果当本轮成功证据。
 
-## 国内安装准备
+默认视口 `1440×900`，单次操作超时 30 秒，整个 worker 总期限 60 秒，收尾另留最多约 8 秒。可用 `--width`、`--height`、`--timeout-ms`、`--wall-timeout-ms` 调整；最多 20 屏、宽高各不超过 8192。`--settle-ms` / `--step-wait-ms` 默认 500 毫秒，只是采集等待，不是业务就绪断言；需要交互、登录或精确状态等待时使用项目的受管测试 runner。
 
-包源按 [依赖下载](../../network-access/references/dependency-downloads.md) 使用目标解释器和已有安装器，浏览器按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 处理。国内浏览器优先已登记代理访问官方 CDN；无代理或代理失败再核验制品镜像，不默认同时填写代理与镜像。
+代理按 `--proxy` → `SCRAPE_PROXY` →（指定 `--discover-proxy` 时）机外登记解析；没有代理设置且未要求发现时直连。只验证登记端点监听，不据此宣称出口可用。日志不打印代理凭据和页面查询参数。`--channel chrome/msedge` 与 `--executable-path` 互斥，后者必须指向真实浏览器文件，不传包装脚本或垫片。
 
-只缺包时沿用 pip/uv 补齐；已有系统浏览器并使用 `--channel` 时可省略浏览器下载。确需 Chromium 时，用同一 Python 环境的 `python -X utf8 -m playwright install chromium`；`--dry-run` 只显示下载计划，不证明镜像可用。配置和启动验证采用共用参考，不在此维护第二份命令模板。
+国内安装按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 区分包源和制品源。本机有 Edge/Chrome 时可只补目标环境的 Playwright 包；拒绝安装且没有可用 runner 时记录未执行，不回退到无期限的裸浏览器命令。
 
-## 执行顺序
+### 生命周期与托管边界
 
-1. 按 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md) 决定拍不拍、拍几屏；纯文案且不影响几何与状态的可记 `N/A` 并写理由。
-2. 按 [代理登记](../../network-access/references/proxy-registry.md) 读本机登记并做有界核验，把真实代理值当本次调用参数传入，不写进文档与脚本。
-3. 只要首屏时直接用 `shot-quick.ps1`；要第二屏及以下时，先复用目标环境已有 Playwright 和浏览器，再看本机 Chrome/Edge（有则加 `--channel` 免下载浏览器）。
-4. 需要补齐工具且安装已授权时，按“国内安装准备”补齐缺失包与浏览器；使用 `--channel` 时只补缺失包，不重复询问已有安装授权。
+`managed_browser.py` 提供独立的本地守护进程（guardian）；没有常驻服务、浏览器池或远程浏览器依赖。Windows 作业对象（Job Object）约束本轮进程树；Linux 的 subreaper 负责接收失去父进程的后代，pidfd 是绑定进程身份的文件描述符。
 
-5. 截图命令（`<skill-dir>` 指本 skill 目录，代理值为占位）：
+1. 调用端创建独立 guardian，持有通信管道作为存活信号。guardian 持有操作系统文件锁，同一用户、同一临时目录默认只允许一轮任务；第二轮返回忙，不排队、不自动重试。
+2. worker 先等待启动配置。Windows 中，guardian 将其加入启用 `KILL_ON_JOB_CLOSE` 的 Job Object 后才放行；Chromium、Playwright 驱动与后代继承约束，不凭全机进程数认领资源。
+3. Playwright 显式关闭 context 和 browser；总期限覆盖启动、导航、截图和正常关闭。到期或调用端管道断开时，guardian 终止本轮进程树。
+4. 即使 worker 正常返回，也清理残留后代，核验作业内活动进程归零，再发布截图并删除本轮 profile、浏览器临时文件。worker 原始输出丢弃，避免无界日志增长及凭据回显；失败仅返回异常类型与已知排查提示。
+5. 调用端被强制结束时，guardian 通过管道 EOF 收尾。Windows 中 guardian 自身被强制结束，Job Object 仍负责终止成员，但文件清理无法继续；下次运行检测遗留目录并拒绝启动。
+
+Linux 使用独立进程组及 subreaper，回收被重新托管的后代；用 pidfd 确认并终止进程，涵盖另建 session 的浏览器，不只终止原进程组。要求内核和 Python 支持 pidfd。其他平台启动前明确拒绝，交给项目已有受管 runner；不宣称 macOS 具有同等保障。Windows 已实测，Linux 分支需在目标环境另验。
+
+成功必须同时得到本轮 `SHOT` 行和 `CLEANUP verified`，并实际查看图片；文件存在仅证明采集，不证明视觉符合预期。资源收尾不明时禁止叠加失败轮。
+
+| 退出码 | 含义与处理 |
+|---|---|
+| `0` | 截图及清理成功 |
+| `1` | 启动、导航、截图或 worker 失败；检查环境与页面，不盲目重试 |
+| `2` | 参数、代理发现或平台能力不满足；修正条件再执行 |
+| `3` | 已有任务持锁；等待本轮收尾，不绕过锁并发启动 |
+| `4` | 清理未确认或 guardian 异常；停止新增任务，核对资源 |
+| `124` | worker 超过总期限，已完成收尾；页面未验收 |
+| `130` | 用户取消或调用端退出；guardian 执行收尾 |
+
+状态目录为系统临时目录中的 `opencode/browser-tasks`；Linux 使用 `opencode-<uid>` 隔离用户，截图结果目录同样采用这个前缀。失败清理会保留 `cleanup-failed.json` 与本轮目录，后续运行拒绝继续。恢复时先确认锁已释放、本轮进程资源已终止，再只处理该记录指向的本轮目录与标记；不要按 Chrome 名称或端口杀进程，不删整个共享临时目录。仅 guardian 意外退出留下目录时也适用。系统关机、整个容器被销毁或宿主强杀全部相关进程后，不能指望应用继续清文件；下一轮保守阻断。
+
+### 迁移与复用
+
+- `shot_scroll.py` 的默认屏数由 2 改为 1；多屏显式传 `--screens 2`。
+- `shot-quick.ps1` 现在需要 Python Playwright，移除按 PATH/最大缓存版本猜浏览器、隐式环境浏览器覆盖及裸 Chrome 回退。`-Chrome` 映射到 `--executable-path`，推荐 `-Channel msedge/chrome` 或匹配项目版本的缓存。
+- 旧 `-VirtualBudget` 已移除，改用 `-TimeoutMs` 与 `-WallTimeoutMs`。页面虚拟时间不能作为进程总期限。
+- 其他 skill 的单次视口截图可引用本入口。复杂测试沿用项目 runner；`resilient-browser-fetch` 的挑战处理、持久会话及 `htmlmini` 渲染回退不因本次改动自动获得相同托管保障。
+
+### 验证
 
 ```powershell
-& <skill-dir>/scripts/shot-quick.ps1 -Url 'https://example.com/page' -Proxy 'http://127.0.0.1:<port>'
-python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com/page' --screens 2 --discover-proxy
+python -X utf8 -m unittest discover -s <skill-dir>/tests -v
 ```
 
-6. 核对每屏 `SHOT` 行与文件字节数，Agent 看图确认关键态；失败轮按 [测试资源预算与回收](../../web-app-testing/references/environment-and-maintenance.md) 收尾，不叠加未回收的重试。
-
-## 拒绝安装时的降级
-
-`shot-quick.ps1` 的 `-Height` 可加高（如 `2700`）一次拍长图。高度变化一般不触发宽度媒体查询，但吸顶与固定元素、懒加载行为与真实滚动不同，只能作概览，不能当多屏证据；采用降级时必须在结论中记录局限。
+生命周期用例使用真实 worker 和持有监听端口的后代，验证成功残留、失败、超时、取消、调用端强制退出、并发拒绝及清理失败阻断，同时保留不相关监听实例。Windows 另验 guardian 强制退出的 Job Object 回收；浏览器用例需要可启动的匹配 Chromium，验证本地两屏、失败不替换旧结果及含空格中文路径。公共网站、代理出口和视觉质量不在这些测试的证明范围。
