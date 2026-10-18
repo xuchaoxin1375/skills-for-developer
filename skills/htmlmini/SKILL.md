@@ -73,7 +73,7 @@ Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` →
 | office/pdf/音视频转 Markdown | `markitdown`，htmlmini 只做 HTML |
 | 批量新闻正文 + 只要最高精度且有 Python | `pip install trafilatura` 后 htmlmini `auto` 会自动用上，无需换工具 |
 | 动态交互页要"可操作结构"而非文本摘要 | 浏览器可访问树（Playwright 类 MCP），而非静态提取 |
-| 通用网页正文、图快、且不需要结构化提取或取数 | harness 自带 `web_fetch`：零依赖、保留完整 DOM 顺序，但不剥样板、也拿不到 tab 面板里的块（实测漏整块定价卡、FAQ 只给每组首答），产品/定价/面板页不要用它；覆盖量级见 `README.md`「与 harness 内建 fetch 的取舍」 |
+| 通用网页正文、图快、且不需要结构化提取或取数 | harness 自带 `web_fetch`：零依赖、保留完整 DOM 顺序，一次调用且不用落盘；不剥样板也不出组件清单。内容在静态 DOM 时卡片类块也能取到，但 tab 面板/layer 模板里的块会漏、FAQ 只给每组首答。判据是目标块在不在静态 DOM 里，不是页面类别；覆盖量与成本对照见 `README.md`「与 harness 内建 fetch 的取舍」 |
 | 要给采集/爬虫写选择器、抽取规则或字段契约（产物需长期成立） | 只对原始 HTML 或真实渲染 DOM 编写与回归；htmlmini 的任何模式都是清洗产物，不据它定规则 |
 
 判据是**产物是否沉淀为抽取契约**，不是抓多少页：写规则时对照的**参考对象**（接口 JSON、原始 HTML、渲染后真实 DOM）只能取自站点本身，选择器、字段映射与回归基线都基于它编写。htmlmini 的清洗产物撑不住这件事——静态解析会重排（如 doctype 被提到最前），不是浏览器真实 DOM；`--mode html` 还整棵删掉 `script`/`noscript`/`template` 与注释、归一化文本空白，`--attrs all` 只能救回属性这一项。
@@ -90,6 +90,7 @@ Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` →
 
 - URL 或页面取数是否先走提取再回答，未因口语未命中而手抓原文？
 - 是否先判了页面类型：营销/产品/定价页与面板/设计稿直接走 `ui`，没有只跑默认 `markdown` 就下结论？
+- 目标块在静态 DOM 里、只要正文摘要时，是否先用内建 `web_fetch` 一次调用解决，而不是默认再走抓取 + 落盘 + 多视图提取？
 - 同一 URL 是否只联网抓一次、后续各模式复用已落盘的 HTML？
 - `ui` 清单疑似被预算截断（末尾停在半途、缺页面尾部内容）时，是否按锚点切片重提取补齐，而非手写正则抠原文？
 - 需要的是页面结构（表格、嵌套层级、表单初始态）而非摘要时，是否用 `--mode html`，而不是直接读原始 HTML？
