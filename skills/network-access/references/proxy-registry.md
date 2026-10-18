@@ -76,6 +76,14 @@ ps -eo pid,comm,args | grep -Ei 'mihomo|clash|sing-box|xray|v2ray|ss-local|shado
 - `default` 指向优先使用的条目；多代理并列时选最近核验可用者。
 - **不把代理凭据写进登记文件**：需要认证的代理，`url` 留地址部分，凭据经环境变量或用户输入在单次任务中提供。
 
+### 可选：制品镜像条目（`artifact_mirrors`）
+
+同一文件可另存一个**与代理无关**的顶层数组 `artifact_mirrors`，记录本机核验过的制品基址（如 `PLAYWRIGHT_DOWNLOAD_HOST` 指向的镜像），字段为 `name`、`type`、`url`、`source`、`verified`、`notes`。它不参与代理选择：读取代理的调用只认 `proxies`，制品基址必须显式取出并设进对应下载器变量。
+
+- 与 `proxies` 分开的理由：混入会被当成代理入口（按 `url` 取端口去探测），既探不通也污染候选。
+- 每条都要写 `verified` 与核验口径（覆盖了哪个版本/revision、怎么核验的），并在 `notes` 注明该基址的适用范围与回退路线。
+- 同样是**线索不是事实**：每次使用前按 [浏览器安装](browser-installation.md) 用 `--dry-run` 与包锁定的 revision 逐项对齐，缺件或校验不过就换路线，不因为登记过就默认可用。
+
 ## 读写流程
 
 - **读**：任务需要代理 → 先读登记文件 → 对 `default`（或唯一条目）做一次有界探测 → 可用直接用；不可用把该条目标记失效（更新 `verified` 并在 `notes` 注明），再走发现流程。

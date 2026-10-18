@@ -26,6 +26,7 @@
 **浏览器大包默认先用已核验的国内制品镜像（或内部制品库）；镜像缺件、校验不过或不可达时，回退已登记代理访问官方 CDN，再退直连原站。** 代理常有限额或按流量计费、出口多在境外，镜像一般是国内 CDN 直连，取同一个包更快也更省额度。Python/Node 包可继续用已核验的国内包源，两者独立配置。海外执行优先原站直连；容器、WSL 和 CI 里的环回地址不代表宿主机代理。
 
 - **制品版本由已安装的 Playwright 包锁定**（例：包 1.64.0 要求 `chromium-1248` 与 `chromium_headless_shell-1248`，缺这个目录就直接启动失败），镜像只需覆盖这个 revision，不要求它有最新版本。滞后判据是 `--dry-run` 解析出的制品清单，不是镜像首页或"有没有最新版"。要换浏览器版本就换包版本（包与制品成对），或用 `--channel` / 可执行文件路径驱动已装浏览器。
+- 本机核验过的制品基址可登记在 `~/.config/proxy-resources.json` 的 `artifact_mirrors`（格式与边界见 [代理登记](proxy-registry.md#可选制品镜像条目artifact_mirrors)）；登记只是线索，每次仍要 `--dry-run` 与包锁定的 revision 逐项对齐。
 - 按 [代理登记](proxy-registry.md) 读取本机资源，不猜端口。走官方 CDN 时 Playwright 下载子进程使用 `HTTPS_PROXY`；HTTPS 目标也可通过 `http://` 代理入口访问，不把 SOCKS 端口冒充 HTTP 端口。
 - 先检查已有 `PLAYWRIGHT_DOWNLOAD_HOST` 及 `PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST` / `PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST` / `PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST`。浏览器专用变量优先于通用变量；过期镜像覆盖不清除时，换了路线仍可能访问旧镜像。
 - 默认只走一条路线：用镜像时不要同时设 `HTTPS_PROXY`（否则大流量照样过代理，既慢又耗额度），走代理时不要再填镜像地址。切回官方源需在任务进程内撤销镜像覆盖并保存原值。明确需要代理访问内部制品库时可以组合配置。

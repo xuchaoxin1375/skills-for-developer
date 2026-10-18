@@ -141,4 +141,4 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 结论（仅限本机与本次）：镜像对包锁定的 revision 命中且直连比经代理快一个量级，适合作为大包默认路线；代理路线可用但慢、且要消耗代理额度。版本滞后不是主要风险，判据是 `--dry-run` 的制品清单是否与包锁定项逐项对齐。
 
-未验证：镜像长期稳定性与对其他 revision/平台/浏览器的覆盖、并发与限流行为、代理额度实际消耗、Linux/macOS/CI、企业内网制品库。
+未验证：镜像长期稳定性与对其他 revision/平台/浏览器的覆盖、并发与限流行为、代理额度实际消耗、Linux/macOS/CI、企业内网制品库。核验过的这个基址已按 [proxy-registry.md](proxy-registry.md) 的 `artifact_mirrors` 记入本机登记文件，使用前仍要 `--dry-run` 与包锁定的 revision 对齐。
