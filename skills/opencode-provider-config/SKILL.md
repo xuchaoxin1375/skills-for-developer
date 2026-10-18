@@ -21,6 +21,8 @@ description: 把第三方 AI API（中转站/NewAPI/one-api 渠道/自定义 Ope
 curl.exe -s -m 30 <baseURL>/v1/models -H "Authorization: Bearer <KEY>"
 ```
 
+OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可查（`/inference/v1/models` 含 `*-free`、`/inference/go/v1/models`，以及 models.dev 的 `opencode` / `opencode-go` 条目——后者还带 cost/limit）；但**你的可用范围**要 key（`GET /console/api/v2/config`，免 key 返回 401）。公开目录 ≠ 可用范围（实测公开 85/37 对工作区 84/29），可用性判定以工作区配置或 `opencode models` 为准。
+
 筛选规则：
 
 - 对话模型才配进 OpenCode；嵌入（`*-embed*`）、重写、翻译、安全审查（`*content-safety*`）类模型不适合做 agent，直接跳过。
@@ -182,13 +184,14 @@ $env:<VAR_NAME> = "<KEY>"; opencode run --standalone -m <providerID>/<modelID> "
 1. `opencode service get env` —— 密钥、代理变量齐全（打码展示）。
 2. `opencode models | findstr <providerID>` —— 配置被识别、模型全部列出。
 3. `opencode run -m <provider>/<model> "reply with exactly: OK"` —— 真实调用，默认限时 10 秒（可酌情放宽到 15 秒）：超时即判该模型当前时段可靠性不佳，不换长超时重试翻案（见约束/规范）；同时 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。
-4. 用 `max_tokens=512` 直接打 `/v1/chat/completions`，只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）：核对 `choices[0].message.content` 非空、`finish_reason`（reasoning 模型小 max_tokens 会 `length` 且 content 为 null，属正常，说明思考占用了输出预算）、`usage` 里 `reasoning_tokens`。
+4. 用 `max_tokens=512` 直接打 `/v1/chat/completions`，只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）：核对 `choices[0].message.content` 非空、`finish_reason`（reasoning 模型小 max_tokens 会 `length` 且 content 为 null，属正常，说明思考占用了输出预算）、`usage` 里 `reasoning_tokens`。官方 Console 免费模型（`opencode/*-free`）**不能**用直连 curl 判定：免费档按客户端身份放行，非 OpenCode 客户端一律 403 `FreeTierError`，这类模型改用 `opencode run -m opencode/<id>-free` 验证；Go 模型直连需带 `x-opencode-session`。
 
 改过 `limit` 时追加一步：`opencode api get /api/model` 取服务解析后的目录，确认目标模型的 `limit.context` 已是新值。`opencode models` 只列模型 ID、不显示 limit，不能用来验证。
 
 ## OpenCode 官方套餐（opencode / opencode-go）
 
-- 官方免费与 Go 订阅是现成 provider：凭据经 TUI `/connect` 写入 `~/.local/share/opencode/auth.json`（`opencode` / `opencode-go` 条目），模型引用 `opencode/<id>`、`opencode-go/<id>`；opencode.ai 不放行 `NO_PROXY` 即自动走服务端代理。
+- 官方免费与 Go 订阅是现成 provider：凭据由 `/connect`（TUI）或 `opencode auth login` 保存到**服务端 SQLite**（路径用 `opencode debug paths db` 查；`~/.local/share/opencode/auth.json` 只在 V2 迁移时导入一次，之后改它无效），管理用 `opencode auth list/export/switch/logout`。模型引用 `opencode/<id>`、`opencode-go/<id>`；opencode.ai 不放行 `NO_PROXY` 即自动走服务端代理。
+- **一把工作区凭据同时授权 `opencode` 与 `opencode-go` 两个 provider**（工作区配置里两者共用同一凭据，`env` 均为 `OPENCODE_CONSOLE_TOKEN`）；只订阅 Go 时不必另填 Console key，`opencode/<id>-free` 会随同一份工作区配置出现。报 `api_key_expired`（"Create a new API key in OpenCode Console…"）说明凭据是旧格式或已过期：`sk-…` 旧 key 已失效，须在 Console → **Keys** → Add Service Account 建 `oc_sk_…`（可设权限与有效期）后重新连接，**重新登录不会续期旧 key**。
 - 同名模型先枚举再选 ID：`opencode models | findstr <系列名>`。例：免费变体带 `-free` 后缀，普通变体报 "Insufficient account funds" 需 Console 余额；`Contributor` 变体低价但提示词会用于模型训练。
 
 ## 约束/规范
@@ -217,6 +220,9 @@ $env:<VAR_NAME> = "<KEY>"; opencode run --standalone -m <providerID>/<modelID> "
 - [ ] 重启后是否以上述 `ps` 命令中 `STARTED` 时间最新的服务进程为准完成核验，而非 pgrep 返回的任意 PID？
 - [ ] 直连可达的设备未设代理变量，代理端口无臆造？
 - [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体再选 ID？
+- [ ] 官方套餐 `api_key_expired` 已按“Console 建 `oc_sk_…` 新 key 后重连”处理，未去改 `auth.json`？
+- [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败？
+- [ ] 只订阅 Go 时未额外要求填 Console key；查模型目录已区分公开目录与工作区范围？
 - [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染
 - [ ] `limit` 参数来自任一数据源并经交叉核验或官方确认，非臆造
 - [ ] 覆盖已有/内置模型 `limit` 时只写了 `limit` 字段、未重写 name/modelID，且已用 `opencode api get /api/model` 确认解析后的值？
