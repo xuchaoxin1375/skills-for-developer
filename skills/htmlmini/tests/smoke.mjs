@@ -1,6 +1,10 @@
 // 自检：node tests/smoke.mjs（需先 pnpm install）。无外部 fixture，全内置合成 HTML。
 import { strict as assert } from 'node:assert';
 import { extractHtml, runExtract } from '../src/extract.js';
+import { setLogLevel } from '../src/log.js';
+
+// 测试只关心返回值；进度日志默认会打到 stderr，这里按静默跑，保持测试输出干净。
+setLogLevel('quiet');
 
 const ARTICLE = `<!doctype html><html><head><title>测试文章</title>
 <style>.x{color:red}</style><script>var a=1;</script></head>
@@ -106,6 +110,29 @@ const ok = (cond, msg) => {
   ok(all.includes('class="btn"') && all.includes('aria-label="查询数据"'), 'attrs=all 保留全部属性');
   ok(!all.includes('<script') && !all.includes('<style'), 'attrs=all 仍剥脚本与样式');
 
+  // 排版：默认 compact 压掉源码缩进噪声又不破坏行内词距；raw 保原样；pretty 重排缩进。
+  const SPACED = `<!doctype html><html><head><title>空格</title></head><body>
+  <div></div>
+  <p>Run <b>3</b> tests</p>
+  <table><tr><td></td><td>A</td></tr></table>
+  <pre>  keep   me
+</pre>
+</body></html>`;
+  const compact = await runExtract(null, 'html', { forceContent: SPACED });
+  ok(compact.includes('<p>Run <b>3</b> tests</p>'), 'compact 保留行内元素之间的单个空格');
+  ok(!/>\s+</.test(compact), 'compact 压掉块级之间的源码缩进与空行');
+  ok(compact.includes('<pre>  keep   me\n</pre>'), 'compact 不动 pre 的内容空白');
+  const rawOut = await runExtract(null, 'html', { forceContent: SPACED, format: 'raw' });
+  ok(/\n\s+<div><\/div>/.test(rawOut), 'raw 保留源码原有空白');
+  const pretty = await runExtract(null, 'html', { forceContent: SPACED, format: 'pretty' });
+  ok(/\n\s+<p>Run/.test(pretty), 'pretty 重新缩进');
+  ok(!pretty.includes('\n\n'), 'pretty 不留空行');
+  const pruned = await runExtract(null, 'html', { forceContent: SPACED, pruneEmpty: true });
+  ok(!pruned.includes('<div></div>'), 'pruneEmpty 剪掉空 div');
+  ok(pruned.includes('<td></td>'), 'pruneEmpty 保留空单元格（表格结构）');
+  const bare = (s) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, '');
+  ok(bare(compact) === bare(pretty) && bare(compact) === bare(pruned), 'compact/pretty/prune 文本内容等价');
+
   const pt = await runExtract(null, 'html', { forceContent: '# 标题\n正文' });
   ok(pt.includes('# 标题'), 'html 模式对非 HTML 输入透传');
 
@@ -116,6 +143,14 @@ const ok = (cond, msg) => {
     e2 = err;
   }
   ok(e2 && /unknown attrs policy/.test(e2.message), '未知 attrs 策略抛错');
+
+  let e3 = null;
+  try {
+    await extractHtml(ARTICLE, { extractor: 'sanitize', format: 'nope' });
+  } catch (err) {
+    e3 = err;
+  }
+  ok(e3 && /unknown format/.test(e3.message), '未知 format 策略抛错');
 }
 
 console.log(`\nPASS ${n} assertions`);

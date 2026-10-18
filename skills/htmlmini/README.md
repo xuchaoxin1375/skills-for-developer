@@ -2,9 +2,9 @@
 
 把 HTML 网页（含大量 CSS/JS 样板）压成"核心骨架"，以 Markdown 输出，专为 **LLM 总结省 token** 设计。实测本地设计稿：原始 24KB~99KB → 提取后 300B~1.3KB，**节省约 75%~99.5%**。
 
-- 引擎链（`auto` 默认）：**非 HTML 透传** → **Defuddle** 正文提取 → **Trafilatura**（可选，见下）→ **semantic** 纯 JS 语义回退 → **UI 组件清单**（面板/仪表盘/设计稿）。`text/plain` 直接返回的 markdown（如某些 gitee 链接）、纯文本、JSON 不硬抽，原样返回（`used=passthrough`）。
+- 引擎链（`auto` 默认）：**非 HTML 透传** → **Defuddle** 正文提取 → **Trafilatura**（可选，见下）→ **semantic** 纯 JS 语义回退 → **UI 组件清单**（面板/仪表盘/设计稿；面板/表单页 UI 信号多且 Trafilatura 抽出的文字不长时，Trafilatura 让位给 UI 清单，避免拿去导航/表头碎片）。`text/plain` 直接返回的 markdown（如某些 gitee 链接）、纯文本、JSON 不硬抽，原样返回（`used=passthrough`）。
 - 双形态交付：**CLI**（任意 harness/终端可用）+ **MCP server**（opencode / Claude / Cursor 等当工具调用），共用同一核心，行为一致。
-- 需要"结构"而不是"摘要"时用 `--mode html`：保守清洗后的 HTML（去脚本/样式/表头属性，保留完整 DOM 与文本顺序），比 markdown 费 token，但看表格、嵌套层级与表单初始态时不必回读原始 HTML。
+- 需要"结构"而不是"摘要"时用 `--mode html`：保守清洗后的 HTML（去脚本/样式/表观属性，保留完整 DOM 与文本顺序），默认按 `compact` 排版压掉源码缩进与空行，比 markdown 费 token，但看表格、嵌套层级与表单初始态时不必回读原始 HTML。`--pretty` 重排为可读缩进，`--prune-empty` 额外剪掉清洗后变空的容器。
 
 ## 为什么是这个选型（结论）
 
@@ -54,6 +54,20 @@ htmlmini <文件|URL|-stdin> [选项]
                    semantic 保语义属性（href/src/alt/colspan/rowspan 与表格/表单状态）
                    | none 清空全部属性（最省，丢链接目标与合并单元格）
                    | all 保留全部属性，只去脚本样式
+  --format <策略>  html 模式的排版策略（默认 compact）：
+                   compact 压掉源码缩进与空行，行内元素之间保留一个空格
+                           （最小体积，不重排内容）
+                   | pretty 重新缩进提高可读性（用 js-beautify 依赖）
+                   | raw 保留源码原有空白（旧行为）
+  --compact        等价于 --format compact
+  --pretty         等价于 --format pretty
+  --prune-empty    html 模式下额外剪掉清洗后变空的容器
+                   （空 div/span/nav/header 等，常占大半体积）；
+                   表格/表单/内容空白容器（td/select/pre 等）豁免
+  --quiet          只在 stderr 报错，隐藏进度
+  --verbose        追加细节（read/extract 的内部信息、耗时、体积）
+                   进度一律走 stderr（`htmlmini: [read|parse|extract|format|write] …`），
+                   stdout 只放载荷，管道不被污染；环境变量 HTMLMINI_LOG=quiet|info|debug
   --extractor <n>  auto（默认）| defuddle | trafilatura | semantic | ui | sanitize
                    强制指定返回该引擎原始结果（不静默切换），便于排查；
                    auto 失败不抛错，只在强制 trafilatura 缺模块时提示安装。
@@ -78,9 +92,45 @@ htmlmini <文件|URL|-stdin> [选项]
   htmlmini page.html --json
   htmlmini 报表面板.html -u
   htmlmini dashboard.html --mode json --extractor ui
+  htmlmini page.html --mode html --pretty
+  htmlmini page.html --mode html --prune-empty --attrs none   # 最小结构骨架
   htmlmini https://example.com/a -s
   curl -s URL | htmlmini - -t
 ```
+
+## 日志与进度
+
+进度一律走 **stderr**（stdout 只放载荷，`| htmlmini - -t` 这类管道不会被污染），阶段标签沿用 `htmlmini: [阶段] …`：
+
+```text
+$ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot.clean.html
+htmlmini: [read] fetching https://github.com/features/copilot [proxy: http://127.0.0.1:7890 (HTTPS_PROXY)]
+htmlmini: [read] https://github.com/features/copilot 855.2 KB in 1.21s
+htmlmini: [parse] dom 55ms
+htmlmini: [extract] used=sanitize attrs=semantic format=pretty 103.5 KB in 25ms
+htmlmini: [format] pretty 200.0 KB in 41ms
+htmlmini: [write] copilot.clean.html 200.3 KB (total 2.24s)
+```
+
+`[proxy: …]` 说明这次抓取的实际路由与**来源**，排查"代理到底生效没"先看它：
+
+| 显示 | 含义 |
+|---|---|
+| `http://127.0.0.1:7890 (HTTPS_PROXY)` | 走代理，来自环境变量（`HTTP_PROXY`／`HTTPS_PROXY`／`ALL_PROXY` 按目标协议挑，https 优先 `HTTPS_PROXY`） |
+| `http://127.0.0.1:7890 (--proxy)` | 走代理，来自命令行 `--proxy`（覆盖环境变量） |
+| `direct (NO_PROXY)` | 环境里有代理但被 `NO_PROXY` 豁免 |
+| `direct (--noproxy)` | 命令行强制直连，忽略环境 |
+| `none` | 没有任何可用代理，直连 |
+
+凭据不落日志（`http://user:pw@host:port` 只显示 `http://host:port`）；`--render` 回退时 `[render] engine=…` 行同样带 `[proxy: …]`，save_page 通路在无代理时显示 `none, render script discovers its own`（渲染脚本自带一层代理探测）。
+
+| 级别 | 开关 | 内容 |
+|---|---|---|
+| `quiet` | `--quiet` | 只剩错误（错误不受级别影响） |
+| `info`（默认） | — | 上述阶段级进度：每段耗时与体积 |
+| `debug` | `--verbose` | 追加细节：source/contentType/proxy/render、引擎链结果、`reduction%`、标题 |
+
+级别也可用环境变量 `HTMLMINI_LOG=quiet|info|debug` 预设，CLI 开关覆盖环境变量；MCP 侧只认环境变量。慢的阶段（网络抓取、`--render` 回退、`pretty` 重排）都会先报开始再报耗时，所以长时间等待不会静默。
 
 ## 与 resilient-browser-fetch 的流水线
 
@@ -95,7 +145,7 @@ htmlmini "https://example.com/app" --render --proxy 'http://127.0.0.1:<port>' --
 # 否则自动探测——PATH（google-chrome、chrome、chromium 等）→ 系统常用路径 →
 # Playwright 浏览器缓存（ms-playwright，完整版优先、无头壳兜底，取版本最大者；
 # 自定义缓存位置走 PLAYWRIGHT_BROWSERS_PATH）。实际用了哪个看
-# `htmlmini: [render] engine=… src=…` 日志。
+# `htmlmini: [render] engine=… src=… [proxy: …]` 日志。
 
 # 首次人工验证（save_page 通路开有头窗口；Chrome 通路不支持有头）
 htmlmini "https://example.com/app" --render --headful
@@ -127,7 +177,8 @@ htmlmini app.html --json
 
 `mode`：`markdown`(默认) | `skeleton` | `text` | `json` | `title` | `ui` | `html`；
 `extractor`：`auto`(默认) | `defuddle` | `trafilatura` | `semantic` | `ui` | `sanitize` | `passthrough`；
-`attrs`（仅 `html` 模式）：`semantic`(默认) | `none` | `all`。
+`attrs`（仅 `html` 模式）：`semantic`(默认) | `none` | `all`；
+`format`（仅 `html` 模式）：`compact`(默认) | `pretty` | `raw`；另有 `prune_empty` 布尔项。
 
 opencode（`opencode.json`，路径按本机仓库位置改）：
 
@@ -185,7 +236,7 @@ claude mcp add htmlmini -- node <仓库>/skills/htmlmini/src/mcp.js
 ## 自检
 
 ```bash
-pnpm test                         # smoke 17 + MCP 自检 + 可靠性 95，全内置合成输入与本地回环，无外部网络依赖
+pnpm test                         # smoke 39 + MCP 自检 + 可靠性 115，全内置合成输入与本地回环，无外部网络依赖
 node tests/test-batch.mjs <目录>  # 本地 HTML 目录批量抽查（fixture 不入库）
 ```
 

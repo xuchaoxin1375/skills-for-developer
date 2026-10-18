@@ -20,6 +20,7 @@ URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数�
 1. MCP 工具（已配置时）：`htmlmini_extract_file(path, mode?, extractor?)` / `htmlmini_extract_url(url, mode?, extractor?)` / `htmlmini_extract_html(html_content, mode?, extractor?)`
    - 旧拼写 `htmmini_*` 是兼容别名，行为相同；新配置一律用 `htmlmini_*`。
 2. CLI：`htmlmini <文件|URL|stdin> [--mode <模式>] [--extractor <引擎>]`（详见本目录 `README.md`；支持 `--completion bash|powershell`）。
+   - 进度日志一律走 stderr（`htmlmini: [read|parse|extract|format|write] …`，带耗时与体积），stdout 只放提取结果；取载荷只读 stdout，别把 stdout/stderr 混着解析。要安静用 `--quiet`，要排查用 `--verbose`（或环境变量 `HTMLMINI_LOG=quiet|info|debug`）。
    - CLI 不在 PATH 时用 `node <本 skill 目录>/src/cli.js <同样参数>`，无需全局安装。例：`htmlmini` 命令报无法识别，直接 node 跑本 skill 目录里的 cli.js。
    - 报 `ERR_MODULE_NOT_FOUND`（如缺 `linkedom`）是依赖未装，不是选型问题：本目录有 `pnpm-lock.yaml`，`package.json` 也声明了 `packageManager`，按锁文件装一次即可，缺 pnpm 时**不必先全局安装**——`corepack pnpm install --frozen-lockfile` 随 Node 分发、按 `packageManager` 取版本（详见 `README.md`「安装」）。装完重跑，不改走其他工具，也不换包管理器。
 
@@ -33,11 +34,12 @@ URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数�
 | `json` | 需要元数据（标题/作者/日期）+ `used` 实际引擎 + `reductionPct` 节省统计 |
 | `skeleton` | 巨页只要大纲（标题层级 + 表格 + 代码块语言） |
 | `ui` | UI 设计稿强制完整清单：标题/地标/表单字段/按钮/表格/图片/链接/文本。清单有预算上限（标题 100、表单字段 100、按钮 100、链接 30、图片 30、文本 200，按**去重后**条数计），超长页尾部（如定价卡只到中间一档）仍可能被截断：见下方"清单被截断时" |
-| `html` | 要**结构**而不是摘要时用：保留完整 DOM 与文本顺序，剥掉脚本/样式/模板/图标与注释，属性按 `--attrs`（默认 `semantic` 保 `href/src/alt/colspan/rowspan` 与表格/表单状态）。token 高于 `markdown`/`ui`，但不受清单预算截断（看表格、嵌套层级、表单初始态时用它，别去读原始 HTML） |
+| `html` | 要**结构**而不是摘要时用：保留完整 DOM 与文本顺序，剥掉脚本/样式/模板/图标与注释，属性按 `--attrs`（默认 `semantic` 保 `href/src/alt/colspan/rowspan` 与表格/表单状态），排版按 `--format`（默认 `compact` 压掉源码缩进与空行；`pretty` 重排为可读缩进、`raw` 保留源码空白）。token 高于 `markdown`/`ui`，但不受清单预算截断（看表格、嵌套层级、表单初始态时用它，别去读原始 HTML）。要更小体积再加 `--prune-empty`（剪掉清洗后变空的容器，表格/表单结构豁免） |
 | `text` | 纯文本、去掉所有标记 |
 | `title` | 只要页面标题 |
 
-`extractor` 默认 `auto`（非HTML透传 → Defuddle → 有则用 Trafilatura → semantic → ui），不用指定；
+`extractor` 默认 `auto`（非HTML透传 → Defuddle → 有则用 Trafilatura → semantic → ui；
+面板/表单页 UI 信号多且抽出文字不长时，Trafilatura 让位给 ui 清单），不用指定；
 只有排查抽取质量时才强制单个引擎（`--json` 看 `used` 字段确认实际命中）。
 非 HTML（markdown/纯文本/JSON，如 gitee 直接返回的 `text/plain`）任何模式下都原样透传（`used=passthrough`）。
 
@@ -50,7 +52,7 @@ URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数�
 
 `htmlmini_extract_url` 只做静态抓取：默认跟随任务/宿主的代理环境变量，可经 `proxy` 参数覆盖（URL 或 `"direct"`）；403/5xx 自动补一次浏览器头重试（同路线）。
 一步到位的用法：`htmlmini <URL> --render` 或 MCP `render:true`——静态优先，静态 403/5xx 才自动回退浏览器渲染再按文件模式提取；
-渲染链为 save_page（环境就绪时用，同代理，cloak 不必接）→ 本机普通 Chrome 无头 dump-dom（零依赖）→ 友好报错，实际走了哪条会打 `htmlmini: [render] engine=…` 日志；
+渲染链为 save_page（环境就绪时用，同代理，cloak 不必接）→ 本机普通 Chrome 无头 dump-dom（零依赖）→ 友好报错，实际走了哪条会打 `htmlmini: [render] engine=… [proxy: …]` 日志；
 Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` → PATH → 系统常用路径 → Playwright 缓存（`PLAYWRIGHT_BROWSERS_PATH` 可改位置，完整版优先取版本最大者）选择；
 首次人工验证用 `--headful` / `headful:true`（仅 save_page 通路支持）；
 404/超时/断网直接抛错，不烧浏览器时间。
@@ -78,7 +80,7 @@ Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` →
 - CLI 缺失时是否用 `node` 跑本 skill 目录的 `cli.js`，而非找全局安装？
 - CLI 报 `ERR_MODULE_NOT_FOUND` 时是否先按 lockfile 装依赖再重跑，而非改换工具或手写正则抠原文？
 - URL 抓取优先用 `--render` / `render:true` 一条命令（静态优先、403/5xx 自动回退渲染）；手工排查才走双路对照落盘。挑战特征出现才上浏览器，而非 curl 5xx 直接判死？
-- 是否按需用 `proxy` 参数或环境代理走指定路线，而非默认直连硬闯？
+- 是否按需用 `proxy` 参数或环境代理走指定路线，而非默认直连硬闯？抓取失败先看 `[read] fetching … [proxy: …]`——它写明实际生效的代理与来源（`HTTPS_PROXY`/`--proxy`/`NO_PROXY`/`none`），据此判断是路由不对还是源站问题。
 
 ## 输出后
 

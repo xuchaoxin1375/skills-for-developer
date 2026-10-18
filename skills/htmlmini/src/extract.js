@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { parseHTML } from 'linkedom';
 import { Defuddle } from 'defuddle/node';
 import { ProxyAgent } from 'undici';
+import { fmtBytes, fmtMs, log } from './log.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -16,9 +17,11 @@ export const MODES = ['markdown', 'skeleton', 'text', 'json', 'title', 'ui', 'ht
 export const EXTRACTORS = ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'sanitize', 'passthrough'];
 /** html 模式的属性策略：none 清空全部属性 | semantic（默认）保留语义属性 | all 保留全部属性。 */
 export const ATTR_POLICIES = ['none', 'semantic', 'all'];
+/** html 模式的排版策略：raw 原样（保留源码缩进空白） | compact（默认）压掉缩进噪声 | pretty 重新缩进。 */
+export const FORMAT_POLICIES = ['raw', 'compact', 'pretty'];
 
 export const DEFAULT_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15 htmlmini/0.2';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15 htmlmini/0.3';
 
 const MIN_ARTICLE_CHARS = 50;
 const UI_SWITCH_CHARS = 300;
@@ -95,26 +98,37 @@ export function hostBypassed(hostname, noProxy) {
  * proxy 省略走环境（https 用 HTTPS_PROXY，否则 HTTP_PROXY，皆无用 ALL_PROXY）；
  * proxy 为 "direct" 强制直连；proxy 为 URL 则显式覆盖并校验协议。
  */
-export function resolveProxy(target, { proxy, env = process.env } = {}) {
-  if (proxy === 'direct') return null;
+export function resolveProxy(target, opts = {}) {
+  return proxyOrigin(target, opts).url;
+}
+
+/**
+ * 与 resolveProxy 同一判据，但额外说明"代理是谁给的"，供日志回答"代理到底生效没"。
+ * origin：flag（--proxy 显式）| env:HTTPS_PROXY / env:HTTP_PROXY / env:ALL_PROXY |
+ *         noproxy（NO_PROXY 命中，本题按直连）| direct（--noproxy）| none（未配置）
+ */
+export function proxyOrigin(target, { proxy, env = process.env } = {}) {
+  if (proxy === 'direct') return { url: null, origin: 'direct' };
   if (typeof proxy === 'string' && proxy) {
     if (!/^https?:\/\//i.test(proxy)) throw new Error(`proxy 须是 http(s) URL 或 "direct"（实得 ${proxy}）`);
-    return proxy;
+    return { url: proxy, origin: 'flag' };
   }
   let u;
   try {
     u = new URL(target);
   } catch {
-    return null;
+    return { url: null, origin: 'none' };
   }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-  if (hostBypassed(u.hostname, env.NO_PROXY ?? env.no_proxy ?? '')) return null;
-  const fromEnv =
-    u.protocol === 'https:'
-      ? (env.HTTPS_PROXY ?? env.https_proxy ?? env.ALL_PROXY ?? env.all_proxy)
-      : (env.HTTP_PROXY ?? env.http_proxy ?? env.ALL_PROXY ?? env.all_proxy);
-  const v = (fromEnv ?? '').trim();
-  return v || null;
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return { url: null, origin: 'none' };
+  if (hostBypassed(u.hostname, env.NO_PROXY ?? env.no_proxy ?? '')) return { url: null, origin: 'noproxy' };
+  const keys = u.protocol === 'https:'
+    ? ['HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+    : ['HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'];
+  for (const k of keys) {
+    const v = (env[k] ?? '').trim();
+    if (v) return { url: v, origin: `env:${k}` };
+  }
+  return { url: null, origin: 'none' };
 }
 
 /** 代理 URL 脱敏：只留协议与主机，不回显凭据与路径。 */
@@ -125,6 +139,24 @@ export function maskProxy(proxyUrl) {
   } catch {
     return '(invalid proxy)';
   }
+}
+
+/**
+ * 日志用的一行代理说明，回答"这次到底走没走代理、是谁给的"：
+ * `http://127.0.0.1:7890 (HTTPS_PROXY)` / `direct (NO_PROXY)` / `direct (--noproxy)` / `none`。
+ * 凭据经 maskProxy 脱敏；--proxy 非法时给 invalid 而不是把异常抛进日志路径。
+ */
+function describeProxy(target, proxy) {
+  let info;
+  try {
+    info = proxyOrigin(target, { proxy });
+  } catch (e) {
+    return `invalid (${e.message})`;
+  }
+  const { url, origin } = info;
+  if (origin === 'none') return 'none';
+  const from = origin === 'flag' ? '--proxy' : origin === 'noproxy' ? 'NO_PROXY' : origin === 'direct' ? '--noproxy' : origin.replace(/^env:/, '');
+  return url ? `${maskProxy(url)} (${from})` : `direct (${from})`;
 }
 
 const proxyAgentCache = new Map();
@@ -386,7 +418,7 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
     args.push(`--proxy-server=${proxyUrl}`);
   }
   args.push('--dump-dom', url);
-  process.stderr.write(`htmlmini: [render] engine=chrome-dump src=${chromeSource} bin=${bin}${proxyUrl ? ` proxy=${maskProxy(proxyUrl)}` : ''}\n`);
+  log.info('render', `engine=chrome-dump src=${chromeSource} bin=${bin} [proxy: ${describeProxy(url, proxy)}]`);
   let stdout = '';
   await new Promise((resolve, reject) => {
     let child;
@@ -438,7 +470,7 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   });
   const html = stdout.trim();
   if (!html) throw new Error(`chrome render returned empty page for ${url}`);
-  process.stderr.write(`htmlmini: [render] chrome dump-dom done (${html.length} chars)\n`);
+  log.debug('render', `chrome dump-dom done (${html.length} chars)`);
   return html;
 }
 
@@ -503,7 +535,8 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
   if (proxyUrl) args.push('--proxy', proxyUrl);
   else args.push('--discover-proxy');
   if (headful) args.push('--headful');
-  process.stderr.write(`htmlmini: [render] engine=save-page${headful ? ' headful' : ''}${proxyUrl ? ` proxy=${maskProxy(proxyUrl)}` : ' discover-proxy'}\n`);
+  const proxyNote = describeProxy(url, proxy);
+  log.info('render', `engine=save-page${headful ? ' headful' : ''} [proxy: ${proxyNote === 'none' ? 'none, render script discovers its own' : proxyNote}]`);
   const tail = [];
   let tailSize = 0;
   const TAIL_CAP = 256 * 1024;
@@ -540,7 +573,7 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
       rest = parts.pop();
       for (const line of parts) {
         remember(line);
-        process.stderr.write(`htmlmini: [render] ${line}\n`);
+        log.info('render', line);
       }
     };
     child.stderr.on('data', emit);
@@ -556,7 +589,7 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
       clearTimeout(timer);
       if (rest) {
         remember(rest);
-        process.stderr.write(`htmlmini: [render] ${rest}\n`);
+        log.info('render', rest);
         rest = '';
       }
       if (code !== 0) {
@@ -603,11 +636,21 @@ export async function readWithRender(
   source,
   { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {},
 ) {
-  if (!/^https?:\/\//i.test(source ?? '') || !render) {
-    return readSource(source, { timeoutMs, proxy });
+  const remote = /^https?:\/\//i.test(source ?? '');
+  const tRead = Date.now();
+  // 抓取前先报：网络与浏览器渲染都是长等待，不能静默；[proxy: …] 说明实际路由与来源。
+  // 放在这一层而不是 runExtract，CLI 与 MCP（handleSource 直接调本函数）才都有进度。
+  if (remote) log.info('read', `fetching ${source} [proxy: ${describeProxy(source, proxy)}]`);
+  const done = (r) => {
+    log.info('read', `${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${r.rendered ? ' via browser render' : ''}`);
+    log.debug('read', `source=${r.source ?? source} contentType=${r.contentType ?? 'unknown'}${remote ? ` render=${render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
+    return r;
+  };
+  if (!remote || !render) {
+    return done(await readSource(source, { timeoutMs, proxy }));
   }
   try {
-    return await readSource(source, { timeoutMs, proxy });
+    return done(await readSource(source, { timeoutMs, proxy }));
   } catch (e) {
     if (!isRenderableError(e)) throw e;
     const html = await renderViaBrowser(
@@ -619,7 +662,7 @@ export async function readWithRender(
         ...(chromeBin == null ? {} : { chromeBin }),
       },
     );
-    return { html, source, contentType: 'text/html', rendered: true };
+    return done({ html, source, contentType: 'text/html', rendered: true });
   }
 }
 
@@ -735,6 +778,7 @@ function buttonName(doc, el) {
  * 与 `ui` 清单的区别：清单是扁平化 + 条数预算（可能截断），清洗是完整结构（token 更高）。
  * - 剥离：脚本/样式/模板/元信息/图标类（含 svg path 数据）与注释
  * - 属性：none 全清（最省 token，丢链接目标与合并单元格）/ semantic 保留语义属性 / all 只去脚本样式
+ * - 排版选项：compact 压掉源码缩进空白（默认）/ pruneEmpty 顺带剪掉清洗后变空的容器（非默认）
  */
 const SANITIZE_DROP_TAGS = 'script,style,noscript,template,link,meta,base,canvas,svg,path,source,track';
 const SANITIZE_KEEP_ATTRS = new Set([
@@ -745,7 +789,138 @@ const SANITIZE_KEEP_ATTRS = new Set([
   'action', 'method', 'datetime', 'open', 'start', 'lang', 'dir', 'role',
 ]);
 
-export function sanitizeHtml(doc, attrs = 'semantic') {
+/**
+ * 行内级元素白名单（其余按块级处理）。
+ * 压缩空白时靠它区分两种情况：块级之间换行只是源码缩进（可删）；
+ * 行内元素之间换行在渲染上等于一个空格（必须留一个，否则 "A</b> B" 会粘成 "AB"）。
+ */
+const INLINE_TAGS = new Set([
+  'a', 'abbr', 'audio', 'b', 'bdi', 'bdo', 'br', 'button', 'canvas', 'cite', 'code', 'data',
+  'datalist', 'del', 'dfn', 'em', 'embed', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label',
+  'map', 'mark', 'meter', 'noscript', 'object', 'output', 'picture', 'progress', 'q', 'rp', 'rt',
+  'ruby', 's', 'samp', 'select', 'slot', 'small', 'span', 'strong', 'sub', 'sup', 'svg', 'time',
+  'u', 'var', 'video', 'wbr',
+]);
+
+/** 内容空白有意义的元素：压缩时整棵子树跳过（缩进/换行属于内容本身）。 */
+const WS_PRESERVE_TAGS = new Set(['pre', 'textarea', 'xmp', 'plaintext']);
+
+/**
+ * 空元素剪除的豁免表：
+ * - void/替换元素：本来就没有子节点
+ * - 表格与表单结构：空单元格、空 select 仍承载结构，删了会丢行列表格骨架
+ */
+const PRUNE_KEEP_TAGS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr',
+  'td', 'th', 'tr', 'table', 'thead', 'tbody', 'tfoot', 'colgroup', 'caption',
+  'select', 'optgroup', 'option', 'textarea', 'pre', 'iframe', 'canvas', 'video', 'audio',
+  'object', 'picture', 'slot', 'template',
+]);
+
+function hasAncestorIn(node, tags) {
+  for (let p = node.parentNode; p && p.nodeType === 1; p = p.parentNode) {
+    if (tags.has((p.tagName || '').toLowerCase())) return true;
+  }
+  return false;
+}
+
+/** 兄弟方向上的第一个“有意义”节点：元素，或非纯空白文本。 */
+function neighborNode(node, dir) {
+  for (let n = node[dir]; n; n = n[dir]) {
+    if (n.nodeType === 1) return n;
+    if (n.nodeType === 3 && (n.nodeValue ?? '').trim()) return n;
+  }
+  return null;
+}
+
+function isInlineNode(n) {
+  if (!n) return false;
+  if (n.nodeType === 3) return true; // 文本本身就是行内内容
+  return INLINE_TAGS.has((n.tagName || '').toLowerCase());
+}
+
+/**
+ * 压缩 DOM 缩进噪声（紧凑排版的前半程，必须在序列化前做）：
+ * - 纯空白文本节点：夹在两个行内内容之间压成单个空格，其余（首尾、块级之间）直接删
+ * - 非纯空白文本节点：内部连续空白折叠为单空格，并裁掉贴着块级边界的首尾空格
+ * 不做全局 `>\s+<` 替换——那会把 `</b> <i>` 之间的空格也吃掉，改变渲染结果。
+ */
+export function compactDom(doc) {
+  const texts = [];
+  const walk = (node) => {
+    for (const child of [...node.childNodes]) {
+      if (child.nodeType === 3) texts.push(child);
+      else if (child.nodeType === 1) walk(child);
+    }
+  };
+  walk(doc.documentElement ?? doc);
+  for (const node of texts) {
+    if (hasAncestorIn(node, WS_PRESERVE_TAGS)) continue;
+    const value = node.nodeValue ?? '';
+    if (!value.trim()) {
+      if (isInlineNode(neighborNode(node, 'previousSibling')) && isInlineNode(neighborNode(node, 'nextSibling'))) {
+        node.nodeValue = ' ';
+      } else {
+        node.remove();
+      }
+      continue;
+    }
+    let text = value.replace(/\s+/g, ' ');
+    if (!isInlineNode(neighborNode(node, 'previousSibling'))) text = text.replace(/^\s+/, '');
+    if (!isInlineNode(neighborNode(node, 'nextSibling'))) text = text.replace(/\s+$/, '');
+    if (text) node.nodeValue = text;
+    else node.remove();
+  }
+  return doc;
+}
+
+/**
+ * 剪除清洗后变空的容器（`--prune-empty`，非默认）：
+ * 自底向上反复扫，直到没有新的空元素；`<div></div>`、空 `<nav>` 是页面体积的大头。
+ * 表格/表单/内容空白容器按 PRUNE_KEEP_TAGS 豁免。
+ */
+export function pruneEmptyElements(doc) {
+  const isBlank = (el) =>
+    ![...el.childNodes].some((n) => n.nodeType === 1 || (n.nodeType === 3 && (n.nodeValue ?? '').trim()));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const el of [...doc.querySelectorAll('*')]) {
+      const tag = (el.tagName || '').toLowerCase();
+      if (PRUNE_KEEP_TAGS.has(tag) || hasAncestorIn(el, WS_PRESERVE_TAGS)) continue;
+      if (!isBlank(el)) continue;
+      el.remove();
+      changed = true;
+    }
+  }
+  return doc;
+}
+
+/**
+ * pretty 排版：交给 js-beautify（可选依赖，动态加载；缺失时给安装提示而不是崩）。
+ * 入参应是已压缩的 HTML——先压掉源码缩进空白，再重排，不然会把原页面的空行当内容保留。
+ */
+export async function prettifyHtml(html) {
+  let mod;
+  try {
+    mod = await import('js-beautify');
+  } catch {
+    throw new Error('--format pretty 需要 js-beautify 依赖：在 skills/htmlmini 目录执行一次安装（pnpm add js-beautify / pnpm install）');
+  }
+  const beautify = mod.default ?? mod;
+  const out = beautify.html(html, {
+    indent_size: 2,
+    indent_inner_html: true,
+    wrap_line_length: 0,
+    preserve_newlines: false,
+    max_preserve_newlines: 0,
+    end_with_newline: false,
+    extra_liners: [],
+  });
+  return out.trim();
+}
+
+export function sanitizeHtml(doc, attrs = 'semantic', { compact = false, pruneEmpty = false } = {}) {
   if (!ATTR_POLICIES.includes(attrs)) {
     throw new Error(`unknown attrs policy "${attrs}"（可选: ${ATTR_POLICIES.join(', ')}）`);
   }
@@ -760,6 +935,9 @@ export function sanitizeHtml(doc, attrs = 'semantic') {
       el.removeAttribute(attr.name);
     }
   }
+  // 剪空壳要在压空白之前：先按“有无实质子节点”判定，`<div>\n</div>` 才不会因为换行文本而漏判。
+  if (pruneEmpty) pruneEmptyElements(doc);
+  if (compact) compactDom(doc);
   return doc.toString();
 }
 
@@ -970,27 +1148,76 @@ sys.stdout.write(text)
 `;
 
 /**
+ * 带 stdin 的子进程调用。Windows 上 execFile 的 `input` 选项在本机会挂起
+ * （子进程收不到 EOF；仓库测试里已记录同一现象），所以显式 spawn + write/end。
+ * 解析 { code, stdout, stderr }；启动失败（ENOENT 等）或超时后 kill 则 reject。
+ */
+function runWithStdin(bin, args, input, { timeoutMs, maxBuffer = 32 * 1024 * 1024 } = {}) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(bin, args, { windowsHide: true });
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    let size = 0;
+    let done = false;
+    const finish = (fn, v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      fn(v);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      const err = new Error(`command timed out after ${timeoutMs}ms: ${bin}`);
+      err.timedOut = true;
+      finish(reject, err);
+    }, timeoutMs);
+    timer.unref?.();
+    child.stdout.on('data', (d) => {
+      size += d.length;
+      if (size > maxBuffer) {
+        child.kill();
+        finish(reject, new Error(`command output exceeded ${maxBuffer} bytes: ${bin}`));
+        return;
+      }
+      stdout += d;
+    });
+    child.stderr.on('data', (d) => {
+      stderr += d;
+    });
+    child.on('error', (e) => finish(reject, e));
+    child.on('close', (code) => finish(resolve, { code, stdout, stderr }));
+    // 子进程先退出时 write 会 EPIPE，忽略即可（按 close 的退出码判断成败）。
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
+  });
+}
+
+/**
  * 可选的 Trafilatura 增强：本机有 Python + trafilatura 模块时才生效，
  * 否则静默返回 { ok: false }，调用方继续走下一级回退。
  */
 export async function tryTrafilatura(html) {
   for (const bin of ['python3', 'python']) {
+    let res;
     try {
-      const { stdout } = await execFileAsync(bin, ['-c', TRAFILATURA_PY], {
-        input: html,
-        timeout: TRAFILATURA_TIMEOUT_MS,
-        maxBuffer: 32 * 1024 * 1024,
-        windowsHide: true,
-      });
-      const text = (stdout || '').trim();
-      return text ? { ok: true, text } : { ok: false };
-    } catch (e) {
-      if (e && typeof e.code === 'number') {
-        // 进程已启动：2 = 缺模块，3 = 抽不出正文。
-        return { ok: false, missing: e.code === 2 };
-      }
-      // ENOENT 等启动失败：换下一个候选解释器。
+      res = await runWithStdin(bin, ['-c', TRAFILATURA_PY], html, { timeoutMs: TRAFILATURA_TIMEOUT_MS });
+    } catch {
+      // 启动失败（ENOENT 等）或超时：换下一个候选解释器。
+      continue;
     }
+    if (res.code === 0) {
+      const text = (res.stdout || '').trim();
+      return text ? { ok: true, text } : { ok: false };
+    }
+    // 2 = 缺模块；3 = 抽不出正文。
+    if (res.code === 2) return { ok: false, missing: true };
+    return { ok: false };
   }
   return { ok: false, missing: true };
 }
@@ -1061,18 +1288,22 @@ export function titleFromText(s) {
  * 非 HTML 输入（markdown/纯文本/JSON）任何模式下都透传原文，不硬抽；
  * 强制指定 extractor 时同理（硬把 markdown 当 HTML 解析只会得到空标题）。
  */
-export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic' } = {}) {
+export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false } = {}) {
   if (!EXTRACTORS.includes(extractor)) {
     throw new Error(`unknown extractor "${extractor}"（可选: ${EXTRACTORS.join(', ')}）`);
   }
   if (extractor === 'sanitize' && !ATTR_POLICIES.includes(attrs)) {
     throw new Error(`unknown attrs policy "${attrs}"（可选: ${ATTR_POLICIES.join(', ')}）`);
   }
+  if (extractor === 'sanitize' && !FORMAT_POLICIES.includes(format)) {
+    throw new Error(`unknown format "${format}"（可选: ${FORMAT_POLICIES.join(', ')}）`);
+  }
   const t0 = Date.now();
   const raw = String(html ?? '');
   const finishPassthrough = () => {
     const text = raw.replace(/\r\n/g, '\n').trim();
     const title = titleFromText(text);
+    log.info('extract', `used=passthrough（非 HTML，原样透传） ${fmtBytes(text.length)}`);
     return {
       title,
       description: '',
@@ -1097,29 +1328,51 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   if (extractor === 'passthrough') return finishPassthrough();
   if (!looksLikeHtml(raw, contentType)) return finishPassthrough();
 
+  const tParse = Date.now();
   const document = parseOnce(raw);
+  log.info('parse', `dom ${fmtMs(Date.now() - tParse)}`);
 
-  const finish = (content, used, base = {}) => ({
-    title: base.title ?? safeTitle(document),
-    description: base.description ?? '',
-    published: base.published ?? '',
-    site: base.site ?? '',
-    domain: base.domain ?? '',
-    language: base.language ?? '',
-    wordCount: base.wordCount ?? countWords(content),
-    requested: extractor,
-    used,
-    content,
-    stats: {
-      inputChars: html.length,
-      outputChars: content.length,
-      reductionPct: html.length ? Math.round((1 - content.length / html.length) * 1000) / 10 : 0,
-      parseMs: Date.now() - t0,
-    },
-  });
+  // [extract] 只报一次：sanitize 分支要赶在 pretty 之前先报，所以由分支显式记账。
+  const tEngine = Date.now();
+  let extractNoted = false;
+  const markExtract = (msg) => {
+    if (extractNoted) return;
+    extractNoted = true;
+    log.info('extract', msg);
+  };
+
+  const finish = (content, used, base = {}) => {
+    markExtract(`used=${used} ${fmtBytes(content.length)} in ${fmtMs(Date.now() - tEngine)}`);
+    return {
+      title: base.title ?? safeTitle(document),
+      description: base.description ?? '',
+      published: base.published ?? '',
+      site: base.site ?? '',
+      domain: base.domain ?? '',
+      language: base.language ?? '',
+      wordCount: base.wordCount ?? countWords(content),
+      requested: extractor,
+      used,
+      content,
+      stats: {
+        inputChars: html.length,
+        outputChars: content.length,
+        reductionPct: html.length ? Math.round((1 - content.length / html.length) * 1000) / 10 : 0,
+        parseMs: Date.now() - t0,
+      },
+    };
+  };
 
   if (extractor === 'sanitize') {
-    return finish(sanitizeHtml(document, attrs), 'sanitize');
+    // html 模式的“清洗”与“排版”分开计时：pretty 往往是整条命令里最慢的一段。
+    const tClean = Date.now();
+    const cleaned = sanitizeHtml(document, attrs, { compact: format !== 'raw', pruneEmpty });
+    markExtract(`used=sanitize attrs=${attrs} format=${format} ${fmtBytes(cleaned.length)} in ${fmtMs(Date.now() - tClean)}`);
+    if (format !== 'pretty') return finish(cleaned, 'sanitize');
+    const tPretty = Date.now();
+    const pretty = await prettifyHtml(cleaned);
+    log.info('format', `pretty ${fmtBytes(pretty.length)} in ${fmtMs(Date.now() - tPretty)}`);
+    return finish(pretty, 'sanitize');
   }
 
   if (extractor === 'ui') {
@@ -1158,7 +1411,9 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   }
 
   const alt = await tryTrafilatura(html);
-  if (alt.ok && alt.text.length >= MIN_ARTICLE_CHARS) {
+  // 与下面 semantic 档同口径：面板/表单页（UI 信号多）且抽出的文字不长时，
+  // Trafilatura 只能拿到导航/表头碎片，应交回 UI 清单，而不是抢走结果。
+  if (alt.ok && alt.text.length >= MIN_ARTICLE_CHARS && (alt.text.length >= UI_SWITCH_CHARS || uiSignalCount(html) < 3)) {
     return finish(alt.text, 'trafilatura', defuddle ?? {});
   }
 
@@ -1241,7 +1496,7 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {}) {
+export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -1252,6 +1507,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
   if (forceContent != null) {
     html = forceContent;
     src = 'content';
+    log.debug('read', `inline content ${fmtBytes(String(forceContent).length)}`);
   } else {
     const r = await readWithRender(
       source,
@@ -1276,7 +1532,8 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (src === 'stdin' || src === 'content' ? src : src.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs });
+  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty });
+  log.debug('extract', `mode=${mode} requested=${res.requested} used=${res.used} reduction=${res.stats.reductionPct}% title="${res.title ?? ''}"`);
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
 }

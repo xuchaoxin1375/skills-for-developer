@@ -15,6 +15,7 @@ import {
   hostBypassed,
   maskProxy,
   pickPlaywrightChrome,
+  proxyOrigin,
   readSiblingMeta,
   readSource,
   renderResult,
@@ -24,6 +25,10 @@ import {
   skeletonFromMarkdown,
   tryTrafilatura,
 } from '../src/extract.js';
+import { setLogLevel } from '../src/log.js';
+
+// 进程内断言只看返回值；子进程 CLI 会各自按默认级别打日志（下面显式断言）。
+setLogLevel('quiet');
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI = path.join(ROOT, 'src', 'cli.js');
@@ -171,10 +176,10 @@ let base;
 // ---- 5. CLI：参数解析与退出码 ----
 // 注：不用 execFile 的 input 选项喂 stdin——本机 Windows 上它连最小复现
 // （`node -e` 读 stdin）都会挂起 20s 超时；改用 spawn 显式 write+end（已验证秒回）。
-async function cli(args, { input } = {}) {
+async function cli(args, { input, env } = {}) {
   const { spawn } = await import('node:child_process');
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [CLI, ...args], { windowsHide: true });
+    const child = spawn(process.execPath, [CLI, ...args], { windowsHide: true, ...(env ? { env: { ...process.env, ...env } } : {}) });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => (stdout += d));
@@ -218,9 +223,46 @@ async function cli(args, { input } = {}) {
   }
 }
 
+// ---- 5b. 日志：阶段进度只走 stderr，stdout 保持纯载荷；--quiet/--verbose 生效 ----
+{
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-log-'));
+  try {
+    const page = path.join(dir, 'p.html');
+    await writeFile(page, '<html><head><title>日志</title></head><body>\n  <p>Run <b>3</b> tests</p>\n</body></html>');
+    const d = await cli([page, '--mode', 'html', '--pretty']);
+    ok(d.code === 0 && d.stderr.includes('htmlmini: [read]'), '默认把阶段进度打到 stderr');
+    for (const stage of ['[parse]', '[extract]', '[format]', '[write]']) {
+      ok(d.stderr.includes(`htmlmini: ${stage}`), `进度含 ${stage} 阶段`);
+    }
+    ok(!d.stdout.includes('[read]') && !d.stdout.includes('[write]'), 'stdout 不含日志');
+    ok(d.stdout.includes('<p>Run <b>3</b> tests</p>'), 'stdout 仍是纯载荷');
+    const q = await cli([page, '--mode', 'html', '--quiet']);
+    ok(q.code === 0 && q.stderr.trim() === '', '--quiet 静默，仅保留错误');
+    const v = await cli([page, '--mode', 'html', '--verbose']);
+    ok(v.stderr.includes('source=') && v.stderr.includes('reduction='), '--verbose 追加细节行');
+
+    // 代理来源必须写进 [read] 行：只设环境变量时旧日志谎报 proxy=none。
+    // 抓 127.0.0.1:9（discard，必被拒）保证秒失败，只断言 stderr 文本，不看退出码。
+    const dead = 'http://127.0.0.1:9/x';
+    const envProxy = await cli([dead, '--mode', 'html'], { env: { HTTP_PROXY: 'http://127.0.0.1:18080' } });
+    ok(envProxy.stderr.includes('[proxy: http://127.0.0.1:18080 (HTTP_PROXY)]'), '环境变量代理连来源一起写进 [read] 行');
+    const bypass = await cli([dead, '--mode', 'html'], { env: { HTTP_PROXY: 'http://127.0.0.1:18080', NO_PROXY: '*' } });
+    ok(bypass.stderr.includes('[proxy: direct (NO_PROXY)]'), 'NO_PROXY 命中显示为直连');
+    const forced = await cli([dead, '--mode', 'html', '--noproxy'], { env: { HTTP_PROXY: 'http://127.0.0.1:18080' } });
+    ok(forced.stderr.includes('[proxy: direct (--noproxy)]'), '--noproxy 覆盖环境显示为直连');
+    const flag = await cli([dead, '--mode', 'html', '--proxy', 'http://user:pw@127.0.0.1:18080']);
+    ok(flag.stderr.includes('[proxy: http://127.0.0.1:18080 (--proxy)]') && !flag.stderr.includes('user:pw'), '--proxy 显示且不泄凭据');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 // ---- 6. trafilatura：缺席给安装提示（本机无模块，确定性覆盖） ----
 {
-  const probe = await tryTrafilatura('<p>hello</p>');
+  // 探针必须给真正可提取的正文：trafilatura 对无正文的短片段会以退出码 3 结束
+  // （有模块也返回 ok:false），拿它判"模块是否可用"会误判成缺模块。
+  const probeHtml = `<article><h1>探针</h1><p>${'这是一段足够长的正文内容，用于确认 trafilatura 引擎可用。'.repeat(6)}</p></article>`;
+  const probe = await tryTrafilatura(probeHtml);
   ok(typeof probe.ok === 'boolean', 'tryTrafilatura 返回 ok 布尔');
   if (probe.missing) {
     let err = null;
@@ -343,6 +385,15 @@ async function cli(args, { input } = {}) {
   );
   ok(hostBypassed('Example.COM', 'example.com') === true, 'NO_PROXY 大小写不敏感');
   ok(maskProxy('http://user:pass@127.0.0.1:18080/') === 'http://127.0.0.1:18080', '代理脱敏不泄凭据');
+
+  // proxyOrigin：日志靠它说清"代理是谁给的"（resolveProxy 只给 URL，回答不了这个问题）。
+  ok(proxyOrigin(s, { env: { HTTPS_PROXY: 'http://127.0.0.1:18080' } }).origin === 'env:HTTPS_PROXY', 'proxyOrigin 标出 HTTPS_PROXY 来源');
+  ok(proxyOrigin(t, { env: { ALL_PROXY: 'http://127.0.0.1:18080' } }).origin === 'env:ALL_PROXY', 'proxyOrigin 标出 ALL_PROXY 兜底来源');
+  ok(proxyOrigin(t, { proxy: 'http://127.0.0.1:18080', env: {} }).origin === 'flag', 'proxyOrigin 标出 --proxy 来源');
+  ok(proxyOrigin(t, { proxy: 'direct', env: { HTTP_PROXY: 'http://127.0.0.1:18080' } }).origin === 'direct', 'proxyOrigin 标出 --noproxy');
+  ok(proxyOrigin(t, { env: { HTTP_PROXY: 'http://127.0.0.1:18080', NO_PROXY: '*' } }).origin === 'noproxy', 'proxyOrigin 标出 NO_PROXY 豁免');
+  ok(proxyOrigin(t, { env: {} }).origin === 'none' && proxyOrigin(t, { env: {} }).url === null, 'proxyOrigin 无代理时 none');
+  ok(proxyOrigin('file:///tmp/a.html', { env: { HTTP_PROXY: 'http://127.0.0.1:18080' } }).origin === 'none', '非 http(s) 目标不走代理');
 }
 
 // ---- 11. 浏览器头重试与挑战识别 ----

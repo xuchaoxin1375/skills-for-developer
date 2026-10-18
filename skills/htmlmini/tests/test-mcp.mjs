@@ -65,7 +65,8 @@ const urlTool = tools.result.tools.find((t) => t.name === 'htmlmini_extract_url'
 const urlProps = (urlTool && urlTool.inputSchema && urlTool.inputSchema.properties) || {};
 if (!urlProps.proxy || !urlProps.render || !urlProps.headful || !urlProps.chrome_bin) throw new Error('extract_url missing proxy/render/headful/chrome_bin params');
 if (!urlProps.attrs) throw new Error('extract_url missing attrs param');
-console.log('ok - extract_url 含 proxy/render/headful/chrome_bin/attrs 参数');
+if (!urlProps.format || !urlProps.prune_empty) throw new Error('extract_url missing format/prune_empty params');
+console.log('ok - extract_url 含 proxy/render/headful/chrome_bin/attrs/format/prune_empty 参数');
 
 const MESSY = `<!doctype html><html><head><title>清洗</title><style>a{color:red}</style><script>var x=1;</script></head><body>
 <table class="c"><tr><td colspan="2">A</td></tr></table></body></html>`;
@@ -83,6 +84,25 @@ const stripped = await rpc('tools/call', {
 });
 if (/colspan/.test(stripped.result.content[0].text)) throw new Error('attrs=none did not strip colspan');
 console.log('ok - html 模式与 attrs 参数可用（semantic 保 colspan / none 清空）');
+
+const SPACY = `<!doctype html><html><body>
+  <div></div>
+  <p>Run <b>3</b> tests</p>
+</body></html>`;
+const compactOut = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: SPACY, mode: 'html' },
+});
+const compactText = compactOut.result.content[0].text;
+if (/>\s+</.test(compactText) || !compactText.includes('<p>Run <b>3</b> tests</p>')) {
+  throw new Error('default format is not compact (or inline space lost)');
+}
+const prunedOut = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: SPACY, mode: 'html', prune_empty: true },
+});
+if (prunedOut.result.content[0].text.includes('<div></div>')) throw new Error('prune_empty did not drop the empty div');
+console.log('ok - html 模式默认 compact，format/prune_empty 参数可用');
 
 const alias = await rpc('tools/call', {
   name: 'htmmini_extract_html',
