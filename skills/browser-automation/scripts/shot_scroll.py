@@ -22,7 +22,7 @@ from typing import Any
 from urllib.parse import urlparse
 import uuid
 
-from browser_discovery import discover_browsers, native_binary
+from browser_discovery import discover_browsers, native_binary, select_browser
 from managed_browser import USER_TEMP_ROOT, TaskError, run_managed
 
 PROXY_REGISTRY_PATH = Path.home() / ".config" / "proxy-resources.json"
@@ -111,24 +111,45 @@ def capture(config: dict[str, Any]) -> dict[str, Any]:
                 context.close()
         finally:
             browser.close()
-    return {
-        "code": 0,
-        "browser_version": version,
-        "artifacts": [
-            {"source": f"shots/{index}.png", "destination": target}
-            for index, target in enumerate(config["outputs"])
-        ],
-    }
+    return {"code": 0, "browser_version": version, "artifacts": artifacts(config)}
+
+
+def artifacts(config: dict[str, Any]) -> list[dict[str, str]]:
+    """Map this round's shot files onto the requested destinations."""
+    return [
+        {"source": f"shots/{index}.png", "destination": target}
+        for index, target in enumerate(config["outputs"])
+    ]
+
+
+def light_capture(config: dict[str, Any]) -> dict[str, Any]:
+    """Worker-only light engine: one installed browser, no Playwright package."""
+    import light_browser
+
+    shots_dir = Path(config["workspace"]) / "shots"
+    shots_dir.mkdir()
+    version = light_browser.capture(config, shots_dir)
+    return {"code": 0, "browser_version": version, "artifacts": artifacts(config)}
+
+
+def engine_capture(config: dict[str, Any]) -> dict[str, Any]:
+    """Dispatch by engine so the worker imports only what that engine needs."""
+    if config["engine"] == "playwright":
+        return capture(config)
+    return light_capture(config)
 
 
 def worker_main() -> int:
-    """Wait for containment assignment before importing or launching Playwright."""
+    """Wait for containment assignment before importing or launching anything."""
     line = sys.stdin.buffer.readline()
     if not line:
         return 130
     config = json.loads(line)
     try:
-        result = capture(config)
+        result = engine_capture(config)
+    except TaskError as exc:
+        # Engine messages are bounded and deliberately free of page details.
+        result = {"code": exc.code, "error": str(exc)}
     except Exception as exc:
         # Browser exception strings may contain URLs or proxy credentials.
         hint = (
@@ -157,6 +178,70 @@ def nonnegative_int(value: str) -> int:
     if number < 0:
         raise argparse.ArgumentTypeError("不能为负数")
     return number
+
+
+def native_ok(path: str) -> bool:
+    """Read-only format check for a candidate browser file."""
+    try:
+        return native_binary(Path(path), sys.platform)
+    except (OSError, RuntimeError):
+        return False
+
+
+def doctor_report(args: argparse.Namespace) -> dict[str, Any]:
+    """Report engine choices without starting a guardian or launching a browser."""
+    import importlib.util
+
+    package = "installed" if importlib.util.find_spec("playwright") else "missing"
+    candidates = discover_browsers()
+    selected: dict[str, Any] | None = None
+    if args.executable_path:
+        selected = {
+            "browser": "explicit",
+            "path": args.executable_path,
+            "source": "explicit",
+            "reason": "由 --executable-path 指定",
+        }
+    else:
+        candidate = select_browser(candidates=candidates)
+        if candidate is not None:
+            selected = candidate.as_dict()
+    if selected is not None:
+        selected["launch"] = "not-probed"
+        if args.probe_launch:
+            import light_browser
+
+            try:
+                version = light_browser.probe_launch(selected["path"], args.timeout_ms)
+                selected["launch"] = f"ok:{version}"
+            except TaskError as exc:
+                selected["launch"] = f"failed:{exc}"
+    if package == "installed":
+        recommended = {
+            "engine": "playwright",
+            "reason": "目标环境已有 Playwright 包，沿用默认制品与默认协议",
+        }
+    elif selected is not None:
+        recommended = {
+            "engine": "cdp",
+            "reason": "缺少 Playwright 包；显式 --engine cdp 加真实浏览器可保留滚动语义",
+        }
+    else:
+        recommended = {
+            "engine": "none",
+            "reason": "既缺 Playwright 包，也未发现可用的本机原生浏览器",
+        }
+    return {
+        "platform": sys.platform,
+        "playwright": {
+            "package": package,
+            "browsers_path": os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or None,
+        },
+        "candidates": [item.as_dict() for item in candidates],
+        "selected": selected,
+        "recommended": recommended,
+        "note": "只读体检：不启动 guardian、不启动浏览器；--probe-launch 会实际探一次启动。",
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -215,6 +300,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="从常见安装位置选择本机浏览器；不下载、不失败换浏览器",
     )
+    parser.add_argument(
+        "--engine",
+        choices=("playwright", "oneshot", "cdp"),
+        default="playwright",
+        help="采集引擎；oneshot/cdp 为轻量引擎，须显式指定真实浏览器",
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="只读体检：报告可用引擎与选中的浏览器，不启动 guardian 或浏览器",
+    )
+    parser.add_argument(
+        "--probe-launch",
+        action="store_true",
+        help="配合 --doctor 实际探一次候选启动；不探不得声称可启动",
+    )
     return parser
 
 
@@ -224,6 +325,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.probe_launch and not args.doctor:
+            parser.error("--probe-launch 需要与 --doctor 一起使用")
+        if args.doctor:
+            if args.url or args.out or args.out_dir or args.list_browsers:
+                parser.error("--doctor 单独使用，不与截图或候选列出参数组合")
+            if args.channel:
+                parser.error(
+                    "--doctor 不解析 Playwright channel；用 --executable-path 指定本机浏览器"
+                )
+            if args.executable_path and not native_ok(args.executable_path):
+                parser.error("--executable-path 需要可读的原生浏览器文件")
+            print(json.dumps(doctor_report(args), ensure_ascii=False, indent=2))
+            return 0
         if args.list_browsers:
             if (
                 args.url
@@ -237,7 +351,8 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "platform": sys.platform,
                         "candidates": [item.as_dict() for item in discover_browsers()],
-                        "note": "只读路径/格式检查；不证明可启动、可信或与项目兼容。",
+                        "note": "只读路径/格式检查；不证明可启动、可信或与项目兼容。"
+                        "source=playwright-cache 的条目仅为信息，不参与自动选择。",
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -258,17 +373,20 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("最多 20 屏，视口宽高各不超过 8192")
         if args.out and (args.screens != 1 or Path(args.out).suffix.lower() != ".png"):
             parser.error("--out 仅接受单屏 PNG 文件")
-        if args.executable_path:
-            try:
-                valid_binary = native_binary(Path(args.executable_path), sys.platform)
-            except (OSError, RuntimeError):
-                valid_binary = False
-            if not valid_binary:
-                parser.error("--executable-path 需要可读的原生浏览器文件")
+        if args.engine != "playwright":
+            if args.channel:
+                parser.error(
+                    "--engine oneshot/cdp 不接受 --channel；"
+                    "请用 --executable-path 或 --discover-browser"
+                )
+            if not (args.executable_path or args.discover_browser):
+                parser.error(
+                    "--engine oneshot/cdp 需要显式指定真实浏览器：轻量引擎不是默认回退"
+                )
+        if args.executable_path and not native_ok(args.executable_path):
+            parser.error("--executable-path 需要可读的原生浏览器文件")
         if args.discover_browser:
-            candidate = next(
-                (item for item in discover_browsers() if item.eligible), None
-            )
+            candidate = select_browser(candidates=discover_browsers())
             if candidate is None:
                 raise TaskError(
                     "常见位置未找到原生浏览器；用 --list-browsers 查看候选，或显式指定 --channel/--executable-path。",

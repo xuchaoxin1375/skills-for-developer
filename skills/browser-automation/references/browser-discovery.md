@@ -13,7 +13,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --list-browsers
 & <skill-dir>/scripts/shot-quick.ps1 -ListBrowsers
 ```
 
-输出 JSON 中的 `browser`、`path`、`source` 说明产品、解析后的真实文件和发现渠道；`eligible` 只表示通过原生格式及包装器排除检查。未发现候选时输出空数组并退出 0，表示查询完成；不表示环境已就绪。文件头检查不验证签名、来源可信性、架构、依赖或兼容性，候选应来自任务认可的安装渠道。
+输出 JSON 中的 `browser`、`path`、`source` 说明产品、解析后的真实文件和发现渠道；`eligible` 只表示通过原生格式及包装器排除检查。未发现候选时输出空数组并退出 0，表示查询完成；不表示环境已就绪。文件头检查不验证签名、来源可信性、架构、依赖或兼容性，候选应来自任务认可的安装渠道。`source=playwright-cache` 的条目只作信息：它们来自 `PLAYWRIGHT_BROWSERS_PATH` 或平台默认缓存目录下的 `chromium-*`，实际用哪个版本由 Playwright 与运行环境决定，因此不参与自动选择。
 
 ### 常见安装渠道与检索范围
 
@@ -21,13 +21,13 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --list-browsers
 
 | 系统与渠道 | 检索方式 | 使用边界 |
 |---|---|---|
-| Windows 官方安装、winget、Chocolatey | Chrome/Edge 的 HKCU/HKLM App Paths，分别读取 32/64 位注册表视图；再查 `%ProgramFiles%`、`%ProgramW6432%`、`%ProgramFiles(x86)%`、`%LOCALAPPDATA%` 下的产品目录 | winget/Chocolatey 安装常落在产品标准目录；不执行包管理器，也不解析默认浏览器的打开命令 |
+| Windows 官方安装、winget、Chocolatey | Chrome/Edge 的 HKCU/HKLM App Paths，分别读取 32/64 位注册表视图；HKCU/HKLM `Software\Clients\StartMenuInternet` 的登记项（覆盖 Brave 等非标准产品）；再查 `%ProgramFiles%`、`%ProgramW6432%`、`%ProgramFiles(x86)%`、`%LOCALAPPDATA%` 下的产品目录 | winget/Chocolatey 安装常落在产品标准目录；不执行包管理器，不改默认浏览器设置，只读登记项的打开命令取可执行文件并跳过 `%1` 之类占位符 |
 | Windows Scoop | `$env:SCOOP`、`$env:SCOOP_GLOBAL`；未配置时用用户目录下 `scoop` 和 `%ProgramData%` 下 `scoop` 的常见布局，检查应用的 `current` 入口及常见真实 EXE 相对位置 | 不选最大版本目录，不执行 `shims`，不依赖包管理器命令已加入 PATH |
 | macOS 官网安装、Homebrew cask | 系统和用户的 `Applications` 下 Chrome/Edge/Chromium `.app` 包内 `Contents/MacOS` 的真实文件 | 只支持只读发现；当前截图 guardian 不支持 macOS，运行交给项目已有受管工具 |
 | Linux deb/rpm、发行版 Chromium | 常见 `/opt` 产品目录、`/usr/lib` / `/usr/lib64` 的 Chromium 实体和 `/usr/bin` 入口；补查已知 PATH 命令 | shell 启动脚本只列为候选，自动模式仅选择原生 ELF 文件；仍需实际验证共享库和运行依赖 |
 | Snap、Flatpak、AppImage、自定义便携目录 | Snap 常见入口可出现在候选中；Flatpak/AppImage 和自定义目录由用户明确提供或按对应安装工具查询 | 不绕过沙箱启动器、挂载和命名空间要求；不把 `snap`、`flatpak` 等启动器当浏览器，不默认探测可移动盘或任意目录 |
 
-PATH 只补查已知浏览器命令，使用文件查询，不执行 `where` / `which` 或候选程序；软链接解析后去重。Windows 默认优先 Edge、Chrome、Chromium，其他系统优先 Chrome、Edge、Chromium；同一产品优先注册表、固定目录，再到 PATH。排序仅为无需指定产品的临时采集提供稳定选择，不表示某种浏览器更符合项目基线。
+PATH 只补查已知浏览器命令，使用文件查询，不执行 `where` / `which` 或候选程序；软链接解析后去重。Windows 默认优先 Edge、Chrome、Chromium，其他系统优先 Chrome、Edge、Chromium；同一产品优先注册表、固定目录，再到 PATH；非标准产品（如 Brave）排在已知三种之后。排序仅为无需指定产品的临时采集提供稳定选择，不表示某种浏览器更符合项目基线。
 
 ### 选择并验证
 
@@ -49,7 +49,9 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 
 `--discover-browser` 未找到合格候选时退出 2；选定后启动或采集失败时，返回该次错误，**不轮流启动其他候选、不自动下载、不切换成裸浏览器命令**。日志记录选中产品、来源和解析后的路径；成功后记录实际浏览器版本与清理结果，仍需查看截图判断页面是否符合预期。启动总期限与异常回收按 [托管截图工作流](screenshot-workflow.md#生命周期与托管边界)。
 
-截图仍需目标环境的 Playwright 包。使用受控本地页面先验证浏览器启动和截图，再验证外网、代理与业务；浏览器制品及系统依赖准备按 [浏览器安装](../../network-access/references/browser-installation.md)。发现脚本不猜 Playwright 缓存版本；缓存由实际运行环境的 Playwright/项目运行器解析。
+自动选择等价于 `browser_discovery.select_browser()`：只在 `eligible` 且非 `playwright-cache` 的候选中取发现顺序第一个，也可按产品过滤（如 `chrome`）。不确定引擎或浏览器时先跑 `shot_scroll.py --doctor`：它只读报告 Playwright 包是否可用、候选列表、会自动选中的浏览器与建议引擎，不启动 guardian 或浏览器；只有加 `--probe-launch` 才实际探一次启动，`launch=not-probed` 表示尚未取得启动事实。
+
+截图仍需目标环境的 Playwright 包，除非显式使用轻量引擎：`--engine oneshot|cdp` 只要求本机浏览器文件，不导入 Playwright（用法与保真差异见 [托管截图工作流](screenshot-workflow.md#轻量引擎)）。使用受控本地页面先验证浏览器启动和截图，再验证外网、代理与业务；浏览器制品及系统依赖准备按 [浏览器安装](../../network-access/references/browser-installation.md)。缓存条目只作信息报告，选哪个缓存版本仍由实际运行环境的 Playwright/项目运行器决定。
 
 ### 其他 skill 如何复用
 

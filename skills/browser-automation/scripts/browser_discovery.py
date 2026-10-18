@@ -1,7 +1,8 @@
 """Read-only discovery of installed Chromium browsers; never launch candidates.
 
-Only inspect a bounded catalog, App Paths and known PATH command names. A native
-header is a format check, not a signature, compatibility or trust verification.
+Only inspect a bounded catalog, App Paths, StartMenuInternet registrations and
+known PATH command names. A native header is a format check, not a signature,
+compatibility or trust verification.
 """
 
 from __future__ import annotations
@@ -58,6 +59,97 @@ def native_binary(path: Path, platform: str) -> bool:
             b"\xbf\xba\xfe\xca",
         }
     return False
+
+
+PLAYWRIGHT_CACHE_SOURCE = "playwright-cache"
+
+_PRODUCT_TOKENS: tuple[tuple[str, str], ...] = (
+    ("chromium", "chromium"),
+    ("chrome", "chrome"),
+    ("brave", "brave"),
+    ("edge", "msedge"),
+)
+
+
+def _product_from_registration(name: str) -> str:
+    """Map a registration product label to a discovery product key."""
+    lowered = name.strip().lower()
+    for token, product in _PRODUCT_TOKENS:
+        if token in lowered:
+            return product
+    return "other"
+
+
+def _executable_from_command(command: str) -> Path | None:
+    """Extract the executable from an open command; ignore argument placeholders."""
+    text = command.strip()
+    if text.startswith('"'):
+        end = text.find('"', 1)
+        if end < 0:
+            return None
+        token = text[1:end]
+    else:
+        parts = text.split()
+        token = parts[0] if parts else ""
+    token = token.strip()
+    if not token or token.startswith("%"):
+        return None
+    path = Path(os.path.expandvars(token))
+    if not path.is_absolute() and path.suffix.lower() != ".exe":
+        return None
+    return path
+
+
+def windows_registry_candidates() -> list[tuple[str, Path, str]]:
+    """Read StartMenuInternet clients so non-standard Chromium products appear."""
+    if sys.platform != "win32":
+        return []
+    import winreg
+
+    found: list[tuple[str, Path, str]] = []
+    for hive, label in (
+        (winreg.HKEY_CURRENT_USER, "HKCU"),
+        (winreg.HKEY_LOCAL_MACHINE, "HKLM"),
+    ):
+        for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+            try:
+                clients = winreg.OpenKey(
+                    hive,
+                    r"Software\Clients\StartMenuInternet",
+                    0,
+                    winreg.KEY_READ | view,
+                )
+            except OSError:
+                continue
+            with clients:
+                names: list[str] = []
+                index = 0
+                while True:
+                    try:
+                        names.append(winreg.EnumKey(clients, index))
+                    except OSError:
+                        break
+                    index += 1
+                for name in names:
+                    product = _product_from_registration(name)
+                    if product == "other":
+                        continue
+                    try:
+                        with winreg.OpenKey(
+                            clients, rf"{name}\shell\open\command"
+                        ) as key:
+                            command, kind = winreg.QueryValueEx(key, "")
+                    except OSError:
+                        continue
+                    if not isinstance(command, str) or kind not in (
+                        winreg.REG_SZ,
+                        winreg.REG_EXPAND_SZ,
+                    ):
+                        continue
+                    path = _executable_from_command(command)
+                    if path is not None:
+                        found.append((product, path, f"registration:{label}"))
+    return found
 
 
 def windows_app_paths() -> list[tuple[str, Path, str]]:
@@ -172,6 +264,63 @@ def common_locations(
     return found
 
 
+def _default_cache_root(
+    platform: str, env: Mapping[str, str], home: Path
+) -> Path | None:
+    """Return the platform default Playwright browser root, if it has one."""
+    if platform == "win32":
+        base = env.get("LOCALAPPDATA") or str(home / "AppData" / "Local")
+        return Path(base) / "ms-playwright"
+    if platform == "darwin":
+        return home / "Library" / "Caches" / "ms-playwright"
+    if platform.startswith("linux"):
+        return home / ".cache" / "ms-playwright"
+    return None
+
+
+def _revision_rank(path: Path) -> int:
+    """Order cache revisions numerically so the newest one is offered first."""
+    suffix = path.name.split("-", 1)[1] if "-" in path.name else ""
+    return int(suffix) if suffix.isdigit() else -1
+
+
+def playwright_cache_locations(
+    platform: str | None = None,
+    env: Mapping[str, str] | None = None,
+    home: Path | None = None,
+) -> list[tuple[str, Path, str]]:
+    """List Playwright cache artifacts as information, never as a chosen browser.
+
+    The package and the runtime decide which cached revision they use, so these
+    entries are reported with a distinct source and skipped by selection.
+    """
+    platform = platform or sys.platform
+    env = os.environ if env is None else env
+    home = Path.home() if home is None else home
+    override = env.get("PLAYWRIGHT_BROWSERS_PATH")
+    root = Path(override) if override else _default_cache_root(platform, env, home)
+    if root is None or not root.is_dir():
+        return []
+    relatives = (
+        ("chrome-win/chrome.exe", "chrome-win64/chrome.exe")
+        if platform == "win32"
+        else
+        (
+            "chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+            "chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium",
+        )
+        if platform == "darwin"
+        else ("chrome-linux/chrome", "chrome-linux64/chrome")
+    )
+    found: list[tuple[str, Path, str]] = []
+    for revision in sorted(
+        root.glob("chromium-*"), key=_revision_rank, reverse=True
+    ):
+        for relative in relatives:
+            found.append(("chromium", revision / relative, PLAYWRIGHT_CACHE_SOURCE))
+    return found
+
+
 def inspect_candidates(
     locations: Iterable[tuple[str, Path, str]], platform: str
 ) -> list[BrowserCandidate]:
@@ -212,8 +361,11 @@ def inspect_candidates(
 def discover_browsers() -> list[BrowserCandidate]:
     """List browsers in predictable preference order; never probe by --version."""
     platform = sys.platform
-    locations = windows_app_paths() + common_locations(
-        platform, os.environ, Path.home()
+    locations = (
+        windows_app_paths()
+        + windows_registry_candidates()
+        + common_locations(platform, os.environ, Path.home())
+        + playwright_cache_locations(platform, os.environ, Path.home())
     )
     names = (
         (
@@ -245,5 +397,27 @@ def discover_browsers() -> list[BrowserCandidate]:
     }
     return sorted(
         inspect_candidates(locations, platform),
-        key=lambda item: preference[item.browser],
+        key=lambda item: preference.get(item.browser, len(preference)),
     )
+
+
+def select_browser(
+    product: str | None = None,
+    *,
+    candidates: Iterable[BrowserCandidate] | None = None,
+    allow_cache: bool = False,
+) -> BrowserCandidate | None:
+    """Return the first eligible candidate in discovery order, or None.
+
+    Playwright cache entries stay informational: the package and the running
+    environment decide which cached revision they use, so discovery does not
+    hand one out unless the caller explicitly allows it.
+    """
+    pool = discover_browsers() if candidates is None else candidates
+    for item in pool:
+        if not item.eligible or (product and item.browser != product):
+            continue
+        if item.source == PLAYWRIGHT_CACHE_SOURCE and not allow_cache:
+            continue
+        return item
+    return None

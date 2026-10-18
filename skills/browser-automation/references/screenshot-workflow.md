@@ -21,7 +21,7 @@ Agent 独立采集首屏和滚动多屏时统一用 `scripts/shot_scroll.py`，�
 ### 如何选择
 
 - **临时看图或人工复现**：直接使用已安装浏览器的开发者工具，无需为截图安装 Playwright。手动证据可用于诊断；验收要求自动断言时，另补对应检查。
-- **Agent 首屏或滚动多屏采集**：使用下文受托管入口，统一输出、总期限和本轮进程回收。裸浏览器无头截图命令虽然能出图，但若没有外层托管，不能作为本入口的自动回退。
+- **Agent 首屏或滚动多屏采集**：使用下文受托管入口，统一输出、总期限和本轮进程回收。默认引擎是 Playwright 制品；本机没有 Playwright 包时可显式 `--engine oneshot|cdp`（见「轻量引擎与体检」）。裸浏览器无头截图命令虽然能出图，但若没有外层托管，不能作为本入口的自动回退。
 - **登录、交互、多视口或持续回归**：沿用项目的 Playwright 等自动化与测试运行器，按业务状态等待和断言；固定浏览器、OS、字体等视觉基线。
 - **已有浏览器工具或远程托管服务**：先复用其实际可用能力，确认会话所有者、总期限、并发限制及释放方式。服务端托管能减少本地进程负担，仍需核对断线后的会话回收；“远程”本身不证明资源已释放。
 
@@ -64,7 +64,32 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 
 代理按 `--proxy` → `SCRAPE_PROXY` →（指定 `--discover-proxy` 时）机外登记解析；没有代理设置且未要求发现时直连。只验证登记端点监听，不据此宣称出口可用。日志不打印代理凭据和页面查询参数。`--channel chrome/msedge`、`--executable-path`、`--discover-browser` 互斥；显式路径必须指向可读的原生浏览器文件，不传包装脚本或垫片。
 
-国内安装按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 区分包源和制品源。本机有 Edge/Chrome 时可只补目标环境的 Playwright 包；不允许补包且没有可用自动化工具时，记录自动化未执行。人工仍可通过开发者工具截图，是否满足验收取决于任务要求；Agent 不回退到无期限的裸浏览器命令。
+国内安装按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 区分包源和制品源。本机有 Edge/Chrome 时可只补目标环境的 Playwright 包；不允许补包时可用显式 `--engine oneshot|cdp` 加本机浏览器，仍缺自动化条件时记录自动化未执行。人工仍可通过开发者工具截图，是否满足验收取决于任务要求；Agent 不回退到无期限的裸浏览器命令。
+
+### 轻量引擎与体检
+
+不确定走哪条引擎、哪个浏览器时先做一次只读体检；它不启动 guardian，不加 `--probe-launch` 也不启动浏览器：
+
+```powershell
+python -X utf8 <skill-dir>/scripts/shot_scroll.py --doctor
+python -X utf8 <skill-dir>/scripts/shot_scroll.py --doctor --probe-launch
+```
+
+体检输出 Playwright 包是否可用、候选浏览器、会自动选中的浏览器与建议引擎（`playwright` / `cdp` / `none`）。`selected.launch` 为 `not-probed` 只表示读过文件格式，**不等于可启动**；`ok:<版本>` 才是本轮真实启动事实，`failed:<原因>` 表示候选在期限内没能启动。
+
+`--engine oneshot|cdp` 只要求本机浏览器文件，不导入 Playwright，用于目标环境只有浏览器、没有 Playwright 包的情形。两者都必须显式指定浏览器（`--executable-path` 或 `--discover-browser`），不接受 `--channel`；未指定时退出 2——轻量引擎不是默认回退，不传 `--engine` 时仍用 Playwright 制品。
+
+```powershell
+# 无 Playwright 包时显式选择本机浏览器；两种引擎都需要显式浏览器
+python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --engine cdp --discover-browser --screens 2 --out-dir shots
+```
+
+| 引擎 | 做法 | 保真差异 |
+|---|---|---|
+| `oneshot` | 一次 `--screenshot` 拍整块高画布，再按屏切片 | 粘性/固定元素只渲染一次，第 2 屏起没有吸顶头部；只接受真彩色 PNG，其余几何形状直接失败并提示改用 `cdp` |
+| `cdp` | 连上 DevTools 端口真实滚动、逐屏截图 | 滚动语义接近 Playwright；要求浏览器能开放 DevTools 端口，打不开时提示改用 `oneshot` |
+
+两种引擎都在同一 guardian 内运行，成功同样要求本轮 `SHOT` 行与 `CLEANUP verified`，失败同样不替换旧图片。
 
 ### 生命周期与托管边界
 
@@ -72,7 +97,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 
 1. 调用端创建独立 guardian，持有通信管道作为存活信号。guardian 持有操作系统文件锁，同一用户、同一临时目录默认只允许一轮任务；第二轮返回忙，不排队、不自动重试。
 2. worker 先等待启动配置。Windows 中，guardian 将其加入启用 `KILL_ON_JOB_CLOSE` 的 Job Object 后才放行；Chromium、Playwright 驱动与后代继承约束，不凭全机进程数认领资源。
-3. Playwright 显式关闭 context 和 browser；总期限覆盖启动、导航、截图和正常关闭。到期或调用端管道断开时，guardian 终止本轮进程树。
+3. Playwright 显式关闭 context 和 browser；总期限覆盖启动、导航、截图和正常关闭。轻量引擎自行结束自己启动的浏览器进程后仍由 guardian 核验归零。到期或调用端管道断开时，guardian 终止本轮进程树。
 4. 即使 worker 正常返回，也清理残留后代，核验作业内活动进程归零，再发布截图并删除本轮 profile、浏览器临时文件。worker 原始输出丢弃，避免无界日志增长及凭据回显；失败仅返回异常类型与已知排查提示。
 5. 调用端被强制结束时，guardian 通过管道 EOF 收尾。Windows 中 guardian 自身被强制结束，Job Object 仍负责终止成员，但文件清理无法继续；下次运行检测遗留目录并拒绝启动。
 
@@ -98,6 +123,7 @@ Linux 使用独立进程组及 subreaper，回收被重新托管的后代；用 
 - `shot_scroll.py` 的默认屏数由 2 改为 1；多屏显式传 `--screens 2`。
 - `shot-quick.ps1` 现在需要 Python Playwright，移除按 PATH/最大缓存版本猜浏览器、隐式环境浏览器覆盖及裸 Chrome 回退。`-Chrome` 映射到 `--executable-path`，推荐 `-Channel msedge/chrome` 或匹配项目版本的缓存。
 - 常用安装位置的查找通过显式 `--discover-browser` / `-DiscoverBrowser` 启用；`--list-browsers` / `-ListBrowsers` 可在未安装 Playwright 时只读列候选。它们不恢复旧入口的隐式选版本与失败回退。
+- 轻量引擎（`--engine oneshot|cdp`）不改变默认路径：不传 `--engine` 仍是 Playwright 制品，避免旧入口的隐式回退换个名字回来。
 - 旧 `-VirtualBudget` 已移除，改用 `-TimeoutMs` 与 `-WallTimeoutMs`。页面虚拟时间不能作为进程总期限。
 - 其他 skill 的单次视口截图可引用本入口。复杂测试沿用项目 runner；`resilient-browser-fetch` 的挑战处理、持久会话及 `htmlmini` 渲染回退不因本次改动自动获得相同托管保障。
 

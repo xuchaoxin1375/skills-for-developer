@@ -112,13 +112,16 @@ class DiscoveryTests(unittest.TestCase):
             mock.patch.object(discovery.sys, "platform", "win32"),
             mock.patch.object(discovery, "windows_app_paths", return_value=[]),
             mock.patch.object(
-                discovery,
-                "common_locations",
+                discovery, "windows_registry_candidates", return_value=[]
+            ),
+            mock.patch.object(
+                discovery, "common_locations",
                 return_value=[
                     ("chrome", chrome, "Scoop:current"),
                     ("msedge", edge, "fixed"),
                 ],
             ),
+            mock.patch.object(discovery, "playwright_cache_locations", return_value=[]),
             mock.patch.object(discovery.shutil, "which", return_value=None),
         ):
             found = discovery.discover_browsers()
