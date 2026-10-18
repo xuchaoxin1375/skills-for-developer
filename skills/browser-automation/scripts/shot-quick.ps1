@@ -6,6 +6,7 @@
   需要目标 Python 环境已有 Playwright。默认使用匹配缓存；本机 Edge/Chrome 可传
   -Channel，或 -DiscoverBrowser 查常用位置，免下载浏览器。-ListBrowsers 只读列候选。
   -Engine oneshot/cdp 改用轻量引擎（不导入 Playwright，须显式指定浏览器）；
+  -ToBottom 逐屏滚到底只截末屏视口（仅默认引擎）；
   -Doctor 只读体检引擎与选中的浏览器，加 -ProbeLaunch 才实际探一次启动。
   总期限与回收由独立 guardian 负责；失败不自动重试。
 .EXAMPLE
@@ -28,6 +29,7 @@ param(
   [switch]$DiscoverBrowser,
   [switch]$ListBrowsers,
   [ValidateSet('playwright', 'oneshot', 'cdp')][string]$Engine = 'playwright',
+  [switch]$ToBottom,
   [switch]$Doctor,
   [switch]$ProbeLaunch,
   [string]$Python = 'python',
@@ -62,6 +64,7 @@ $arguments = @('-X', 'utf8', (Join-Path $PSScriptRoot 'shot_scroll.py'),
   '--url', $Url, '--screens', '1', '--width', "$Width", '--height', "$Height",
   '--timeout-ms', "$TimeoutMs", '--wall-timeout-ms', "$WallTimeoutMs")
 if ($Engine -ne 'playwright') { $arguments += @('--engine', $Engine) }
+if ($ToBottom) { $arguments += '--to-bottom' }
 if ($Out) { $arguments += @('--out', $Out) }
 if ($Proxy) { $arguments += @('--proxy', $Proxy) }
 if ($Chrome) { $arguments += @('--executable-path', $Chrome) }

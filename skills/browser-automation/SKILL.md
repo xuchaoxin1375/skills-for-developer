@@ -35,7 +35,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --doctor
 python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --discover-browser --out page.png
 ```
 
-不传选择参数时保留 Playwright 默认制品；项目已固定版本时沿用项目运行器。自动选择失败后不轮流启动候选或自动安装。成功截图需本轮 `SHOT` 与 `CLEANUP verified`，并按任务要求实际查看；当前入口只拍视口，整页、交互及多视口由合适工具或受管项目脚本执行。
+不传选择参数时保留 Playwright 默认制品；项目已固定版本时沿用项目运行器。自动选择失败后不轮流启动候选或自动安装。成功截图需本轮 `SHOT` 与 `CLEANUP verified`，并按任务要求实际查看；当前入口只拍视口（首屏、自顶向下的多屏、末屏），整页、交互及多视口由合适工具或受管项目脚本执行。
 
 ### 协作与能力边界
 

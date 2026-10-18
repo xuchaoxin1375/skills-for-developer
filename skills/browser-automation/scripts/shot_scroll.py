@@ -3,6 +3,7 @@
 Examples:
   python -X utf8 shot_scroll.py --url https://example.com --out page.png
   python -X utf8 shot_scroll.py --url https://example.com --screens 2 --channel msedge
+  python -X utf8 shot_scroll.py --url https://example.com --to-bottom --out last.png
 
 The CLI starts a guardian, not a persistent browser service. See --help and
 references/screenshot-workflow.md for lifecycle guarantees and exit statuses.
@@ -26,6 +27,9 @@ from browser_discovery import discover_browsers, native_binary, select_browser
 from managed_browser import USER_TEMP_ROOT, TaskError, run_managed
 
 PROXY_REGISTRY_PATH = Path.home() / ".config" / "proxy-resources.json"
+
+BOTTOM_MAX_STEPS = 60
+BOTTOM_STABLE_CHECKS = 3
 
 
 def registry_default_proxy(registry_path: Path | None = None) -> str | None:
@@ -75,6 +79,45 @@ def resolve_proxy(explicit: str | None, *, discover: bool) -> tuple[str | None, 
     raise TaskError("未找到可用的登记代理，请传 --proxy 或设置 SCRAPE_PROXY。", 2)
 
 
+def page_metrics(page: Any) -> dict[str, int]:
+    """Read the values that decide whether the real bottom is reached."""
+    return page.evaluate(
+        "() => ({y: Math.round(window.scrollY), h: window.innerHeight,"
+        " d: Math.max(document.body.scrollHeight,"
+        " document.documentElement.scrollHeight)})"
+    )
+
+
+def settle_to_bottom(page: Any, config: dict[str, Any]) -> dict[str, int]:
+    """Walk down one viewport at a time until the bottom holds still.
+
+    Content created on scroll (lazy sections, infinite feeds) only exists after
+    being seen, so jumping to the document height renders a blank, too-short
+    page instead of the last screen.
+    """
+    height = page_metrics(page)["d"]
+    stable = 0
+    for _ in range(BOTTOM_MAX_STEPS):
+        metrics = page_metrics(page)
+        if metrics["y"] + metrics["h"] >= metrics["d"] - 4 and metrics["d"] == height:
+            stable += 1
+            if stable >= BOTTOM_STABLE_CHECKS:
+                break
+        else:
+            stable = 0
+        height = metrics["d"]
+        page.evaluate("() => window.scrollTo(0, window.scrollY + window.innerHeight)")
+        page.wait_for_timeout(config["step_wait_ms"])
+    else:
+        raise TaskError(
+            "未能确认页面底部：高度持续变化或页面无限滚动；请改用 --screens 指定屏数。",
+            1,
+        )
+    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    page.wait_for_timeout(config["step_wait_ms"])
+    return page_metrics(page)
+
+
 def capture(config: dict[str, Any]) -> dict[str, Any]:
     """Worker-only Playwright session; the guardian owns its hard deadline."""
     from playwright.sync_api import sync_playwright
@@ -100,18 +143,32 @@ def capture(config: dict[str, Any]) -> dict[str, Any]:
                 page = context.new_page()
                 page.goto(config["url"], wait_until="domcontentloaded")
                 page.wait_for_timeout(config["settle_ms"])
-                for index in range(config["screens"]):
+                bottom: dict[str, int] | None = None
+                if config.get("to_bottom"):
+                    bottom = settle_to_bottom(page, config)
                     page.screenshot(
-                        path=str(shots_dir / f"{index}.png"), full_page=False
+                        path=str(shots_dir / "0.png"), full_page=False
                     )
-                    if index + 1 < config["screens"]:
-                        page.evaluate("window.scrollBy(0, window.innerHeight)")
-                        page.wait_for_timeout(config["step_wait_ms"])
+                else:
+                    for index in range(config["screens"]):
+                        page.screenshot(
+                            path=str(shots_dir / f"{index}.png"), full_page=False
+                        )
+                        if index + 1 < config["screens"]:
+                            page.evaluate("window.scrollBy(0, window.innerHeight)")
+                            page.wait_for_timeout(config["step_wait_ms"])
             finally:
                 context.close()
         finally:
             browser.close()
-    return {"code": 0, "browser_version": version, "artifacts": artifacts(config)}
+    result: dict[str, Any] = {
+        "code": 0,
+        "browser_version": version,
+        "artifacts": artifacts(config),
+    }
+    if bottom is not None:
+        result["page"] = bottom
+    return result
 
 
 def artifacts(config: dict[str, Any]) -> list[dict[str, str]]:
@@ -247,8 +304,8 @@ def doctor_report(args: argparse.Namespace) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     """Expose one interface for first-viewport and scrolling screenshots."""
     parser = argparse.ArgumentParser(
-        description="托管截图：首屏或滚动多屏，自动回收浏览器。",
-        epilog="示例：--url https://example.com --out page.png；多屏加 --screens 2。\n"
+        description="托管截图：首屏、滚动多屏或末屏，自动回收浏览器。",
+        epilog="示例：--url https://example.com --out page.png；多屏加 --screens 2；末屏加 --to-bottom。\n"
         "退出码：0 成功；1 截图失败；2 参数/代理错误；3 忙；4 清理未确认；124 总超时；130 取消。",
     )
     parser.add_argument("--url", help="目标 HTTP(S) URL；只列浏览器时不需要")
@@ -258,10 +315,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="只读列出本机浏览器 JSON，不启动、不安装",
     )
     output = parser.add_mutually_exclusive_group()
-    output.add_argument("--out", help="首屏 PNG 文件（仅 --screens 1）")
+    output.add_argument("--out", help="单张 PNG 文件（首屏或 --to-bottom 末屏）")
     output.add_argument("--out-dir", help="截图目录；默认临时目录中的独立运行目录")
     parser.add_argument(
         "--screens", type=positive_int, default=1, help="视口屏数，1–20，默认 1"
+    )
+    parser.add_argument(
+        "--to-bottom",
+        action="store_true",
+        help="逐屏滚到底后只拍末屏视口；与 --screens 互斥，仅默认 Playwright 引擎",
     )
     parser.add_argument(
         "--width", type=positive_int, default=1440, help="CSS 像素宽，最大 8192"
@@ -371,6 +433,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--url 需要不含凭据的 HTTP(S) 地址")
         if args.screens > 20 or args.width > 8192 or args.height > 8192:
             parser.error("最多 20 屏，视口宽高各不超过 8192")
+        if args.to_bottom and args.screens != 1:
+            parser.error("--to-bottom 与 --screens 互斥：末屏为一张视口")
         if args.out and (args.screens != 1 or Path(args.out).suffix.lower() != ".png"):
             parser.error("--out 仅接受单屏 PNG 文件")
         if args.engine != "playwright":
@@ -382,6 +446,11 @@ def main(argv: list[str] | None = None) -> int:
             if not (args.executable_path or args.discover_browser):
                 parser.error(
                     "--engine oneshot/cdp 需要显式指定真实浏览器：轻量引擎不是默认回退"
+                )
+            if args.to_bottom:
+                parser.error(
+                    "--to-bottom 需要默认 Playwright 引擎："
+                    "轻量引擎按整块画布切片，不确认底部"
                 )
         if args.executable_path and not native_ok(args.executable_path):
             parser.error("--executable-path 需要可读的原生浏览器文件")
@@ -412,14 +481,15 @@ def main(argv: list[str] | None = None) -> int:
             if args.out_dir
             else USER_TEMP_ROOT / "shots" / uuid.uuid4().hex
         )
-        outputs = (
-            [str(Path(args.out).resolve())]
-            if args.out
-            else [
+        if args.out:
+            outputs = [str(Path(args.out).resolve())]
+        elif args.to_bottom:
+            outputs = [str((out_dir / f"{slug}-bottom-{args.width}.png").resolve())]
+        else:
+            outputs = [
                 str((out_dir / f"{slug}-s{index + 1}-{args.width}.png").resolve())
                 for index in range(args.screens)
             ]
-        )
         config = vars(args) | {"proxy": proxy, "outputs": outputs}
         result = run_managed(
             [sys.executable, "-X", "utf8", str(Path(__file__).resolve()), "--worker"],
@@ -427,6 +497,8 @@ def main(argv: list[str] | None = None) -> int:
             args.wall_timeout_ms,
         )
         logging.info("BROWSER version=%s", result.get("browser_version", "unknown"))
+        if result.get("page"):
+            logging.info("PAGE metrics=%s", json.dumps(result["page"]))
         for artifact in result["artifacts"]:
             path = Path(artifact["destination"])
             print(f"SHOT {path} ({path.stat().st_size} bytes)")

@@ -12,6 +12,7 @@ import http.server
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
@@ -231,6 +232,16 @@ class BrowserTests(unittest.TestCase):
             '<div style="height:900px;background:blue">Second</div></body></html>',
             encoding="utf-8",
         )
+        # Grows while scrolling, so a jump-to-bottom capture would shoot the wrong screen.
+        (cls.root / "lazy.html").write_text(
+            '<html><body style="margin:0"><div style="height:1800px;background:red"></div>'
+            '<div id="more"></div><script>let n=0;'
+            "addEventListener('scroll',()=>{if(n<2){n++;const d=document.createElement('div');"
+            "d.style.cssText='height:900px;background:green';"
+            "document.getElementById('more').appendChild(d);}});"
+            "</script></body></html>",
+            encoding="utf-8",
+        )
         cls.server = http.server.ThreadingHTTPServer(
             ("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(cls.root))
         )
@@ -279,6 +290,26 @@ class BrowserTests(unittest.TestCase):
         shots = sorted((self.root / "scroll").glob("*.png"))
         self.assertEqual(len(shots), 2)
         self.assertNotEqual(shots[0].read_bytes(), shots[1].read_bytes())
+        self.assertIn("CLEANUP verified", result.stderr)
+        self.assertFalse(list(manager.STATE_ROOT.glob("run-*")))
+
+    def test_bottom_capture_walks_growing_page(self) -> None:
+        output = self.root / "末屏 底部.png"
+        result = self.cli(
+            "--url",
+            f"http://127.0.0.1:{self.server.server_port}/lazy.html",
+            "--to-bottom",
+            "--settle-ms",
+            "0",
+            "--out",
+            str(output),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+        metrics = json.loads(re.search(r"PAGE metrics=(\{.*\})", result.stderr).group(1))
+        # Both lazy blocks appear only after scrolling: 3600px tall, shot at the end.
+        self.assertEqual(metrics["d"], 3600)
+        self.assertEqual(metrics["y"], metrics["d"] - metrics["h"])
         self.assertIn("CLEANUP verified", result.stderr)
         self.assertFalse(list(manager.STATE_ROOT.glob("run-*")))
 
@@ -365,6 +396,7 @@ class BrowserTests(unittest.TestCase):
             ("--url", "file:///invalid"),
             ("--url", self.url, "--height", "0"),
             ("--url", self.url, "--screens", "2", "--out", "bad.png"),
+            ("--url", self.url, "--to-bottom", "--screens", "2"),
         ):
             result = self.cli(*arguments)
             self.assertEqual(result.returncode, 2)
@@ -402,6 +434,34 @@ class BrowserTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 required")
+    def test_powershell_bottom_switch_delegates(self) -> None:
+        output = self.root / "包装器 末屏.png"
+        result = subprocess.run(
+            [
+                shutil.which("pwsh"),
+                "-NoProfile",
+                "-File",
+                str(SCRIPTS / "shot-quick.ps1"),
+                "-Url",
+                f"http://127.0.0.1:{self.server.server_port}/lazy.html",
+                "-ToBottom",
+                "-Out",
+                str(output),
+                "-Python",
+                sys.executable,
+                "-WallTimeoutMs",
+                "60000",
+            ],
+            capture_output=True,
+            encoding="utf-8",
+            timeout=90,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+        metrics = json.loads(re.search(r"PAGE metrics=(\{.*\})", result.stderr).group(1))
+        self.assertEqual(metrics["d"], 3600)
 
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 required")
     def test_powershell_browser_inventory_and_discovery(self) -> None:

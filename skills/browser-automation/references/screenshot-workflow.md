@@ -1,6 +1,6 @@
 ## 受托管的截图工作流
 
-Agent 独立采集首屏和滚动多屏时统一用 `scripts/shot_scroll.py`，默认只拍首屏。`shot-quick.ps1` 是同一入口的 PowerShell 兼容包装，不再直接创建 Chrome 进程。截图触发、取景和实际查看按 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md)，资源政策按 [测试资源预算与回收](../../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)。
+Agent 独立采集首屏、滚动多屏或末屏时统一用 `scripts/shot_scroll.py`，默认只拍首屏。`shot-quick.ps1` 是同一入口的 PowerShell 兼容包装，不再直接创建 Chrome 进程。截图触发、取景和实际查看按 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md)，资源政策按 [测试资源预算与回收](../../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)。
 
 ### 普通浏览器与 Playwright 的区别
 
@@ -21,7 +21,7 @@ Agent 独立采集首屏和滚动多屏时统一用 `scripts/shot_scroll.py`，�
 ### 如何选择
 
 - **临时看图或人工复现**：直接使用已安装浏览器的开发者工具，无需为截图安装 Playwright。手动证据可用于诊断；验收要求自动断言时，另补对应检查。
-- **Agent 首屏或滚动多屏采集**：使用下文受托管入口，统一输出、总期限和本轮进程回收。默认引擎是 Playwright 制品；本机没有 Playwright 包时可显式 `--engine oneshot|cdp`（见「轻量引擎与体检」）。裸浏览器无头截图命令虽然能出图，但若没有外层托管，不能作为本入口的自动回退。
+- **Agent 首屏、滚动多屏或末屏采集**：使用下文受托管入口，统一输出、总期限和本轮进程回收。默认引擎是 Playwright 制品；本机没有 Playwright 包时可显式 `--engine oneshot|cdp`（见「轻量引擎与体检」）。裸浏览器无头截图命令虽然能出图，但若没有外层托管，不能作为本入口的自动回退。
 - **登录、交互、多视口或持续回归**：沿用项目的 Playwright 等自动化与测试运行器，按业务状态等待和断言；固定浏览器、OS、字体等视觉基线。
 - **已有浏览器工具或远程托管服务**：先复用其实际可用能力，确认会话所有者、总期限、并发限制及释放方式。服务端托管能减少本地进程负担，仍需核对断线后的会话回收；“远程”本身不证明资源已释放。
 
@@ -54,17 +54,27 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 # 一次浏览器会话拍两屏；使用已安装的 Edge，免下载浏览器制品
 python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --screens 2 --channel msedge --out-dir shots
 
+# 末屏：逐屏滚到底后只截页面底部那一张视口
+python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --to-bottom --out last.png
+
 # PowerShell 7 兼容入口；-Python 可指定虚拟环境解释器
 & <skill-dir>/scripts/shot-quick.ps1 -Url 'https://example.com' -Channel msedge -Out page.png
 ```
 
 未指定输出时，每轮使用独立的系统临时目录 `opencode/shots/<run-id>`，成功图片作为结果保留。指定同一输出文件时，仅成功采集并回收浏览器后才替换文件；失败不会预先删除旧图片。多张图片逐文件原子替换，不承诺整批事务，未收到本轮全部 `SHOT` 行不能将旧文件或部分结果当本轮成功证据。
 
-默认视口 `1440×900`，单次操作超时 30 秒，整个 worker 总期限 60 秒，收尾另留最多约 8 秒。可用 `--width`、`--height`、`--timeout-ms`、`--wall-timeout-ms` 调整；最多 20 屏、宽高各不超过 8192。`--settle-ms` / `--step-wait-ms` 默认 500 毫秒，只是采集等待，不是业务就绪断言；需要交互、登录或精确状态等待时使用项目的受管测试 runner。
+默认视口 `1440×900`，单次操作超时 30 秒，整个 worker 总期限 60 秒，收尾另留最多约 8 秒。可用 `--width`、`--height`、`--timeout-ms`、`--wall-timeout-ms` 调整；最多 20 屏、宽高各不超过 8192。`--settle-ms` / `--step-wait-ms` 默认 500 毫秒，只是采集等待，不是业务就绪断言；需要交互、登录或精确状态等待时使用项目的受管测试 runner。自写 worker 复用 `managed_browser.run_managed` 时，worker 从 stdin 读一行 JSON 配置、在工作区写 `result.json`，artifacts 源路径必须在工作区内；失败提示只含异常类型，需要细节时在自己的 worker 里回传截断消息，且不打印 URL 与代理凭据。
 
 代理按 `--proxy` → `SCRAPE_PROXY` →（指定 `--discover-proxy` 时）机外登记解析；没有代理设置且未要求发现时直连。只验证登记端点监听，不据此宣称出口可用。日志不打印代理凭据和页面查询参数。`--channel chrome/msedge`、`--executable-path`、`--discover-browser` 互斥；显式路径必须指向可读的原生浏览器文件，不传包装脚本或垫片。
 
 国内安装按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 区分包源和制品源。本机有 Edge/Chrome 时可只补目标环境的 Playwright 包；不允许补包时可用显式 `--engine oneshot|cdp` 加本机浏览器，仍缺自动化条件时记录自动化未执行。人工仍可通过开发者工具截图，是否满足验收取决于任务要求；Agent 不回退到无期限的裸浏览器命令。
+
+### 取页面末屏（`--to-bottom`）
+
+- `--to-bottom` 逐屏下滚、等文档高度稳定后再截最后一张视口。替代"猜一个够大的 `--screens`"：后者既拍满 20 张，也不保证覆盖到真实底部。它与 `--screens` 互斥，可配 `--out` 落单张 PNG；不指定输出时文件名为 `{slug}-bottom-{width}.png`。
+- 不要用 `scrollTo(0, scrollHeight)` 直跳到底再截图：只在滚动时才渲染的区块此时尚不存在，拍出的"末屏"既短又多空白占位，不是真实末屏。末屏取景必须逐屏推进并确认高度不再增长。
+- 无限滚动或高度持续变化的页面无法确认底部，入口按失败处理（退出 1）并提示改用 `--screens`；该轮结果不得当末屏证据发布。成功时 `PAGE metrics=` 行给出末屏的 `y`/`h`/`d`，可核对是否确实到底。
+- `--to-bottom` 只在默认 Playwright 引擎可用（含 `--channel` 复用本机浏览器）；轻量引擎按整块画布切片，不确认底部。
 
 ### 轻量引擎与体检
 
@@ -121,7 +131,7 @@ Linux 使用独立进程组及 subreaper，回收被重新托管的后代；用 
 
 - 实现、浏览器发现和测试在 `browser-automation` 统一维护。旧 `frontend-qa/scripts/shot_scroll.py` 与 `shot-quick.ps1` 作为 CLI 委托保留参数和退出码；旧参考文件保留跳转。直接依赖旧内部模块或测试目录的调用需更新到本 skill，不维护第二份运行实现。
 - `shot_scroll.py` 的默认屏数由 2 改为 1；多屏显式传 `--screens 2`。
-- `shot-quick.ps1` 现在需要 Python Playwright，移除按 PATH/最大缓存版本猜浏览器、隐式环境浏览器覆盖及裸 Chrome 回退。`-Chrome` 映射到 `--executable-path`，推荐 `-Channel msedge/chrome` 或匹配项目版本的缓存。
+- `shot-quick.ps1` 现在需要 Python Playwright，移除按 PATH/最大缓存版本猜浏览器、隐式环境浏览器覆盖及裸 Chrome 回退。`-Chrome` 映射到 `--executable-path`，推荐 `-Channel msedge/chrome` 或匹配项目版本的缓存；`-ToBottom` 对应 `--to-bottom`。
 - 常用安装位置的查找通过显式 `--discover-browser` / `-DiscoverBrowser` 启用；`--list-browsers` / `-ListBrowsers` 可在未安装 Playwright 时只读列候选。它们不恢复旧入口的隐式选版本与失败回退。
 - 轻量引擎（`--engine oneshot|cdp`）不改变默认路径：不传 `--engine` 仍是 Playwright 制品，避免旧入口的隐式回退换个名字回来。
 - 旧 `-VirtualBudget` 已移除，改用 `-TimeoutMs` 与 `-WallTimeoutMs`。页面虚拟时间不能作为进程总期限。
