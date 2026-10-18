@@ -48,6 +48,7 @@ description: >
 
 代理、超时、错误分流及 GitHub 加速细节见 [references/network-access.md](references/network-access.md)；
 本机代理登记见 [references/proxy-registry.md](references/proxy-registry.md)；
+候选枚举与探测见 `scripts/probe_local_proxies.py`（纯标准库，按进程名匹配并探测其自身监听端口，默认 5 秒预算、超时记不可判定；`--match` 可加自定义进程名正则，`--copy` 直接给出可粘贴的代理环境变量行，`--watch SEC` 常驻报变化；`--json` 的 `usable[]` 直接给可用入口的 url/出口/来源，读它比过滤 `candidates[]` 省事）；
 带日期的本机记录见 [references/local-observations.md](references/local-observations.md)。
 搜索与抓取的并发、频率、重试预算及共享冷却遵循 `agentic-web-search`。
 
@@ -70,6 +71,7 @@ pip/uv/npm/pnpm/Yarn/conda 的配置、并发与超时、额外下载及验收�
 - [ ] 有可用代理登记时是否免双路探测直接采用（抓取本身即核验）；无登记时陌生链接是否先双路有界探测再抓取？是否确认了抓取工具的实际出口？
 - [ ] 探测落盘的正文是否直接交提取方读，避免按 URL 重抓？
 - [ ] 可用代理是否经核验后登记并在后续任务先读登记轻量核验？代理不可得时是否询问用户而非盲试？
+- [ ] 候选发现是否覆盖多家族（mihomo 之外还有 `*ray`、sing-box 等）与三种非本机情形（WSL/虚拟机/容器内代理的回环转发、TUN/透明路由），并按“端口≠协议、监听≠代理入口、扫不到监听≠没有代理”用一次实际请求定论，而不是按端口表下结论？
 - [ ] 超时、权限/拦截、5xx 与限流是否分流，尝试有耗时上限，限流未通过切换出口绕过、5xx 换出口后又做异构对照才下结论？
 - [ ] 普通慢/403/5xx是否先分流，仅挑战页特征才转浏览器，未一见 403 就上浏览器？
 - [ ] 镜像/加速是否核验对应目标、内容与适用范围，保留原始来源并注明未验证范围？
