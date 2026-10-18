@@ -67,7 +67,9 @@ OPTIONS
   --list-extractors  print available extractors
   --completion <shell>
                    print a completion script: bash | powershell
-  -o, --output <f> write to file instead of stdout
+  -o, --output <f> write to file instead of stdout (file ends with exactly one
+                   newline; prefer this over capturing stdout through a shell
+                   pipeline, which can add extra blank lines)
   --quiet          only errors on stderr (progress is hidden)
   --verbose        extra detail on stderr ([read]/[extract] internals, timings, sizes)
                    Progress goes to stderr as "htmlmini: [read|parse|extract|format|write] ...",
@@ -244,7 +246,8 @@ try {
   const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render: true } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }) });
   const total = `total ${fmtMs(Date.now() - startedAt)}`;
   if (output) {
-    await writeFile(output, out + '\n', 'utf8');
+    // 与 stdout 分支同口径：结果已以换行结尾时不再补，避免落盘文件尾部多出空行。
+    await writeFile(output, out.endsWith('\n') ? out : out + '\n', 'utf8');
     log.info('write', `${output} ${fmtBytes(Buffer.byteLength(out, 'utf8'))} (${total})`);
   } else {
     process.stdout.write(out + (out.endsWith('\n') ? '' : '\n'));

@@ -843,6 +843,9 @@ function isInlineNode(n) {
  * 压缩 DOM 缩进噪声（紧凑排版的前半程，必须在序列化前做）：
  * - 纯空白文本节点：夹在两个行内内容之间压成单个空格，其余（首尾、块级之间）直接删
  * - 非纯空白文本节点：内部连续空白折叠为单空格，并裁掉贴着块级边界的首尾空格
+ * 遍历起点是文档节点本身而非 `documentElement`：真源 HTML 常在 doctype 之前、
+ * `</html>` 之后带换行，那些文档级空白节点不在 `<html>` 子树里，只走元素会漏掉，
+ * 序列化后就成了输出首尾的空行。
  * 不做全局 `>\s+<` 替换——那会把 `</b> <i>` 之间的空格也吃掉，改变渲染结果。
  */
 export function compactDom(doc) {
@@ -853,7 +856,7 @@ export function compactDom(doc) {
       else if (child.nodeType === 1) walk(child);
     }
   };
-  walk(doc.documentElement ?? doc);
+  walk(doc);
   for (const node of texts) {
     if (hasAncestorIn(node, WS_PRESERVE_TAGS)) continue;
     const value = node.nodeValue ?? '';

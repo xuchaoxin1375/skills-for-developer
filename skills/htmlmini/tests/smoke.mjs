@@ -133,6 +133,18 @@ const ok = (cond, msg) => {
   const bare = (s) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, '');
   ok(bare(compact) === bare(pretty) && bare(compact) === bare(pruned), 'compact/pretty/prune 文本内容等价');
 
+  // 文档级空白：doctype 之前与 </html> 之后不在 <html> 子树内，真源 HTML 常带这类换行，
+  // 漏掉就会在输出首尾留下空行（cdn 页面首尾各留若干空行）。
+  const DOCWS = `\n\n<!doctype html><html><head><title>文档级空白</title></head><body><p>hi</p></body></html>\n\n\n`;
+  const docCompact = await runExtract(null, 'html', { forceContent: DOCWS });
+  ok(/^<!doctype html>/i.test(docCompact), 'compact 去掉 doctype 之前的文档级空白');
+  ok(/<\/html>$/i.test(docCompact), 'compact 去掉 </html> 之后的文档级空白');
+  const docPruned = await runExtract(null, 'html', { forceContent: DOCWS, pruneEmpty: true });
+  ok(/^<!doctype html>/i.test(docPruned) && /<\/html>$/i.test(docPruned), 'pruneEmpty 同样不带文档级空白');
+  const docRaw = await runExtract(null, 'html', { forceContent: DOCWS, format: 'raw' });
+  // 序列化把 doctype 提到最前，源码里 doctype 之前的空白落到其后；raw 应原样带出这些空白。
+  ok(/^<!doctype html>\n\n<html>/i.test(docRaw) && docRaw.endsWith('</html>\n\n\n'), 'raw 仍原样保留文档级空白');
+
   const pt = await runExtract(null, 'html', { forceContent: '# 标题\n正文' });
   ok(pt.includes('# 标题'), 'html 模式对非 HTML 输入透传');
 
