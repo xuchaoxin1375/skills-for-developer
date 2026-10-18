@@ -19,7 +19,7 @@ pnpm exec playwright install chromium
 
 ### 网络与可信来源
 
-下载选路、跨平台命令、镜像覆盖、超时与 CA 统一按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md)。国内浏览器大包优先已登记代理访问官方 CDN，包镜像另配；不默认同时设置代理与制品镜像。`--dry-run` 只证明下载计划，不能代替制品取回和启动验证。
+下载选路、跨平台命令、镜像覆盖、超时与 CA 统一按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md)。国内浏览器大包默认先走已核验的制品镜像，缺件或校验不过再回退已登记代理访问官方 CDN，包源镜像另配；不默认同时设置代理与制品镜像。`--dry-run` 只证明下载计划，不能代替制品取回和启动验证。
 
 ### 已有浏览器与手动缓存
 

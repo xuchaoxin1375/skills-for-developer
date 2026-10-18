@@ -23,16 +23,28 @@
 
 ### 国内选路
 
-**浏览器大包优先用已登记的可用 HTTP/mixed 代理访问官方 CDN；无代理或代理失败时，才选择已核验的制品镜像。** Python/Node 包可继续用已核验的国内包源，两者独立配置。海外执行优先原站直连；容器、WSL 和 CI 里的环回地址不代表宿主机代理。
+**浏览器大包默认先用已核验的国内制品镜像（或内部制品库）；镜像缺件、校验不过或不可达时，回退已登记代理访问官方 CDN，再退直连原站。** 代理常有限额或按流量计费、出口多在境外，镜像一般是国内 CDN 直连，取同一个包更快也更省额度。Python/Node 包可继续用已核验的国内包源，两者独立配置。海外执行优先原站直连；容器、WSL 和 CI 里的环回地址不代表宿主机代理。
 
-- 按 [代理登记](proxy-registry.md) 读取本机资源，不猜端口。Playwright 下载子进程使用 `HTTPS_PROXY`；HTTPS 目标也可通过 `http://` 代理入口访问，不把 SOCKS 端口冒充 HTTP 端口。
-- 先检查已有 `PLAYWRIGHT_DOWNLOAD_HOST` 及 `PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST` / `PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST` / `PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST`。浏览器专用变量优先于通用变量；过期镜像覆盖不清除时，设置代理后仍可能访问旧镜像。
-- 默认选择一条路线。通过代理访问官方 CDN 时，不顺手再填镜像地址；切回官方源需在任务进程内撤销相关镜像覆盖并保存原值。明确需要代理访问内部制品库时可以组合配置。
+- **制品版本由已安装的 Playwright 包锁定**（例：包 1.64.0 要求 `chromium-1248` 与 `chromium_headless_shell-1248`，缺这个目录就直接启动失败），镜像只需覆盖这个 revision，不要求它有最新版本。滞后判据是 `--dry-run` 解析出的制品清单，不是镜像首页或"有没有最新版"。要换浏览器版本就换包版本（包与制品成对），或用 `--channel` / 可执行文件路径驱动已装浏览器。
+- 按 [代理登记](proxy-registry.md) 读取本机资源，不猜端口。走官方 CDN 时 Playwright 下载子进程使用 `HTTPS_PROXY`；HTTPS 目标也可通过 `http://` 代理入口访问，不把 SOCKS 端口冒充 HTTP 端口。
+- 先检查已有 `PLAYWRIGHT_DOWNLOAD_HOST` 及 `PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST` / `PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST` / `PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST`。浏览器专用变量优先于通用变量；过期镜像覆盖不清除时，换了路线仍可能访问旧镜像。
+- 默认只走一条路线：用镜像时不要同时设 `HTTPS_PROXY`（否则大流量照样过代理，既慢又耗额度），走代理时不要再填镜像地址。切回官方源需在任务进程内撤销镜像覆盖并保存原值。明确需要代理访问内部制品库时可以组合配置。
 - 所有变量只影响当前终端及后续子进程。用专用终端，或保存旧值并在任务后恢复；不写全局代理、`setx` 或项目内的本机端口。检查 `NO_PROXY` 是否让下载域名绕过代理。
 
-以下示例假定目标环境已有 Playwright、已确认未被旧镜像覆盖。替换代理占位符后执行；Python 的 `python` 指目标环境解释器，Node 选择项目已有的本地 CLI，二选一。命令失败时停止后续步骤。
+以下示例假定目标环境已有 Playwright、已确认未被旧镜像覆盖。镜像基址每次都要先用 `--dry-run` 核验它覆盖本包锁定的**全部**制品；Python 的 `python` 指目标环境解释器，Node 选择项目已有的本地 CLI。命令失败就换下一条路线，不在同一路线重试。
 
 ```powershell
+# 路线 A（默认）：已核验的国内制品镜像，直连、不经代理
+$env:PLAYWRIGHT_DOWNLOAD_HOST = '<已核验制品基址>'
+python -X utf8 -m playwright install --dry-run chromium
+if ($LASTEXITCODE -ne 0) { throw 'Playwright download plan failed' }
+python -X utf8 -m playwright install chromium
+if ($LASTEXITCODE -ne 0) { throw 'Playwright browser installation failed' }
+```
+
+```powershell
+# 路线 B（回退）：已登记代理访问官方 CDN；先撤掉镜像覆盖
+Remove-Item Env:PLAYWRIGHT_DOWNLOAD_HOST -ErrorAction SilentlyContinue
 $env:HTTPS_PROXY = 'http://127.0.0.1:<port>'
 $env:PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT = '120000'
 python -X utf8 -m playwright install --dry-run chromium
@@ -42,7 +54,16 @@ if ($LASTEXITCODE -ne 0) { throw 'Playwright browser installation failed' }
 ```
 
 ```bash
+# 路线 A（默认）：国内制品镜像，直连
 (
+  export PLAYWRIGHT_DOWNLOAD_HOST='<已核验制品基址>'
+  python -m playwright install --dry-run chromium &&
+    python -m playwright install chromium
+)
+
+# 路线 B（回退）：代理访问官方 CDN
+(
+  unset PLAYWRIGHT_DOWNLOAD_HOST
   export HTTPS_PROXY='http://127.0.0.1:<port>'
   export PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT='120000'
   python -m playwright install --dry-run chromium &&
@@ -52,14 +73,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Playwright browser installation failed' }
 
 Node 项目将上述两条 Python 命令分别替换为 `pnpm exec playwright install --dry-run chromium`、`pnpm exec playwright install chromium`，或项目对应的本地 CLI；不另装全局 Playwright。`120000` 是慢线路的空闲等待示例（毫秒），不是连接超时或安装总期限；有持续下载进展的大包可运行更久，外层仍需按任务预算限制整个安装进程，不能叠加无限重试。
 
-### 镜像回退
+### 镜像路线的核验与回退
 
-`PLAYWRIGHT_DOWNLOAD_HOST` 指向兼容 Playwright 路径规则的**制品基址**，不是 npm registry、PyPI Simple 源或某个 ZIP 文件。候选镜像可能只覆盖旧版或部分平台，不维护永久默认的公共镜像地址。
+镜像路线是默认路线，核验不过就按顺序回退：另一已核验镜像或内部制品库 → 已登记代理访问官方 CDN → 直连原站并如实说明。`PLAYWRIGHT_DOWNLOAD_HOST` 指向兼容 Playwright 路径规则的**制品基址**，不是 npm registry、PyPI Simple 源或某个 ZIP 文件。候选镜像可能只覆盖部分 revision 或平台，不维护永久默认的公共镜像地址。
 
-1. 为目标包版本设置候选基址，重新运行同一 CLI 的 `install --dry-run chromium`。PowerShell 为 `$env:PLAYWRIGHT_DOWNLOAD_HOST = '<已核验制品基址>'`；Bash 为 `export PLAYWRIGHT_DOWNLOAD_HOST='<已核验制品基址>'`。专用浏览器变量的优先级仍有效。
+1. 为目标包版本设置候选基址，运行同一 CLI 的 `install --dry-run chromium`，把输出的制品清单与包锁定的 revision 逐项对齐（缺一件就不能算命中）。PowerShell 为 `$env:PLAYWRIGHT_DOWNLOAD_HOST = '<已核验制品基址>'`；Bash 为 `export PLAYWRIGHT_DOWNLOAD_HOST='<已核验制品基址>'`。专用浏览器变量的优先级仍有效。
 2. 检查输出中的**全部制品**和实际 URL。Chromium 安装还可能需要 headless shell、FFmpeg、平台辅助工具；不同版本可能采用 Chrome for Testing 等不同路径，不手写固定 revision/ZIP 路径。
 3. 用有界 GET 检查具体文件及重定向后的来源，确认不是 HTML 错误页。HEAD、首页 200 或拼接 URL 正确均不证明文件能下载；小段取回也不证明完整归档无损，最终以下载器完整安装及启动为准。可信制品有签名/校验值时一并核对。
-4. 404/缺版本时回退原站或另一已核验来源；TLS 错误按下载器支持配置受信任 CA，例如 Playwright 的 Node 驱动用 `NODE_EXTRA_CA_CERTS`。不关闭证书或完整性校验，也不靠清空全部缓存解决网络慢。
+4. 缺件或 404 时按顺序换路线（另一已核验镜像 → 代理访问官方 CDN → 直连原站），不手写 revision/ZIP 路径硬拼；TLS 错误按下载器支持配置受信任 CA，例如 Playwright 的 Node 驱动用 `NODE_EXTRA_CA_CERTS`。不关闭证书或完整性校验，也不靠清空全部缓存解决网络慢。
 
 `--dry-run` 不执行下载，只能证明当前 CLI 解析出的版本、路径和计划地址。不能把它记作“镜像可用”或“浏览器已安装”。
 

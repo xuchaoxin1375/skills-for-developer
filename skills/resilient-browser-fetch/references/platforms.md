@@ -4,7 +4,7 @@
 
 先运行 `uv --version`。Python 环境可由 Conda、`venv` 或 `uv venv` 创建；如果 `uv` 可用，优先使用 `uv pip` 并通过 `--python` 明确该环境的解释器。只有 `uv` 不可用时才在激活的同一环境中回退到 `python -m pip`。不要在一次安装流程中交替使用两个安装器，也不要因为使用 `uv pip` 就另建环境。保留用户现有的 `uv.toml`、环境变量和 pip 配置，不要无条件覆盖国内源。
 
-国内安装前按 [依赖下载](../../network-access/references/dependency-downloads.md) 选择包源，按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 准备浏览器下载路线，再执行下方对应平台命令。包可用已核验的国内镜像；浏览器优先已登记代理访问官方源，镜像仅作已核验的回退，不等到长时间下载失败后才配置。
+国内安装前按 [依赖下载](../../network-access/references/dependency-downloads.md) 选择包源，按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 准备浏览器下载路线，再执行下方对应平台命令。包可用已核验的国内镜像；浏览器制品默认先走已核验的国内制品镜像（大包不耗代理额度），缺件或校验不过再回退已登记代理访问官方源，不等到长时间下载失败后才配置。
 
 `UV_DEFAULT_INDEX` / `PIP_INDEX_URL` 只控制对应安装器的包源；浏览器下载的 `HTTPS_PROXY` 需在启动 `scrapling install` **之前**设置并由子进程继承。`SCRAPE_PROXY` / 抓取 `--proxy` 只控制页面访问，不解决安装下载。
 

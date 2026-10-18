@@ -127,3 +127,18 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 未验证：`<port-D>` 的实际归属与协议（含是否只接受 HTTP）、其他家族端口、Linux/macOS/容器内枚举差异、跨日稳定性与限流状态。本次核验可用的条目已更新到 [proxy-registry.md](proxy-registry.md) 所述登记文件。
 
 上述按进程名匹配 + 探测监听端口的流程已固化为 `scripts/probe_local_proxies.py` 并复跑核对：命中 mihomo 与 `*ray` 两家族进程后只探它们自身监听的端口，监听但非代理的端口（如 GUI 控制端口）判为“不是代理入口”，无监听条目的端口靠登记补上；`--match`/`--only-match` 可自定义家族名（实测 `--only-match xray` 后 GUI 控制端口从候选里消失，`--match explorer --only-match` 命中非代理进程时不产生候选）；把单次上限收紧时该端口被判为不可判定而非“不是代理”，放宽后恢复可用——印证"歧义性失败不能下否证结论"。默认预算与单次上限已放宽到 5 秒 / 2.5 秒。
+
+## 2026-10-18 Playwright 制品：镜像与官方 CDN 的对照
+
+执行环境：国内 Windows；Playwright 1.64.0，`%LOCALAPPDATA%\ms-playwright` 原本为空。包锁定的制品为 `chromium-1248` 与 `chromium_headless_shell-1248`（Chrome for Testing 156.0.8078.4，另有 ffmpeg-1013、winldd-1007），取自 `install --dry-run chromium`。把 `PLAYWRIGHT_BROWSERS_PATH` 指向空目录后启动，报错直接点名 `<空目录>\chromium_headless_shell-1248\chrome-headless-shell-win64\chrome-headless-shell.exe`，可据此确认包与制品是成对锁定、不接受换成别的 revision。
+
+| 路线 | 实测 |
+| --- | --- |
+| 制品镜像 `<mirror-base>` 直连（无代理） | `--dry-run` 解析出全部制品的镜像 URL；`chrome-win64.zip` HEAD 200 / `application/zip` / 207,073,013 B；前 8 MiB 有界 GET 206、22.1 MB/s、首字节 `504B0304`（真 ZIP）；`install chromium` 未在本机复跑（当时已装好） |
+| 官方 CDN 经登记代理 | `install chromium` 全链 4 件成功，159 s；中途一次 `ECONNRESET`，靠 fallback host 与重试自愈 |
+| 官方 CDN 直连 | 前 8 MiB 有界 GET 45 s 超时，只取回 5,576,817 B（约 0.12 MB/s） |
+| 官方 CDN 经登记代理（同一文件单次 8 MiB） | TLS 握手失败（`schannel: failed to receive handshake`），本次未取到数据；与上一行“整链安装成功”不矛盾，属单次失败 |
+
+结论（仅限本机与本次）：镜像对包锁定的 revision 命中且直连比经代理快一个量级，适合作为大包默认路线；代理路线可用但慢、且要消耗代理额度。版本滞后不是主要风险，判据是 `--dry-run` 的制品清单是否与包锁定项逐项对齐。
+
+未验证：镜像长期稳定性与对其他 revision/平台/浏览器的覆盖、并发与限流行为、代理额度实际消耗、Linux/macOS/CI、企业内网制品库。

@@ -85,7 +85,7 @@ CMD 对应 `set "变量名=值"`；Windows 调用 npm/pnpm 时可写 `npm.cmd`/`
 ## 包源之外的下载
 
 - uv 管理的 Python 运行时下载不由 PyPI 镜像控制；按受支持的官方渠道/内部镜像核验 `UV_PYTHON_INSTALL_MIRROR`，或使用任务允许的已有解释器。
-- Playwright / Scrapling 的浏览器安装按 [浏览器安装与国内网络](browser-installation.md) 分阶段处理：包源与制品下载独立，国内优先已登记代理访问官方 CDN，镜像回退核验具体版本、平台与全部制品；系统依赖和实际启动另验。
+- Playwright / Scrapling 的浏览器安装按 [浏览器安装与国内网络](browser-installation.md) 分阶段处理：包源与制品下载独立，国内制品大包默认先走已核验的制品镜像（免代理、省额度），缺件或校验不过再回退已登记代理访问官方 CDN，核验具体版本、平台与全部制品；系统依赖和实际启动另验。
 - Electron、原生预编译包、node-gyp 头文件、Corepack 和 Git 依赖按各自下载器检查实际目标与代理；不要假定 npm registry 覆盖这些下载，也不硬编码未经核验的第三方专用镜像。
 - `--ignore-scripts` 可帮助判断失败是否在生命周期脚本；诊断跳过脚本不代表依赖安装或应用已完成，正常交付仍需恢复必要步骤并验证运行。
 
