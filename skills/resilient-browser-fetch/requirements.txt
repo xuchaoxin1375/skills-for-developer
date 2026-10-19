@@ -1,6 +1,11 @@
 # 层 0（static）：标准库 HTTP 抓取，默认不需要安装任何包。
 #
-# 需要下面任一能力时，取消对应行的注释后安装：
-#   curl_cffi：socks5 代理，以及 TLS 级伪装（impersonate）
-# 本机实测 0.15.0 可用。
+# 推荐安装（层 0 增强；不装也能跑，只是没有下面这两项能力）：
+#   curl_cffi：socks5 代理，以及 --impersonate 的 TLS/HTTP2 客户端伪装，
+#   可过部分站点的 TLS/客户端指纹检查；不解 JS 挑战（那属于层 2）。
+#   本机实测 0.15.0 可用；目标写具体版本(如 chrome124)而不是 "chrome" 这类滚动别名，
+#   别名指向的 Chrome 版本会随 curl_cffi 升级漂移，不便复现与对照。
 # curl_cffi>=0.15,<1
+#
+# 不列 requests / httpx：两者都不改变 TLS/HTTP2 指纹，对本 skill 没有功能增量，
+# 只增加依赖面与第二条 HTTP 路径；确有 cookie 会话或 HTTP/2 需求时再单独评估。

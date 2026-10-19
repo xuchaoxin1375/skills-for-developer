@@ -148,10 +148,14 @@ Gemini 的默认发现位置是：
 
 | 层 | 用途 | 安装 |
 | --- | --- | --- |
-| 0 | 静态 HTTP（默认可用） | 无需安装；需要 socks 代理或 TLS 级伪装时再装 `curl_cffi` |
+| 0 | 静态 HTTP（默认可用） | 无需安装；**推荐**装 `curl_cffi`（socks 代理，以及 `--impersonate` 的 TLS/HTTP2 伪装） |
 | 1 | 无头/有头渲染 | `playwright`（或 `patchright`）+ `playwright install chromium` |
 | 2 | 挑战求解 | `requirements-stealth.txt` + `scrapling install` |
 | 3 | 指纹底座 | `requirements-cloak.txt` + `python -m cloakbrowser install` |
+
+层 0 的 `curl_cffi` 是推荐项而非必需：不装也能用 stdlib 路径抓取，只是不能走 socks 代理，也没有 `--impersonate`。装了以后用 `--impersonate chrome124`（或 `chrome136`、`safari184` 等具体目标）就能以浏览器同族的 TLS/HTTP2 指纹出网，可过部分站点的客户端指纹检查；它不解 JS 挑战，挑战仍要层 2。目标写具体版本而不是 `chrome` 这类滚动别名（别名指向的版本随 curl_cffi 升级漂移，不便复现与对照），可用 `check_environment.py` 或 `curl_cffi.requests.BrowserType` 查询。经代理的 TLS 握手偶有瞬时失败，脚本按 `retries` 重试。`requests`/`httpx` 不改变 TLS 指纹，本 Skill 不作为依赖。
+
+复验这层时用 JA4 而不是 JA3：对 `tls.peet.ws/api/all` 抓一次，`--engine static` 与 `--impersonate chrome124` 的 `ja4` 分别落在 h1 与 h2 两个不同族（本机实测 `t13d1713h1_ab0a1bf427ad_89ab6efea773` 与 `t13d1516h2_8daaf6152771_02713d6af862`，后者与真 Chrome 的 HTTP/2 段一致），而 `ja3_hash` 逐次连接都会变、不适合做对照。
 
 先选择实际运行脚本的环境，并按 [平台与依赖](platforms.md) 准备包源和浏览器下载路线；国内浏览器安装前先设置下载代理，不能用后续抓取的 `--proxy` 替代。`scrapling install` 还会执行 Playwright 系统依赖步骤，影响因平台而异，执行前核对该版本行为与权限。Conda 环境示例（Windows PowerShell）：
 

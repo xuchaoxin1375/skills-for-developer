@@ -543,7 +543,7 @@ def main() -> int:
         checks,
         "curl_cffi",
         curl_cffi is not None,
-        curl_cffi or "未安装；层 0 仍可用，但 socks 代理与 TLS 级伪装不可用",
+        curl_cffi or "未安装；层 0 仍可用，但推荐安装以启用 socks 代理与 --impersonate 的 TLS/HTTP2 伪装",
         required=False,
     )
 

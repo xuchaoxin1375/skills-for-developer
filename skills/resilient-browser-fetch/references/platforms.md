@@ -132,7 +132,7 @@ Apple Silicon 与 Intel 必须使用匹配当前 Python 架构的浏览器和虚
 
 ## 版本与代理下载
 
-本技能按层限定依赖范围：`curl_cffi` 可选（本机实测 0.15.0 可用），层 2 的 `scrapling[fetchers]` 限定 `>=0.4.11,<0.6`，层 3 的 `cloakbrowser` 限定 `>=0.4.10,<0.5`。`0.5` 的 `StealthyFetcher`、`solve_cloudflare` 与层 1/2 的 `headless` 参数已在本机实测通过；放开 `0.6+` 或 `cloakbrowser 0.5+` 前，重新核对 `StealthyFetcher`、`solve_cloudflare`、`cdp_url` 和 CloakBrowser `launch_async` 的签名，并用真实挑战站点重跑逐层验证。
+本技能按层限定依赖范围：`curl_cffi` 为层 0 推荐项（TLS/HTTP2 客户端伪装与 socks 代理；本机实测 0.15.0 可用），层 2 的 `scrapling[fetchers]` 限定 `>=0.4.11,<0.6`，层 3 的 `cloakbrowser` 限定 `>=0.4.10,<0.5`。`0.5` 的 `StealthyFetcher`、`solve_cloudflare` 与层 1/2 的 `headless` 参数已在本机实测通过；放开 `0.6+` 或 `cloakbrowser 0.5+` 前，重新核对 `StealthyFetcher`、`solve_cloudflare`、`cdp_url` 和 CloakBrowser `launch_async` 的签名，并用真实挑战站点重跑逐层验证。
 
 开发或修改技能脚本时安装质量检查依赖：
 

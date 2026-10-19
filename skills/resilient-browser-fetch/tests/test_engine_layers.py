@@ -152,6 +152,148 @@ def test_static_proxy_map_is_empty_without_proxy() -> None:
     }
 
 
+def test_static_engine_uses_curl_cffi_when_impersonate_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[dict[str, Any]] = []
+
+    def fake_curl_cffi(config: dict[str, Any], started: float) -> subject.FetchResult:
+        seen.append(config)
+        return make_result(notes=[f"impersonate:{config['impersonate']}"])
+
+    monkeypatch.setattr(subject, "curl_cffi_available", lambda: True)
+    monkeypatch.setattr(subject, "fetch_with_static_curl_cffi", fake_curl_cffi)
+
+    result = subject.fetch_with_static(
+        static_config("http://example.com/", impersonate="chrome124")
+    )
+
+    assert seen and seen[0]["impersonate"] == "chrome124"
+    assert result.notes == ["impersonate:chrome124"]
+
+
+def test_static_engine_impersonate_without_curl_cffi_fails_fast(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(subject, "curl_cffi_available", lambda: False)
+    with pytest.raises(subject.EngineUnavailableError, match="impersonate"):
+        subject.fetch_with_static(
+            static_config("http://example.com/", impersonate="chrome124")
+        )
+
+
+def test_static_curl_cffi_path_retries_transient_tls_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class FakeResponse:
+        status_code = 200
+        url = "https://example.com/"
+        text = "<html><title>伪装</title><body>ok</body></html>"
+
+    def flaky(config: dict[str, Any], target: str) -> Any:
+        calls.append(target)
+        if len(calls) == 1:
+            raise RuntimeError("TLS connect error: OPENSSL_internal:invalid library")
+        return FakeResponse()
+
+    monkeypatch.setattr(subject, "curl_cffi_available", lambda: True)
+    monkeypatch.setattr(subject, "curl_cffi_get", flaky)
+
+    result = subject.fetch_with_static_curl_cffi(
+        static_config("https://example.com/", impersonate="chrome124", retries=2, retry_delay=0.0),
+        0.0,
+    )
+
+    assert calls == ["chrome124", "chrome124"], "经代理的瞬时握手失败按 retries 重试"
+    assert result.status == 200
+    assert result.notes == ["impersonate:chrome124"]
+
+
+def test_static_curl_cffi_path_reports_last_error_after_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def always_fail(config: dict[str, Any], target: str) -> Any:
+        raise RuntimeError("TLS connect error")
+
+    monkeypatch.setattr(subject, "curl_cffi_available", lambda: True)
+    monkeypatch.setattr(subject, "curl_cffi_get", always_fail)
+
+    with pytest.raises(subject.FetchError, match="curl_cffi"):
+        subject.fetch_with_static_curl_cffi(
+            static_config(
+                "https://example.com/", impersonate="chrome124", retries=2, retry_delay=0.0
+            ),
+            0.0,
+        )
+
+
+def test_impersonate_validation_rejects_missing_dependency_and_unknown_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(subject, "curl_cffi_available", lambda: False)
+    with pytest.raises(ValueError, match="curl_cffi"):
+        subject.validate_impersonate("chrome124")
+
+    monkeypatch.setattr(subject, "curl_cffi_available", lambda: True)
+    monkeypatch.setattr(
+        subject, "curl_cffi_impersonate_targets", lambda: ("chrome124", "chrome136")
+    )
+    subject.validate_impersonate("chrome136")
+    subject.validate_impersonate(None)
+    with pytest.raises(ValueError, match="chrome124"):
+        subject.validate_impersonate("chrome999")
+
+
+def test_default_impersonate_target_prefers_documented_then_newest_chrome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(subject, "curl_cffi_impersonate_targets", lambda: ())
+    assert subject.default_impersonate_target() == subject.DEFAULT_IMPERSONATE_TARGET
+
+    monkeypatch.setattr(
+        subject, "curl_cffi_impersonate_targets", lambda: ("chrome99", "chrome136", "safari184")
+    )
+    assert subject.default_impersonate_target() == "chrome136"
+
+    monkeypatch.setattr(
+        subject,
+        "curl_cffi_impersonate_targets",
+        lambda: ("chrome99", "chrome124", "chrome136"),
+    )
+    assert subject.default_impersonate_target() == subject.DEFAULT_IMPERSONATE_TARGET
+
+
+def test_impersonate_is_carried_into_worker_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(subject, "curl_cffi_available", lambda: True)
+    monkeypatch.setattr(subject, "curl_cffi_impersonate_targets", lambda: ("chrome124",))
+
+    config = subject.build_worker_config(
+        subject.FetchOptions(url="https://example.com", impersonate="chrome124"), None
+    )
+    assert config["impersonate"] == "chrome124"
+    subject.validate_options(
+        subject.FetchOptions(url="https://example.com", impersonate="chrome124")
+    )
+
+
+def test_impersonate_warns_on_browser_layers(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(subject, "curl_cffi_available", lambda: True)
+    monkeypatch.setattr(subject, "curl_cffi_impersonate_targets", lambda: ("chrome124",))
+
+    with caplog.at_level(logging.WARNING):
+        subject.validate_options(
+            subject.FetchOptions(
+                url="https://example.com", engine="playwright", impersonate="chrome124"
+            )
+        )
+
+    assert "--impersonate" in caplog.text and "层 0" in caplog.text
+
+
 # ---- 层 1:playwright ----
 
 

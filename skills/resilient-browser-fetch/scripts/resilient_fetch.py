@@ -67,6 +67,11 @@ SOFT_STATUS_MIN_BYTES = 20_000
 WAIT_UNTIL_CHOICES = ("commit", "domcontentloaded", "load", "networkidle")
 DEFAULT_WAIT_UNTIL = "load"
 
+# 层 0 的 TLS/HTTP2 客户端伪装(需 curl_cffi)。默认写具体版本而不是 "chrome" 这类滚动别名:
+# 别名指向的 Chrome 版本会随 curl_cffi 升级漂移(实测 JA4 第三段不同: chrome vs chrome124)，
+# 固定版本才能复现与对照。
+DEFAULT_IMPERSONATE_TARGET = "chrome124"
+
 # ---- 引擎能力分层 ----
 # 层 0 零第三方依赖，层 1 只需 playwright/patchright，层 2 起才需要 scrapling。
 # auto 只升档到"已安装"的引擎，缺件记 unavailable 而不算失败。
@@ -100,6 +105,8 @@ __all__ = [
     "ProxyUnavailableError",
     "available_engines",
     "curl_cffi_available",
+    "curl_cffi_impersonate_targets",
+    "default_impersonate_target",
     "engine_availability",
     "engine_order",
     "fetch_page",
@@ -107,6 +114,7 @@ __all__ = [
     "playwright_api_name",
     "reset_availability_cache",
     "save_page",
+    "validate_impersonate",
 ]
 
 
@@ -172,6 +180,7 @@ class FetchOptions:
     profile_dir: str | Path | None = None
     executable_path: str | Path | None = None
     network_idle: bool = False
+    impersonate: str | None = None
     screenshot: str | Path | None = None
     allow_direct: bool = False
 
@@ -488,7 +497,7 @@ def atomic_write_text(path: Path, content: str) -> None:
 
 def package_versions() -> dict[str, str]:
     versions: dict[str, str] = {}
-    for package in ("scrapling", "cloakbrowser", "playwright", "patchright"):
+    for package in ("scrapling", "cloakbrowser", "playwright", "patchright", "curl_cffi"):
         try:
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
@@ -608,34 +617,63 @@ def static_proxy_map(proxy: str | None) -> dict[str, str]:
     return {"http": proxy, "https": proxy} if proxy else {}
 
 
-def fetch_with_static_curl_cffi(config: dict[str, Any], started: float) -> FetchResult:
-    """Fetch through curl_cffi when the proxy scheme needs it (TLS-level disguise)."""
+def curl_cffi_get(config: dict[str, Any], target: str) -> Any:
+    """Perform one curl_cffi request with the requested TLS/HTTP2 fingerprint."""
 
-    try:
-        from curl_cffi import requests as curl_requests
-    except Exception as exc:
-        raise EngineUnavailableError(
-            "static 引擎需要 curl_cffi 才能走该代理；请安装 curl_cffi 或改用 http(s) 代理。"
-        ) from exc
+    from curl_cffi import requests as curl_requests
+
+    headers = dict(STATIC_HEADERS)
+    if config.get("locale"):
+        headers["Accept-Language"] = str(config["locale"])
     proxy = config.get("proxy")
-    response = curl_requests.get(
+    return curl_requests.get(
         config["url"],
-        headers=STATIC_HEADERS,
+        headers=headers,
         proxies={"http": proxy, "https": proxy} if proxy else None,
         timeout=max(config["timeout_ms"] / 1000, 1.0),
-        impersonate="chrome",
+        impersonate=target,
     )
-    page_html = response.text
-    return FetchResult(
-        engine="static",
-        url=config["url"],
-        final_url=str(response.url),
-        status=int(response.status_code),
-        html=page_html,
-        elapsed_sec=round(time.perf_counter() - started, 3),
-        title=extract_title(page_html),
-        block_reasons=block_reasons(page_html),
-        versions=package_versions(),
+
+
+def fetch_with_static_curl_cffi(config: dict[str, Any], started: float) -> FetchResult:
+    """Fetch through curl_cffi when the caller asked for TLS disguise or the proxy scheme needs it."""
+
+    if not curl_cffi_available():
+        raise EngineUnavailableError(
+            "static 引擎需要 curl_cffi 才能做 TLS/HTTP2 伪装或走该代理；"
+            "请安装 curl_cffi，或改用 http(s) 代理并去掉 --impersonate。"
+        )
+    target = config.get("impersonate") or default_impersonate_target()
+    last_error: Exception | None = None
+    for attempt in range(1, config["retries"] + 1):
+        try:
+            response = curl_cffi_get(config, target)
+        except Exception as exc:
+            # 经代理的 TLS 握手偶发 "OPENSSL_internal:invalid library" 一类瞬时失败(实测)，
+            # 与 stdlib 路径一样按 retries 重试，避免把可恢复的握手失败报成引擎故障。
+            last_error = exc
+            if attempt < config["retries"]:
+                logging.warning(
+                    "static(curl_cffi) 抓取失败 %s/%s: %s", attempt, config["retries"], exc
+                )
+                time.sleep(config["retry_delay"])
+            continue
+        page_html = response.text
+        logging.info("static 走 curl_cffi: impersonate=%s", target)
+        return FetchResult(
+            engine="static",
+            url=config["url"],
+            final_url=str(response.url),
+            status=int(response.status_code),
+            html=page_html,
+            elapsed_sec=round(time.perf_counter() - started, 3),
+            title=extract_title(page_html),
+            block_reasons=block_reasons(page_html),
+            notes=[f"impersonate:{target}"],
+            versions=package_versions(),
+        )
+    raise FetchError(
+        f"static(curl_cffi, impersonate={target}) 抓取失败({config['retries']} 次尝试): {last_error}"
     )
 
 
@@ -667,11 +705,18 @@ def static_request(
 
 
 def fetch_with_static(config: dict[str, Any]) -> FetchResult:
-    """Fetch the page with the standard library only; never launches a browser."""
+    """Fetch the page over HTTP only; never launches a browser."""
 
     proxy = config.get("proxy")
     scheme = urlparse(proxy).scheme.lower() if proxy else ""
     started = time.perf_counter()
+    if config.get("impersonate"):
+        if not curl_cffi_available():
+            raise EngineUnavailableError(
+                "static 引擎的 --impersonate 需要 curl_cffi；请安装 curl_cffi(推荐)，"
+                "或去掉该参数改用浏览器引擎。"
+            )
+        return fetch_with_static_curl_cffi(config, started)
     if scheme in {"socks5", "socks5h"} or (scheme and scheme not in {"http", "https"}):
         if not curl_cffi_available():
             raise EngineUnavailableError(
@@ -1256,15 +1301,64 @@ class EngineSpec:
 
 
 def curl_cffi_available() -> bool:
-    """Report whether the optional layer-0 enhancement (socks/TLS disguise) is installed."""
+    """Report whether the recommended layer-0 enhancement (socks proxy and TLS disguise) is installed."""
 
     return importlib.util.find_spec("curl_cffi") is not None
+
+
+def curl_cffi_impersonate_targets() -> tuple[str, ...]:
+    """Return the impersonate targets this curl_cffi offers, or empty when unavailable."""
+
+    if not curl_cffi_available():
+        return ()
+    try:
+        from curl_cffi import requests as curl_requests
+    except Exception:
+        return ()
+    try:
+        return tuple(sorted(item.value for item in curl_requests.BrowserType))
+    except Exception:
+        return ()
+
+
+def default_impersonate_target() -> str:
+    """Prefer the documented target, else the newest chrome profile this curl_cffi offers."""
+
+    targets = curl_cffi_impersonate_targets()
+    if not targets or DEFAULT_IMPERSONATE_TARGET in targets:
+        return DEFAULT_IMPERSONATE_TARGET
+    chrome = [name for name in targets if re.fullmatch(r"chrome\d+", name)]
+    if not chrome:
+        return DEFAULT_IMPERSONATE_TARGET
+    return max(chrome, key=lambda name: int(name.removeprefix("chrome")))
+
+
+def validate_impersonate(target: str | None) -> None:
+    """Reject a TLS-disguise request this interpreter cannot honour."""
+
+    if not target:
+        return
+    if not curl_cffi_available():
+        raise ValueError(
+            f"--impersonate {target} 需要 curl_cffi(层 0 的 TLS/HTTP2 伪装)；"
+            "请安装 curl_cffi(推荐)，或去掉该参数改用浏览器引擎。"
+        )
+    known = curl_cffi_impersonate_targets()
+    if known and target not in known:
+        preview = ", ".join(known[:6])
+        raise ValueError(
+            f"未知 impersonate 目标: {target}；本机 curl_cffi 可用目标示例: {preview} …"
+        )
 
 
 def probe_static() -> EngineAvailability:
     """Report the stdlib HTTP engine, which works without any third-party package."""
 
-    optional = "" if curl_cffi_available() else "；未安装 curl_cffi(socks5 代理与 TLS 级伪装不可用)"
+    optional = (
+        ""
+        if curl_cffi_available()
+        else "；未安装 curl_cffi(推荐: socks5 代理与 --impersonate 的 TLS/HTTP2 伪装不可用)"
+    )
     return EngineAvailability(True, f"stdlib HTTP 直连可用{optional}")
 
 
@@ -1468,6 +1562,12 @@ def validate_options(options: FetchOptions) -> None:
         raise ValueError(
             f"未知 wait_until: {options.wait_until} (可选: {', '.join(WAIT_UNTIL_CHOICES)})"
         )
+    validate_impersonate(options.impersonate)
+    if options.impersonate and options.engine not in {"auto", "static"}:
+        logging.warning(
+            "--impersonate 只作用于层 0(static)；%s 由浏览器自己完成 TLS 指纹，已忽略该参数。",
+            options.engine,
+        )
     capabilities = engine_capabilities(options.engine)
     if CAP_SOLVE in capabilities:
         if options.timeout_ms < MIN_SOLVER_TIMEOUT_MS:
@@ -1545,6 +1645,7 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "geoip": options.geoip,
         "humanize": options.humanize,
         "hide_canvas": options.hide_canvas,
+        "impersonate": options.impersonate,
         "real_chrome": options.real_chrome,
         "profile_dir": str(Path(options.profile_dir).expanduser().resolve())
         if options.profile_dir
@@ -1814,6 +1915,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--network-idle", action="store_true", help="等待 networkidle；长连接页面可能不适用。"
     )
+    parser.add_argument(
+        "--impersonate",
+        help=(
+            "层 0(static) 用 curl_cffi 做 TLS/HTTP2 客户端伪装(需安装 curl_cffi):"
+            "如 chrome124、chrome136、safari184；可过部分站点的 TLS/客户端指纹检查，"
+            "但不解 JS 挑战。浏览器层自带指纹，会告警忽略。"
+        ),
+    )
     parser.add_argument("--screenshot", help="验证完成后保存全页截图。")
     parser.add_argument("--allow-direct", action="store_true", help="代理不可达时允许直连。")
     parser.add_argument("--verbose", action="store_true")
@@ -1859,6 +1968,7 @@ def main(argv: list[str] | None = None) -> int:
         profile_dir=args.profile_dir,
         executable_path=args.executable_path,
         network_idle=args.network_idle,
+        impersonate=args.impersonate,
         screenshot=args.screenshot,
         allow_direct=args.allow_direct,
     )

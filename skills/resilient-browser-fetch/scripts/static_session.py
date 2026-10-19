@@ -1,7 +1,8 @@
 """Batch-fetch same-origin pages with the layer-0 (stdlib HTTP) engine.
 
 Use this when a multi-page job only needs static HTML: no browser, no third-party
-package, no Cloudflare求解. For JS-rendered or challenge-protected batches use
+package (install the recommended ``curl_cffi`` and set ``impersonate`` when the site
+checks TLS/client fingerprints), no Cloudflare求解. For JS-rendered or challenge-protected batches use
 ``site_session.SiteSessionManager`` (layer 2+, with warmup barrier and manual
 verification), and let the two share the same ``SiteRequest``/``FetchResult``
 contracts so a caller can swap them.
@@ -32,6 +33,7 @@ from resilient_fetch import (
     discover_local_proxy,
     fetch_with_static,
     redact_proxy,
+    validate_impersonate,
     validation_reasons,
     wait_for_proxy,
 )
@@ -76,6 +78,7 @@ class StaticSessionOptions:
     min_bytes: int = 300
     expected_home_texts: tuple[str, ...] = ()
     locale: str | None = None
+    impersonate: str | None = None
 
     def __post_init__(self) -> None:
         """Validate settings that protect a shared static batch."""
@@ -95,6 +98,7 @@ class StaticSessionOptions:
             raise ValueError("retry_delay 不得为负数。")
         if self.min_bytes < 1:
             raise ValueError("min_bytes 必须大于 0。")
+        validate_impersonate(self.impersonate)
 
 
 class StaticBatchSession:
@@ -247,6 +251,7 @@ class StaticBatchSession:
                     "retries": self.options.retries,
                     "retry_delay": self.options.retry_delay,
                     "locale": self.options.locale,
+                    "impersonate": self.options.impersonate,
                 }
             )
         except FetchError as exc:

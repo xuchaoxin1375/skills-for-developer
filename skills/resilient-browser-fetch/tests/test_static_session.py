@@ -267,3 +267,38 @@ async def test_fetch_many_cancels_remaining_pages_on_failure() -> None:
                 await session.fetch_many([f"{base}/a", f"{base}/b"])
             pending = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
             assert not [task for task in pending if not task.done()]
+
+
+def test_options_validate_impersonate_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str | None] = []
+    monkeypatch.setattr(subject, "validate_impersonate", lambda target: calls.append(target))
+
+    subject.StaticSessionOptions(home_url="http://127.0.0.1:1/", impersonate="chrome124")
+
+    assert calls == ["chrome124"], "批量静态会话复用层 0 的 impersonate 校验"
+
+
+def test_fetch_blocking_passes_impersonate_to_static_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[dict[str, Any]] = []
+
+    def fake_fetch(config: dict[str, Any]) -> Any:
+        seen.append(config)
+        return subject.FetchResult(
+            engine="static",
+            url=config["url"],
+            final_url=config["url"],
+            status=200,
+            html="<html><title>OK</title><body>正文内容足够长可以被识别为业务主体。</body></html>",
+            elapsed_sec=0.0,
+        )
+
+    monkeypatch.setattr(subject, "fetch_with_static", fake_fetch)
+    session = subject.StaticBatchSession(
+        subject.StaticSessionOptions(home_url="http://127.0.0.1:1/", impersonate="chrome124")
+    )
+
+    session._fetch_blocking(subject.SiteRequest("http://127.0.0.1:1/page"))
+
+    assert seen and seen[0]["impersonate"] == "chrome124"

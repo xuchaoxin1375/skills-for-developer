@@ -120,13 +120,14 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 
 | 层 | engine | 能力 | 依赖 | 不做什么 |
 | --- | --- | --- | --- | --- |
-| 0 | `static` | 直连 HTTP 取正文、状态码、重定向链 | 无（stdlib）；socks 代理与 TLS 伪装需 `curl_cffi` | 不执行 JS，不求解挑战 |
+| 0 | `static` | 直连 HTTP 取正文、状态码、重定向链；可选 TLS/HTTP2 客户端伪装 | 无（stdlib）；推荐 `curl_cffi`（socks 代理、`--impersonate`） | 不执行 JS，不求解挑战 |
 | 1 | `playwright` | 无头/有头渲染、等待与交互 | `playwright` 或 `patchright` + 浏览器二进制 | 不求解挑战，指纹弱于层 2 |
 | 2 | `scrapling` | 反检测渲染 + Cloudflare/Turnstile 求解 | `requirements-stealth.txt` + `scrapling install` | — |
 | 3 | `cloak-cdp` | 层 2 的指纹底座变体 | 层 2 + `requirements-cloak.txt` + `python -m cloakbrowser install` | CloakBrowser 本身不是 CAPTCHA 求解器 |
 
 - `auto`：默认。按上表从低到高、只对已安装的引擎升档；缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。指定 `--engine <层>` 时缺件直接失败，便于排障。
 - 先信任低层：静态页在层 0 就是毫秒级，不要为了"稳"直接开层 2。命中挑战特征或空页才升档。
+- 层 0 被 TLS/客户端指纹检查挡住时（同一 URL 对 Python 栈直接 403、连接重置或只回空壳），先装推荐的 `curl_cffi` 再加 `--impersonate chrome124` 重试；它只改 TLS/HTTP2 指纹（可过部分站点的客户端检查），**不解 JS 挑战**，挑战仍需层 2。目标写具体版本（`chrome124`/`chrome136`/`safari184` 等）而不是 `chrome` 这类滚动别名，别名指向的 Chrome 版本会随 curl_cffi 升级漂移、不便复现；未装 `curl_cffi` 或目标非法时该参数直接报错，不会静默退回 stdlib 指纹。浏览器层自带指纹，传了会告警忽略。
 - 层 0 对客户端渲染站可能只拿到 JS 空壳（正文由脚本注入），默认宽松校验不会拦它。已知目标是 SPA/客户端渲染时，直接指定 `--engine playwright`，或给层 0 加 `--expect-text`/`--wait-selector` 让空壳被判失败后自动升档。
 - `scrapling`：挑战求解主力，使用 `StealthyFetcher.fetch(..., solve_cloudflare=True)`，负责识别、点击、等待与内容返回。
 - `cloak-cdp`：由 CloakBrowser 启动带代理的 Chromium，再把本机 `ws://` CDP 地址交给 `StealthyFetcher.async_fetch`；它需要层 2 的依赖，不是层 2 的替代品。

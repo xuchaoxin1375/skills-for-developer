@@ -55,6 +55,7 @@ flowchart TD
 - 回退引擎返回 HTTP `200` 也必须经过内容验证，避免把挑战页当成业务页面。
 - 状态码不单独判拦截：403 且正文无拦截特征、长度达标、调用方期望文本命中时按可用内容接受，并在 `result.notes` 记 `http_status:403:accepted_by_content`；其余 4xx/5xx 仍失败。
 - `wait_until` 决定取源码与关闭窗口的时机（层 1/2/3）：`commit` / `domcontentloaded` / `load`(默认) / `networkidle`；层 2/3 把前两者映射为 Scrapling 的 `load_dom=False`。
+- `impersonate` 只作用于层 0：非空时改用 curl_cffi 以浏览器同族的 TLS/HTTP2 指纹出网（需安装 curl_cffi，否则构造 `FetchOptions` 即报错），结果里记 `notes: impersonate:<目标>`；浏览器层自带指纹，传了会告警忽略。
 - `fetch_page()` 不写业务文件；`save_page()` 才拥有文件副作用。
 
 ## 获取页面但不写文件
@@ -142,6 +143,7 @@ options = StaticSessionOptions(
     concurrency=4,
     timeout_ms=30_000,
     wall_timeout_ms=60_000,
+    impersonate="chrome124",   # 可选：层 0 的 TLS/HTTP2 伪装，需 curl_cffi
 )
 
 async with StaticBatchSession(options) as site:
@@ -154,7 +156,8 @@ async with StaticBatchSession(options) as site:
 - 不求解挑战、不做重验证：命中挑战特征时抛 `PageRejectedError`，结果里的 `block_reasons` 供调用方决定升档到 `SiteSessionManager` 或 `fetch_page(engine="auto")`；
 - 没有 DOM 引擎：`expected_selector` 直接报错，`wait_selector` 忽略并告警，严格检查请用 `expected_texts`；
 - 并发受 `concurrency` 信号量约束，每页各自有 `wall_timeout_ms` 硬超时；超时抛 `PageTimeoutError`；
-- `timeout_ms` 是单次 HTTP 超时，没有浏览器那套 60000 ms 下限，默认 30 秒。
+- `timeout_ms` 是单次 HTTP 超时，没有浏览器那套 60000 ms 下限，默认 30 秒；
+- `impersonate` 可选，语义与 `FetchOptions.impersonate` 相同：非空时整批都走 curl_cffi 的 TLS/HTTP2 伪装，未安装 curl_cffi 或目标非法会在构造 `StaticSessionOptions` 时直接报错。
 
 ## 层 1 浏览器批量会话
 
