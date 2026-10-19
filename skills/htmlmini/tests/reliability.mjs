@@ -197,6 +197,10 @@ async function cli(args, { input, env } = {}) {
 {
   const h = await cli(['--help']);
   ok(h.code === 0 && h.stdout.includes('USAGE'), '--help 退出 0');
+  const v = await cli(['--version']);
+  ok(v.code === 0 && /^htmlmini \d{4}\.\d{2}\.\d{2}\.\d{4}\n$/.test(v.stdout), `--version 输出日期时间版本（实得 ${v.stdout.trim()}）`);
+  const vShort = await cli(['-V']);
+  ok(vShort.code === 0 && vShort.stdout === v.stdout, '-V 与 --version 一致');
   const u = await cli(['--nope']);
   ok(u.code === 2 && u.stderr.includes('unknown option'), '未知选项退出 2');
   const m = await cli(['--mode', 'nope']);

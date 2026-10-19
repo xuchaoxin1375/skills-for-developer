@@ -75,6 +75,7 @@ const ok = (cond, msg) => {
 {
   const j = JSON.parse(await runExtract(null, 'json', { forceContent: ARTICLE }));
   ok(j.used === 'defuddle' && typeof j.stats.reductionPct === 'number', 'json 含 used 与 reductionPct');
+  ok(/^\d{4}\.\d{2}\.\d{2}\.\d{4}$/.test(j.version), `json 含日期时间版本号（实得 ${j.version}）`);
   const t = await runExtract(null, 'title', { forceContent: ARTICLE });
   ok(t.trim() === '测试文章', `title 模式（实得 ${t.trim()}）`);
   const txt = await runExtract(null, 'text', { forceContent: ARTICLE });
@@ -163,6 +164,28 @@ const ok = (cond, msg) => {
     e3 = err;
   }
   ok(e3 && /unknown format/.test(e3.message), '未知 format 策略抛错');
+}
+
+// 8. ui 清单的单条文本上限：默认丢弃超长段落，但要记账而不是静默消失；
+//    textMax=0 取消上限（长正文页只跑 ui 时用）。
+{
+  const LONG = `<!doctype html><html><head><title>长文本页</title></head><body>
+  <h1>长文本页</h1>
+  <p>短文本条目。</p>
+  <p>${'长段落内容。'.repeat(40)}</p>
+  </body></html>`;
+
+  const capped = await runExtract(null, 'ui', { forceContent: LONG });
+  ok(capped.includes('短文本条目'), 'ui 保留短文本条目');
+  ok(!capped.includes('长段落内容'), 'ui 默认丢弃超长段落');
+  ok(/已省略 1 条超过 150 字符/.test(capped), `ui 记账被丢弃的长文本（实得片段 ${capped.split('\n').pop()}）`);
+
+  const uncapped = await runExtract(null, 'ui', { forceContent: LONG, textMax: 0 });
+  ok(uncapped.includes('长段落内容'), 'textMax=0 时保留超长段落');
+  ok(!/已省略/.test(uncapped), 'textMax=0 时不再提示省略');
+
+  const wider = await runExtract(null, 'ui', { forceContent: LONG, textMax: 400 });
+  ok(wider.includes('长段落内容'), 'textMax=400 时保留中等长度段落');
 }
 
 console.log(`\nPASS ${n} assertions`);

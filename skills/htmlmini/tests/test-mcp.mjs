@@ -41,6 +41,10 @@ await rpc('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
   clientInfo: { name: 'test', version: '0.0.1' },
+}).then((init) => {
+  const sv = init.result.serverInfo;
+  console.log(`serverInfo: ${sv.name} ${sv.version}`);
+  if (!/^\d{4}\.\d{2}\.\d{2}\.\d{4}$/.test(sv.version)) throw new Error(`serverInfo.version is not date-time based: ${sv.version}`);
 });
 send({ jsonrpc: '2.0', method: 'notifications/initialized' });
 

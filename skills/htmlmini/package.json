@@ -1,6 +1,6 @@
 {
   "name": "htmlmini",
-  "version": "0.3.0",
+  "version": "2026.10.19.1750",
   "description": "Strip CSS/JS from HTML, extract the core skeleton as Markdown/JSON. Fallback chain: Defuddle -> optional Trafilatura -> semantic -> UI inventory. Works as a CLI and an MCP server for any AI harness.",
   "type": "module",
   "bin": {
@@ -9,6 +9,7 @@
   "scripts": {
     "cli": "node src/cli.js",
     "mcp": "node src/mcp.js",
+    "stamp": "node scripts/stamp-version.mjs",
     "test": "node tests/smoke.mjs && node tests/test-mcp.mjs && node tests/reliability.mjs"
   },
   "dependencies": {

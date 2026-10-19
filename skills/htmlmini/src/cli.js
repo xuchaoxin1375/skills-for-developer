@@ -2,8 +2,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, runExtract } from './extract.js';
 import { fmtBytes, fmtMs, log, setLogLevel } from './log.js';
+import { VERSION, VERSION_LINE } from './version.js';
 
-const HELP = `htmlmini - strip CSS/JS from HTML, keep the core as Markdown (token-efficient for LLMs)
+const HELP = `htmlmini ${VERSION} - strip CSS/JS from HTML, keep the core as Markdown (token-efficient for LLMs)
 
 USAGE
   htmlmini [source] [options]
@@ -17,7 +18,7 @@ SOURCE
 OPTIONS
   -m, --markdown   output Markdown                (default; article pages use Defuddle,
                                                    UI pages auto-fallback to component inventory)
-  -j, --json       output JSON {title, used, requested, content, stats{reductionPct}, meta?}
+  -j, --json       output JSON {title, used, requested, version, content, stats{reductionPct}, meta?}
   -s, --skeleton   outline only: headings, tables, code-block languages
   -u, --ui         force UI-component inventory (labels/buttons/selects/tables)
   -t, --text       plain text (no markup)
@@ -40,14 +41,21 @@ OPTIONS
   --pretty         shorthand for --format pretty
   --prune-empty    with --mode html: also drop containers left empty after cleaning
                    (empty div/span/nav/header ...); table/form/pre structure is kept
+  --text-max <n>   with --mode ui / --extractor ui: max characters for one text entry
+                   (default 150). Longer paragraphs are dropped from the inventory and
+                   the output says how many. 0 = no limit (keeps full long paragraphs).
   --proxy <url>    proxy override for URL fetch: http(s) URL, or "direct" to
                    bypass env proxy (default follows HTTP_PROXY/HTTPS_PROXY/NO_PROXY)
   --noproxy        force direct connection, ignoring env proxy
-  --render         on static 403/5xx, fall back to browser rendering, then extract.
-                   Chain: save_page (needs a layer >= 1 engine: playwright/patchright,
-                   scrapling, or cloak-cdp) -> system Chrome headless dump-dom
-                   (zero-dep) -> friendly error.
+  --render[=mode]   fall back to browser rendering. Default (no value / "auto"):
+                   only on static 403/5xx. Chain: save_page (needs a layer >= 1
+                   engine: playwright/patchright, scrapling, or cloak-cdp) ->
+                   system Chrome headless dump-dom (zero-dep) -> friendly error.
+                   "always": render even when the static fetch returns 200.
+                   Use it for client-rendered pages whose HTML is 200 but whose
+                   body only exists after hydration.
                    404/timeout/network errors still throw without rendering
+  --render-always  shorthand for --render=always
   --headful        show the browser window during fallback rendering
                    (implies --render; needs a layer >= 1 save_page engine,
                    for first-time manual verification)
@@ -85,8 +93,10 @@ OPTIONS
                    Progress goes to stderr as "htmlmini: [read|parse|extract|format|write] ...",
                    so stdout keeps the payload only. Env: HTMLMINI_LOG=quiet|info|debug.
   -h, --help       show this help
+  -V, --version    print version (date-time based, YYYY.MM.DD.HHmm) and exit
 
 EXAMPLES
+  htmlmini --version                       # -> htmlmini <YYYY.MM.DD.HHmm>
   htmlmini page.html                       # -> markdown to stdout
   htmlmini page.html --json                # -> metadata + extractor + savings %
   htmlmini 报表面板.html -u                 # -> force UI inventory
@@ -94,6 +104,8 @@ EXAMPLES
   htmlmini page.html --mode html --attrs none
   htmlmini page.html --mode html --pretty  # -> re-indented cleaned HTML
   htmlmini page.html --mode html --prune-empty --attrs none   # -> smallest structural skeleton
+  htmlmini page.html -u --text-max 0       # UI inventory without the per-entry length cap
+  htmlmini "https://example.com/spa" --render=always   # render even though static returns 200
   htmlmini dashboard.html --mode json --extractor ui
   htmlmini "https://example.com/a" -s      # -> outline of remote page
   cat page.html | htmlmini - --text        # -> plain text
@@ -146,12 +158,16 @@ let pythonBin;
 let attrs = 'semantic';
 let format = 'compact';
 let pruneEmpty = false;
+let textMax = 150;
 let logLevelOverride = null;
 
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '-h' || a === '--help') {
     process.stdout.write(HELP);
+    process.exit(0);
+  } else if (a === '-V' || a === '--version') {
+    process.stdout.write(`${VERSION_LINE}\n`);
     process.exit(0);
   } else if (a === '--list-modes') {
     process.stdout.write(`${MODES.join('\n')}\n`);
@@ -185,6 +201,20 @@ for (let i = 0; i < argv.length; i++) {
     format = 'pretty';
   } else if (a === '--prune-empty') {
     pruneEmpty = true;
+  } else if (a === '--text-max') {
+    const v = argv[++i];
+    textMax = Number(v);
+    if (!Number.isFinite(textMax) || textMax < 0) {
+      log.error(`--text-max needs a number >= 0 (0 = no limit), got "${v ?? ''}"`);
+      process.exit(2);
+    }
+  } else if (a.startsWith('--text-max=')) {
+    const [, v] = splitEq(a);
+    textMax = Number(v);
+    if (!Number.isFinite(textMax) || textMax < 0) {
+      log.error(`--text-max needs a number >= 0 (0 = no limit), got "${v ?? ''}"`);
+      process.exit(2);
+    }
   } else if (a === '--quiet') {
     logLevelOverride = 'quiet';
   } else if (a === '--verbose') {
@@ -193,6 +223,15 @@ for (let i = 0; i < argv.length; i++) {
     proxy = 'direct';
   } else if (a === '--render') {
     render = true;
+  } else if (a === '--render-always') {
+    render = 'always';
+  } else if (a.startsWith('--render=')) {
+    const [, v] = splitEq(a);
+    if (v !== 'always' && v !== 'auto') {
+      log.error(`--render accepts "auto" or "always" (got "${v}")`);
+      process.exit(2);
+    }
+    render = v === 'always' ? 'always' : true;
   } else if (a === '--headful') {
     headful = true;
     render = true;
@@ -256,7 +295,7 @@ if (source === '-' && process.stdin.isTTY) {
 
 try {
   const startedAt = Date.now();
-  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render: true } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }) });
+  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, textMax, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }) });
   const total = `total ${fmtMs(Date.now() - startedAt)}`;
   if (output) {
     // 与 stdout 分支同口径：结果已以换行结尾时不再补，避免落盘文件尾部多出空行。

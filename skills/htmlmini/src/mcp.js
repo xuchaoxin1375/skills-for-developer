@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, extractHtml, readSiblingMeta, readWithRender, runExtract, renderResult } from './extract.js';
+import { VERSION } from './version.js';
 
 const modeEnum = z.enum(MODES);
 const extractorEnum = z.enum(EXTRACTORS);
@@ -18,13 +19,15 @@ const formatDesc =
   'Layout policy, only meaningful for mode "html". compact (default): drop source indentation and blank lines, keeping a single space between inline elements (smallest; nothing is reordered). pretty: re-indent for readability. raw: keep the original source whitespace.';
 const pruneEmptyDesc =
   'Only meaningful for mode "html". Drop containers left empty after cleaning (empty div/span/nav/header ...), which is often most of the bytes; table/form/pre structure is kept. Default false: empty wrappers are preserved.';
+const textMaxDesc =
+  'Only meaningful for mode "ui" (or extractor "ui"): max characters for a single text entry. Default 150. Longer paragraphs (product descriptions, FAQ bodies, terms) are dropped from the inventory and the output reports how many were skipped. Set 0 for no limit — use that when the UI inventory is the only view and long paragraphs matter.';
 
-async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin }) {
+async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin }) {
   const { html, source, contentType } = await readWithRender(
     src,
     {
       ...(proxy === undefined ? {} : { proxy }),
-      ...(render ? { render: true } : {}),
+      ...(render ? { render } : {}),
       ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
       ...(headful ? { headful: true } : {}),
       ...(chromeBin == null ? {} : { chromeBin }),
@@ -37,14 +40,14 @@ async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, p
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (source === 'stdin' ? 'stdin' : source.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor, contentType, attrs, format, pruneEmpty, ...(pythonBin == null ? {} : { pythonBin }) });
+  const res = await extractHtml(html, { url, extractor, contentType, attrs, format, pruneEmpty, textMax, ...(pythonBin == null ? {} : { pythonBin }) });
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
 }
 
 const server = new McpServer({
   name: 'htmlmini',
-  version: '0.3.0',
+  version: VERSION,
 });
 
 const fileDesc =
@@ -61,6 +64,7 @@ const shapeFile = {
   attrs: attrsEnum.optional().describe(attrsDesc),
   format: formatEnum.optional().describe(formatDesc),
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
+  text_max: z.number().optional().describe(textMaxDesc),
 };
 const shapeUrl = {
   url: z.string().describe('http(s) URL'),
@@ -69,14 +73,15 @@ const shapeUrl = {
   attrs: attrsEnum.optional().describe(attrsDesc),
   format: formatEnum.optional().describe(formatDesc),
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
+  text_max: z.number().optional().describe(textMaxDesc),
   proxy: z
     .string()
     .optional()
     .describe('Proxy override for this fetch: http(s) URL, or "direct" to bypass env proxy. Omit to follow HTTP_PROXY/HTTPS_PROXY/NO_PROXY env.'),
   render: z
-    .boolean()
+    .union([z.boolean(), z.literal('always')])
     .optional()
-    .describe('On static 403/5xx, fall back to browser rendering via resilient-browser-fetch save_page (same proxy as this fetch), then extract. Needs an installed engine at layer >= 1 (playwright/patchright, scrapling, or cloak-cdp); bounded by its own timeout.'),
+    .describe('Browser rendering. false (default): static fetch only. true: on static 403/5xx, fall back to browser rendering via resilient-browser-fetch save_page (same proxy as this fetch), then extract. "always": render even when the static fetch returns 200 — use it for client-rendered pages whose HTML is 200 but whose body only exists after hydration. Needs an installed engine at layer >= 1 (playwright/patchright, scrapling, or cloak-cdp); bounded by its own timeout.'),
   render_timeout_ms: z
     .number()
     .optional()
@@ -101,46 +106,47 @@ const shapeHtml = {
   attrs: attrsEnum.optional().describe(attrsDesc),
   format: formatEnum.optional().describe(formatDesc),
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
+  text_max: z.number().optional().describe(textMaxDesc),
 };
 
 // 正确命名（v2）。旧拼写 htmmini_* 保留为别名以兼容已配置的客户端。
-server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty }) => ({
-  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false }) }],
+server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty, text_max }) => ({
+  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max }) }],
 }));
 
-server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
+server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
-      format: format ?? 'compact', pruneEmpty: prune_empty ?? false,
+      format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max,
       proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin,
     }),
   }],
 }));
 
-server.tool('htmlmini_extract_html', htmlDesc, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty }) => ({
-  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false }) }],
+server.tool('htmlmini_extract_html', htmlDesc, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty, text_max }) => ({
+  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max }) }],
 }));
 
 const aliasNote = 'Deprecated alias of the htmlmini_* tool (kept for backward compatibility).';
-server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty }) => ({
-  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false }) }],
+server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty, text_max }) => ({
+  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max }) }],
 }));
 
-server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
+server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
-      format: format ?? 'compact', pruneEmpty: prune_empty ?? false,
+      format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max,
       proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin,
     }),
   }],
 }));
 
-server.tool('htmmini_extract_html', `${aliasNote} ${htmlDesc}`, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty }) => ({
-  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false }) }],
+server.tool('htmmini_extract_html', `${aliasNote} ${htmlDesc}`, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty, text_max }) => ({
+  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max }) }],
 }));
 
 await server.connect(new StdioServerTransport());

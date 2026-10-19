@@ -7,10 +7,10 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
   $attrs = @('semantic', 'none', 'all')
   $formats = @('compact', 'pretty', 'raw')
   $flags = @('--markdown', '--json', '--skeleton', '--ui', '--text', '--title',
-    '--mode', '--extractor', '--attrs', '--format', '--compact', '--pretty', '--prune-empty',
-    '--proxy', '--noproxy', '--render', '--headful', '--render-timeout-ms',
+    '--mode', '--extractor', '--attrs', '--format', '--compact', '--pretty', '--prune-empty', '--text-max',
+    '--proxy', '--noproxy', '--render', '--render-always', '--headful', '--render-timeout-ms',
     '--chrome-bin', '--python-bin', '--output', '--quiet', '--verbose', '--list-modes', '--list-extractors',
-    '--completion', '--help', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-h')
+    '--completion', '--help', '--version', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-h', '-V')
   $tokens = $commandAst.ToString() -split '\s+'
   $prev = if ($tokens.Count -ge 2) { $tokens[$tokens.Count - 2] } else { '' }
   $list = switch ($prev) {
@@ -18,6 +18,7 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
     '--extractor' { $extractors; break }
     '--attrs' { $attrs; break }
     '--format' { $formats; break }
+    '--render' { @('auto', 'always'); break }
     '--completion' { @('bash', 'powershell'); break }
     default { $null }
   }

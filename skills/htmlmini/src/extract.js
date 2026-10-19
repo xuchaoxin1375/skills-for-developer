@@ -10,6 +10,7 @@ import { parseHTML } from 'linkedom';
 import { Defuddle } from 'defuddle/node';
 import { ProxyAgent } from 'undici';
 import { fmtBytes, fmtMs, log } from './log.js';
+import { VERSION } from './version.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -21,7 +22,7 @@ export const ATTR_POLICIES = ['none', 'semantic', 'all'];
 export const FORMAT_POLICIES = ['raw', 'compact', 'pretty'];
 
 export const DEFAULT_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15 htmlmini/0.3';
+  `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15 htmlmini/${VERSION}`;
 
 const MIN_ARTICLE_CHARS = 50;
 const UI_SWITCH_CHARS = 300;
@@ -840,9 +841,24 @@ export async function readWithRender(
   if (remote) log.info('read', `fetching ${source} [proxy: ${describeProxy(source, proxy)}]`);
   const done = (r) => {
     log.info('read', `${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${r.rendered ? ' via browser render' : ''}`);
-    log.debug('read', `source=${r.source ?? source} contentType=${r.contentType ?? 'unknown'}${remote ? ` render=${render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
+    log.debug('read', `source=${r.source ?? source} contentType=${r.contentType ?? 'unknown'}${remote ? ` render=${render === 'always' ? 'always' : render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
     return r;
   };
+  // render="always"：静态 200 也照样渲染。客户端渲染页的正文在水合后才进 DOM，
+  // 静态抓到的 HTML 是 200 却没有正文，只按 403/5xx 回退永远等不到渲染。
+  if (remote && render === 'always') {
+    const html = await renderViaBrowser(
+      source,
+      {
+        proxy,
+        ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
+        ...(headful ? { headful: true } : {}),
+        ...(chromeBin == null ? {} : { chromeBin }),
+        ...(pythonBin == null ? {} : { pythonBin }),
+      },
+    );
+    return done({ html, source, contentType: 'text/html', rendered: true });
+  }
   if (!remote || !render) {
     return done(await readSource(source, { timeoutMs, proxy }));
   }
@@ -1145,8 +1161,12 @@ export function sanitizeHtml(doc, attrs = 'semantic', { compact = false, pruneEm
 /**
  * UI 组件清单（v2：按可访问语义重写）。
  * 只认语义标签/ARIA，不再用 class*="btn" 之类正则猜，避免样式类误伤。
+ *
+ * textMax 控制单条文本上限（默认 150）：超长段落（商品描述、FAQ 正文、条款）
+ * 若整条丢弃，长文本页会只剩标题却看不出原因，所以丢弃时在输出里记账。
+ * 传 0 表示不限制（长正文页需要完整段落时用）。
  */
-export function uiSkeleton(doc) {
+export function uiSkeleton(doc, { textMax = 150 } = {}) {
   const out = [];
   const title = safeTitle(doc) || '(no title)';
   out.push(`# ${title}`);
@@ -1269,6 +1289,7 @@ export function uiSkeleton(doc) {
 
   // 文本预算同样按去重后计数：重复样板不吃额度，长页尾部才不会被截断。
   const uniqueTexts = [];
+  let droppedLong = 0;
   for (const el of doc.querySelectorAll('p,li,td,th,div,span')) {
     if (uniqueTexts.length >= CAP.texts) break;
     if (el.querySelector('p,li,td,th,div,label,button,select,h1,h2,h3,h4,h5,h6,input,table,a')) continue;
@@ -1283,11 +1304,23 @@ export function uiSkeleton(doc) {
     }
     if (interactive) continue;
     const t = collectText(el);
-    if (t.length >= 2 && t.length <= 150 && !/^[0-9\s%.,]+$/.test(t)) dedupeInsert(uniqueTexts, t);
+    if (t.length < 2 || /^[0-9\s%.,]+$/.test(t)) continue;
+    if (textMax > 0 && t.length > textMax) {
+      droppedLong++;
+      continue;
+    }
+    dedupeInsert(uniqueTexts, t);
   }
   if (uniqueTexts.length) {
     out.push('', '## 文本');
     uniqueTexts.forEach((t) => out.push(`- ${t}`));
+  }
+  // 静默丢弃最容易导致"页面没有正文"的误判：长段落被上限挡掉时明说，并给出出路。
+  if (droppedLong) {
+    out.push(
+      '',
+      `> 已省略 ${droppedLong} 条超过 ${textMax} 字符的长文本（ui 清单的单条上限）。需要完整长正文改用 \`--mode markdown\` / \`--mode text\`，或加 \`--text-max 0\` 取消上限。`,
+    );
   }
   return out.join('\n');
 }
@@ -1492,7 +1525,7 @@ export function titleFromText(s) {
  * 非 HTML 输入（markdown/纯文本/JSON）任何模式下都透传原文，不硬抽；
  * 强制指定 extractor 时同理（硬把 markdown 当 HTML 解析只会得到空标题）。
  */
-export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false, pythonBin } = {}) {
+export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, pythonBin } = {}) {
   if (!EXTRACTORS.includes(extractor)) {
     throw new Error(`unknown extractor "${extractor}"（可选: ${EXTRACTORS.join(', ')}）`);
   }
@@ -1518,6 +1551,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
       wordCount: countWords(text),
       requested: extractor,
       used: 'passthrough',
+      version: VERSION,
       contentType: contentType ?? null,
       content: text,
       stats: {
@@ -1557,6 +1591,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
       wordCount: base.wordCount ?? countWords(content),
       requested: extractor,
       used,
+      version: VERSION,
       content,
       stats: {
         inputChars: html.length,
@@ -1580,7 +1615,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   }
 
   if (extractor === 'ui') {
-    return finish(uiSkeleton(document), 'ui');
+    return finish(uiSkeleton(document, { textMax }), 'ui');
   }
 
   let defuddle = null;
@@ -1629,7 +1664,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
     }
   }
 
-  return finish(uiSkeleton(document), 'ui', defuddle ?? {});
+  return finish(uiSkeleton(document, { textMax }), 'ui', defuddle ?? {});
 }
 
 export function skeletonFromMarkdown(md) {
@@ -1700,7 +1735,7 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin } = {}) {
+export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -1718,7 +1753,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
       {
         ...(timeoutMs == null ? {} : { timeoutMs }),
         ...(proxy === undefined ? {} : { proxy }),
-        ...(render ? { render: true } : {}),
+        ...(render ? { render } : {}),
         ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
         ...(headful ? { headful: true } : {}),
         ...(chromeBin == null ? {} : { chromeBin }),
@@ -1737,7 +1772,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (src === 'stdin' || src === 'content' ? src : src.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, ...(pythonBin == null ? {} : { pythonBin }) });
+  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, ...(pythonBin == null ? {} : { pythonBin }) });
   log.debug('extract', `mode=${mode} requested=${res.requested} used=${res.used} reduction=${res.stats.reductionPct}% title="${res.title ?? ''}"`);
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
