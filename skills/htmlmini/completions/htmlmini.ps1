@@ -7,7 +7,7 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
   $attrs = @('semantic', 'none', 'all')
   $formats = @('compact', 'pretty', 'raw')
   $flags = @('--markdown', '--json', '--skeleton', '--ui', '--text', '--title',
-    '--mode', '--extractor', '--attrs', '--format', '--compact', '--pretty', '--prune-empty', '--text-max',
+    '--mode', '--extractor', '--attrs', '--format', '--compact', '--pretty', '--prune-empty', '--text-max', '--allow-empty',
     '--proxy', '--noproxy', '--render', '--render-always', '--headful', '--render-timeout-ms',
     '--chrome-bin', '--python-bin', '--output', '--quiet', '--verbose', '--list-modes', '--list-extractors',
     '--completion', '--help', '--version', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-h', '-V')

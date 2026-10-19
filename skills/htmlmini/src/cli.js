@@ -44,6 +44,9 @@ OPTIONS
   --text-max <n>   with --mode ui / --extractor ui: max characters for one text entry
                    (default 150). Longer paragraphs are dropped from the inventory and
                    the output says how many. 0 = no limit (keeps full long paragraphs).
+  --allow-empty    keep the result even when it looks like a client-rendered app shell
+                   (extracted text < 200 chars from >= 5 KB HTML). Default: such pages
+                   error with a hint to use --render=always.
   --proxy <url>    proxy override for URL fetch: http(s) URL, or "direct" to
                    bypass env proxy (default follows HTTP_PROXY/HTTPS_PROXY/NO_PROXY)
   --noproxy        force direct connection, ignoring env proxy
@@ -159,6 +162,7 @@ let attrs = 'semantic';
 let format = 'compact';
 let pruneEmpty = false;
 let textMax = 150;
+let allowEmpty = false;
 let logLevelOverride = null;
 
 for (let i = 0; i < argv.length; i++) {
@@ -215,6 +219,8 @@ for (let i = 0; i < argv.length; i++) {
       log.error(`--text-max needs a number >= 0 (0 = no limit), got "${v ?? ''}"`);
       process.exit(2);
     }
+  } else if (a === '--allow-empty') {
+    allowEmpty = true;
   } else if (a === '--quiet') {
     logLevelOverride = 'quiet';
   } else if (a === '--verbose') {
@@ -295,7 +301,7 @@ if (source === '-' && process.stdin.isTTY) {
 
 try {
   const startedAt = Date.now();
-  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, textMax, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }) });
+  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }) });
   const total = `total ${fmtMs(Date.now() - startedAt)}`;
   if (output) {
     // 与 stdout 分支同口径：结果已以换行结尾时不再补，避免落盘文件尾部多出空行。

@@ -2,7 +2,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, extractHtml, readSiblingMeta, readWithRender, runExtract, renderResult } from './extract.js';
+import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, assertUsableResult, extractHtml, readSiblingMeta, readWithRender, runExtract, renderResult } from './extract.js';
 import { VERSION } from './version.js';
 
 const modeEnum = z.enum(MODES);
@@ -21,9 +21,11 @@ const pruneEmptyDesc =
   'Only meaningful for mode "html". Drop containers left empty after cleaning (empty div/span/nav/header ...), which is often most of the bytes; table/form/pre structure is kept. Default false: empty wrappers are preserved.';
 const textMaxDesc =
   'Only meaningful for mode "ui" (or extractor "ui"): max characters for a single text entry. Default 150. Longer paragraphs (product descriptions, FAQ bodies, terms) are dropped from the inventory and the output reports how many were skipped. Set 0 for no limit — use that when the UI inventory is the only view and long paragraphs matter.';
+const allowEmptyDesc =
+  'Keep the result even when it looks like a client-rendered app shell (extracted text under 200 chars from >= 5 KB HTML). Default false: such pages return an error telling you to use render:"always", because the static HTML has no body yet.';
 
-async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin }) {
-  const { html, source, contentType } = await readWithRender(
+async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin }) {
+  const { html, source, contentType, rendered } = await readWithRender(
     src,
     {
       ...(proxy === undefined ? {} : { proxy }),
@@ -40,7 +42,8 @@ async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, t
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (source === 'stdin' ? 'stdin' : source.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor, contentType, attrs, format, pruneEmpty, textMax, ...(pythonBin == null ? {} : { pythonBin }) });
+  const res = await extractHtml(html, { url, extractor, contentType, attrs, format, pruneEmpty, textMax, fetchCss: rendered === true, ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
+  assertUsableResult(res, html.length, { allowEmpty, mode });
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
 }
@@ -65,6 +68,7 @@ const shapeFile = {
   format: formatEnum.optional().describe(formatDesc),
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
+  allow_empty: z.boolean().optional().describe(allowEmptyDesc),
 };
 const shapeUrl = {
   url: z.string().describe('http(s) URL'),
@@ -74,6 +78,7 @@ const shapeUrl = {
   format: formatEnum.optional().describe(formatDesc),
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
+  allow_empty: z.boolean().optional().describe(allowEmptyDesc),
   proxy: z
     .string()
     .optional()
@@ -107,46 +112,47 @@ const shapeHtml = {
   format: formatEnum.optional().describe(formatDesc),
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
+  allow_empty: z.boolean().optional().describe(allowEmptyDesc),
 };
 
 // 正确命名（v2）。旧拼写 htmmini_* 保留为别名以兼容已配置的客户端。
-server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty, text_max }) => ({
-  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max }) }],
+server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty, text_max, allow_empty }) => ({
+  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
-server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
+server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
-      format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max,
+      format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
       proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin,
     }),
   }],
 }));
 
-server.tool('htmlmini_extract_html', htmlDesc, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty, text_max }) => ({
-  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max }) }],
+server.tool('htmlmini_extract_html', htmlDesc, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty, text_max, allow_empty }) => ({
+  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
 const aliasNote = 'Deprecated alias of the htmlmini_* tool (kept for backward compatibility).';
 server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty, text_max }) => ({
-  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max }) }],
+  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
-server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
+server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
-      format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max,
+      format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
       proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin,
     }),
   }],
 }));
 
-server.tool('htmmini_extract_html', `${aliasNote} ${htmlDesc}`, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty, text_max }) => ({
-  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max }) }],
+server.tool('htmmini_extract_html', `${aliasNote} ${htmlDesc}`, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty, text_max, allow_empty }) => ({
+  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
 await server.connect(new StdioServerTransport());

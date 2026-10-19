@@ -6,6 +6,8 @@
 - 双形态交付：**CLI**（任意 harness/终端可用）+ **MCP server**（opencode / Claude / Cursor 等当工具调用），共用同一核心，行为一致。
 - 需要"结构"而不是"摘要"时用 `--mode html`：保守清洗后的 HTML（去脚本/样式/表观属性，保留完整 DOM 与文本顺序），默认按 `compact` 排版压掉源码缩进与空行，比 markdown 费 token，但看表格、嵌套层级与表单初始态时不必回读原始 HTML。`--pretty` 重排为可读缩进，`--prune-empty` 额外剪掉清洗后变空的容器。
 - 两类"正文不在静态 DOM"的页面各有一个显式入口：客户端水合后才出现正文的用 `--render=always` 强制渲染；`ui` 清单默认不收超过 150 字符的长段落，用 `--text-max 0` 取消上限。两处都会在日志/输出里说明实际走了哪条，不静默降级。
+- CSS 生成内容会并入文本：`::before` / `::after` 的短标点 `content`（如把小数点做成 `content:"."` 的价格 `$`+`1`+`00`）不再被漏成 `$100`，插入条数记在 `--json` 的 `stats.cssGenerated`。只并 1~3 个安全标点，图标字体（`\e900`）、`url()`、`attr()`、`counter()` 一律跳过；外链 CSS 只在浏览器渲染通路和带 `.meta.json` 的落盘文件上抓取。
+- 静态抓取成功但正文极短（< 200 字符且 HTML ≥ 5 KB）时默认报错，提示改用 `--render=always`，避免把应用壳 / 离线页当成正文；确认页面本来就这么短时加 `--allow-empty`。`title` / `skeleton` 不受此检查影响。
 
 ## 为什么是这个选型（结论）
 

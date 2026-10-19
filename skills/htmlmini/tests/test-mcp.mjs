@@ -70,7 +70,8 @@ const urlProps = (urlTool && urlTool.inputSchema && urlTool.inputSchema.properti
 if (!urlProps.proxy || !urlProps.render || !urlProps.headful || !urlProps.chrome_bin) throw new Error('extract_url missing proxy/render/headful/chrome_bin params');
 if (!urlProps.attrs) throw new Error('extract_url missing attrs param');
 if (!urlProps.format || !urlProps.prune_empty) throw new Error('extract_url missing format/prune_empty params');
-console.log('ok - extract_url 含 proxy/render/headful/chrome_bin/attrs/format/prune_empty 参数');
+if (!urlProps.allow_empty) throw new Error('extract_url missing allow_empty param');
+console.log('ok - extract_url 含 proxy/render/headful/chrome_bin/attrs/format/prune_empty/allow_empty 参数');
 
 const MESSY = `<!doctype html><html><head><title>清洗</title><style>a{color:red}</style><script>var x=1;</script></head><body>
 <table class="c"><tr><td colspan="2">A</td></tr></table></body></html>`;

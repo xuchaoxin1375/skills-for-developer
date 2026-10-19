@@ -995,6 +995,129 @@ function buttonName(doc, el) {
  * - 排版选项：compact 压掉源码缩进空白（默认）/ pruneEmpty 顺带剪掉清洗后变空的容器（非默认）
  */
 const SANITIZE_DROP_TAGS = 'script,style,noscript,template,link,meta,base,canvas,svg,path,source,track';
+// ui / semantic 用 textContent 收集文本，script/style 的源码会被当成正文
+// （叶子 div 包一层 script 时尤其明显）。取内容前先删这些非内容标签，与 html 模式同口径。
+const NON_CONTENT_TAGS = 'script,style,noscript,template';
+
+function stripNonContent(doc) {
+  for (const el of doc.querySelectorAll(NON_CONTENT_TAGS)) el.remove();
+}
+
+// CSS 生成内容（::before / ::after 的 content）不在 DOM 文本里，textContent 取不到。
+// 价格/计量类页面常把小数点做成 `content:"."`（DOM 里是 `$`+`1`+`00`），
+// 不并入就会把 $1.00 读成 $100。只并短标点，避免把图标字体的私有区字符塞进正文。
+const CSS_CONTENT_SAFE = /^[\s.,:;/|$%()\[\]-]{1,3}$/;
+const CSS_CONTENT_MAX_INSERTIONS = 500;
+const CSS_MAX_FILES = 5;
+const CSS_MAX_BYTES = 2 * 1024 * 1024;
+
+async function fetchCssText(url, { proxy, timeoutMs = 5000 } = {}) {
+  const proxyUrl = resolveProxy(url, { proxy });
+  const dispatcher = proxyUrl ? proxyDispatcher(proxyUrl) : null;
+  const res = await fetchOnce(url, {
+    headers: { 'user-agent': DEFAULT_UA, accept: 'text/css,*/*;q=0.1' },
+    timeoutMs,
+    dispatcher,
+  });
+  if (!res.ok) return '';
+  // 路径写错时站点常回落到 HTML 首页，别把它当样式表解析。
+  const ct = res.headers.get('content-type') || '';
+  if (/text\/html/i.test(ct)) return '';
+  return decodeHtml(Buffer.from(await res.arrayBuffer()));
+}
+
+/**
+ * 把 ::before / ::after 的短标点 content 并入 DOM 文本。
+ * - 始终读页面自带的 <style>（本地文件也适用）；
+ * - fetchExternal（浏览器渲染通路）时再读外链 CSS，同一代理、限文件数与总字节；
+ * - 只认 1~3 个安全标点，跳过 `\e900` 图标、url()、attr()、counter() 与空串；
+ * - 同一元素同一侧只并一次，避免多条规则重复插入。
+ */
+async function inlineGeneratedContent(document, { baseUrl, fetchExternal = false, proxy, timeoutMs } = {}) {
+  const sheets = [];
+  for (const el of document.querySelectorAll('style')) sheets.push(el.textContent || '');
+  if (fetchExternal && /^https?:/i.test(baseUrl || '')) {
+    // 相对 CSS 路径要按文档的 <base href> 解析（SPA 常用 <base href="/">）。
+    let docBase = baseUrl;
+    const baseHref = document.querySelector('base[href]')?.getAttribute('href');
+    if (baseHref) {
+      try {
+        docBase = new URL(baseHref, baseUrl).href;
+      } catch {
+        docBase = baseUrl;
+      }
+    }
+    let budget = CSS_MAX_BYTES;
+    const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]')].slice(0, CSS_MAX_FILES);
+    for (const link of links) {
+      if (budget <= 0) break;
+      let abs;
+      try {
+        abs = new URL(link.getAttribute('href'), docBase).href;
+      } catch {
+        continue;
+      }
+      if (!/^https?:/i.test(abs)) continue;
+      // 只取同源样式表：跨域 CSS 通常只影响地图/第三方控件，白花抓取时间。
+      try {
+        if (new URL(abs).host !== new URL(baseUrl).host) continue;
+      } catch {
+        continue;
+      }
+      try {
+        const css = await fetchCssText(abs, { proxy, timeoutMs });
+        if (!css || css.length > budget) continue;
+        budget -= css.length;
+        sheets.push(css);
+      } catch {
+        // 样式表取不到不影响正文提取
+      }
+    }
+  }
+  const applied = new WeakMap();
+  let inserted = 0;
+  log.debug('extract', `css sheets=${sheets.length} bytes=${sheets.reduce((n, s) => n + s.length, 0)}`);
+  for (const css of sheets) {
+    if (inserted >= CSS_CONTENT_MAX_INSERTIONS) break;
+    const clean = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rule = /([^{}]+)\{([^{}]*)\}/g;
+    let m;
+    while ((m = rule.exec(clean)) && inserted < CSS_CONTENT_MAX_INSERTIONS) {
+      const cm = /(?:^|;)\s*content\s*:\s*(['"])([\s\S]*?)\1/.exec(m[2]);
+      if (!cm) continue;
+      const value = cm[2];
+      if (!value || !CSS_CONTENT_SAFE.test(value)) continue;
+      for (const rawSelector of m[1].split(',')) {
+        if (inserted >= CSS_CONTENT_MAX_INSERTIONS) break;
+        const sel = rawSelector.trim();
+        const pm = /::?(before|after)\s*$/i.exec(sel);
+        if (!pm) continue;
+        const pos = pm[1].toLowerCase();
+        const base = sel.slice(0, pm.index).trim();
+        if (!base || base.includes('@')) continue;
+        let els;
+        try {
+          els = document.querySelectorAll(base);
+        } catch {
+          continue;
+        }
+        for (const el of els) {
+          const done = applied.get(el) ?? new Set();
+          if (done.has(pos)) continue;
+          done.add(pos);
+          applied.set(el, done);
+          const node = document.createTextNode(value);
+          if (pos === 'before') el.insertBefore(node, el.firstChild);
+          else el.appendChild(node);
+          if (++inserted >= CSS_CONTENT_MAX_INSERTIONS) break;
+        }
+      }
+    }
+  }
+  return inserted;
+}
+
+
 const SANITIZE_KEEP_ATTRS = new Set([
   'href', 'src', 'alt', 'title',
   'colspan', 'rowspan', 'span', 'scope',
@@ -1167,6 +1290,7 @@ export function sanitizeHtml(doc, attrs = 'semantic', { compact = false, pruneEm
  * 传 0 表示不限制（长正文页需要完整段落时用）。
  */
 export function uiSkeleton(doc, { textMax = 150 } = {}) {
+  stripNonContent(doc);
   const out = [];
   const title = safeTitle(doc) || '(no title)';
   out.push(`# ${title}`);
@@ -1327,6 +1451,7 @@ export function uiSkeleton(doc, { textMax = 150 } = {}) {
 
 /** 纯 JS 语义回退：取 main/article/[role=main] 候选区的标题与叶子文本流。 */
 export function semanticFallback(doc) {
+  stripNonContent(doc);
   const root =
     doc.querySelector('main,article,[role="main"]') || doc.querySelector('body') || doc;
   const out = [`# ${safeTitle(doc) || '(no title)'}`];
@@ -1525,7 +1650,7 @@ export function titleFromText(s) {
  * 非 HTML 输入（markdown/纯文本/JSON）任何模式下都透传原文，不硬抽；
  * 强制指定 extractor 时同理（硬把 markdown 当 HTML 解析只会得到空标题）。
  */
-export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, pythonBin } = {}) {
+export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, fetchCss = false, proxy, pythonBin } = {}) {
   if (!EXTRACTORS.includes(extractor)) {
     throw new Error(`unknown extractor "${extractor}"（可选: ${EXTRACTORS.join(', ')}）`);
   }
@@ -1559,6 +1684,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
         outputChars: text.length,
         reductionPct: raw.length ? Math.round((1 - text.length / raw.length) * 1000) / 10 : 0,
         parseMs: Date.now() - t0,
+        cssGenerated: 0,
       },
     };
   };
@@ -1569,6 +1695,11 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   const tParse = Date.now();
   const document = parseOnce(raw);
   log.info('parse', `dom ${fmtMs(Date.now() - tParse)}`);
+
+  // CSS 生成内容先并入 DOM，后续 textContent / Defuddle / ui 都能看到
+  //（价格里用 ::before 画小数点这类页面的主要失真来源）。
+  const cssGenerated = await inlineGeneratedContent(document, { baseUrl: url, fetchExternal: fetchCss, proxy });
+  if (cssGenerated) log.debug('extract', `css-generated text +${cssGenerated}`);
 
   // [extract] 只报一次：sanitize 分支要赶在 pretty 之前先报，所以由分支显式记账。
   const tEngine = Date.now();
@@ -1598,6 +1729,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
         outputChars: content.length,
         reductionPct: html.length ? Math.round((1 - content.length / html.length) * 1000) / 10 : 0,
         parseMs: Date.now() - t0,
+        cssGenerated,
       },
     };
   };
@@ -1719,6 +1851,26 @@ function stripMarkdown(md) {
     .trim();
 }
 
+/**
+ * 正文与 HTML 体积严重不成比例时，多半是客户端渲染的应用壳 / 加载页：
+ * 静态抓取 200 但正文要等水合，或站点直接返回离线页。此时静默输出几十字节
+ * 会让调用方把“壳”当成页面内容，所以默认报错并指向 --render=always；
+ * title / skeleton 只取元数据或大纲，不受此检查约束。
+ */
+export function assertUsableResult(res, htmlChars, { allowEmpty = false, mode = 'markdown' } = {}) {
+  if (allowEmpty || mode === 'title' || mode === 'skeleton') return;
+  if (res.used === 'passthrough') return;
+  const outChars = String(res.content ?? '').length;
+  if (outChars >= 200 || htmlChars < 5000) return;
+  if (outChars / htmlChars >= 0.015) return;
+  const pct = ((outChars / htmlChars) * 100).toFixed(1);
+  throw new Error(
+    `extracted only ${outChars} B from ${fmtBytes(htmlChars)} HTML (${pct}%): the page looks like a client-rendered app shell or loading page. ` +
+      'Retry with --render=always (MCP render:"always") so the body is hydrated before extraction; ' +
+      'pass --allow-empty if the page really is this short.',
+  );
+}
+
 export function renderResult(res, mode) {
   switch (mode) {
     case 'json':
@@ -1735,7 +1887,7 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin } = {}) {
+export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -1743,6 +1895,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
   let src;
   let sibling = null;
   let contentType = null;
+  let rendered = false;
   if (forceContent != null) {
     html = forceContent;
     src = 'content';
@@ -1763,6 +1916,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     html = r.html;
     src = r.source;
     contentType = r.contentType ?? guessContentTypeFromPath(src);
+    rendered = r.rendered === true;
     if (!/^https?:\/\//i.test(src) && src !== 'stdin') {
       sibling = await readSiblingMeta(src);
     }
@@ -1772,7 +1926,8 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (src === 'stdin' || src === 'content' ? src : src.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, ...(pythonBin == null ? {} : { pythonBin }) });
+  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, fetchCss: rendered || Boolean(sibling && /^https?:/i.test(sibling.url)), ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
+  assertUsableResult(res, html.length, { allowEmpty, mode });
   log.debug('extract', `mode=${mode} requested=${res.requested} used=${res.used} reduction=${res.stats.reductionPct}% title="${res.title ?? ''}"`);
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);

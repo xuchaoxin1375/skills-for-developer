@@ -39,6 +39,8 @@ htmlmini "<URL>" -m -o page.md           # 长正文（FAQ、描述），首屏�
 - 坑：只跑 `markdown` 会从第一张功能卡开始，首屏标题与全部定价卡都不在输出里。
 - 坑：卡在 tab 面板或模板里的块（定价卡常见）正文引擎当样板丢，`ui` 与 `html` 能拿到。
 - 坑：`ui` 是清单，正文类文本只到标题；要完整描述还是得 `markdown` / `text`。
+- 坑：价格常把小数点做成 CSS 生成内容（`<span class="cents">00</span>` + `.cents::before{content:"."}`），DOM 文本只有 `100`。htmlmini 会把这种短标点并入文本（`stats.cssGenerated`），但外链 CSS 只在浏览器渲染通路或带 `.meta.json` 的落盘文件上抓取；纯本地 HTML 只读内联 `<style>`。
+- 取价格、库存这类字段时，优先以页面自带的结构化数据（`meta[itemprop=price]`、JSON-LD、接口 JSON）为准；htmlmini 的文本是"渲染后可见文字"，不保证每个数值都完整。
 - 体积量级（同一份营销页实测）：`ui` ≈17 KB、`markdown` ≈42 KB、`html` ≈106 KB、`html --attrs none` ≈91 KB。只作量级参考，随页面变化。
 
 ## 3 面板、仪表盘、设计稿
@@ -56,6 +58,7 @@ htmlmini "<URL>" -m -o page.md           # 长正文（FAQ、描述），首屏�
 - 判据：**渲染后 DOM 有没有**，不是"原始 HTML 有没有"。
 - 命令：`htmlmini "<URL>" --render=always -m -o page.md`（MCP `render:"always"`）。
 - 预期日志：`[read] … via browser render`，以及 `[render] engine=… [proxy: …]`。
+- 不加 `--render` 时，静态 HTML 往往只有应用壳 / 离线页（正文几十字节）。htmlmini 会在正文 < 200 字符且 HTML ≥ 5 KB 时报错并提示 `--render=always`（退出码 1），不再把壳当正文；确认页面本来就这么短才加 `--allow-empty`，`title` / `skeleton` 不触发该检查。
 - 坑：默认 `--render` **只对静态 403/5xx 回退**；静态 200 的页面它仍走静态抓取，不水合，很容易误判成"页面没写"。
 - 坑：渲染后 `ui` 仍缺长正文，通常不是渲染失败，而是 `ui` 的单条长度上限——换 `markdown` / `text` 或加 `--text-max 0`。
 - 要多次复用：先落盘一次 `--render=always --mode html --attrs none -o page.html`，之后 `htmlmini page.html -m` / `-u` 各视图都读本地文件，不必反复启浏览器（单次渲染通常几十秒）。
@@ -114,4 +117,5 @@ htmlmini "<URL>" -m -o page.md           # 长正文（FAQ、描述），首屏�
 - 同一 URL 只联网抓一次，换视图不是重抓的理由。
 - 判断这次到底命中哪个引擎，看 `--json` 的 `used`；记录结果出处时一并记 `version`（`htmlmini --version`）。
 - `ui` 与 `markdown` 互补：前者有首屏与卡片但正文只到标题，后者有长正文但剔除首屏与定价卡。
+- 价格/计量别只看文本：CSS `::before/::after` 的短标点已并入，但图标字体、`url()`、`attr()`、跨源样式与纯静态本地文件仍可能缺字符；核对数值用结构化数据或原始 DOM。
 - 需要排查"是不是内容根本没下发"时，先看案例 4（渲染一次）再看案例 5（内嵌数据），顺序反了会白解码。

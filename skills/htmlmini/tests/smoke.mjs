@@ -60,6 +60,37 @@ const ok = (cond, msg) => {
   ok(u.used === 'ui' && u.content.includes('## 标题'), '强制 ui 返回清单');
 }
 
+// 3b. ui / semantic 不把 script/style 源码当正文（叶子 div 包裹脚本时曾泄漏）。
+{
+  const NON_CONTENT = `<!doctype html><html><head><title>脚本泄漏</title></head><body>
+<div id="wrap"><script>var SECRET_JS = "leak-marker";</script></div>
+<div><style>.x{color:red}</style></div>
+<p>正常段落</p>
+</body></html>`;
+  const u = await extractHtml(NON_CONTENT, { extractor: 'ui', textMax: 0 });
+  ok(!u.content.includes('SECRET_JS') && !u.content.includes('color:red'), 'ui 不含 script/style 源码');
+  ok(u.content.includes('正常段落'), 'ui 仍保留正常段落');
+  const s = await extractHtml(NON_CONTENT, { extractor: 'semantic' });
+  ok(!s.content.includes('SECRET_JS') && !s.content.includes('color:red'), 'semantic 不含 script/style 源码');
+  const auto = await extractHtml(NON_CONTENT);
+  ok(!auto.content.includes('SECRET_JS') && !auto.content.includes('color:red'), `auto 回退到 ${auto.used} 时也不漏`);
+}
+
+// 3c. CSS ::before/::after 的短标点并入文本（价格把小数点做成 content:"." 时不丢）。
+{
+  const SPLIT_PRICE = `<!doctype html><html><head><title>价格</title>
+<style>.price > .cents::before, .price > .cents.alt::before{content:"."} .icon::before{content:"\\e900"}</style></head>
+<body><article><h1>面包</h1><p>正文段落足够长，用于通过语义回退的阈值检查。</p>
+<span class="price"><span class="currency">$</span><span class="units">1</span><span class="cents">00</span> each</span>
+<span class="icon"></span></article></body></html>`;
+  const r = await extractHtml(SPLIT_PRICE, { extractor: 'semantic' });
+  ok(r.content.includes('$1.00'), `CSS 生成的小数点并入文本（实得含 $1.00=${r.content.includes('$1.00')}）`);
+  ok(r.stats.cssGenerated === 1, `stats.cssGenerated 记账（实得 ${r.stats.cssGenerated}）`);
+  ok(!/[\ue000-\uf8ff]/.test(r.content), '图标字体的私有区字符不并入');
+  const u = await extractHtml(SPLIT_PRICE, { extractor: 'ui' });
+  ok(u.content.includes('$1.00'), 'ui 清单同样并入 CSS 生成的小数点');
+}
+
 // 4. 未知 extractor 抛错（中英文提示）。
 {
   let err = null;
@@ -69,6 +100,24 @@ const ok = (cond, msg) => {
     err = e;
   }
   ok(err && /unknown extractor/.test(err.message), '未知 extractor 抛错');
+}
+
+// 4b. 客户端渲染壳：正文与 HTML 体积严重不成比例时默认报错，并指向 --render=always。
+{
+  const SHELL = `<!doctype html><html><head><title>壳页面</title></head><body data-filler="${'x'.repeat(6000)}"><div id="app"></div><p>Loading…</p></body></html>`;
+  let err = null;
+  try {
+    await runExtract(null, 'markdown', { forceContent: SHELL });
+  } catch (e) {
+    err = e;
+  }
+  ok(err && /--render=always/.test(err.message), `应用壳默认报错并指向 --render=always（实得 ${err && err.message.slice(0, 60)}…）`);
+  const allowed = await runExtract(null, 'markdown', { forceContent: SHELL, allowEmpty: true });
+  ok(allowed.includes('Loading'), '--allow-empty 保留原输出');
+  const t = await runExtract(null, 'title', { forceContent: SHELL });
+  ok(t.trim() === '壳页面', 'title 模式不受壳检测影响');
+  const sk = await runExtract(null, 'skeleton', { forceContent: SHELL });
+  ok(typeof sk === 'string', 'skeleton 模式不受壳检测影响');
 }
 
 // 5. 输出模式：json / title / text / skeleton。

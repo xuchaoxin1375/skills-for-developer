@@ -23,7 +23,7 @@ _htmlmini() {
     -o|--output) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
   esac
   if [[ "$cur" == -* ]]; then
-    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --text-max --proxy --noproxy --render --render-always --headful --render-timeout-ms --chrome-bin --python-bin --output --quiet --verbose --list-modes --list-extractors --completion --help --version -V" -- "$cur") )
+    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --text-max --allow-empty --proxy --noproxy --render --render-always --headful --render-timeout-ms --chrome-bin --python-bin --output --quiet --verbose --list-modes --list-extractors --completion --help --version -V" -- "$cur") )
   else
     COMPREPLY=( $(compgen -f -- "$cur") )
   fi

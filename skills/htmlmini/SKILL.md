@@ -105,11 +105,13 @@ Trafilatura 与 save_page 都跑在某个 Python 解释器上，默认取 PATH �
 - CLI 报 `ERR_MODULE_NOT_FOUND` 时是否先按 lockfile 装依赖再重跑，而非改换工具或手写正则抠原文？
 - URL 抓取优先用 `--render` / `render:true` 一条命令（静态优先、403/5xx 自动回退渲染）；手工排查才走双路对照落盘。挑战特征出现才上浏览器，而非 curl 5xx 直接判死？
 - 静态 200 但正文要等水合（客户端渲染页）时，是否用了 `--render=always` / `render:"always"` 强制渲染，而不是断定"静态抓取拿不到就只能解码 state"？
+- 静态抓取只拿到几十字节、日志给出 "client-rendered app shell" 时，是否按提示改 `--render=always`，而不是把这段报错/离线文案当正文总结？（确认页面本来就这么短才用 `--allow-empty`。）
 - 是否按需用 `proxy` 参数或环境代理走指定路线，而非默认直连硬闯？抓取失败先看 `[read] fetching … [proxy: …]`——它写明实际生效的代理与来源（`HTTPS_PROXY`/`--proxy`/`NO_PROXY`/`none`），据此判断是路由不对还是源站问题。
 - 是否把清洗产物当成了采集规则或字段契约的依据（参考对象应为站点本身的接口 JSON、原始 HTML 或渲染后 DOM），或在它上面数 JSON-LD/`__NEXT_DATA__` 这类内嵌数据？
 - 正文只剩区块标题时，是否先按"正文缺失时先查内嵌数据"排查（静态 DOM → JSON-LD → 内联 state → 解码），而不是直接写成"页面未提供"？
 - 判定"页面没有正文"前，是否先渲染一次确认水合后的 DOM（而非只看原始 HTML），并试过 `markdown` / `text`（`ui` 有单条长度上限，默认 150 字符，长段落整条不收；`--text-max 0` 可取消）？
 - 内联 state 解析失败时，是否先确认它是否整块 percent-encoded（`%7B%22` 开头），而不是断言没有内嵌数据？
+- 价格/计量数值与页面观感不符（如 `$100` 实为 `$1.00`）时，是否先想到 CSS `::before/::after` 的 `content` 不进 DOM 文本，并用 `--render=always`（外链 CSS）或结构化数据核对？
 - 排查"这份结果由哪个版本产出"时，是否看了 `htmlmini --version` 或 `--json` 的 `version` 字段（按日期时间，如 `2026.10.19.1750`），而不是猜？
 
 ## 输出后
