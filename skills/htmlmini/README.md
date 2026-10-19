@@ -19,7 +19,7 @@ JS 静态提取这条线上，[Defuddle](https://github.com/kepano/defuddle)（O
 | `Mozilla Readability` / `@extractus/article-extractor` | 经典正文提取 | 下位：保守启发式，代码块/SPA 易损坏 |
 | `Trafilatura`（Python） | 基准测试精度冠军，多语言/元数据强 | 正文质量上位，已作为**可选二级引擎**接入（`pip install trafilatura` 后自动生效，缺席静默跳过；装在非 PATH 环境时用 `--python-bin` / `HTMLMINI_PYTHON` 指定解释器） |
 | `Microsoft MarkItDown`（+ `markitdown-mcp`） | 通用文件转 Markdown（pdf/docx/xlsx/html…） | 更通用但 HTML 去样板弱于 Defuddle；office/pdf 类任务请用它，不归 htmlmini 管 |
-| `Playwright MCP` / Firecrawl / Jina Reader | 浏览器渲染 + 可访问树 / 托管提取 | 动态 JS/强反爬场景的上位，但重（浏览器/付费服务/联网）；htmlmini 只做静态，动态页先走 `resilient-browser-fetch` 渲染再喂给 htmlmini（见"流水线"） |
+| `Playwright MCP` / Firecrawl / Jina Reader | 浏览器渲染 + 可访问树 / 托管提取 | 动态 JS/强反爬场景的上位，但重（浏览器/付费服务/联网）；htmlmini 只做静态，动态页先走 `resilient-browser-fetch` 渲染再喂给 htmlmini（见"流水线"）。第三方与归档辅助路线的免费额度、自托管替代与边界见 [references/aux-readers.md](references/aux-readers.md) |
 | `pandoc` / `html2text` / `inscriptis` | 格式转换 | 只转格式不去样板，省 token 远不如 |
 | `web_fetch` / `web_search`（harness 内建） | 通用抓取与搜索 | 泛抓取兜底：零依赖、保留完整 DOM 顺序，但不剥样板也不做组件清单；取舍见下节 |
 

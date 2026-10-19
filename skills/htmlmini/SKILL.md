@@ -62,7 +62,7 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 
 - **输出只剩区块标题/正文为空**：先判断是否客户端渲染；是则按[案例 4](references/usage-cases.md#4-静态-200正文要水合)用 `--render=always` 渲染一次，确认水合后的 DOM 有没有正文。仍为空（或本来就是静态页）再按[案例 5](references/usage-cases.md#5-输出只剩区块标题)查 JSON-LD 与内联 state。任何模式的输出都不含 `<script>`，"输出里没有"不等于"页面里没有"。
 - **`ui` 清单末尾被截断或长段落整条缺失**：预算与长文本上限见[案例 3](references/usage-cases.md#3-面板仪表盘设计稿)；换 `markdown` / `text`，或按锚点切出目标片段再喂一次 `ui`。
-- **403/5xx/挑战页**：先加 `--render`，静态失败才回退浏览器；静态 200 但仍被挑战或需要求解时，走 `resilient-browser-fetch` 的 save_page 落盘后再提取。渲染链与 Python 解释器选择见[案例 6](references/usage-cases.md#6-静态-4035xx-或挑战特征)。404/超时/断网直接报错。
+- **403/5xx/挑战页**：先加 `--render`，静态失败才回退浏览器；静态 200 但仍被挑战或需要求解时，走 `resilient-browser-fetch` 的 save_page 落盘后再提取。渲染链与 Python 解释器选择见[案例 6](references/usage-cases.md#6-静态-4035xx-或挑战特征)。本地引擎与有头浏览器都不行、或页面需要你的登录态时，用自己浏览器导出 HTML 再提取；第三方 reader 与归档辅助路线（含免费额度与边界）见 [references/aux-readers.md](references/aux-readers.md)，使用前需用户同意。404/超时/断网直接报错。
 - **价格/计量与页面观感不符**：优先用 JSON-LD、`itemprop` 或接口 JSON 核对；CSS 生成内容的限制见[案例 2](references/usage-cases.md#2-营销--产品--定价页)。
 - **SPA 渲染后仍缺字段或只有展示值**：查页面自己的后端接口（[案例 11](references/usage-cases.md#11-后端接口--xhr-数据源)），用返回 JSON 核对；不猜路径、不读整份 JS。
 
