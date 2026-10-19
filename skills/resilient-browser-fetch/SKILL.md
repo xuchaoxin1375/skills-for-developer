@@ -128,6 +128,17 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 - `auto`：默认。按上表从低到高、只对已安装的引擎升档；缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。指定 `--engine <层>` 时缺件直接失败，便于排障。
 - 先信任低层：静态页在层 0 就是毫秒级，不要为了"稳"直接开层 2。命中挑战特征或空页才升档。
 - 层 0 被 TLS/客户端指纹检查挡住时（同一 URL 对 Python 栈直接 403、连接重置或只回空壳），先装推荐的 `curl_cffi` 再加 `--impersonate chrome124` 重试；它只改 TLS/HTTP2 指纹（可过部分站点的客户端检查），**不解 JS 挑战**，挑战仍需层 2。目标写具体版本（`chrome124`/`chrome136`/`safari184` 等）而不是 `chrome` 这类滚动别名，别名指向的 Chrome 版本会随 curl_cffi 升级漂移、不便复现；未装 `curl_cffi` 或目标非法时该参数直接报错，不会静默退回 stdlib 指纹。浏览器层自带指纹，传了会告警忽略。
+
+各层默认发出的身份头不同（实测），用 `--user-agent`、`--referer <完整 http(s) URL>`、`--no-referer` 显式改写：
+
+| 层 | 默认 User-Agent | 默认 Referer |
+| --- | --- | --- |
+| 0 `static` | 固定 `Windows Chrome/124` 串 | 无 |
+| 0 `static --impersonate` | 跟随目标版本（如 `chrome136` 的 macOS Chrome/136）；只有显式 `--user-agent` 才覆盖 | 无 |
+| 1 `playwright` | 浏览器真实 UA；无头时带 `HeadlessChrome` 标记 | 无 |
+| 2/3 `scrapling` / `cloak-cdp` | Scrapling 生成的真实浏览器 UA | `https://www.google.com/`（Scrapling 的 `google_search` 默认开启） |
+
+`--referer` 管 HTTP 头、`--impersonate` 管 TLS/HTTP2 指纹，两者独立；层 2/3 用 `--no-referer` 会关掉 Google referer，用 `--referer` 会覆盖它。批量会话同名可用（`StaticSessionOptions.user_agent`/`referer`、`BrowserSessionOptions.user_agent`/`referer`、`SiteSessionOptions.useragent`/`referer`）。
 - 层 0 对客户端渲染站可能只拿到 JS 空壳（正文由脚本注入），默认宽松校验不会拦它。已知目标是 SPA/客户端渲染时，直接指定 `--engine playwright`，或给层 0 加 `--expect-text`/`--wait-selector` 让空壳被判失败后自动升档。
 - `scrapling`：挑战求解主力，使用 `StealthyFetcher.fetch(..., solve_cloudflare=True)`，负责识别、点击、等待与内容返回。
 - `cloak-cdp`：由 CloakBrowser 启动带代理的 Chromium，再把本机 `ws://` CDP 地址交给 `StealthyFetcher.async_fetch`；它需要层 2 的依赖，不是层 2 的替代品。

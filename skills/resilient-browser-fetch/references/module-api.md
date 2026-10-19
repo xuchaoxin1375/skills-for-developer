@@ -56,6 +56,7 @@ flowchart TD
 - 状态码不单独判拦截：403 且正文无拦截特征、长度达标、调用方期望文本命中时按可用内容接受，并在 `result.notes` 记 `http_status:403:accepted_by_content`；其余 4xx/5xx 仍失败。
 - `wait_until` 决定取源码与关闭窗口的时机（层 1/2/3）：`commit` / `domcontentloaded` / `load`(默认) / `networkidle`；层 2/3 把前两者映射为 Scrapling 的 `load_dom=False`。
 - `impersonate` 只作用于层 0：非空时改用 curl_cffi 以浏览器同族的 TLS/HTTP2 指纹出网（需安装 curl_cffi，否则构造 `FetchOptions` 即报错），结果里记 `notes: impersonate:<目标>`；浏览器层自带指纹，传了会告警忽略。
+- `user_agent` / `referer` 控制身份头：`user_agent` 覆盖各层默认 UA（层 0 只有显式给出时才覆盖 impersonate 目标的 UA，避免 TLS/UA 版本矛盾）；`referer` 为 `None` 时保留各层默认（层 2/3 默认是 Scrapling 带来的 `https://www.google.com/`），空串表示显式不发，非空必须是完整 http(s) URL。含换行的 UA 或非法 URL 在构造 `FetchOptions` 时即报错。
 - `fetch_page()` 不写业务文件；`save_page()` 才拥有文件副作用。
 
 ## 获取页面但不写文件
@@ -69,6 +70,8 @@ options = FetchOptions(
     timeout_ms=300_000,
     wall_timeout_ms=600_000,
     wait_until="load",          # commit | domcontentloaded | load | networkidle
+    user_agent=None,            # None=各层默认；层 0 显式设置时才覆盖 impersonate 的 UA
+    referer=None,               # None=各层默认；""=显式不发(层 2/3 会关掉 Google referer)
     expected_texts=("Example Domain",),
 )
 
@@ -157,7 +160,7 @@ async with StaticBatchSession(options) as site:
 - 没有 DOM 引擎：`expected_selector` 直接报错，`wait_selector` 忽略并告警，严格检查请用 `expected_texts`；
 - 并发受 `concurrency` 信号量约束，每页各自有 `wall_timeout_ms` 硬超时；超时抛 `PageTimeoutError`；
 - `timeout_ms` 是单次 HTTP 超时，没有浏览器那套 60000 ms 下限，默认 30 秒；
-- `impersonate` 可选，语义与 `FetchOptions.impersonate` 相同：非空时整批都走 curl_cffi 的 TLS/HTTP2 伪装，未安装 curl_cffi 或目标非法会在构造 `StaticSessionOptions` 时直接报错。
+- `impersonate` 可选，语义与 `FetchOptions.impersonate` 相同：非空时整批都走 curl_cffi 的 TLS/HTTP2 伪装，未安装 curl_cffi 或目标非法会在构造 `StaticSessionOptions` 时直接报错；`user_agent` / `referer` 同样透传给层 0（`referer=""` 表示整批不发 Referer）。
 
 ## 层 1 浏览器批量会话
 
@@ -176,6 +179,8 @@ options = BrowserSessionOptions(
     timeout_ms=60_000,
     wall_timeout_ms=90_000,
     post_wait_ms=1_500,        # 客户端渲染内容出现前的额外等待
+    user_agent=None,           # 覆盖浏览器真实 UA(默认无头会带 HeadlessChrome 标记)
+    referer=None,              # 设置时作为每页导航的 Referer
 )
 
 async with BrowserBatchSession(options) as site:
@@ -195,7 +200,7 @@ async with BrowserBatchSession(options) as site:
 
 `site_session` 的主要类型（层 2+：带挑战监视与重验证屏障，需要 scrapling）：
 
-- `SiteSessionOptions`：绑定首页、代理、profile、并发、超时和浏览器身份。
+- `SiteSessionOptions`：绑定首页、代理、profile、并发、超时和浏览器身份（`useragent`、`referer`；本会话默认关闭 Scrapling 的 `google_search`，所以 Referer 只有调用方这一个来源）。
 - `SiteRequest`：描述一个同源 URL。默认只使用状态码、挑战特征、最小正文大小和最终 origin 做基础检查；`expected_texts`、`expected_selector`、`wait_selector`、`case_sensitive=True` 和 `require_same_path=True` 都是调用者显式启用的严格条件。
 - `SiteSessionManager`：异步上下文管理器；提供 `warmup()`、`fetch()` 和 `fetch_many()`。
 - `ChallengeEvent`：挑战监视器通知；有头模式下调用者提醒用户操作同一个窗口。检测到挑战时会打印"最多等待 N 秒"，验证通过后打印"浏览器验证已通过(等待 X 秒)，继续会话"，让操作者知道窗口在等他而不是卡住了。
@@ -212,6 +217,7 @@ options = SiteSessionOptions(
     concurrency=2,
     timeout_ms=300_000,
     wall_timeout_ms=330_000,
+    referer="https://example.org/from",   # 可选：本会话默认不发 Google referer
 )
 
 async with SiteSessionManager(options) as site:

@@ -18,7 +18,7 @@
 2. 只创建一个浏览器会话，先单路访问站点首页。默认使用状态码、挑战特征、正文大小和最终 origin 做基础确认；只有用户要求严格检查时才增加固定标题、选择器、业务文本或路径断言。
 3. 设置一个预热屏障：只有首页验证成功后，才创建其他 tab 或启动并发任务。预热失败时不要放开并发。
 4. 请求 sitemap 时，按“首页 → sitemap index → 子 sitemap → 详情页”的顺序执行。不要把 `/sitemap.xml` 作为新会话的首个验证页面。
-5. 后续请求继续使用相同 browser/context、代理、locale、timezone 和 User-Agent。`SiteSessionManager` 先执行不带求解等待的轻量子页面导航；若返回内容出现挑战特征，再暂停新任务、重新预热并以 `solve_cloudflare=True` 重试该页。
+5. 后续请求继续使用相同 browser/context、代理、locale、timezone 和 User-Agent（需要时由 `useragent`/`referer` 选项统一指定，会话内不要中途更换身份）。`SiteSessionManager` 先执行不带求解等待的轻量子页面导航；若返回内容出现挑战特征，再暂停新任务、重新预热并以 `solve_cloudflare=True` 重试该页。
 6. 任务完成后再关闭整个会话，不要为每个 URL 创建并销毁浏览器。并发数应小于等于 `max_pages`，并按站点容量设置较小上限。
 
 Cloudflare cookie 可能与域名、出口 IP 和浏览器指纹绑定。跨 origin 或跨子域不保证共享验证成果；必要时为每个需要独立验证的 origin 分别预热。
