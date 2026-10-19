@@ -81,6 +81,7 @@ curl 默认不会把 HTTP 403 判为进程失败，下载交付可用 `--fail` �
 | DNS、连接或 TLS 握手失败，HTTP 尚未返回 | 核验代理协议/地址、解析、证书和出口；对同一公开目标做有界的另一条路线对照，不凭一次失败断言整个网络故障 |
 | 已连接但读取超时/大文件慢 | 检查文件大小、下载进展、上游速度和总耗时；仅有依据时调整期限或采用支持的续传 |
 | HTTP 401/403，正文提示权限或登录 | 检查认证、资源权限和目标 URL；代理/镜像不能修复凭据或授权，停止重复请求 |
+| HTTP 403，正文只有简短 Forbidden，无挑战/登录/限流特征 | 先排除只按请求头拦截：同一路线补 `User-Agent`、`Accept`、`Accept-Language`、`Referer` 重测一次；200 即沿用该请求头。仍 403 再按权限、WAF/挑战或限流分流 |
 | HTTP 403，正文为 WAF/挑战/区域拦截 | 保留失败来源与页面信息；确需渲染取证时转 `resilient-browser-fetch`，不默认套 GitHub 加速前缀 |
 | HTTP 403/429 且正文或响应头明确提示限流 | 遵守 `Retry-After`、供应商重置时间和共享冷却；按 `agentic-web-search` 调度，不换出口绕过 |
 | HTTP 5xx（含 500/502/503/504 及 Cloudflare 520 系） | 简头 curl 的 5xx 可能是反爬指纹拦截，不是源站死的充分证据。先保留状态码、正文与 `cf-ray`/`server` 头等证据，再换出口有界对照一次（直连↔代理，沿用“有界诊断与超时”的单次上限，不叠加自动重试）；另一路成功即沿用该路。两路一致 5xx 时补一次异构对照：补全浏览器头（Accept/Accept-Language/Upgrade-Insecure-Requests/Sec-Fetch-*）重测，或同路线 `curl_cffi`，或真实浏览器；出现 302 跳 `/_sc/challenge`、`/_sec/`、`challenge`、`captcha`、`turnstile`，或 403 带 `sct`/`cf_clearance` cookie、`X-Robots-Tag: noindex`，即按挑战页转 `resilient-browser-fetch`。异构仍 5xx 才判源站故障并记录，不逐个出口轮询，不转镜像加速 |

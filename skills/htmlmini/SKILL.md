@@ -19,6 +19,7 @@ description: >
 - 总结、分析、审查 HTML 文件或网页，包括本地设计稿、面板、仪表盘、页面源码。
 - 带 URL 或页面做取数：表格、榜单、分数、规格、价格等。先提取核对覆盖度，再回答。
 - 需要组件清单、页面结构、落盘复用，或正文要渲染后才出现。
+- 页面由后端接口供数（SPA、白标商城、后台面板），要完整字段或核对展示值：先提取可见内容，再按[案例 11](references/usage-cases.md#11-后端接口--xhr-数据源)查接口 JSON。
 
 先考虑其他能力：
 
@@ -63,6 +64,7 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 - **`ui` 清单末尾被截断或长段落整条缺失**：预算与长文本上限见[案例 3](references/usage-cases.md#3-面板仪表盘设计稿)；换 `markdown` / `text`，或按锚点切出目标片段再喂一次 `ui`。
 - **403/5xx/挑战页**：先加 `--render`，静态失败才回退浏览器；静态 200 但仍被挑战或需要求解时，走 `resilient-browser-fetch` 的 save_page 落盘后再提取。渲染链与 Python 解释器选择见[案例 6](references/usage-cases.md#6-静态-4035xx-或挑战特征)。404/超时/断网直接报错。
 - **价格/计量与页面观感不符**：优先用 JSON-LD、`itemprop` 或接口 JSON 核对；CSS 生成内容的限制见[案例 2](references/usage-cases.md#2-营销--产品--定价页)。
+- **SPA 渲染后仍缺字段或只有展示值**：查页面自己的后端接口（[案例 11](references/usage-cases.md#11-后端接口--xhr-数据源)），用返回 JSON 核对；不猜路径、不读整份 JS。
 
 ## 输出后
 
@@ -77,10 +79,11 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 - 目标块在静态 DOM 且只要摘要时，是否先用 `web_fetch`？
 - 同一 URL 是否只抓一次，后续模式复用落盘文件？
 - 客户端渲染页空输出时，是否先 `--render=always`、再查内嵌数据，而不是写成“页面未提供”？
+- 字段不全或数值可疑时，是否核对页面自带的结构化数据/接口 JSON，而不是只信渲染文本或猜接口？
 - 写选择器/字段契约时，是否只对照原始 HTML 或真实渲染 DOM？
 
 ## 按需深入
 
-- [references/usage-cases.md](references/usage-cases.md)：按页面类型与症状取命令。文章 1、营销/定价 2、面板 3、水合 4、内嵌数据 5、403/5xx 6、批量 7、大纲 8、结构 9、非 HTML 10。
+- [references/usage-cases.md](references/usage-cases.md)：按页面类型与症状取命令。文章 1、营销/定价 2、面板 3、水合 4、内嵌数据 5、403/5xx 6、批量 7、大纲 8、结构 9、非 HTML 10、后端接口 11。
 - [README.md](README.md)：安装、模式与体积对照、与内建 fetch 的取舍、日志、MCP、架构。
 - 同站批量渲染与并发：`resilient-browser-fetch` 的 `references/batch-workflows.md`。
