@@ -33,6 +33,7 @@ from resilient_fetch import (
     discover_local_proxy,
     fetch_with_static,
     redact_proxy,
+    validate_identity_headers,
     validate_impersonate,
     validation_reasons,
     wait_for_proxy,
@@ -78,6 +79,8 @@ class StaticSessionOptions:
     min_bytes: int = 300
     expected_home_texts: tuple[str, ...] = ()
     locale: str | None = None
+    user_agent: str | None = None
+    referer: str | None = None
     impersonate: str | None = None
 
     def __post_init__(self) -> None:
@@ -99,6 +102,7 @@ class StaticSessionOptions:
         if self.min_bytes < 1:
             raise ValueError("min_bytes 必须大于 0。")
         validate_impersonate(self.impersonate)
+        validate_identity_headers(self.user_agent, self.referer)
 
 
 class StaticBatchSession:
@@ -251,6 +255,8 @@ class StaticBatchSession:
                     "retries": self.options.retries,
                     "retry_delay": self.options.retry_delay,
                     "locale": self.options.locale,
+                    "user_agent": self.options.user_agent,
+                    "referer": self.options.referer,
                     "impersonate": self.options.impersonate,
                 }
             )

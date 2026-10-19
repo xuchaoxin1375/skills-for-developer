@@ -322,3 +322,34 @@ def test_options_reject_invalid_lifecycle_limits(overrides: dict[str, Any]) -> N
     values.update(overrides)
     with pytest.raises(ValueError):
         subject.SiteSessionOptions(**values)
+
+
+@pytest.mark.asyncio
+async def test_session_kwargs_carry_referer_and_useragent() -> None:
+    home = "https://example.com/"
+    session = FakeSession({home: [normal_response(home, "Home")]}, delay=0.0)
+    factory = FakeFactory(session)
+    configured = subject.SiteSessionOptions(
+        **{
+            **options().__dict__,
+            "referer": "https://example.org/from",
+            "useragent": "ProbeUA/1.0",
+        }
+    )
+
+    async with subject.SiteSessionManager(configured, session_factory=factory) as site:
+        await site.warmup()
+
+    assert factory.kwargs["useragent"] == "ProbeUA/1.0"
+    assert factory.kwargs["extra_headers"] == {"Referer": "https://example.org/from"}
+    assert factory.kwargs["google_search"] is False, "会话内 Referer 只有调用方这一个来源"
+
+
+def test_referer_must_be_absolute_http_url() -> None:
+    with pytest.raises(ValueError, match="referer"):
+        subject.SiteSessionOptions(
+            home_url="https://example.com/",
+            timeout_ms=60_000,
+            wall_timeout_ms=60_000,
+            referer="example.org/from",
+        )

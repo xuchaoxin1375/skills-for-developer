@@ -302,3 +302,39 @@ def test_fetch_blocking_passes_impersonate_to_static_engine(
     session._fetch_blocking(subject.SiteRequest("http://127.0.0.1:1/page"))
 
     assert seen and seen[0]["impersonate"] == "chrome124"
+
+
+def test_fetch_blocking_passes_identity_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[dict[str, Any]] = []
+
+    def fake_fetch(config: dict[str, Any]) -> Any:
+        seen.append(config)
+        return subject.FetchResult(
+            engine="static",
+            url=config["url"],
+            final_url=config["url"],
+            status=200,
+            html="<html><title>OK</title><body>正文内容足够长可以被识别为业务主体。</body></html>",
+            elapsed_sec=0.0,
+        )
+
+    monkeypatch.setattr(subject, "fetch_with_static", fake_fetch)
+    session = subject.StaticBatchSession(
+        subject.StaticSessionOptions(
+            home_url="http://127.0.0.1:1/",
+            user_agent="ProbeUA/1.0",
+            referer="https://example.org/from",
+        )
+    )
+
+    session._fetch_blocking(subject.SiteRequest("http://127.0.0.1:1/page"))
+
+    assert seen[0]["user_agent"] == "ProbeUA/1.0"
+    assert seen[0]["referer"] == "https://example.org/from"
+
+
+def test_options_reject_invalid_identity_headers() -> None:
+    with pytest.raises(ValueError, match="referer"):
+        subject.StaticSessionOptions(home_url="http://127.0.0.1:1/", referer="not-a-url")
+    with pytest.raises(ValueError, match="user_agent"):
+        subject.StaticSessionOptions(home_url="http://127.0.0.1:1/", user_agent="bad\nua")

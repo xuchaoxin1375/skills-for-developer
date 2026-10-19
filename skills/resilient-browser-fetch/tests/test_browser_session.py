@@ -336,3 +336,20 @@ def test_screenshot_slug_is_filesystem_safe() -> None:
     slug = subject.request_slug("https://site.test/a/b?c=1#d")
     assert slug == "site.test_a_b"
     assert subject.request_slug("https://site.test/") == "site.test_index"
+
+
+def test_browser_session_applies_identity_headers() -> None:
+    session = subject.BrowserBatchSession(
+        subject.BrowserSessionOptions(
+            home_url="https://site.test/",
+            user_agent="ProbeUA/1.0",
+            referer="https://example.org/from",
+        )
+    )
+
+    assert session._context_kwargs() == {"user_agent": "ProbeUA/1.0"}, "UA 走 context"
+
+    with pytest.raises(ValueError, match="referer"):
+        subject.BrowserSessionOptions(home_url="https://site.test/", referer="example.org/from")
+    with pytest.raises(ValueError, match="user_agent"):
+        subject.BrowserSessionOptions(home_url="https://site.test/", user_agent="bad\nua")

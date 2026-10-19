@@ -45,6 +45,7 @@ from resilient_fetch import (
     package_versions,
     playwright_api_name,
     redact_proxy,
+    validate_identity_headers,
     validation_reasons,
     wait_for_manual_verification_async,
     wait_for_proxy,
@@ -93,6 +94,8 @@ class BrowserSessionOptions:
     home_wait_selector: str | None = None
     locale: str | None = None
     timezone: str | None = None
+    user_agent: str | None = None
+    referer: str | None = None
     headless: bool = True
     challenge_wait_ms: int = 0
     network_idle: bool = False
@@ -125,6 +128,7 @@ class BrowserSessionOptions:
             raise ValueError("challenge_wait_ms 需要 headless=False 才能人工过验证，无头模式下无意义。")
         if self.post_wait_ms < 0:
             raise ValueError("post_wait_ms 不得为负数。")
+        validate_identity_headers(self.user_agent, self.referer)
 
 
 class BrowserBatchSession:
@@ -312,11 +316,13 @@ class BrowserBatchSession:
         page = await context.new_page()
         try:
             try:
-                response = await page.goto(
-                    request.url,
-                    timeout=self.options.timeout_ms,
-                    wait_until="load",
-                )
+                goto_kwargs: dict[str, Any] = {
+                    "timeout": self.options.timeout_ms,
+                    "wait_until": "load",
+                }
+                if self.options.referer:
+                    goto_kwargs["referer"] = self.options.referer
+                response = await page.goto(request.url, **goto_kwargs)
             except Exception as exc:
                 raise self._as_fetch_error(request.url, exc) from exc
             if self.options.network_idle:
@@ -439,6 +445,8 @@ class BrowserBatchSession:
             kwargs["locale"] = self.options.locale
         if self.options.timezone:
             kwargs["timezone_id"] = self.options.timezone
+        if self.options.user_agent:
+            kwargs["user_agent"] = self.options.user_agent
         return kwargs
 
     def _validation_reasons(self, request: SiteRequest, result: FetchResult) -> list[str]:

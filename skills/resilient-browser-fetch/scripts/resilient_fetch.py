@@ -114,6 +114,7 @@ __all__ = [
     "playwright_api_name",
     "reset_availability_cache",
     "save_page",
+    "validate_identity_headers",
     "validate_impersonate",
 ]
 
@@ -173,6 +174,8 @@ class FetchOptions:
     min_bytes: int = 300
     locale: str | None = None
     timezone: str | None = None
+    user_agent: str | None = None
+    referer: str | None = None
     geoip: bool = False
     humanize: bool = False
     hide_canvas: bool = False
@@ -618,17 +621,25 @@ def static_proxy_map(proxy: str | None) -> dict[str, str]:
 
 
 def curl_cffi_get(config: dict[str, Any], target: str) -> Any:
-    """Perform one curl_cffi request with the requested TLS/HTTP2 fingerprint."""
+    """Perform one curl_cffi request with the requested TLS/HTTP2 fingerprint.
+
+    只覆盖调用方显式指定的头: UA 交给 impersonate 目标决定, 避免 TLS 说 Chrome136、UA 说
+    Chrome124 的自相矛盾; Referer 仅在给出时附加。
+    """
 
     from curl_cffi import requests as curl_requests
 
-    headers = dict(STATIC_HEADERS)
+    headers: dict[str, str] = {}
+    if config.get("user_agent"):
+        headers["User-Agent"] = str(config["user_agent"])
     if config.get("locale"):
         headers["Accept-Language"] = str(config["locale"])
+    if config.get("referer"):
+        headers["Referer"] = str(config["referer"])
     proxy = config.get("proxy")
     return curl_requests.get(
         config["url"],
-        headers=headers,
+        headers=headers or None,
         proxies={"http": proxy, "https": proxy} if proxy else None,
         timeout=max(config["timeout_ms"] / 1000, 1.0),
         impersonate=target,
@@ -726,8 +737,12 @@ def fetch_with_static(config: dict[str, Any]) -> FetchResult:
         return fetch_with_static_curl_cffi(config, started)
 
     headers = dict(STATIC_HEADERS)
+    if config.get("user_agent"):
+        headers["User-Agent"] = str(config["user_agent"])
     if config.get("locale"):
         headers["Accept-Language"] = str(config["locale"])
+    if config.get("referer"):
+        headers["Referer"] = str(config["referer"])
     opener = build_opener(ProxyHandler(static_proxy_map(proxy)))
     timeout = max(config["timeout_ms"] / 1000, 1.0)
     last_error: Exception | None = None
@@ -810,6 +825,8 @@ def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str
         context_kwargs["locale"] = config["locale"]
     if config.get("timezone"):
         context_kwargs["timezone_id"] = config["timezone"]
+    if config.get("user_agent"):
+        context_kwargs["user_agent"] = str(config["user_agent"])
     profile_dir = Path(config["profile_dir"]) / "playwright" if config.get("profile_dir") else None
     screenshot = Path(config["screenshot"]) if config.get("screenshot") else None
     if screenshot:
@@ -828,7 +845,10 @@ def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str
         try:
             page = context.new_page()
             wait_until = config.get("wait_until") or DEFAULT_WAIT_UNTIL
-            response = page.goto(config["url"], timeout=timeout_ms, wait_until=wait_until)
+            goto_kwargs: dict[str, Any] = {"timeout": timeout_ms, "wait_until": wait_until}
+            if config.get("referer"):
+                goto_kwargs["referer"] = str(config["referer"])
+            response = page.goto(config["url"], **goto_kwargs)
             if config.get("network_idle") and wait_until != "networkidle":
                 page.wait_for_load_state("networkidle", timeout=timeout_ms)
             # 层 1 没有求解器，但有人: 有头模式先给人时间过验证，再等选择器/截图/取源码，
@@ -920,6 +940,15 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
     }
     if config.get("network_idle"):
         kwargs["network_idle"] = True
+    if config.get("user_agent"):
+        kwargs["useragent"] = str(config["user_agent"])
+    referer = config.get("referer")
+    if referer:
+        # 实测 extra_headers 的 Referer 会覆盖 google_search 带来的 Google referer。
+        kwargs["extra_headers"] = {"Referer": str(referer)}
+    elif referer == "":
+        # 显式不发 Referer: 必须关掉 google_search, 否则会静默带上 Google referer。
+        kwargs["google_search"] = False
     if config.get("wait_selector"):
         kwargs["wait_selector"] = config["wait_selector"]
         kwargs["wait_selector_state"] = "visible"
@@ -1351,6 +1380,17 @@ def validate_impersonate(target: str | None) -> None:
         )
 
 
+def validate_identity_headers(user_agent: str | None, referer: str | None) -> None:
+    """Reject identity header values that are malformed or could inject extra headers."""
+
+    if user_agent is not None and (not user_agent.strip() or "\n" in user_agent or "\r" in user_agent):
+        raise ValueError("user_agent 不能为空或包含换行符。")
+    if referer:
+        parsed = urlparse(referer)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("referer 必须是完整的 http(s) URL；要显式不发 Referer 请传空串。")
+
+
 def probe_static() -> EngineAvailability:
     """Report the stdlib HTTP engine, which works without any third-party package."""
 
@@ -1563,6 +1603,7 @@ def validate_options(options: FetchOptions) -> None:
             f"未知 wait_until: {options.wait_until} (可选: {', '.join(WAIT_UNTIL_CHOICES)})"
         )
     validate_impersonate(options.impersonate)
+    validate_identity_headers(options.user_agent, options.referer)
     if options.impersonate and options.engine not in {"auto", "static"}:
         logging.warning(
             "--impersonate 只作用于层 0(static)；%s 由浏览器自己完成 TLS 指纹，已忽略该参数。",
@@ -1642,6 +1683,8 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "challenge_wait_ms": options.challenge_wait_ms,
         "locale": options.locale,
         "timezone": options.timezone,
+        "user_agent": options.user_agent,
+        "referer": options.referer,
         "geoip": options.geoip,
         "humanize": options.humanize,
         "hide_canvas": options.hide_canvas,
@@ -1923,6 +1966,27 @@ def main(argv: list[str] | None = None) -> int:
             "但不解 JS 挑战。浏览器层自带指纹，会告警忽略。"
         ),
     )
+    parser.add_argument(
+        "--user-agent",
+        help=(
+            "覆盖各层默认 User-Agent。默认: 层 0 用固定 Chrome/124 串、层 1 用浏览器真实 UA"
+            "(无头会带 HeadlessChrome 标记)、层 2/3 由 Scrapling 生成；与 --impersonate 同用时"
+            "以本参数为准，否则层 0 让 impersonate 目标决定 UA，避免版本自相矛盾。"
+        ),
+    )
+    referer_group = parser.add_mutually_exclusive_group()
+    referer_group.add_argument(
+        "--referer",
+        help=(
+            "发送指定 Referer(完整 http(s) URL)。层 0 加请求头、层 1 为导航带 referer、"
+            "层 2/3 走 extra_headers 并覆盖 Scrapling 默认的 Google referer。"
+        ),
+    )
+    referer_group.add_argument(
+        "--no-referer",
+        action="store_true",
+        help="显式不发送 Referer；层 2/3 会同时关掉 Scrapling 默认的 Google referer。",
+    )
     parser.add_argument("--screenshot", help="验证完成后保存全页截图。")
     parser.add_argument("--allow-direct", action="store_true", help="代理不可达时允许直连。")
     parser.add_argument("--verbose", action="store_true")
@@ -1961,6 +2025,8 @@ def main(argv: list[str] | None = None) -> int:
         min_bytes=args.min_bytes,
         locale=args.locale,
         timezone=args.timezone,
+        user_agent=args.user_agent,
+        referer="" if args.no_referer else args.referer,
         geoip=args.geoip,
         humanize=args.humanize,
         hide_canvas=args.hide_canvas,

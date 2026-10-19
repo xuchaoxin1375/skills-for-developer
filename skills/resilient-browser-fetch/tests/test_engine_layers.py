@@ -229,6 +229,140 @@ def test_static_curl_cffi_path_reports_last_error_after_retries(
         )
 
 
+def test_playwright_applies_user_agent_and_referer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = FakePlaywrightPage()
+    monkeypatch.setattr(subject, "playwright_api_name", lambda: "playwright")
+    monkeypatch.setattr(subject, "load_playwright_factory", lambda: fake_playwright_factory(page))
+
+    subject.render_with_playwright(
+        {
+            "url": "https://example.com/app",
+            "timeout_ms": 5_000,
+            "headful": False,
+            "proxy": None,
+            "user_agent": "ProbeUA/1.0 (+https://example.org/bot)",
+            "referer": "https://example.org/from",
+        }
+    )
+
+    assert page.context_kwargs["user_agent"] == "ProbeUA/1.0 (+https://example.org/bot)"
+    assert page.goto_kwargs["referer"] == "https://example.org/from"
+
+
+def test_identity_header_validation_rejects_bad_values() -> None:
+    subject.validate_identity_headers(None, None)
+    subject.validate_identity_headers("ProbeUA/1.0", "")
+    subject.validate_identity_headers(None, "https://example.org/from")
+
+    with pytest.raises(ValueError, match="user_agent"):
+        subject.validate_identity_headers("bad\nUA", None)
+    with pytest.raises(ValueError, match="user_agent"):
+        subject.validate_identity_headers("   ", None)
+    with pytest.raises(ValueError, match="referer"):
+        subject.validate_identity_headers(None, "example.org/from")
+    with pytest.raises(ValueError, match="referer"):
+        subject.validate_options(
+            subject.FetchOptions(url="https://example.com", referer="ftp://example.org/")
+        )
+
+
+def test_static_engine_sends_configured_user_agent_and_referer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, str] = {}
+
+    def fake_request(opener: Any, url: str, headers: dict[str, str], timeout: float) -> Any:
+        seen.update(headers)
+        return 200, url, b"<html><title>Local</title></html>", "text/html", None
+
+    monkeypatch.setattr(subject, "static_request", fake_request)
+
+    subject.fetch_with_static(
+        static_config(
+            "http://example.com/",
+            user_agent="ProbeUA/1.0",
+            referer="https://example.org/from",
+        )
+    )
+    assert seen["User-Agent"] == "ProbeUA/1.0"
+    assert seen["Referer"] == "https://example.org/from"
+    assert seen["Connection"] == "close", "未指定的默认头保持不变"
+
+    seen.clear()
+    subject.fetch_with_static(static_config("http://example.com/"))
+    assert seen["User-Agent"] == subject.STATIC_USER_AGENT
+    assert "Referer" not in seen, "默认不发 Referer"
+
+
+def test_curl_cffi_headers_only_override_what_callers_asked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    curl_requests = pytest.importorskip("curl_cffi.requests")
+    captured: dict[str, Any] = {}
+
+    class FakeResponse:
+        status_code = 200
+        url = "https://example.com/"
+        text = "<html><title>OK</title></html>"
+
+    def fake_get(url: str, **kwargs: Any) -> Any:
+        captured.clear()
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(curl_requests, "get", fake_get)
+
+    subject.curl_cffi_get(
+        static_config(
+            "https://example.com/",
+            impersonate="chrome136",
+            locale="de-DE",
+            referer="https://example.org/from",
+        ),
+        "chrome136",
+    )
+    assert captured["impersonate"] == "chrome136"
+    assert captured["headers"] == {
+        "Accept-Language": "de-DE",
+        "Referer": "https://example.org/from",
+    }, "默认不覆盖 UA，交给 impersonate 目标，避免 TLS/UA 版本矛盾"
+
+    subject.curl_cffi_get(static_config("https://example.com/", user_agent="ProbeUA/1.0"), "chrome124")
+    assert captured["headers"] == {"User-Agent": "ProbeUA/1.0"}, "显式 UA 才覆盖"
+
+    subject.curl_cffi_get(static_config("https://example.com/"), "chrome124")
+    assert captured["headers"] is None
+
+
+def test_scrapling_kwargs_map_user_agent_and_referer() -> None:
+    base: dict[str, Any] = {
+        "url": "https://example.com/",
+        "timeout_ms": 60_000,
+        "retries": 1,
+        "retry_delay": 0.0,
+        "headful": False,
+        "proxy": None,
+        "hide_canvas": False,
+        "real_chrome": False,
+    }
+
+    default = subject.scrapling_kwargs(dict(base))
+    assert "useragent" not in default and "extra_headers" not in default
+    assert "google_search" not in default, "默认交给 Scrapling(单页会带 Google referer)"
+
+    custom = subject.scrapling_kwargs(
+        {**base, "user_agent": "ProbeUA/1.0", "referer": "https://example.org/from"}
+    )
+    assert custom["useragent"] == "ProbeUA/1.0"
+    assert custom["extra_headers"] == {"Referer": "https://example.org/from"}
+
+    silent = subject.scrapling_kwargs({**base, "referer": ""})
+    assert silent["google_search"] is False, "显式不发 Referer 必须关掉 Google referer"
+    assert "extra_headers" not in silent
+
+
 def test_impersonate_validation_rejects_missing_dependency_and_unknown_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -349,6 +483,7 @@ class FakePlaywrightPage:
         self.waits: list[int] = []
         self.goto_kwargs: dict[str, Any] = {}
         self.load_states: list[str] = []
+        self.context_kwargs: dict[str, Any] = {}
 
     def goto(self, _url: str, **kwargs: Any) -> Any:
         class Response:
@@ -386,7 +521,8 @@ def fake_playwright_factory(page: FakePlaywrightPage) -> Any:
             return None
 
     class Browser:
-        def new_context(self, **_kwargs: Any) -> Context:
+        def new_context(self, **kwargs: Any) -> Context:
+            page.context_kwargs = kwargs
             return Context()
 
         def close(self) -> None:

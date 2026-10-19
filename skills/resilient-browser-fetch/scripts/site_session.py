@@ -23,6 +23,7 @@ from resilient_fetch import (
     discover_local_proxy,
     redact_proxy,
     response_to_result,
+    validate_identity_headers,
     validation_reasons,
     wait_for_proxy,
 )
@@ -133,6 +134,7 @@ class SiteSessionOptions:
     locale: str | None = None
     timezone: str | None = None
     useragent: str | None = None
+    referer: str | None = None
     real_chrome: bool = False
     hide_canvas: bool = False
     executable_path: str | Path | None = None
@@ -157,6 +159,7 @@ class SiteSessionOptions:
             raise ValueError("min_bytes 必须大于 0。")
         if self.max_revalidations < 0:
             raise ValueError("max_revalidations 不得小于 0。")
+        validate_identity_headers(self.useragent, self.referer)
 
 
 def _validate_http_url(url: str) -> None:
@@ -602,6 +605,9 @@ class SiteSessionManager:
             kwargs["timezone_id"] = self.options.timezone
         if self.options.useragent:
             kwargs["useragent"] = self.options.useragent
+        if self.options.referer:
+            # google_search 在本会话里默认关闭，所以这里的 Referer 就是唯一来源。
+            kwargs["extra_headers"] = {"Referer": self.options.referer}
         if self.options.real_chrome:
             kwargs["real_chrome"] = True
         if self.options.hide_canvas:
