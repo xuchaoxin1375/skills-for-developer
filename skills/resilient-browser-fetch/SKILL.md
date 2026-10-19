@@ -10,6 +10,19 @@ description: >
 
 仅采集用户有权访问的公开或获授权页面。遵守目标服务条款、robots/速率限制和适用法律；不要自动执行登录、下单、账户创建、凭据测试或其他改变外部状态的操作。Cloudflare 通过与否受出口 IP、指纹、地区一致性和站点策略共同影响，不承诺通用通过率。
 
+## 入口与读取顺序
+
+先按任务选定入口，再按该行读取依赖文档。
+
+| 任务 | 入口 | 该读 |
+| --- | --- | --- |
+| 抓单个页面、诊断未知站点 | CLI `scripts/resilient_fetch.py`（默认 `--engine auto`） | 本文件"工作流"与"引擎分层与选择" |
+| 只要标题/状态码/字节数，或供其他语言调用 | `scripts/example_extract_page_info.py`（stdout JSON） | 本文件"示例脚本" |
+| 页面多于一个、需要预热/复用会话/sitemap | 三条批量会话按依赖选 | [references/batch-workflows.md](references/batch-workflows.md) |
+| 在 Python 进程内取页或存盘 | `resilient_fetch` 的 `FetchOptions`/`fetch_page`/`save_page` | [references/module-api.md](references/module-api.md) |
+| 安装到 Agent、换机器或换系统 | [references/installation.md](references/installation.md) | 该文件，再读 [references/platforms.md](references/platforms.md) |
+| 修改 `scripts/` 或 `tests/` | 直接改脚本，无封装入口 | 本文件"工作流"末段的质量门禁 |
+
 ## 工作流
 
 前置：先确认已走 `network-access` 双路探测排除选路问题；普通超时/直连失败不直接启动浏览器，仅当探测显示网络可达但正文为挑战/拦截特征时才用本 skill，选路结论同一任务内复用。
@@ -43,7 +56,17 @@ description: >
 4. 高对抗站点在无头失败后，使用 `--headful --humanize` 重试；Linux 服务器先配置 Xvfb。**层 1（playwright）现在也支持有头人工验证**：配合 `--challenge-wait-ms 300000`，脚本会打开可见窗口并在预算内轮询页面，等你手动过完验证再继续（此前层 1 会直接保存挑战页）。有头模式会先打印操作指引；无头模式若撞上挑战，日志会提示改用 `--headful` 或层 2/3。代理地区未知时不要硬编码语言和时区；已知地区时同时设置 `--locale` 与 `--timezone`，或安装 `cloakbrowser[geoip]` 后使用 `--geoip`。
 5. 自动求解返回后仍停在挑战页时，使用 `--challenge-wait-ms 300000 --profile-dir <专用目录>`。有头模式允许用户在这段时间人工完成一次验证，后续运行复用 cookie/localStorage。脚本在该根目录下分别使用 `scrapling/` 与 `cloak/`，避免两种浏览器共享同一 profile。
 6. 默认使用状态码、挑战特征、正文大小和最终 origin 做宽松检查。只有用户要求严格验证或目标已知会返回软错误页时，才增加 `--wait-selector`、`--expect-text`、固定路径或业务字段断言；不要把易变商品文案默认写成成功条件。状态码本身不足以判定拦截：HTTP 403 且正文没有拦截特征、长度达标、期望文本全部命中时，按可用内容接受并在 `notes` 记 `http_status:403:accepted_by_content`（日志会告警）；这类正文可能尚未水合，需要完整客户端渲染时显式指定 `--engine scrapling` 等更高层。其余 4xx/5xx 仍按失败处理。
-7. 检查 `<输出>.meta.json` 的最终 URL、状态码、引擎、耗时、版本、哈希、`notes` 和尝试记录。失败时检查 `<输出>.attempts.json` 里每个引擎的 `kind`：`unavailable` 表示缺依赖（该装层），`blocked`/`blocked_or_empty` 表示被拦截或空页（该升档、换代理或人工验证），`runtime_error` 表示运行期异常；被拒收的正文在 `<输出>.<引擎>.blocked.html`。汇报结果时用表格汇总：本次实际出口（直连，还是哪个代理/登记名；必要时用外部 IP 检测页核对）、每个引擎的模式与结果（引擎、有无头、状态码、耗时）、最终文件与大小、以及 `notes` 里的软状态码等注记；不要只报模式与引擎名。
+7. 检查 `<输出>.meta.json` 的最终 URL、状态码、引擎、耗时、版本、哈希、`notes` 和尝试记录；失败时按 `<输出>.attempts.json` 里的 `kind` 处置：
+
+   | `kind` 或现象 | 含义 | 下一步 |
+   | --- | --- | --- |
+   | `unavailable` | 该层依赖不在当前解释器里 | 用 `check_environment.py --list-envs` 换解释器，或按 installation.md 补装该层 |
+   | `blocked` / `blocked_or_empty` | 被挑战拦截，或只拿到空壳 | 升档（如 `--engine scrapling`）、换出口，或 `--headful --challenge-wait-ms 300000` 人工过验证 |
+   | `runtime_error` | 运行期异常（浏览器缺失、崩溃等） | 看该引擎报错，按 installation.md 补齐缺件后重跑 |
+   | 达到 `--wall-timeout-ms` 仍无结论 | 硬上限用尽 | 提高 `--timeout-ms` 与 `--wall-timeout-ms`（如 300000/600000），或先排除出口问题 |
+   | `<输出>.<引擎>.blocked.html` | 被拒收的正文 | 与预期文本和结构比对，判断是拦截页还是校验条件过严 |
+
+   汇报结果时用表格汇总：本次实际出口（直连，还是哪个代理/登记名；必要时用外部 IP 检测页核对）、每个引擎的模式与结果（引擎、有无头、状态码、耗时）、最终文件与大小、以及 `notes` 里的软状态码等注记；不要只报模式与引擎名。
 
 修改 Python 脚本后，使用相同的安装器安装 `requirements-dev.txt`，并在技能目录运行以下质量门禁；三条命令必须全部以退出码 `0` 完成：
 
@@ -129,6 +152,30 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 | `--post-wait-ms <ms>` | 取源码前再静置 | 兜底给客户端渲染留时间（默认 1000） |
 
 等待条件越早，越容易在 WAF 站点上抓到挑战中间页；那会被挑战特征识别并升档，不是误判。层 2/3 的加载与关闭由 Scrapling 管理，`commit`/`domcontentloaded` 映射为它的 `load_dom=False`。
+
+## 单次抓取的处理流程
+
+CLI 与 `fetch_page()`/`save_page()` 走同一条流水线；下图是它对调用者可见的行为，模块视角的组件与数据流见 [references/module-api.md](references/module-api.md)。
+
+```mermaid
+flowchart TD
+    A[CLI 参数与 FetchOptions 校验] --> B[代理解析: SCRAPE_PROXY 或 --discover-proxy, 默认禁止静默直连]
+    B --> C{引擎阶梯: auto 只列已安装的层}
+    C ---|该层缺件| U[缺件层: 记 kind=unavailable 并跳过]
+    C --> D[隔离子进程 + wall_timeout_ms 硬上限]
+    D --> E[在所选层内取正文]
+    E --> W["取源码前(层 1/2/3 依次): wait_until 加载判定, 挑战与人工验证等待, wait-selector, post-wait-ms"]
+    W --> V{内容校验: 状态码, 挑战特征, 最小字节, 期望文本, 软 403 接受}
+    V -->|通过| S[save_page: 原子写 HTML 与 .meta.json]
+    V -->|挑战或空页| N{还有更高层可升?}
+    N -->|有| C
+    N -->|没有| F[FetchFailed: .attempts.json 与各层 .blocked.html]
+    S --> R[汇报: 实际出口, 各引擎模式与结果, 文件与大小, notes]
+```
+
+- 升档只在内容校验不通过时发生；缺件记 `unavailable` 并跳过，不算失败。整条流程的硬上限是 `--wall-timeout-ms`，与单层自己的 `--timeout-ms` 不同。
+- 校验是唯一闸门：状态码、挑战特征、最小字节、调用方期望文本都在这里判定，`--wait-until`、`--wait-selector`、`--post-wait-ms` 只改变取源码的时机。
+- 落盘只发生在 `save_page()`（CLI 默认开启）：成功写 HTML 与 `.meta.json`，失败写 `.attempts.json` 与 `<输出>.<引擎>.blocked.html`；`fetch_page()` 只返回内存结果。
 
 ## 代理与凭据
 
