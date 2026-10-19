@@ -19,7 +19,7 @@ URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数�
 
 1. MCP 工具（已配置时）：`htmlmini_extract_file(path, mode?, extractor?)` / `htmlmini_extract_url(url, mode?, extractor?)` / `htmlmini_extract_html(html_content, mode?, extractor?)`
    - 旧拼写 `htmmini_*` 是兼容别名，行为相同；新配置一律用 `htmlmini_*`。
-2. CLI：`htmlmini <文件|URL|stdin> [--mode <模式>] [--extractor <引擎>]`（选项与示例以 `htmlmini --help` 为准，清单用 `--list-modes` / `--list-extractors`；支持 `--completion bash|powershell`）。
+2. CLI：`htmlmini <文件|URL|stdin> [--mode <模式>] [--extractor <引擎>]`（选项与示例以 `htmlmini --help` 为准，清单用 `--list-modes` / `--list-extractors`；支持 `--completion bash|powershell`；`--version` / `-V` 打印日期时间版本号，如 `2026.10.19.1750`）。
    - 进度日志一律走 stderr（`htmlmini: [read|parse|extract|format|write] …`，带耗时与体积），stdout 只放提取结果；取载荷只读 stdout，别把 stdout/stderr 混着解析。要安静用 `--quiet`，要排查用 `--verbose`（或环境变量 `HTMLMINI_LOG=quiet|info|debug`）。
    - 需要落盘时用 `-o <文件>`（文件尾恰好一个换行）；不要用 PowerShell 管道接 `Set-Content` 收载荷——它会多补行尾，非 ASCII 还要你显式加 `-Encoding utf8`。
    - CLI 不在 PATH 时用 `node <本 skill 目录>/src/cli.js <同样参数>`，无需全局安装。例：`htmlmini` 命令报无法识别，直接 node 跑本 skill 目录里的 cli.js。
@@ -34,13 +34,12 @@ URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数�
 | `markdown`（默认） | 常规总结；文章页走 Defuddle，面板/UI 页自动切组件清单 |
 | `json` | 需要元数据（标题/作者/日期）+ `used` 实际引擎 + `reductionPct` 节省统计 |
 | `skeleton` | 巨页只要大纲（标题层级 + 表格 + 代码块语言） |
-| `ui` | UI 设计稿强制完整清单：标题/地标/表单字段/按钮/表格/图片/链接/文本。清单有预算上限（标题 100、表单字段 100、按钮 100、链接 30、图片 30、文本 200，按**去重后**条数计），超长页尾部（如定价卡只到中间一档）仍可能被截断：见下方"清单被截断时" |
+| `ui` | UI 设计稿强制完整清单：标题/地标/表单字段/按钮/表格/图片/链接/文本。清单有预算上限（标题 100、表单字段 100、按钮 100、链接 30、图片 30、文本 200，按**去重后**条数计），文本条目另有单条长度上限（默认 150 字符，`--text-max <n>` 可调、`0` 取消）——超长段落（商品描述、FAQ 正文、条款）整条不收，但输出末尾会写明省略了几条；超长页尾部（如定价卡只到中间一档）也可能被截断：见下方"清单被截断时" |
 | `html` | 要**结构**而不是摘要时用：保留完整 DOM 与文本顺序，剥掉脚本/样式/模板/图标与注释，属性按 `--attrs`（默认 `semantic` 保 `href/src/alt/colspan/rowspan` 与表格/表单状态），排版按 `--format`（默认 `compact` 压掉源码缩进与空行；`pretty` 重排为可读缩进、`raw` 保留源码空白）。token 高于 `markdown`/`ui`，但不受清单预算截断（看表格、嵌套层级、表单初始态时用它，别去读原始 HTML）。要更小体积再加 `--prune-empty`（剪掉清洗后变空的容器，表格/表单结构豁免） |
 | `text` | 纯文本、去掉所有标记 |
 | `title` | 只要页面标题 |
 
-同一份内容的模式体积差别很大（以一份营销/产品页实测为例：`ui` ≈17 KB、`markdown` ≈42 KB、`html` ≈106 KB，`html --attrs none` ≈91 KB），所以 `ui` 与 `markdown` 是互补而非替代：`ui` 拿得到首屏标题、CTA 与定价卡，但正文类文本只到标题、没有 FAQ 正文；`markdown` 有长正文，却把首屏、品牌墙、定价卡当样板整段剔除。
-产品/定价页的取法是 `ui` 打底，缺长正文再按锚点切出片段补一次 `markdown`。卡在 tab 面板/模板里的内容（定价卡常见）正文引擎会当样板丢，`ui` 与 `html` 能拿到。
+同一份内容的模式体积差别很大（营销/产品页实测：`ui` ≈17 KB、`markdown` ≈42 KB、`html` ≈106 KB、`html --attrs none` ≈91 KB），所以 `ui` 与 `markdown` 是互补而非替代：`ui` 拿得到首屏标题、CTA 与定价卡，但正文类文本只到标题；`markdown` 有长正文，却把首屏、品牌墙、定价卡当样板整段剔除。产品/定价页的取法是 `ui` 打底，缺长正文再按锚点切出片段补一次 `markdown`；卡在 tab 面板/模板里的内容（定价卡常见）正文引擎会当样板丢，`ui` 与 `html` 能拿到。
 
 `extractor` 默认 `auto`（非HTML透传 → Defuddle → 有则用 Trafilatura → semantic → ui；
 面板/表单页 UI 信号多且抽出文字不长时，Trafilatura 让位给 ui 清单），不用指定；
@@ -49,24 +48,30 @@ URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数�
 
 同一 URL 只联网抓一次：先把 HTML 落盘（`curl -s -o page.html <URL>`，需要代理时加 `-x <代理>`），之后 `ui` / `markdown` 等模式都读同一份本地文件；换视图不是重抓的理由。
 
-**清单被截断时（`ui` 等清单类输出）**：出现"末尾停在半句"或页面尾部整块缺失（例：定价卡只到中间一档、FAQ 正文没进来），把已落盘的 HTML 按锚点切出片段再喂 htmlmini——从目标区起始标记前的 `<` 切到其后的 `>`，存成片段文件后 `htmlmini 片段.html --mode ui`。
-这是"把片段交给提取器"，不是手写正则抠原文；仅用于确认漏内容后补齐，不作为常规路径。
+**清单被截断时（`ui` 等清单类输出）**：出现"末尾停在半句"或页面尾部整块缺失（例：定价卡只到中间一档、FAQ 正文没进来），把已落盘的 HTML 按锚点切出片段再喂 htmlmini——从目标区起始标记前的 `<` 切到其后的 `>`，存成片段文件后 `htmlmini 片段.html --mode ui`。这是"把片段交给提取器"，不是手写正则抠原文；仅用于确认漏内容后补齐，不作为常规路径。
+
+各页面类型的具体命令、体积取舍与常见误判见 [references/usage-cases.md](references/usage-cases.md)。
+
+## 正文缺失时先查内嵌数据（不等于页面没有）
+
+提取输出只剩区块标题、正文为空（手风琴/标签页/折叠面板常见），或文本量与页面观感明显不符时，**不要据此判定页面缺内容**，也不要在总结里写成"未提供"。按序排查：
+
+1. 静态 DOM：目标文字是否真在剥掉 `<script>` 后的 HTML 里；
+2. JSON-LD：`application/ld+json` 常带明文摘要（标题、短描述、价格、库存），成本最低；
+3. 内联 state：`<script type="application/json" id="…">` 的框架状态缓存，通常是完整正文所在。
+
+**先渲染一次再解码**：客户端渲染页的正文常常在**水合后**才进 DOM，默认 `--render` 只对静态 403/5xx 回退，静态 200 的页面要用 `--render=always`（MCP `render:"always"`）强制渲染。判据是"渲染后 DOM 有没有"，不是"原始 HTML 有没有"。
+
+上述 JSON-LD 与内联 state 都在 `<script>` 里，**任何模式的输出都不含它们**（`--mode html` 也整棵删 `script`），所以"输出里没有"不等于"页面里没有"。percent-encoded state 的解码口径、取块方式与排查顺序见 [references/usage-cases.md](references/usage-cases.md) 案例 5。
 
 ## 动态页流水线（静态抓取不够时）
 
 `htmlmini_extract_url` 只做静态抓取：默认跟随任务/宿主的代理环境变量，可经 `proxy` 参数覆盖（URL 或 `"direct"`）；403/5xx 自动补一次浏览器头重试（同路线）。
-一步到位的用法：`htmlmini <URL> --render` 或 MCP `render:true`——静态优先，静态 403/5xx 才自动回退浏览器渲染再按文件模式提取；
-渲染链为 save_page（层 ≥1 引擎就绪且更合适时用，同代理，cloak 不必接）→ 本机普通 Chrome 无头 dump-dom（零依赖）→ 友好报错，实际走了哪条会打 `htmlmini: [render] engine=… [proxy: …]` 日志；
-通路选择口径：save_page 有求解引擎（scrapling/cloak-cdp）、或需要 `--headful`、或本机没有 Chrome 时走 save_page；层 1（playwright/patchright）与 Chrome 同为"只渲染不求解"，此时优先零依赖 Chrome，Chrome 通路崩了再回退 save_page 重试一次（错误里两段都会出现）；
-save_page 与 Trafilatura 都跑在某个 Python 解释器上，默认取 PATH 的 `python`/`python3`——**这往往不是装了 playwright/scrapling 的那个环境**（conda/venv 常需显式指定）。用 `--python-bin <解释器>` / MCP `python_bin` / 环境变量 `HTMLMINI_PYTHON` 指向目标环境；`--python-bin auto`（或 `HTMLMINI_PYTHON=auto`）会扫描本机候选环境并自动挑一个具备层 ≥1 引擎的，选定后打日志说明用了谁；显式给出路径后不做隐式回退，指错直接报错并带上路径。渲染因缺引擎失败时，错误信息会点名实际探测的解释器，并在本机存在更合适的环境时给出其路径（可用 `HTMLMINI_ENV_SCAN=0` 关闭扫描）。查本机各环境具备哪些层，用 `resilient-browser-fetch/scripts/check_environment.py --list-envs`；
-Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` → PATH → 系统常用路径 → Playwright 缓存（`PLAYWRIGHT_BROWSERS_PATH` 可改位置，完整版优先取版本最大者）选择；
-首次人工验证用 `--headful` / `headful:true`（只支持 save_page 通路，且需要层 ≥1 引擎；Chrome dump-dom 无法开窗）；
+一步到位用 `htmlmini <URL> --render` 或 MCP `render:true`——静态 403/5xx 才回退浏览器渲染；静态 200 但要水合的页面用 `--render=always` / MCP `render:"always"`（代价是每页都启浏览器）。渲染链为 save_page（层 ≥1 引擎就绪且更合适时用）→ 本机普通 Chrome 无头 dump-dom（零依赖）→ 友好报错，实际走了哪条看 `htmlmini: [render] engine=…` 日志。
+Trafilatura 与 save_page 都跑在某个 Python 解释器上，默认取 PATH 的 `python`/`python3`——**这往往不是装了 playwright/scrapling 的那个环境**，用 `--python-bin <解释器>` / `HTMLMINI_PYTHON` 指定，`--python-bin auto` 自动挑一个具备层 ≥1 引擎的。
 404/超时/断网直接抛错，不烧浏览器时间。
-连续/成批多页不要循环调 `--render`（每页一次浏览器创建/销毁，又慢又多新指纹）：同站多页走 `resilient-browser-fetch` 的批量会话（单浏览器预热屏障 + 会话复用 + 受限并发，见其 `references/batch-workflows.md`），落盘后再逐个 `htmlmini_extract_file`；
-临时 profile 随会话关闭自动清理，`--profile-dir` 只用于跨重启保留，涨磁盘且不跨进程共用。
-手工两步（存量/排查用）：先走 `network-access` 双路对照（直连+代理并行 curl，必要时 `curl_cffi` 做 TLS 级伪装），用胜出路线落盘的正文按文件模式提取，不按 URL 重抓；
-静态皆取不到可用正文（含挑战特征）才用 `save_page` 保存渲染后 HTML（同代理），再用 `htmlmini_extract_file` 读该文件（同目录 `<name>.html.meta.json` 会被自动利用，无需手动传 URL）。
-例：直连 403、代理 200 落盘，直接提取该文件，不启浏览器；简头 curl 两路 502 但补头现挑战跳转，即转浏览器而非判死。
+
+通路选择、`--chrome-bin` / `--headful` 用法、手工两步排查与同站批量多页的做法见 [references/usage-cases.md](references/usage-cases.md) 案例 6、7；批量脚本与并发策略见 `resilient-browser-fetch` 的 `references/batch-workflows.md`。
 
 ## 不用 htmlmini 的情况（选型结论）
 
@@ -99,10 +104,15 @@ Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` →
 - CLI 缺失时是否用 `node` 跑本 skill 目录的 `cli.js`，而非找全局安装？
 - CLI 报 `ERR_MODULE_NOT_FOUND` 时是否先按 lockfile 装依赖再重跑，而非改换工具或手写正则抠原文？
 - URL 抓取优先用 `--render` / `render:true` 一条命令（静态优先、403/5xx 自动回退渲染）；手工排查才走双路对照落盘。挑战特征出现才上浏览器，而非 curl 5xx 直接判死？
+- 静态 200 但正文要等水合（客户端渲染页）时，是否用了 `--render=always` / `render:"always"` 强制渲染，而不是断定"静态抓取拿不到就只能解码 state"？
 - 是否按需用 `proxy` 参数或环境代理走指定路线，而非默认直连硬闯？抓取失败先看 `[read] fetching … [proxy: …]`——它写明实际生效的代理与来源（`HTTPS_PROXY`/`--proxy`/`NO_PROXY`/`none`），据此判断是路由不对还是源站问题。
 - 是否把清洗产物当成了采集规则或字段契约的依据（参考对象应为站点本身的接口 JSON、原始 HTML 或渲染后 DOM），或在它上面数 JSON-LD/`__NEXT_DATA__` 这类内嵌数据？
+- 正文只剩区块标题时，是否先按"正文缺失时先查内嵌数据"排查（静态 DOM → JSON-LD → 内联 state → 解码），而不是直接写成"页面未提供"？
+- 判定"页面没有正文"前，是否先渲染一次确认水合后的 DOM（而非只看原始 HTML），并试过 `markdown` / `text`（`ui` 有单条长度上限，默认 150 字符，长段落整条不收；`--text-max 0` 可取消）？
+- 内联 state 解析失败时，是否先确认它是否整块 percent-encoded（`%7B%22` 开头），而不是断言没有内嵌数据？
+- 排查"这份结果由哪个版本产出"时，是否看了 `htmlmini --version` 或 `--json` 的 `version` 字段（按日期时间，如 `2026.10.19.1750`），而不是猜？
 
 ## 输出后
 
 直接基于 htmlmini 的输出总结/回答；**不要回读原文验证**。若输出明显为空或标题缺失，可加 `--ui` 或 `--json` 重试一次（`json` 的 `used` 会告诉你命中了哪级引擎）。
-图表类数值在提取输出中缺失时如实说明缺失，不回读原文手写正则抠内嵌脚本数据补数；需动态值时按“动态页流水线”重提。
+正文类字段（描述、配料、规格）缺失属"正文缺失"，按"正文缺失时先查内嵌数据"一节排查后回答；图表类数值在提取输出中缺失时如实说明缺失，不回读原文手写正则抠内嵌脚本数据补数；需动态值时按"动态页流水线"重提。

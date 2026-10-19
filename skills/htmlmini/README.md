@@ -1,10 +1,11 @@
 # htmlmini v2
 
-把 HTML 网页（含大量 CSS/JS 样板）压成"核心骨架"，以 Markdown 输出，专为 **LLM 总结省 token** 设计。实测本地设计稿：原始 24KB~99KB → 提取后 300B~1.3KB，**节省约 75%~99.5%**。
+把 HTML 网页（含大量 CSS/JS 样板）压成"核心骨架"，以 Markdown 输出，专为 **LLM 总结省 token** 设计。实测本地设计稿：原始 24KB~99KB → 提取后 300B~1.3KB，**节省约 75%~99.5%**。版本号按日期时间打（`htmlmini --version`，如 `2026.10.19.1750`），用 `pnpm stamp` 更新。
 
 - 引擎链（`auto` 默认）：**非 HTML 透传** → **Defuddle** 正文提取 → **Trafilatura**（可选，见下）→ **semantic** 纯 JS 语义回退 → **UI 组件清单**（面板/仪表盘/设计稿；面板/表单页 UI 信号多且 Trafilatura 抽出的文字不长时，Trafilatura 让位给 UI 清单，避免拿去导航/表头碎片）。`text/plain` 直接返回的 markdown（如某些 gitee 链接）、纯文本、JSON 不硬抽，原样返回（`used=passthrough`）。
 - 双形态交付：**CLI**（任意 harness/终端可用）+ **MCP server**（opencode / Claude / Cursor 等当工具调用），共用同一核心，行为一致。
 - 需要"结构"而不是"摘要"时用 `--mode html`：保守清洗后的 HTML（去脚本/样式/表观属性，保留完整 DOM 与文本顺序），默认按 `compact` 排版压掉源码缩进与空行，比 markdown 费 token，但看表格、嵌套层级与表单初始态时不必回读原始 HTML。`--pretty` 重排为可读缩进，`--prune-empty` 额外剪掉清洗后变空的容器。
+- 两类"正文不在静态 DOM"的页面各有一个显式入口：客户端水合后才出现正文的用 `--render=always` 强制渲染；`ui` 清单默认不收超过 150 字符的长段落，用 `--text-max 0` 取消上限。两处都会在日志/输出里说明实际走了哪条，不静默降级。
 
 ## 为什么是这个选型（结论）
 
@@ -54,7 +55,25 @@ pnpm install --frozen-lockfile
 ## CLI 用法
 
 选项与示例以 CLI 自带帮助为准：`htmlmini --help`（清单用 `--list-modes` / `--list-extractors`）。
-代理路由、日志级别与各阶段体积的读法见下节。
+代理路由、日志级别与各阶段体积的读法见下节；按页面类型或症状取命令（产品页、面板、水合页、403、批量等）见 [references/usage-cases.md](references/usage-cases.md)。
+
+### 版本号
+
+版本号按**日期时间**打，格式 `YYYY.MM.DD.HHmm`（本地时间），例如 `2026.10.19.1750`：
+
+```console
+$ htmlmini --version          # 也可 -V
+htmlmini 2026.10.19.1750
+```
+
+唯一真源是 `package.json` 的 `version`；CLI、MCP `serverInfo`、`--json` 输出的 `version` 字段与抓取 UA（`htmlmini/<version>`）都运行时读它，不另存副本。打新版本：
+
+```bash
+pnpm stamp                    # 用当前时间；等价于 node scripts/stamp-version.mjs
+node scripts/stamp-version.mjs 2026.10.19.1805   # 或显式指定
+```
+
+`--json` 的 `version` 便于记录"这份结果由哪个版本产出"。注意 npm 只接受三段 semver，`YYYY.MM.DD.HHmm` 是四段：本地 `npm link` / `npm i -g <本地目录>` 都正常，但**不要发布到 npm registry**（需要时会清洗成别的版本号）。
 
 ## 日志与进度
 
@@ -95,33 +114,25 @@ htmlmini: [write] copilot.clean.html 200.3 KB (total 2.24s)
 静态抓取先跟随环境代理、403/5xx 自动补一次浏览器头；仍失败时两种走法：
 
 ```bash
-# 一条命令（静态优先，403/5xx 自动回退渲染；cloak 不必接。
-# 通路选择：save_page 有求解引擎（scrapling/cloak-cdp）、或要 --headful、或本机无 Chrome 时走 save_page；
-# 层 1（playwright/patchright）与 Chrome 同为"只渲染不求解"，此时优先零依赖 Chrome，崩了再回退 save_page）
+# 一条命令：静态优先，403/5xx 自动回退渲染（失败时看 `[render] engine=…` 日志）
 htmlmini "https://example.com/app" --render --proxy 'http://127.0.0.1:<port>' --json
 
-# 浏览器选择（Chrome 通路）：显式 --chrome-bin / HTMLMINI_CHROME_BIN 优先，
-# 否则自动探测——PATH（google-chrome、chrome、chromium 等）→ 系统常用路径 →
-# Playwright 浏览器缓存（ms-playwright，完整版优先、无头壳兜底，取版本最大者；
-# 自定义缓存位置走 PLAYWRIGHT_BROWSERS_PATH）。实际用了哪个看
-# `htmlmini: [render] engine=… src=… [proxy: …]` 日志。
+# 静态 200 但要客户端水合：强制渲染
+htmlmini "https://example.com/app" --render=always -m
 
-# 首次人工验证（save_page 通路开有头窗口，需要层 >= 1 引擎；Chrome 通路不支持有头）
+# 首次人工验证（仅 save_page 通路支持有头，需要层 >= 1 引擎）
 htmlmini "https://example.com/app" --render --headful
 
-# Python 环境选择（save_page 与 Trafilatura 都靠它）：默认 PATH 的 python/python3，
-# 往往不是装了 playwright/scrapling 的环境（conda/venv 常见）。指定后不回退、指错即报错：
-htmlmini "https://example.com/app" --render --python-bin 'C:\Users\me\.conda\envs\scrapling\python.exe'
-# 懒人版：扫一遍本机（conda/venv/uv/PATH），自动挑一个具备层 >= 1 引擎的解释器
+# Python 环境选择（save_page 与 Trafilatura 都靠它；默认 PATH 的 python 往往不是目标环境）
 htmlmini "https://example.com/app" --render --python-bin auto
-# 或 export HTMLMINI_PYTHON=<解释器路径|auto>；渲染失败时错误信息也会点名可用的解释器。
-# 关闭扫描：HTMLMINI_ENV_SCAN=0；手动排查：
-python ../resilient-browser-fetch/scripts/check_environment.py --list-envs --require-stealth
+# 或 export HTMLMINI_PYTHON=<解释器路径>；关闭扫描 HTMLMINI_ENV_SCAN=0
 
 # 手工两步（渲染产物旁的 <name>.html.meta.json 会被自动利用）
 python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html --proxy 'http://127.0.0.1:<port>'
 htmlmini app.html --json
 ```
+
+渲染链、通路选择（save_page vs 零依赖 Chrome）、`--chrome-bin` 探测顺序、解释器扫描与失败回退的完整口径，以及按页面类型/症状取命令的案例，见 [references/usage-cases.md](references/usage-cases.md)。
 
 连续/成批多页不要循环调 `htmlmini URL --render`——每页一次浏览器创建/销毁，
 又慢又多新指纹，`--render` 只适合单页/零星几页。同站多页走
@@ -130,7 +141,7 @@ htmlmini app.html --json
 临时 profile 默认随会话关闭自动清理；只有跨重启保留人工验证才用专用
 `--profile-dir`（会积累缓存涨磁盘，不跨进程共用，用后确认再删）。
 
-`--render` 只在静态 403/5xx 时触发（404/超时/断网直接抛错）；
+`--render` 只在静态 403/5xx 时触发（404/超时/断网直接抛错）；静态返回 200 但正文要等客户端水合的页面（SPA、白标商城商品页等）默认拿不到正文，用 `--render=always`（MCP `render:"always"`）强制渲染，代价是每页都启浏览器。`--mode ui` 的文本条目默认只收 ≤150 字符，超长段落整条丢弃并在输出末尾记账；需要完整长正文改用 `--mode markdown` / `--mode text`，或加 `--text-max 0` 取消上限。
 渲染日志以 `htmlmini: [render]` 为前缀实时打到 stderr（子进程经 `-X utf8` + `PYTHONUTF8=1` 强制 UTF-8 输出；Windows 控制台查看中文时按 powershell-pitfalls 的 UTF-8 模板设置输出编码）。`save_page` 的真实 URL 即原 URL，直接提取即可。
 
 ## MCP 接入
@@ -140,10 +151,10 @@ htmlmini app.html --json
 | 工具 | 说明 |
 |---|---|
 | `htmlmini_extract_file(path, mode?, extractor?)` | 提取本地 HTML 文件（含渲染后产物） |
-| `htmlmini_extract_url(url, mode?, extractor?, proxy?, render?, render_timeout_ms?)` | 抓取并提取远程 URL（静态抓取：跟随环境代理，403/5xx 补一次浏览器头；`render` 为 true 时静态 403/5xx 自动回退浏览器渲染；动态页也可走上面流水线）。`headful` / `chrome_bin` / `python_bin` 同样可在 MCP 上传入 |
+| `htmlmini_extract_url(url, mode?, extractor?, proxy?, render?, render_timeout_ms?)` | 抓取并提取远程 URL（静态抓取：跟随环境代理，403/5xx 补一次浏览器头；`render` 为 true 时静态 403/5xx 自动回退浏览器渲染，为 `"always"` 时静态 200 也强制渲染；动态页也可走上面流水线）。`headful` / `chrome_bin` / `python_bin` 同样可在 MCP 上传入 |
 | `htmlmini_extract_html(html_content, mode?, extractor?)` | 就地清洗一段已抓取的 HTML 字符串 |
 
-工具参数与 CLI 的 `mode` / `extractor` / `attrs` / `format` / `prune_empty` 同名同取值，具体取值以 `htmlmini --help` 与工具 schema 为准。
+工具参数与 CLI 的 `mode` / `extractor` / `attrs` / `format` / `prune_empty` / `text_max` 同名同取值，具体取值以 `htmlmini --help` 与工具 schema 为准。
 
 opencode（`opencode.json`，路径按本机仓库位置改）：
 
