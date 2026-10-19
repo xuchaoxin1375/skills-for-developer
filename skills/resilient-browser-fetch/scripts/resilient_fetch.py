@@ -38,7 +38,7 @@ import zlib
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
 from urllib.request import ProxyHandler, Request, build_opener
@@ -62,6 +62,9 @@ BLOCK_HINTS = (
 # 以免把 404/401/429/5xx，或品牌化的小体积拦截页当成正文。
 SOFT_STATUS_CODES = frozenset({403})
 SOFT_STATUS_MIN_BYTES = 20_000
+# 服务端明确声明资源不存在时，换更高层引擎只会重复请求同一不可用资源，
+# 不能把 404/410 当挑战页升档；挑战特征命中时仍按拦截页处理。
+TERMINAL_STATUS_CODES = frozenset({404, 410})
 
 # 页面"加载完成"的判定条件，决定取源码与关闭窗口的时机(层 1/2/3；层 0 无浏览器，忽略)。
 WAIT_UNTIL_CHOICES = ("commit", "domcontentloaded", "load", "networkidle")
@@ -642,7 +645,8 @@ def curl_cffi_get(config: dict[str, Any], target: str) -> Any:
         headers=headers or None,
         proxies={"http": proxy, "https": proxy} if proxy else None,
         timeout=max(config["timeout_ms"] / 1000, 1.0),
-        impersonate=target,
+        # curl_cffi 的 stubs 把 impersonate 收窄为字面量联合；目标在构造选项时已校验。
+        impersonate=cast(Any, target),
     )
 
 
@@ -1552,6 +1556,16 @@ def attempt_kind(reasons: Sequence[str], error: str | None) -> str:
     return KIND_BLOCKED if blockers else KIND_EMPTY
 
 
+def stops_auto_escalation(result: FetchResult) -> bool:
+    """Tell whether a server status makes further engine upgrades pointless.
+
+    404/410 是资源级结论，换浏览器或换指纹不会改变服务端答案；但正文若仍带
+    挑战特征，说明这次状态码可能来自拦截层，仍应继续升档。
+    """
+
+    return result.status in TERMINAL_STATUS_CODES and not result.block_reasons
+
+
 def accepts_by_content(result: FetchResult, byte_count: int, expected_texts: list[str]) -> bool:
     """Tell whether a 4xx response may be accepted because its body is verified content.
 
@@ -1794,6 +1808,14 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
             )
             attempts.append(attempt)
             if reasons:
+                if options.engine == "auto" and stops_auto_escalation(result):
+                    logging.warning(
+                        "站点返回 HTTP %s；auto 停止升档，避免用更高层引擎重复请求同一不可用资源。"
+                        "如需确认是否为站点可见性问题，可在同一会话中用对照页或公开接口核对，"
+                        "不要为单个 404/410 另起浏览器。",
+                        result.status,
+                    )
+                    break
                 continue
             return FetchOutcome(result=result, attempts=tuple(attempts), proxy=proxy)
         except Exception as exc:

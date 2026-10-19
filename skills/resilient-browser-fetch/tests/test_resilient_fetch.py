@@ -248,6 +248,53 @@ def test_fetch_page_falls_back_after_rejected_content(monkeypatch: pytest.Monkey
     assert outcome.attempts[0].kind == subject.KIND_BLOCKED
 
 
+@pytest.mark.parametrize("status", [404, 410])
+def test_fetch_page_stops_auto_escalation_on_terminal_status(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    stub_availability(monkeypatch, ("static", "playwright", "scrapling"))
+    calls: list[str] = []
+
+    def fetch(engine: str, *_args: object) -> subject.FetchResult:
+        calls.append(engine)
+        return make_result(
+            engine=engine,
+            status=status,
+            html="<html><title>Not found</title><body>missing</body></html>",
+        )
+
+    monkeypatch.setattr(subject, "run_isolated_engine", fetch)
+    with pytest.raises(subject.FetchFailed) as captured:
+        subject.fetch_page(
+            subject.FetchOptions(url="https://example.com", min_bytes=1)
+        )
+    assert calls == ["static"]
+    assert len(captured.value.attempts) == 1
+    assert captured.value.attempts[0].status == status
+
+
+def test_fetch_page_still_escalates_when_status_page_has_challenge_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub_availability(monkeypatch, ("static", "playwright"))
+    results = iter(
+        [
+            make_result(
+                status=404,
+                html="challenge",
+                block_reasons=["cloudflare_interstitial"],
+            ),
+            make_result(engine="playwright"),
+        ]
+    )
+    monkeypatch.setattr(subject, "run_isolated_engine", lambda *args: next(results))
+    outcome = subject.fetch_page(
+        subject.FetchOptions(url="https://example.com", min_bytes=1)
+    )
+    assert outcome.result.engine == "playwright"
+    assert [attempt.ok for attempt in outcome.attempts] == [False, True]
+
+
 def test_fetch_page_raises_structured_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_availability(monkeypatch)
     monkeypatch.setattr(

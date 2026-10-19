@@ -2,8 +2,8 @@
 name: resilient-browser-fetch
 description: >
   按能力分层的稳健网页采集：层 0 标准库 HTTP、层 1 playwright/patchright 渲染、层 2 Scrapling 的 Cloudflare 挑战处理、层 3 可选 CloakBrowser CDP 底座；
-  auto 只升档到已安装的引擎，缺件降级而不是整体失败。
-  用于 Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间验证、拦截页识别、会话复用，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
+  auto 只升档到已安装的引擎，缺件降级而不是整体失败，遇到 404/410 等资源级状态停止升档。
+  用于抓取经 network-access 确认为挑战页的站点、Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间人工验证、拦截页识别、同站会话复用，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
 ---
 
 # 稳健浏览器采集
@@ -44,7 +44,7 @@ description: >
 
    明确需要本地代理但未设置 `SCRAPE_PROXY` 时，可在抓取命令中添加 `--discover-proxy`，按本机登记文件中的候选依次探测。端口开放只代表存在候选服务，仍需用目标请求验证协议与出口。
 
-3. 先使用 `auto`。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页时再升档。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
+3. 先使用 `auto`。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
 
    ```bash
    python <skill-dir>/scripts/resilient_fetch.py \
@@ -62,6 +62,7 @@ description: >
    | --- | --- | --- |
    | `unavailable` | 该层依赖不在当前解释器里 | 用 `check_environment.py --list-envs` 换解释器，或按 installation.md 补装该层 |
    | `blocked` / `blocked_or_empty` | 被挑战拦截，或只拿到空壳 | 升档（如 `--engine scrapling`）、换出口，或 `--headful --challenge-wait-ms 300000` 人工过验证 |
+   | 结果状态为 404/410 | 服务端明确表示资源不存在或已删除，`auto` 已停止升档 | 先确认 URL、权限与站点可见性；在同一会话用对照页或公开接口核对，不要反复换引擎 |
    | `runtime_error` | 运行期异常（浏览器缺失、崩溃等） | 看该引擎报错，按 installation.md 补齐缺件后重跑 |
    | 达到 `--wall-timeout-ms` 仍无结论 | 硬上限用尽 | 提高 `--timeout-ms` 与 `--wall-timeout-ms`（如 300000/600000），或先排除出口问题 |
    | `<输出>.<引擎>.blocked.html` | 被拒收的正文 | 与预期文本和结构比对，判断是拦截页还是校验条件过严 |
@@ -114,7 +115,11 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 
 目标页面多于一个或需要访问 sitemap 时，必须读取 [references/batch-workflows.md](references/batch-workflows.md)，并按依赖分层选会话：静态正文用 `static_session.StaticBatchSession`（层 0，零依赖）；需要渲染但不需要挑战求解、或本机只有层 1 时用 `browser_session.BrowserBatchSession`（单 browser/context 多 tab，只要 playwright/patchright）；需要挑战求解用 `site_session.SiteSessionManager`。三者都先在一个会话中单路访问站点首页，完成验证并确认正常内容后，再放开多 tab 并发；前两者命中挑战页即抛 `PageRejectedError` 供升档。访问 sitemap 时使用“首页预热 → sitemap index/子 sitemap → 详情页”的顺序，不要让 sitemap 成为新会话的首个验证页面。
 
-连续批量任务优先复用同一运行中的窗口、context 和临时 profile；多个 tab 对应受限并发，任务结束后再关闭整个浏览器。预热后的子页面先轻量导航并验证内容，检测到新挑战时才暂停队列、重新预热并启用求解重试。不要为每个 URL 或 worker 反复创建、销毁浏览器。仅在跨进程、跨重启或需要保留人工验证成果时使用 `--profile-dir`；profile 可能积累缓存、Service Worker、IndexedDB 和 cookie，占用较多磁盘，且不得由多个进程同时打开。不传 `--profile-dir` 的临时 profile 正常退出会自行清理，异常终止则残留在系统临时目录，识别与清理见 references/platforms.md 的临时 profile 与磁盘残留一节。
+连续批量任务优先复用同一运行中的窗口、context 和临时 profile；多个 tab 对应受限并发，任务结束后再关闭整个浏览器。预热后的子页面先轻量导航并验证内容，检测到新挑战时才暂停队列、重新预热并启用求解重试。不要为每个 URL 或 worker 反复创建、销毁浏览器。
+
+同一站点的对照页、接口端点（如 `.json`/`.rss`）和探针也属于多 URL 任务：合并进同一个已预热会话，按主目标 → 对照页 → 端点的顺序导航；不要为每个探针新开浏览器。遇到 404/410 先判定为资源级结论，再决定是否继续。
+
+仅在跨进程、跨重启或需要保留人工验证成果时使用 `--profile-dir`；profile 可能积累缓存、Service Worker、IndexedDB 和 cookie，占用较多磁盘，且不得由多个进程同时打开。不传 `--profile-dir` 的临时 profile 正常退出会自行清理，异常终止则残留在系统临时目录，识别与清理见 references/platforms.md 的临时 profile 与磁盘残留一节。
 
 ## 引擎分层与选择
 
@@ -185,7 +190,7 @@ flowchart TD
     S --> R[汇报: 实际出口, 各引擎模式与结果, 文件与大小, notes]
 ```
 
-- 升档只在内容校验不通过时发生；缺件记 `unavailable` 并跳过，不算失败。整条流程的硬上限是 `--wall-timeout-ms`，与单层自己的 `--timeout-ms` 不同。
+- 升档只在内容校验不通过时发生；缺件记 `unavailable` 并跳过，不算失败。整条流程的硬上限是 `--wall-timeout-ms`，与单层自己的 `--timeout-ms` 不同。服务端 404/410 且无挑战特征时，`auto` 在首次命中后停止升档；调用方用同一会话的对照页或公开接口确认站点可见性。
 - 校验是唯一闸门：状态码、挑战特征、最小字节、调用方期望文本都在这里判定，`--wait-until`、`--wait-selector`、`--post-wait-ms` 只改变取源码的时机。
 - 落盘只发生在 `save_page()`（CLI 默认开启）：成功写 HTML 与 `.meta.json`，失败写 `.attempts.json` 与 `<输出>.<引擎>.blocked.html`；`fetch_page()` 只返回内存结果。
 

@@ -54,6 +54,7 @@ flowchart TD
 - `wall_timeout_ms` 是调用者可预测的硬上限，不等同于 Scrapling 的页面操作超时。
 - 回退引擎返回 HTTP `200` 也必须经过内容验证，避免把挑战页当成业务页面。
 - 状态码不单独判拦截：403 且正文无拦截特征、长度达标、调用方期望文本命中时按可用内容接受，并在 `result.notes` 记 `http_status:403:accepted_by_content`；其余 4xx/5xx 仍失败。
+- `auto` 在 404/410 且正文无挑战特征时停止升档：资源级结论不会因换引擎而改变，调用方应核对 URL、权限或站点可见性。
 - `wait_until` 决定取源码与关闭窗口的时机（层 1/2/3）：`commit` / `domcontentloaded` / `load`(默认) / `networkidle`；层 2/3 把前两者映射为 Scrapling 的 `load_dom=False`。
 - `impersonate` 只作用于层 0：非空时改用 curl_cffi 以浏览器同族的 TLS/HTTP2 指纹出网（需安装 curl_cffi，否则构造 `FetchOptions` 即报错），结果里记 `notes: impersonate:<目标>`；浏览器层自带指纹，传了会告警忽略。
 - `user_agent` / `referer` 控制身份头：`user_agent` 覆盖各层默认 UA（层 0 只有显式给出时才覆盖 impersonate 目标的 UA，避免 TLS/UA 版本矛盾）；`referer` 为 `None` 时保留各层默认（层 2/3 默认是 Scrapling 带来的 `https://www.google.com/`），空串表示显式不发，非空必须是完整 http(s) URL。含换行的 UA 或非法 URL 在构造 `FetchOptions` 时即报错。
@@ -128,7 +129,7 @@ outcome = save_page(
 
 ## 生命周期边界
 
-`fetch_page()` 为单页可靠性使用隔离子进程，并可能按顺序启动 Scrapling 与 CloakBrowser。它适合单次调用、作业队列中的独立任务和故障隔离，不适合在连续批量任务中对很多 URL 直接并发调用，否则会创建多个浏览器并重复验证。
+`fetch_page()` 为单页可靠性使用隔离子进程，并可能按顺序启动 Scrapling 与 CloakBrowser。它适合单次调用、作业队列中的独立任务和故障隔离，不适合在连续批量任务中对很多 URL 直接并发调用，否则会创建多个浏览器并重复验证。同一站点的主目标、对照页、接口端点和状态探针也属于连续任务，应复用同一会话，不要为每个探针调用一次 `fetch_page()`。
 
 连续批量或 sitemap 任务按依赖选会话：[batch-workflows.md](batch-workflows.md) 里的 `StaticBatchSession`（层 0 静态页，零依赖）、`BrowserBatchSession`（层 1 渲染，只要 playwright/patchright）或 `SiteSessionManager`（层 2+，带挑战求解与重验证）：先首页预热，再复用同一会话做受限并发。
 
