@@ -180,6 +180,37 @@ def test_validation_reasons_combines_content_expectations_and_status() -> None:
     ]
 
 
+def full_page(marker: str) -> str:
+    """Build a page comfortably above the content-based acceptance floor."""
+
+    return f"<html><title>Shop</title><body>{marker}{'x' * 20_000}</body></html>"
+
+
+def test_validation_reasons_accepts_403_whose_body_is_verified_content() -> None:
+    result = make_result(status=403, html=full_page("Ricambi"), title="Shop")
+    reasons = subject.validation_reasons(result, 300, ["Ricambi"])
+    assert reasons == []
+    assert result.notes == ["http_status:403:accepted_by_content"]
+
+
+def test_validation_reasons_keeps_403_without_caller_expectations() -> None:
+    result = make_result(status=403, html=full_page("Ricambi"), title="Shop")
+    assert subject.validation_reasons(result, 300, []) == ["http_status:403"]
+    assert result.notes == [], "没有调用方断言时不得静默接受错误状态码的正文"
+
+
+def test_validation_reasons_keeps_403_for_small_or_titleless_bodies() -> None:
+    small = make_result(status=403, html="<html><title>Shop</title><body>Ricambi</body></html>")
+    assert subject.validation_reasons(small, 1, ["Ricambi"]) == ["http_status:403"]
+    titleless = make_result(status=403, html=f"<html><body>Ricambi{'x' * 20_000}</body></html>")
+    assert subject.validation_reasons(titleless, 1, ["Ricambi"]) == ["http_status:403"]
+
+
+def test_validation_reasons_only_relaxes_403() -> None:
+    result = make_result(status=404, html=full_page("Ricambi"), title="Shop")
+    assert subject.validation_reasons(result, 300, ["Ricambi"]) == ["http_status:404"]
+
+
 def test_fetch_page_returns_structured_outcome(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_availability(monkeypatch)
     monkeypatch.setattr(subject, "run_isolated_engine", lambda *args: make_result())

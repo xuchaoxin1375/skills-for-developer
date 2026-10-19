@@ -205,14 +205,18 @@ class FakePlaywrightPage:
         self.selector_waited = False
         self.screenshot_paths: list[str] = []
         self.waits: list[int] = []
+        self.goto_kwargs: dict[str, Any] = {}
+        self.load_states: list[str] = []
 
-    def goto(self, _url: str, **_kwargs: Any) -> Any:
+    def goto(self, _url: str, **kwargs: Any) -> Any:
         class Response:
             status = 200
 
+        self.goto_kwargs = kwargs
         return Response()
 
-    def wait_for_load_state(self, *_args: Any, **_kwargs: Any) -> None:
+    def wait_for_load_state(self, state: str, **_kwargs: Any) -> None:
+        self.load_states.append(state)
         return None
 
     def wait_for_timeout(self, ms: int) -> None:
@@ -387,6 +391,107 @@ def test_playwright_headless_does_not_wait_for_human(
 
     assert "Just a moment" in html, "无头模式不等人，直接按当前页面返回"
     assert page.polls == 1
+
+
+def test_playwright_wait_until_controls_when_page_is_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = FakePlaywrightPage()
+    monkeypatch.setattr(subject, "playwright_api_name", lambda: "playwright")
+    monkeypatch.setattr(subject, "load_playwright_factory", lambda: fake_playwright_factory(page))
+
+    subject.render_with_playwright(
+        {
+            "url": "https://example.com/app",
+            "timeout_ms": 5_000,
+            "headful": False,
+            "proxy": None,
+            "wait_until": "domcontentloaded",
+            "post_wait_ms": 700,
+        }
+    )
+
+    assert page.goto_kwargs["wait_until"] == "domcontentloaded"
+    assert page.load_states == [], "未请求 networkidle 时不应额外等待"
+    assert page.waits == [700]
+
+    monkeypatch.setattr(subject, "load_playwright_factory", lambda: fake_playwright_factory(page))
+    subject.render_with_playwright(
+        {
+            "url": "https://example.com/app",
+            "timeout_ms": 5_000,
+            "headful": False,
+            "proxy": None,
+            "wait_until": "networkidle",
+            "network_idle": True,
+        }
+    )
+    assert page.goto_kwargs["wait_until"] == "networkidle"
+    assert "networkidle" not in page.load_states, "goto 已等 networkidle，不再重复等待"
+
+
+def test_playwright_defaults_to_load_until_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = FakePlaywrightPage()
+    monkeypatch.setattr(subject, "playwright_api_name", lambda: "playwright")
+    monkeypatch.setattr(subject, "load_playwright_factory", lambda: fake_playwright_factory(page))
+
+    subject.render_with_playwright(
+        {"url": "https://example.com/app", "timeout_ms": 5_000, "headful": False, "proxy": None}
+    )
+
+    assert page.goto_kwargs["wait_until"] == "load"
+
+
+def test_scrapling_wait_kwargs_maps_each_wait_condition() -> None:
+    assert subject.scrapling_wait_kwargs("networkidle") == {"network_idle": True, "load_dom": True}
+    assert subject.scrapling_wait_kwargs("load") == {"network_idle": False, "load_dom": True}
+    for condition in ("commit", "domcontentloaded"):
+        assert subject.scrapling_wait_kwargs(condition) == {
+            "network_idle": False,
+            "load_dom": False,
+        }
+
+
+def test_scrapling_kwargs_keeps_legacy_network_idle_flag() -> None:
+    config = {
+        "url": "https://example.com/",
+        "timeout_ms": 60_000,
+        "retries": 1,
+        "retry_delay": 2.0,
+        "headful": False,
+        "proxy": None,
+        "hide_canvas": False,
+        "real_chrome": False,
+        "network_idle": True,
+        "wait_until": "domcontentloaded",
+    }
+    assert subject.scrapling_kwargs(config)["network_idle"] is True, "--network-idle 仍是显式开关"
+
+
+def test_wait_until_is_validated_and_carried_into_worker_config() -> None:
+    with pytest.raises(ValueError, match="wait_until"):
+        subject.validate_options(
+            subject.FetchOptions(url="https://example.com", wait_until="bogus")
+        )
+
+    config = subject.build_worker_config(
+        subject.FetchOptions(url="https://example.com", wait_until="networkidle"), None
+    )
+    assert config["wait_until"] == "networkidle"
+
+
+def test_static_engine_warns_about_browser_only_wait_options(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        subject.validate_options(
+            subject.FetchOptions(
+                url="https://example.com", engine="static", wait_until="domcontentloaded"
+            )
+        )
+    assert "--wait-until" in caplog.text
 
 
 def test_fetch_with_playwright_maps_missing_browser_to_unavailable(

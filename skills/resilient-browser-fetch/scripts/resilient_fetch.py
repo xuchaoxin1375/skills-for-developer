@@ -57,6 +57,15 @@ BLOCK_HINTS = (
     "sorry, you have been blocked",
     "cf-error-details",
 )
+# 部分站点(WAF)对可疑请求回 403，却仍下发完整正文；这类响应正文侧没有任何拦截信号。
+# 只有调用方显式断言过正文、且正文达到正常页面量级时才按可用内容接受，
+# 以免把 404/401/429/5xx，或品牌化的小体积拦截页当成正文。
+SOFT_STATUS_CODES = frozenset({403})
+SOFT_STATUS_MIN_BYTES = 20_000
+
+# 页面"加载完成"的判定条件，决定取源码与关闭窗口的时机(层 1/2/3；层 0 无浏览器，忽略)。
+WAIT_UNTIL_CHOICES = ("commit", "domcontentloaded", "load", "networkidle")
+DEFAULT_WAIT_UNTIL = "load"
 
 # ---- 引擎能力分层 ----
 # 层 0 零第三方依赖，层 1 只需 playwright/patchright，层 2 起才需要 scrapling。
@@ -131,6 +140,7 @@ class FetchResult:
     elapsed_sec: float
     title: str | None = None
     block_reasons: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
     versions: dict[str, str] = field(default_factory=dict)
 
 
@@ -148,6 +158,7 @@ class FetchOptions:
     retry_delay: float = 2.0
     headful: bool = False
     wait_selector: str | None = None
+    wait_until: str = DEFAULT_WAIT_UNTIL
     expected_texts: tuple[str, ...] = ()
     post_wait_ms: int = 1000
     challenge_wait_ms: int = 0
@@ -771,8 +782,9 @@ def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str
             context = browser.new_context(**context_kwargs)
         try:
             page = context.new_page()
-            response = page.goto(config["url"], timeout=timeout_ms, wait_until="load")
-            if config.get("network_idle"):
+            wait_until = config.get("wait_until") or DEFAULT_WAIT_UNTIL
+            response = page.goto(config["url"], timeout=timeout_ms, wait_until=wait_until)
+            if config.get("network_idle") and wait_until != "networkidle":
                 page.wait_for_load_state("networkidle", timeout=timeout_ms)
             # 层 1 没有求解器，但有人: 有头模式先给人时间过验证，再等选择器/截图/取源码，
             # 否则 --wait-selector 会先在挑战页上超时，人工验证永远等不到。
@@ -836,6 +848,20 @@ def fetch_with_playwright(config: dict[str, Any]) -> FetchResult:
     )
 
 
+def scrapling_wait_kwargs(wait_until: str) -> dict[str, Any]:
+    """Map the normalized wait condition onto Scrapling's own loading options.
+
+    Scrapling 没有 `wait_until`: `networkidle` 用它的 `network_idle` 表达; `commit` 与
+    `domcontentloaded` 都用 `load_dom=False` 近似, 即不等页面脚本执行完再取源码.
+    """
+
+    if wait_until == "networkidle":
+        return {"network_idle": True, "load_dom": True}
+    if wait_until in {"commit", "domcontentloaded"}:
+        return {"network_idle": False, "load_dom": False}
+    return {"network_idle": False, "load_dom": True}
+
+
 def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> dict[str, Any]:
     """Translate normalized worker configuration into Scrapling session options."""
 
@@ -844,10 +870,11 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
         "timeout": config["timeout_ms"],
         "retries": config["retries"],
         "retry_delay": config["retry_delay"],
-        "load_dom": True,
-        "network_idle": config["network_idle"],
         "disable_resources": False,
+        **scrapling_wait_kwargs(config.get("wait_until") or DEFAULT_WAIT_UNTIL),
     }
+    if config.get("network_idle"):
+        kwargs["network_idle"] = True
     if config.get("wait_selector"):
         kwargs["wait_selector"] = config["wait_selector"]
         kwargs["wait_selector_state"] = "visible"
@@ -1391,6 +1418,21 @@ def attempt_kind(reasons: Sequence[str], error: str | None) -> str:
     return KIND_BLOCKED if blockers else KIND_EMPTY
 
 
+def accepts_by_content(result: FetchResult, byte_count: int, expected_texts: list[str]) -> bool:
+    """Tell whether a 4xx response may be accepted because its body is verified content.
+
+    站点用 403 拒绝可疑请求却仍下发完整正文时，正文侧不会有任何拦截信号；这时只有调用方
+    自己断言过正文、且正文达到正常页面量级，才把状态码当作告警而不是失败。
+    """
+
+    return (
+        result.status in SOFT_STATUS_CODES
+        and bool(expected_texts)
+        and byte_count >= SOFT_STATUS_MIN_BYTES
+        and extract_title(result.html) is not None
+    )
+
+
 def validation_reasons(result: FetchResult, min_bytes: int, expected_texts: list[str]) -> list[str]:
     reasons = list(result.block_reasons)
     byte_count = len(result.html.encode("utf-8", errors="replace"))
@@ -1399,9 +1441,21 @@ def validation_reasons(result: FetchResult, min_bytes: int, expected_texts: list
     for expected in expected_texts:
         if expected not in result.html:
             reasons.append(f"missing_expected_text:{expected}")
-    if result.status is not None and result.status >= 400:
-        reasons.append(f"http_status:{result.status}")
-    return reasons
+    if result.status is None or result.status < 400:
+        return reasons
+    if not reasons and accepts_by_content(result, byte_count, expected_texts):
+        note = f"http_status:{result.status}:accepted_by_content"
+        if note not in result.notes:
+            result.notes.append(note)
+        logging.warning(
+            "HTTP %s 但正文通过内容校验(%s 字节，期望文本全部命中): 站点可能对可疑请求回错误状态码"
+            "却仍下发正文，按可用内容接受，不再为此升档；状态码保留在 meta 的 status/notes。"
+            "这类正文可能尚未水合(样式/懒加载图片未就绪)，需要完整客户端渲染时显式指定更高层引擎。",
+            result.status,
+            byte_count,
+        )
+        return []
+    return [*reasons, f"http_status:{result.status}"]
 
 
 def validate_options(options: FetchOptions) -> None:
@@ -1410,6 +1464,10 @@ def validate_options(options: FetchOptions) -> None:
         raise ValueError("url 必须是完整的 HTTP(S) URL。")
     if options.engine not in ENGINE_CHOICES:
         raise ValueError(f"未知 engine: {options.engine} (可选: {', '.join(ENGINE_CHOICES)})")
+    if options.wait_until not in WAIT_UNTIL_CHOICES:
+        raise ValueError(
+            f"未知 wait_until: {options.wait_until} (可选: {', '.join(WAIT_UNTIL_CHOICES)})"
+        )
     capabilities = engine_capabilities(options.engine)
     if CAP_SOLVE in capabilities:
         if options.timeout_ms < MIN_SOLVER_TIMEOUT_MS:
@@ -1429,6 +1487,7 @@ def validate_options(options: FetchOptions) -> None:
                 ("--humanize", options.humanize),
                 ("--hide-canvas", options.hide_canvas),
                 ("--network-idle", options.network_idle),
+                ("--wait-until", options.wait_until != DEFAULT_WAIT_UNTIL),
                 ("--screenshot", bool(options.screenshot)),
             )
             if enabled
@@ -1478,6 +1537,7 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "retry_delay": options.retry_delay,
         "headful": options.headful,
         "wait_selector": options.wait_selector,
+        "wait_until": options.wait_until,
         "post_wait_ms": options.post_wait_ms,
         "challenge_wait_ms": options.challenge_wait_ms,
         "locale": options.locale,
@@ -1652,13 +1712,15 @@ def save_page(options: FetchOptions, out: str | Path) -> FetchOutcome:
         output,
         [attempt.as_metadata() for attempt in outcome.attempts],
     )
+    notes = f" | notes={','.join(outcome.result.notes)}" if outcome.result.notes else ""
     logging.info(
-        "成功保存: %s | engine=%s | status=%s | bytes=%s | elapsed=%ss",
+        "成功保存: %s | engine=%s | status=%s | bytes=%s | elapsed=%ss%s",
         output,
         outcome.result.engine,
         outcome.result.status,
         len(outcome.result.html.encode("utf-8", errors="replace")),
         outcome.result.elapsed_sec,
+        notes,
     )
     return outcome
 
@@ -1709,6 +1771,16 @@ def main(argv: list[str] | None = None) -> int:
         "--headful", action="store_true", help="使用有头模式；Linux 服务器需 DISPLAY/Xvfb。"
     )
     parser.add_argument("--wait-selector", help="验证通过后必须出现的 CSS 选择器。")
+    parser.add_argument(
+        "--wait-until",
+        choices=WAIT_UNTIL_CHOICES,
+        default=DEFAULT_WAIT_UNTIL,
+        help=(
+            "判定页面加载完成并取源码的条件(层 1/2/3, 层 0 忽略): commit | domcontentloaded | "
+            "load | networkidle，默认 load；长连接/轮询站点用完 networkidle 可能一直不空闲时，"
+            "改用 load 或 domcontentloaded 配合 --post-wait-ms/--wait-selector。"
+        ),
+    )
     parser.add_argument(
         "--expect-text", action="append", default=[], help="成功 HTML 必须包含的文本，可重复。"
     )
@@ -1773,6 +1845,7 @@ def main(argv: list[str] | None = None) -> int:
         retry_delay=args.retry_delay,
         headful=args.headful,
         wait_selector=args.wait_selector,
+        wait_until=args.wait_until,
         expected_texts=tuple(args.expect_text),
         post_wait_ms=args.post_wait_ms,
         challenge_wait_ms=args.challenge_wait_ms,
