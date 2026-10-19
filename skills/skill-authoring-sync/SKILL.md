@@ -91,6 +91,21 @@ skills-for-developer/
 
 - 必须：用户提及 skill 变更/改动时，先定位真源再查改动：在真源内用 `git status --short`、`git log --oneline -N`、`git diff` 核对实体改动，不得以 harness 侧目录时间判定。例：查近期改动先跑状态与差异，再按名加载对应正文。
 
+### 跨机器同步与对齐判定
+
+用户说“同步 skills”时，先把本地工作区状态和远端真实状态分开验证。`git status -sb` 只比较 `HEAD` 与本地缓存的 `refs/remotes/<remote>/<branch>`；该缓存可能早已过期，不能单独证明远端已对齐。
+
+1. **列远端**：`git remote -v`。不要假定只有 `origin`；有镜像时以提交历史更全的一侧为准，必要时分别核对。
+2. **直接问远端**：`git ls-remote <remote> refs/heads/<branch>`，记录远端 commit。未 fetch 也能得到远端真实 SHA。
+3. **取回并比较**：`git fetch <remote> <branch>`，再运行
+   `git rev-list --left-right --count HEAD...<remote>/<branch>`。
+   输出为 `<ahead> <behind>`；两者都为 `0` 才算对齐。
+4. **按结果处理**：
+   - `behind > 0`、`ahead = 0`：先处理工作区未提交改动（提交或 stash），再 `git pull --ff-only`（或 `git merge --ff-only <remote>/<branch>`）后复跑第 3 步。
+   - `ahead > 0`、`behind = 0`：本地有未推送提交；只有用户明确指示才 push，push 后重新 fetch 核对。
+   - 双向非零：先报告分叉点和双方提交，不擅自 merge/rebase。
+5. **报告核验事实**：写明 remote、branch、远端 SHA、本地 HEAD、ahead/behind，以及是否实际执行过 fetch。ahead/behind 只描述提交历史；工作区有未提交改动时另用 `git status --short` 说明，不能把它算作已同步。不要用 `git status -sb` 的 `up to date` 代替远端结论；远端不可达时明确说“未能验证远端”。
+
 ### 删除 skill
 
 1. 先运行链接脚本 `-Unlink` / `--unlink`（或手工删各 harness 下对应链接），再删仓库目录。
@@ -139,7 +154,7 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
    Linux：`./scripts/link-skills.sh --verify-only` 全量通过。
 2. 新 skill 在 harness 中可见/可加载（出现在可用 skill 列表即算通过；dsh 差异见 `references/dsh-skills.md`）。
 3. 抽查正文：描述的触发条件在对应请求下能命中加载，含 skill 变更/查变更触发。
-4. `git status` 确认无链接本体被误暂存。
+4. `git status` 确认无链接本体被误暂存；涉及跨机器同步时，按「跨机器同步与对齐判定」核对远端，不以 `git status -sb` 代替。
 5. 查变更请求已在真源用 `git status`/`log`/`diff` 核对，未用 harness 时间判定。
 
 ## 红线

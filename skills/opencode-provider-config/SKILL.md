@@ -115,7 +115,7 @@ curl -s -m 30 -A "Mozilla/5.0" https://openrouter.ai/api/v1/models \
 
 例：把官方免费模型 `opencode/deepseek-v4.1-flash-free` 的上下文提到 1M，只需在 `providers.opencode.models` 加上述条目，其他字段一概不动。`limit` 只是 OpenCode 侧声明的容量上限，不改变网关/供应商的真实能力——超出其支持范围仍会报错或截断；数值取自数据源或供应商文档，不臆造。改完 `opencode reload` 热加载，进行中的请求仍用旧值，下一请求起生效。
 
-**服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值——该命令只读，读 `service.json` 的 `env` 块，与 live 进程快照、shell 变量分属三层，见下文"存储与生效分离"）：
+**服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值——该命令只读，读 `service.json` 的 `env` 块，与 live 进程快照、shell 变量分属三层，细节见 [references/service-env.md](references/service-env.md)）：
 
 ```bash
 opencode service set env <PROVIDER>_API_KEY <KEY>
@@ -128,56 +128,7 @@ opencode service set env NO_PROXY "localhost,127.0.0.1,::1,<既有放行域名>"
 opencode service start   # set env 本身也会重启服务
 ```
 
-**按域名分流代理**：代理是进程级的，JSON 配置无法按 provider 配代理（源码的 `options.fetch` 是函数，写不进配置文件）。同一供应商有多个入口域名、部分直连部分被阻断时，用服务端全局代理 + `NO_PROXY` 分流：直连可达的域名加进 `NO_PROXY`，其余域名自动走代理。例：域名 A 直连、域名 B 被阻断，则 `NO_PROXY` 加 A，两套 provider 配置共用同一服务端代理即可自动分流，启动时无需设置任何环境变量。
-
-**密钥错位排查**：同一 provider 下所有模型均报网关侧“无可用渠道”，但配置文件与单模型直连测试均正常时，应优先怀疑实际生效的密钥与本次配置的密钥不一致（多会话共用同一后台服务时易发生混用）。以下命令仅输出 `True`/`False`，不打印密钥明文：
-
-```bash
-python3 -c "import os; print(os.environ.get('<PROVIDER>_API_KEY','') == '<KEY>')"
-```
-
-输出 `False` 即确认错位：不同密钥对应不同的网关账号，其模型目录与分组权限各自独立。此时换用正确的密钥并重启服务即可恢复，无需修改 provider 配置。
-
-**变量名占用前置检查**：定 `env` 变量名前，先查四层是否已有同名（`service get env`、当前 shell 进程、Windows `User`/`Machine` 注册表），任一层有值且与本次密钥不同即视为占用，必须换名，不得覆盖用户既有变量。以下命令只查有无，不输出值：
-
-```powershell
-[Environment]::GetEnvironmentVariable("<NAME>","User")
-[Environment]::GetEnvironmentVariable("<NAME>","Machine")
-```
-
-任一返回非空即占用。`providerID` 同理：不得与内置供应商同名（内置改 `baseURL` 只覆盖 `settings.baseURL`，见适用范围）。
-
-**大小写代理变量**：shell 环境中通常仅存在小写 `http_proxy` 系变量，但部分 HTTP 客户端仅识别大写变量。恢复代理时，应以 `env | grep -i proxy` 的实测值为准补齐大写三变量（端口照抄实测值，不得臆造；写入方式见上文模板），`NO_PROXY` 保持逗号分隔。
-
-**已知行为**：每次 `service set env` 都会重启后台服务，导致正在执行的 shell 命令以 "Tool execution interrupted"（导出日志中也显示为 "Command cancelled"）中断——这不是失败，变量已写入。变量名与取值全部定稿后再写入，`set env` 次数即重启次数，能少一次就少一次；逐条设置、每条跑完重新确认即可；确认用只读的 `opencode service get env`（输出含密钥，展示前先打码）。
-
-**例外（写入丢失）**：经由服务端派生的 shell 执行 `set env` 时，服务重启可能先于 CLI 完成写入即将其终止，导致写入丢失（`get env` 仍为空）。若多次重试后 `get env` 依然为空，即属此情形，应改用 detached 方式执行，并以只读命令确认：
-
-```bash
-setsid nohup opencode service set env <KEY_NAME> <KEY_VALUE> >"$HOME/setenv.log" 2>&1 < /dev/null &
-sleep 75
-opencode service get env                                        # 只读确认已落盘（输出含密钥，展示前打码）
-ps -o pid,ppid,lstart,cmd $(pgrep -f "serve --service")         # 以 STARTED 时间最新者为当前服务进程
-```
-
-`service restart` 完全生效约需 1 分钟：重启后不得以 pgrep 返回的第一个 PID 为准（该进程可能处于正在退出的瞬态），必须以上述 `ps` 输出中 `STARTED` 时间最新者为准，再对其核验环境变量。
-
-**存储与生效分离**：环境变量有三层——shell 里 export 的临时变量（对服务进程无效，见第 2 步结论）、`get env` 读的持久化存储（`service.json` 的 `env` 块）、运行中服务进程启动时继承的快照（读法 `tr '\0' '\n' < /proc/<PID>/environ`）。三者可各自不同步；`get env` 为空并不代表服务进程中无此变量——修改服务级 env 之前，除 `get env` 外，还应查询 live 服务进程的环境（密钥经掩码处理，不输出明文）：
-
-```bash
-SERV_PID=$(pgrep -f "serve --service" | head -n 1)
-tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(sk-)[A-Za-z0-9]+/\1****/g'
-```
-
-修改存储后，必须重启服务一次，新进程才会继承更新后的变量；多次 `set env` 意味着多次重启并多次打断用户会话，因此应一次合并写好 `env` 块，再执行单次 restart。重启本身有风险：只存在于旧进程 environ 快照、未持久化的代理变量会随旧进程消失，任何重启前先双查（`get env`＋live environ），缺的先补持久化再重启；从服务派生的 shell 里直接跑 `service restart` 可能被重启连带打断，用 detached 方式（`setsid nohup … &`）执行，重启后按 STARTED 时间定位新进程并核验 PROXY 变量仍在。
-
-**live 未生效的判定与隔离验证**（Windows 无 `/proc` 时，以对照与隔离为准）：`service status` 端口与 `opencode.log` 中 `spawning process` 的 `run=` 是否变化，是重启是否真正生效的判据；两者不变即 live 仍是旧快照，此时重复 `set env`/`restart` 只是空转，应停手。用已知正常模型做对照：已知模型 `run` 正常、新模型报缺 key，即 live 陈旧而非配置错。先用 `run --standalone` 隔离验证（私有服务继承当前 shell 环境，同条命令内设变量并验证，密钥不落盘到配置文件）：
-
-```powershell
-$env:<VAR_NAME> = "<KEY>"; opencode run --standalone -m <providerID>/<modelID> "reply with exactly: OK"
-```
-
-通过即证明配置与密钥无误；后台服务侧改用会话外部重启（新开终端、任务管理器、重启机器）后再按第 5 步重验，不在会话内空转重试。
+服务端 env 的高频底线：`set env` 会重启服务，变量名与取值定稿后一次合并写入；改前先 `opencode service get env` 抄下既有值，代理变量只增合并不覆盖；`NO_PROXY` 保持逗号分隔并含回环。按域名分流、密钥错位、变量名占用、大小写代理变量、写入丢失、存储与生效分离、live 未生效等排障细节，见 [references/service-env.md](references/service-env.md)。
 
 ### 5. 端到端验证（按序，缺一不可）
 
@@ -208,29 +159,20 @@ $env:<VAR_NAME> = "<KEY>"; opencode run --standalone -m <providerID>/<modelID> "
 
 ## 自检
 
-- [ ] 模型列表经过筛选，只配对话模型
-- [ ] 本地直连不通时代理已持久化到服务端（非仅 shell export）
-- [ ] `NO_PROXY` 含 `localhost,127.0.0.1`；多入口分流时直连域名已加入（按域名分流，不按 provider 配代理）
-- [ ] `NO_PROXY` 已核验为逗号分隔，空格分隔的既有值已改正？
-- [ ] 改服务级 env 前 `get env` 抄了既有值，代理三变量是合并不是覆盖？
-- [ ] `get env`（持久化存储）与 live 服务进程环境一致：无陈旧密钥，大写代理变量齐全？
-- [ ] `env` 变量名定名前已查四层占用，同名不同值已换名，未覆盖用户既有变量？
-- [ ] 含逗号的 `set env` 值已加引号写入并核验为逗号分隔；写入次数已是最少？
-- [ ] 重启生效已用端口/`run=` 变化确认；live 陈旧时已用已知模型对照并以 `--standalone` 隔离验证通过？
-- [ ] 重启后是否以上述 `ps` 命令中 `STARTED` 时间最新的服务进程为准完成核验，而非 pgrep 返回的任意 PID？
-- [ ] 直连可达的设备未设代理变量，代理端口无臆造？
-- [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体再选 ID？
-- [ ] 官方套餐 `api_key_expired` 已按“Console 建 `oc_sk_…` 新 key 后重连”处理，未去改 `auth.json`？
-- [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败？
-- [ ] 只订阅 Go 时未额外要求填 Console key；查模型目录已区分公开目录与工作区范围？
-- [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染
-- [ ] `limit` 参数来自任一数据源并经交叉核验或官方确认，非臆造
-- [ ] 覆盖已有/内置模型 `limit` 时只写了 `limit` 字段、未重写 name/modelID，且已用 `opencode api get /api/model` 确认解析后的值？
-- [ ] 只实测了接入要用的模型，未逐一遍历分组全量？
-- [ ] 单模型验证默认限时 10 秒（可放宽到 15 秒），超时判当前时段可靠性不佳而非无限重试？
-- [ ] 重启服务前双查代理环境（get env＋live environ），重启后新进程 PROXY 仍在？
-- [ ] 三步验证（get env → models → run）全部通过
-- [ ] 配置文件原有内容未被覆盖
+- [ ] 模型列表经过筛选，只配对话模型。
+- [ ] 本地直连不通时代理已持久化到服务端，不是只在当前 shell export。
+- [ ] `NO_PROXY` 为逗号分隔、含回环；多入口分流时直连域名已加入，代理端口来自实测或用户告知。
+- [ ] 改服务级 env 前已 `get env` 抄下既有值，代理变量只增合并不覆盖。
+- [ ] `env` 变量名与 `providerID` 未占用既有名称；同名不同值已换名。
+- [ ] `set env` 次数已压到最少；含逗号的值已加引号并核验落盘格式。
+- [ ] `get env` 与 live 服务进程环境一致：无陈旧密钥，大写代理变量齐全。
+- [ ] 重启生效已用端口/`run=` 变化或新进程 environ 确认；重启后以 `STARTED` 时间最新的进程为准；live 陈旧时已用 `--standalone` 隔离验证。
+- [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染。
+- [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体；`api_key_expired` 按 Console 新建 `oc_sk_…` 处理，未去改 `auth.json`。
+- [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败。
+- [ ] `limit` 来自数据源或官方文档，并经交叉核验；覆盖已有/内置模型时只写 `limit`，且已用 `opencode api get /api/model` 确认解析值。
+- [ ] 只实测本次接入要用的模型，默认限时 10 秒（最多放宽到 15 秒）。
+- [ ] 三步验证（get env → models → run）全部通过，配置文件原有内容未被覆盖。
 
 ## 验证协议
 

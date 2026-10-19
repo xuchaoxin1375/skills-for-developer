@@ -4,6 +4,10 @@
 
 ### 未发布
 
+- `skill-authoring-sync` 增加「跨机器同步与对齐判定」：`git status -sb` 只反映本地缓存的 remote-tracking ref，不能证明远端已对齐；同步前先用 `git ls-remote`/`git fetch` 取得远端真实 SHA，再用 `git rev-list --left-right --count HEAD...<remote>/<branch>` 比较 ahead/behind，按快进、待推送或分叉分别处理并报告实际核验事实。`repo-governance` 的提交前验证协议与 `README.md` 的日常工作流同步补上该判定。
+- `resilient-browser-fetch` 停止资源级状态的无谓升档：`auto` 在引擎返回 HTTP 404/410 且正文没有挑战特征时停止继续尝试更高层，避免为同一个不存在的资源重复启动浏览器；挑战页仍按原规则升档。新增 `stops_auto_escalation()` 与两条回归测试，`SKILL.md` 的失败处置表、批量会话说明与 `references/batch-workflows.md` 同步补充"同站探针/对照页合并进一个已预热会话、单个 404/410 不触发升档"。
+- `scripting-best-practices` 按语言拆分参考：`SKILL.md` 保留通用约束、工作流程、语言路由、补全决策与验证协议，Shell/Python/Node 的骨架、强制规则、编码细节、质量工具和反模式清单下沉到 `references/shell.md`、`references/python.md`、`references/node.md`；规则内容未变，只改善按需读取。
+- `opencode-provider-config` 下沉服务端 env 排障：按域名分流、密钥错位、变量名占用、大小写代理变量、写入丢失、存储与生效分离、live 未生效等条件分支移到 `references/service-env.md`，正文保留配置模板、三条高频底线与端到端验证；自检从 23 项收敛为验收型条目。
 - `htmlmini` 新增应用壳检测：静态抓取返回 200 但正文 < 200 字符、HTML ≥ 5 KB 且占比 < 1.5% 时，默认报错（退出码 1）并提示改用 `--render=always` / MCP `render:"always"`，不再静默输出 "Unable to connect to the Internet" 这类壳文案；新增 `--allow-empty` / MCP `allow_empty` 保留原输出，`title` 与 `skeleton` 不受检查。`smoke.mjs` 补 4 条断言（壳报错、`--allow-empty`、title/skeleton 豁免）。
 - `htmlmini` 并入 CSS 生成内容：`::before` / `::after` 的短标点 `content` 此前完全不可见，价格把小数点做成 `content:"."` 的页面会被读成 `$100`（实际 `$1.00`）。现在解析页面 `<style>`，浏览器渲染通路与带 `.meta.json` 的落盘文件还会抓同源外链 CSS（限 5 个文件 / 2 MB / 5 s，失败忽略），只并 1~3 个安全标点并记账到 `stats.cssGenerated`；图标字体 `\e900`、`url()`、`attr()`、`counter()` 跳过，同一元素同一侧只并一次。`README.md`、`SKILL.md` 与 `references/usage-cases.md` 补价格字段的核对口径。
 - `htmlmini` 新增日期时间版本号：`package.json` 的 `version` 是唯一真源，格式 `YYYY.MM.DD.HHmm`（如 `2026.10.19.1750`），用 `pnpm stamp` / `node scripts/stamp-version.mjs` 按当前时间写入。CLI 新增 `--version` / `-V`（输出 `htmlmini <version>`），`--help` 首行带版本；MCP `serverInfo.version`、抓取 UA（`htmlmini/<version>`）、`--json` 输出的 `version` 字段都运行时读取同一真源，不再各写一份常量（此前 UA 写死 `htmlmini/0.3`、MCP 写死 `0.3.0`）。四段版本号仅用于本地 link/安装，不要发布到 npm registry（npm 只接受三段 semver）。`README.md` 与 `SKILL.md` 补用法与排查口径。

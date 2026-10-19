@@ -8,25 +8,16 @@ description: >
 
 # 脚本编写规范
 
-你是一位资深 DevOps / 平台工程师，输出的脚本必须在生产环境可靠运行。
+面向单文件自动化脚本与小工具 CLI（Shell / Python / Node.js）。大型应用项目另按工程脚手架处理，不套用本规范。
 
-**适用范围**：单文件自动化脚本与小工具 CLI（Shell / Python / Node.js）。大型应用项目另按工程脚手架处理，不套用本规范。各语言章节是通用约束的实例化，有冲突以通用约束为准。
-
-以下规则分为两级：`必须` 表示无条件遵守，除非用户明确要求例外（有冲突时先向用户确认）；
-`推荐` 表示默认照做，有正当理由可偏离并在交付时说明。
-
----
+以下规则分为两级：`必须` 表示无条件遵守，除非用户明确要求例外（有冲突时先向用户确认）；`推荐` 表示默认照做，有正当理由可偏离并在交付时说明。各语言细则放在 `references/`，先读本文件的通用约束，再按任务语言读取对应参考。
 
 ## 工作流程
 
-接到脚本任务时，按以下顺序执行：
-
-1. **确认需求**：目标环境（Linux / macOS / Windows / 跨平台）、解释器约束（Bash 可用还是仅 POSIX sh、Python/Node 版本、有无第三方依赖）、参数与输入来源、是否需要 Tab 补全（见“补全支持”节决策表）。
-2. **按骨架编写**：Shell 用 `main "$@"` 骨架，Python 用 `main() + argparse` 骨架，Node 用参数解析 `+ main() +` 退出码骨架，不从空白起稿。
-3. **对照自检**：用文末反模式清单逐项检查。
+1. **确认需求**：目标环境（Linux / macOS / Windows / 跨平台）、解释器约束（Bash 可用还是仅 POSIX sh、Python/Node 版本、有无第三方依赖）、参数与输入来源、是否需要 Tab 补全（见“补全支持”节）。
+2. **按语言骨架编写**：先读对应语言参考，Shell 用 `main "$@"` 骨架，Python 用 `main() + argparse` 骨架，Node 用参数解析 + `main()` + 退出码骨架，不从空白起稿。
+3. **对照自检**：用对应语言参考末尾的反模式清单逐项检查。
 4. **运行验证**：按“验证协议”执行工具检查与正/异常路径测试，有告警必须清零或向用户说明。
-
----
 
 ## 通用约束（语言无关，Shell / Python / Node 共通）
 
@@ -41,8 +32,6 @@ description: >
 9. **推荐：配置外置**。路径、URL、端口等环境相关值使用变量、环境变量或配置文件，默认值为常量声明。
 10. **推荐：版本控制**。脚本纳入 Git；含 `.sh` 文件的仓库在 `.gitattributes` 中声明 `*.sh text eol=lf`，防止 Windows CRLF 导致 `\r: command not found`。
 
----
-
 ## 本地工具：文件遍历与子进程（推荐）
 
 面向本机跑的工具脚本/小服务（扫文件、调构建工具、读命令输出）。语言无关，Node/Python/Shell 同理：
@@ -52,455 +41,36 @@ description: >
 3. **命令输出按系统编码双解码**。中文 Windows 的控制台默认输出系统编码（如 GBK），按 UTF-8 硬解必出乱码：按字节攒、按行切分（不断多字节字符），每行先 UTF-8 严格解码，失败回落系统编码后再用。
 4. **日志入库前剥离 ANSI 控制序列**。构建工具爱发着色码（SGR/CSI/OSC），展示与落盘都要干净文本；剥完变空行的直接丢弃，不存空白噪音。
 
----
-
-## Shell (Bash) 规范
-
-### 头部与严格模式
-
-每个 Bash 脚本**必须**以以下两行开头：
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-```
-
-| 选项 | 作用 | 说明 |
-| ---- | ---- | ---- |
-| `set -e` | 命令返回非零退出码时**立即终止** | 避免错误被静默忽略 |
-| `set -u` | 引用**未定义变量**时报错并终止 | 杜绝拼错变量名带来的隐蔽 bug |
-| `set -o pipefail` | 管道中**任一命令**失败则整条管道失败 | 默认仅看最后一条命令的退出码 |
-
-**关键辨析**：`bash` vs `sh`。需要数组、`[[ ]]`、`local` 等 Bash 特性时用 `#!/usr/bin/env bash`（经 `PATH` 查找，兼容 Homebrew 等非常规安装路径）；
-追求最大可移植且只用 POSIX 语法时才用 `#!/bin/sh`。在多数发行版上 `/bin/sh` 指向 `dash`，Bash 专有语法行为会不同，因此**依赖 Bash 特性的脚本禁止使用 `#!/bin/sh`**。
-
-**为什么必须**（反面教材）：
-
-```bash
-backup_dir="/data/backup"
-cd "$backup_dir"        # 若目录不存在：有 set -e 时立即退出；
-rm -f *.log.old         # 无 set -e 时在当前目录继续 rm，后果可能是灾难性的
-```
-
-允许失败的命令局部放行：`some_optional_step || true`。
-
-### 脚本骨架
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# =============================================================================
-# 脚本名称: deploy_app.sh
-# 功能描述: 将应用部署到目标服务器
-# 用法:     ./deploy_app.sh <环境名> [版本号]
-# =============================================================================
-
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-log()  { printf '[%s] INFO:  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
-warn() { printf '[%s] WARN:  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
-die()  { printf '[%s] ERROR: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; exit 1; }
-
-check_dependencies() {
-    local deps=("$@")
-    local dep
-    for dep in "${deps[@]}"; do
-        command -v "$dep" > /dev/null 2>&1 \
-            || die "缺少依赖: $dep，请先安装"
-    done
-}
-
-cleanup() {
-    # 在此添加清理逻辑（如 rm -rf "$TMPDIR"）
-    :
-}
-trap cleanup EXIT
-
-usage() {
-    cat <<EOF
-用法: $(basename "$0") <环境名> [版本号]
-
-参数:
-  环境名    部署目标环境（dev / staging / prod）
-  版本号    可选，默认部署最新版本
-
-示例:
-  $(basename "$0") staging v2.1.0
-EOF
-    exit 1
-}
-
-main() {
-    [[ $# -lt 1 ]] && usage
-    local env="$1"
-    local version="${2:-latest}"
-
-    check_dependencies git docker curl
-
-    log "开始部署: 环境=$env, 版本=$version"
-    # ... 实际逻辑 ...
-    log "部署完成"
-}
-
-main "$@"
-```
-
-设计要点：`main "$@"` 收口全部逻辑；`readonly` 保护路径类常量；
-依赖检测用 POSIX 内建 `command -v`（禁止 `which`）；错误与警告走 stderr。
-
-### 强制规则
-
-| 规则 | 说明 |
-| ---- | ---- |
-| **始终给变量加双引号** | `"$var"`，防止词分割和通配符展开（Bash bug 最常见的单一来源） |
-| **用 `[[ ]]` 代替 `[ ]`** | Bash 内建，更安全，支持 `&&`、正则等 |
-| **用 `$(cmd)` 代替反引号** | 可嵌套，可读性好 |
-| **用 `printf` 代替 `echo`** | 行为更可预测、更可移植 |
-| **用 `command -v` 代替 `which`** | POSIX 标准，更可靠 |
-| **用 `readonly` 声明常量** | 防止意外覆写 |
-| **`local` 声明和赋值分两行** | `local var` 然后 `var=$(cmd)`；写在一行时 `local` 会掩盖命令退出码 |
-| **遍历文件用 glob 不用 `ls`** | `for f in *.log; do`，禁止 `for f in $(ls *.log)` |
-| **禁止使用 `eval`** | 除非完全理解安全影响并有充分理由 |
-| **`cd` 后检查退出码** | `cd "$dir" \|\| die "无法进入目录"` |
-
-引号反面教材：`filename="my file.txt"; rm $filename` 实际执行 `rm my file.txt`；
-`headline="* Headline *"` 不加引号时 `*` 会展开为当前目录文件列表。
-**规则：除非明确需要词分割或通配符展开，否则永远加双引号。**
-
-### 跨平台要点
-
-| 差异点 | Linux (GNU) | macOS (BSD) | 兼容方案 |
-| ------ | ----------- | ----------- | -------- |
-| `sed` 原地编辑 | `sed -i 's/.../'` | `sed -i '' 's/.../'` | 统一用 `sed -i.bak` 后删除备份，或安装 `gnu-sed` |
-| `date` 相对日期 | `date -d '1 day ago'` | `date -v-1d` | 用 `gdate`（Homebrew `coreutils`） |
-| `readlink -f` | 支持 | 不支持 | `realpath` 或 `cd + pwd` 范式 |
-
-### 质量工具
-
-- **ShellCheck**：静态分析找 bug，`shellcheck script.sh`，以零告警为目标。
-- **shfmt**：自动格式化，推荐 `shfmt -w -i 2 -ci -s script.sh`（CI 检查用 `shfmt -d` 只看差异）。
-- 两者互补（前者查正确性，后者管格式），均接入 CI；VS Code 可装对应扩展获得实时反馈。
-
----
-
-## Python 脚本规范
-
-### 头部与入口
-
-```python
-#!/usr/bin/env python3
-"""script_name.py - 一句话功能描述。
-
-用法:
-    python script_name.py --env staging --output /data/backup
-"""
-```
-
-### 脚本骨架（标准库优先）
-
-```python
-#!/usr/bin/env python3
-"""backup_db.py - 数据库自动备份脚本。"""
-
-from __future__ import annotations
-
-import argparse
-import logging
-import sys
-from pathlib import Path
-
-logger = logging.getLogger(__name__)
-
-DEFAULT_BACKUP_DIR = Path("/data/backup")
-
-
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """解析命令行参数（含类型校验与 --help）。"""
-    parser = argparse.ArgumentParser(description="数据库自动备份脚本")
-    parser.add_argument("--env", required=True, choices=["dev", "staging", "prod"])
-    parser.add_argument("--output", default=str(DEFAULT_BACKUP_DIR))
-    return parser.parse_args(argv)
-
-
-def run_backup(env: str, output: Path) -> None:
-    """实际备份逻辑（与 CLI 解析分离，便于测试与复用）。"""
-    ...
-
-
-def main() -> int:
-    """入口函数：返回进程退出码。"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    args = parse_args()
-    try:
-        output_path = Path(args.output)
-        output_path.mkdir(parents=True, exist_ok=True)
-        logger.info("开始备份: 环境=%s, 输出=%s", args.env, output_path)
-        run_backup(args.env, output_path)
-        logger.info("备份完成")
-    except Exception:
-        logger.exception("备份失败")
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-```
-
-设计要点：`if __name__ == "__main__":` 使脚本可导入可执行；
-`logging` 代替 `print`（级别控制、可重定向、可落盘）；
-`pathlib.Path` 代替字符串拼接（跨平台）；
-全函数类型注解（配合 mypy/Pyright 在重构时提前发现错误）；
-`main() -> int` 返回退出码而非中途 `sys.exit`，便于测试。
-参数解析默认标准库 `argparse`；用户已使用 `click` 的项目可沿用 `click`。
-
-### 强制规则
-
-| 规则 | 说明 |
-| ---- | ---- |
-| **`if __name__ == "__main__":`** | 必须使用，使脚本可导入可执行 |
-| **类型注解** | 所有函数签名添加类型注解 |
-| **`logging` 代替 `print`** | 支持级别控制、格式化、输出到文件 |
-| **`pathlib.Path` 代替字符串路径** | 跨平台、API 更现代 |
-| **`subprocess.run()` 代替 `os.system()`** | 列表传参防注入，`check=True` 检查退出码 |
-| **不要裸 `except` / `except: pass`** | 至少 `logger.exception(...)` 或限定异常类型后处理 |
-| **不要 `import *`** | 显式导入，保持命名空间清晰 |
-| **避免全局可变状态** | 通过函数参数传递配置 |
-| **虚拟环境** | 始终使用 venv / uv，不污染系统 Python |
-| **依赖锁定** | `pyproject.toml` + lock 文件；单文件工具脚本可用 PEP 723 内联声明，`uv run script.py` 直接运行 |
-
-PEP 723 单文件依赖声明示例：
-
-```python
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["requests>=2.31", "rich>=13.0"]
-# ///
-```
-
-### 文件读写编码（UTF-8，默认）
-
-必须：读写文本文件时显式指定编码。常规文本按 UTF-8 处理：读用 `Path.read_text(encoding="utf-8")`，写用 `Path.write_text(..., encoding="utf-8")`；需去掉字节顺序标记（BOM，Byte Order Mark）时读用 `encoding="utf-8-sig"`。子进程输出编码见“本地工具：文件遍历与子进程”第 3 条，不与本条混用。禁止用 `errors="replace"` 或 ASCII 转义做常规输出，它们只掩盖误读；诊断链路无法统一编码时的保真回退见 `powershell-pitfalls` 的编码参考。
-
-```python
-from pathlib import Path
-Path("example.txt").write_text("中文", encoding="utf-8")
-text = Path("example.txt").read_text(encoding="utf-8")
-```
-
-### 执行侧编码（UTF-8，默认）
-
-必须：从 shell/任务调度启动 Python 时，调用侧与被调侧编码对齐。管道重定向下
-Python 按系统 locale 编码 stdout（中文 Windows 默认 GBK），而调用侧（如已设
-UTF-8 的 PowerShell）按 UTF-8 解码，错位即乱码——文件读写已显式 UTF-8 也救不了输出管道。默认：
-
-- 单次：`python3 -X utf8 <script>.py`；
-- 父子多层 python（脚本内再起子进程）：父进程先设 `PYTHONUTF8=1`，子进程继承；
-- 新脚本文件本身：UTF-8 无 BOM，换行 LF（仓库 `.gitattributes` 已对 `*.py` 强制）。
-
-反例证据：外层有 `-X utf8` 而内层无，内层 GBK 输出在外层直接 `UnicodeDecodeError`。
-文件内容编码见上一节，不与本条混用。
-
-### 命名风格（PEP 8）
-
-变量/函数 `snake_case`；常量 `UPPER_SNAKE_CASE`；类 `PascalCase`；文件名 `snake_case.py`。
-
-### 质量工具
-
-- **Ruff**：Lint + Format 二合一，`ruff check . && ruff format .`。
-- **mypy** 或 **Pyright**：静态类型检查。
-- **pre-commit**：提交前自动执行以上检查。
-
-```toml
-# pyproject.toml 中的 Ruff 配置示例
-[tool.ruff]
-target-version = "py312"
-line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM"]
-```
-
----
-
-## Node.js (CLI 工具) 规范
-
-单文件或小目录的 Node CLI（`.mjs` 优先 ESM），与 MCP server、构建脚本同理。
-
-### 头部与入口
-
-```js
-#!/usr/bin/env node
-// tool.mjs - 一句话功能描述，用法见 --help。
-```
-
-### 脚本骨架（标准库优先）
-
-```js
-#!/usr/bin/env node
-import { readFile, writeFile } from 'node:fs/promises';
-
-const HELP = `tool - 一句话功能描述
-
-USAGE
-  tool <必填> [选项]
-OPTIONS
-  --mode <name>  取值说明
-  -o, --output <f>  写文件而非 stdout
-  -h, --help
-`;
-
-const args = parseArgs(process.argv.slice(2)); // 支持 --opt value 与 --opt=value
-validateOrExit(args); // 非法输入：stderr 提示 + exit 2，先于业务执行
-
-try {
-  const out = await run(args);
-  process.stdout.write(out + '\n');
-} catch (err) {
-  console.error(`tool: ${err.message}`);
-  process.exit(1);
-}
-```
-
-设计要点：参数解析与业务分离（`parseArgs` 可单测）；`--help` 自带完整用法；
-退出码固定含义——`0` 成功、`1` 运行失败、`2` 用法错误；错误带工具名前缀走 stderr，stdout 保持可管道化。
-
-### 强制规则
-
-| 规则 | 说明 |
-| ---- | ---- |
-| **退出码三档** | `0` 成功、`1` 运行失败、`2` 用法错误；用量校验先于业务执行 |
-| **错误走 stderr** | `console.error('tool: ...')`，stdout 只放可管道化的结果 |
-| **子进程数组传参** | `spawn/execFile` 用参数数组，不拼接 shell 字符串；Windows 下用户触发的子进程加 `windowsHide` |
-| **解码显式** | 文件与子进程字节显式解码；中文 Windows 按“本地工具：文件遍历与子进程”第 3 条双解码 |
-| **避免全局可变状态** | 配置经函数参数传递；可复用逻辑导出函数而非仅 CLI 可用 |
-| **依赖锁定** | 有第三方依赖则 `package.json` + lock 文件进版本控制；无依赖优先标准库 |
-
-### 质量工具
-
-- **`node --check <script>`**：语法检查，改完必跑。
-- **既有测试套件**：有 smoke/可靠性测试的仓库按其命令全跑（如 `pnpm test`）；无架子时至少覆盖正常路径与一个异常路径，断言退出码与输出。
-
----
+## 按语言读取细则
+
+| 语言 | 读取 | 覆盖内容 |
+| --- | --- | --- |
+| Shell / Bash | [references/shell.md](references/shell.md) | 严格模式、脚本骨架、引号与退出码、跨平台差异、ShellCheck/shfmt、Bash 补全、反模式清单 |
+| Python | [references/python.md](references/python.md) | 入口与骨架、异常与类型、文件/执行侧 UTF-8、PEP 8、Ruff/mypy、框架补全、反模式清单 |
+| Node.js CLI | [references/node.md](references/node.md) | ESM 骨架、参数解析与退出码、stderr/stdout 边界、子进程解码、质量检查、反模式清单 |
+
+脚本同时涉及多种语言时，分别按对应参考检查；冲突时以本文件的通用约束为准。
 
 ## 补全支持（Tab Completion）
 
-### 何时需要
-
 | 场景 | 优先级 | 说明 |
-| ---- | ------ | ---- |
+| --- | --- | --- |
 | 团队内部 CLI 工具 / 对外发布的 CLI | **强烈推荐** | 高频使用，减少查文档次数；补全是成熟 CLI 的标配 |
 | 参数复杂（多子命令/多选项）的个人脚本 | **建议提供** | 补全即“活文档”，作者本人也会忘记参数 |
 | 参数简单的一次性脚本 | 不必要 | 投入产出不成比例，做好 `--help` 即可 |
 
-### Bash 脚本
+Bash 补全的固定写法与例外规则见 [references/shell.md#tab-补全](references/shell.md#tab-补全)；Python 的 Click/argparse/Typer 接入见 [references/python.md#tab-补全](references/python.md#tab-补全)。Node CLI 至少保证 `--help` 完整，使用参数解析库时按其文档提供补全。
 
-推荐：为需要补全的脚本提供配套补全脚本 `<脚本名>-completion.bash`，遵循以下固定模式：
+## 交付前自检（通用）
 
-```bash
-#!/usr/bin/env bash
-# deploy.sh 的 Tab 补全：source 本文件临时加载，
-# 或写入 ~/.bashrc 持久加载，或复制到 /etc/bash_completion.d/ 供所有用户使用
-_deploy_completions() {
-    local cur prev
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
+- [ ] 入口可执行，`--help` 包含用途、参数与示例，非法输入返回非零退出码。
+- [ ] 错误与警告走 stderr，stdout 只放可管道化的结果。
+- [ ] 敏感信息未写入代码、日志或版本库；路径与端口未硬编码为本机专值。
+- [ ] 文本读写显式 UTF-8；从 shell 启动 Python 时执行侧编码已对齐。
+- [ ] 临时资源在正常与异常路径都能清理。
+- [ ] 已跑对应语言的质量工具，并覆盖正常路径与至少一个异常路径。
 
-    case "$prev" in
-        --version)
-            # 取值型选项后补全候选值：优先动态获取
-            local versions
-            versions=$(git tag --list 'v*' 2>/dev/null)
-            COMPREPLY=( $(compgen -W "$versions" -- "$cur") )
-            return
-            ;;
-        --config)
-            COMPREPLY=( $(compgen -f -X '!*.yaml' -- "$cur") )
-            return
-            ;;
-    esac
-
-    if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--version --config --dry-run --help" -- "$cur") )
-    else
-        local envs=()
-        local f
-        for f in configs/*.yaml; do
-            [[ -e "$f" ]] || continue
-            envs+=("$(basename "$f" .yaml)")
-        done
-        COMPREPLY=( $(compgen -W "${envs[*]}" -- "$cur") )
-    fi
-}
-complete -F _deploy_completions deploy.sh
-```
-
-机制速查：`complete -F <函数> <命令>` 注册规则；用户按 Tab 时 Shell 设置
-`COMP_WORDS`（当前命令行全部词）与 `COMP_CWORD`（光标所在词的索引），
-补全函数把候选写入 `COMPREPLY` 数组。`compgen` 常用选项：
-`-W` 按词列表匹配，`-f`/`-d` 匹配文件/目录，`-X` 按模式排除，`-c` 匹配可执行命令。
-
-规则：
-
-- 必须：补全函数命名为 `_<脚本名>_completions`，避免与用户环境中的函数冲突。
-- 推荐：候选值动态获取（git tag、配置目录内容、API），而非写死静态列表。
-- 必须：`COMPREPLY=( $(compgen ...) )` 是“永远加双引号”规则的**唯一例外**——此处需要词分割生成数组元素。
-- 必须：补全脚本与主脚本同目录、纳入版本控制，并在 `usage()` 或 README 中说明安装方式。
-
-### Python 脚本
-
-| 框架 | 补全支持 | 接入方式 |
-| ---- | -------- | -------- |
-| Click（≥ 8.0） | 内建 | 零代码；在 README 告知激活命令：`eval "$(_<PROG>_COMPLETE=bash_source <prog>)"`（`<PROG>` 为可执行文件名的大写形式，短横线转下划线；zsh/fish 换用对应的 `zsh_source`/`fish_source`） |
-| argparse | 第三方库 argcomplete | 文件顶部加 `# PYTHON_ARGCOMPLETE_OK`，`parse_args()` **之前**调用 `argcomplete.autocomplete(parser)`；用户侧 `pip install argcomplete` 后运行一次 `activate-global-python-argcomplete` |
-| Typer | 内建（基于 Click） | 告知用户运行 `<prog> --install-completion` |
-
-动态值：Click 用 `shell_complete` 回调（如 `@click.argument("env", shell_complete=get_envs)`，按 `incomplete` 前缀过滤）；
-argcomplete 用自定义 Completer（如 `.completer = argcomplete.DirectoriesCompleter()`）。
-有 `choices` 的参数框架自动补全，无需额外代码。
-
----
-
-## 反模式自检清单
-
-### Shell
-
-- [ ] 是否缺少 `set -euo pipefail`？
-- [ ] 变量是否全部加了双引号？
-- [ ] 是否有 `for f in $(ls ...)`？改用 glob。
-- [ ] `cd` 后是否检查了退出码？
-- [ ] 是否使用了 `trap ... EXIT` 清理资源？
-- [ ] 是否通过 ShellCheck 零告警？
-- [ ] 需要补全时是否有配套 `<脚本名>-completion.bash`（同目录、已纳入版本控制、安装方式已写入 `usage()` 或 README）？
-
-### Python
-
-- [ ] 是否有 `if __name__ == "__main__":`？
-- [ ] 是否用了 `print` 而非 `logging`？
-- [ ] 是否有裸 `except` 或 `except: pass`？
-- [ ] 外部命令是否用了 `subprocess.run()`（列表参数）？
-- [ ] 是否有硬编码路径/密码？
-- [ ] 文本读写是否显式指定 encoding？是否误用 errors="replace" 或 ASCII 转义做常规输出？
-- [ ] 经 shell 启动 Python 是否对齐执行侧编码（单次 `-X utf8`，多层父进程设 `PYTHONUTF8=1`）？详见“执行侧编码”节。
-- [ ] 是否通过 Ruff 零告警？
-- [ ] 需要补全时是否已接入（Click 内建 / argcomplete / Typer）并在 README 说明激活方式？
-
-### Node
-
-- [ ] 非法参数是否 exit 2 且先于业务执行？
-- [ ] 错误是否走 stderr（带工具名前缀），stdout 是否保持可管道化？
-- [ ] 退出码是否为 0/1/2 三档含义？
-- [ ] 临时文件是否 `try/finally` 清理？
-- [ ] 子进程是否数组传参、无拼接，Windows 下是否 `windowsHide`？
-- [ ] 文本解码是否显式（非 ASCII 必测）？
-- [ ] 是否跑过 `node --check` 与正/异常路径测试？
-
----
+各语言的完整反模式清单在对应参考末尾，交付前逐项过一遍。
 
 ## 验证协议
 
