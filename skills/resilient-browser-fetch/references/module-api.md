@@ -123,7 +123,7 @@ outcome = save_page(
 
 `fetch_page()` 为单页可靠性使用隔离子进程，并可能按顺序启动 Scrapling 与 CloakBrowser。它适合单次调用、作业队列中的独立任务和故障隔离，不适合在连续批量任务中对很多 URL 直接并发调用，否则会创建多个浏览器并重复验证。
 
-连续批量或 sitemap 任务使用 [batch-workflows.md](batch-workflows.md) 中的 `SiteSessionManager`（需要渲染或挑战求解）或 `StaticBatchSession`（层 0 静态页，零依赖）：先首页预热，再复用同一会话做受限并发。
+连续批量或 sitemap 任务按依赖选会话：[batch-workflows.md](batch-workflows.md) 里的 `StaticBatchSession`（层 0 静态页，零依赖）、`BrowserBatchSession`（层 1 渲染，只要 playwright/patchright）或 `SiteSessionManager`（层 2+，带挑战求解与重验证）：先首页预热，再复用同一会话做受限并发。
 
 ## 静态批量会话（层 0）
 
@@ -153,9 +153,41 @@ async with StaticBatchSession(options) as site:
 - 并发受 `concurrency` 信号量约束，每页各自有 `wall_timeout_ms` 硬超时；超时抛 `PageTimeoutError`；
 - `timeout_ms` 是单次 HTTP 超时，没有浏览器那套 60000 ms 下限，默认 30 秒。
 
-## 长期站点会话
+## 层 1 浏览器批量会话
 
-`site_session` 的主要类型：
+只有 playwright/patchright、没有 scrapling 时，用 `browser_session.BrowserBatchSession`（单 browser/context、每页一个 tab、受限并发、无挑战求解）：
+
+```python
+from browser_session import BrowserBatchSession, BrowserSessionOptions
+from site_session import SiteRequest
+
+options = BrowserSessionOptions(
+    home_url="https://example.com/",
+    proxy="http://127.0.0.1:<port>",
+    headless=True,
+    max_pages=6,
+    concurrency=2,
+    timeout_ms=60_000,
+    wall_timeout_ms=90_000,
+    post_wait_ms=1_500,        # 客户端渲染内容出现前的额外等待
+)
+
+async with BrowserBatchSession(options) as site:
+    await site.warmup()
+    results = await site.fetch_many([SiteRequest(f"https://example.com/p/{i}") for i in range(1, 5)])
+```
+
+与另外两条会话路径的差异：
+
+- 不求解挑战、不做重验证：命中挑战抛 `PageRejectedError`（结果里带 `block_reasons`），据此升到 `SiteSessionManager` 或改人工验证；
+- 有真实 DOM，所以 `expected_selector` / `wait_selector` 可用（层 0 的 `StaticBatchSession` 只能用 `expected_texts`）；`wait_selector` 缺失即抛 `missing_wait_selector:<sel>`；
+- `headless=False` + `challenge_wait_ms=300000` 等人工过验证（无头模式下传该参数会直接报错，因为没人能介入）；批量场景建议只在预热阶段开有头；
+- `profile_dir` 可选，用于跨进程复用登录/验证态（目录由调用方管理，不自动清理）；不设则用一次性 context；
+- 每页独立 tab、失败重试由 `retries`/`retry_delay` 控制，`wall_timeout_ms` 是单页硬超时（超时抛 `PageTimeoutError`）。
+
+## 长期站点会话（层 2+）
+
+`site_session` 的主要类型（层 2+：带挑战监视与重验证屏障，需要 scrapling）：
 
 - `SiteSessionOptions`：绑定首页、代理、profile、并发、超时和浏览器身份。
 - `SiteRequest`：描述一个同源 URL。默认只使用状态码、挑战特征、最小正文大小和最终 origin 做基础检查；`expected_texts`、`expected_selector`、`wait_selector`、`case_sensitive=True` 和 `require_same_path=True` 都是调用者显式启用的严格条件。

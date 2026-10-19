@@ -1,6 +1,16 @@
 # 批量、并发与 Sitemap
 
-> 适用范围：本文件的会话预热、挑战暂停与重验证屏障只对**需要浏览器**的批量任务（层 1 及以上）成立，当前 `SiteSessionManager` 仍只建 Scrapling 会话，即批量默认要求层 2。纯静态批量（层 0 就能拿到的页面）不需要浏览器，也不需要 scrapling：用 `static_session.StaticBatchSession`（受限并发 HTTP，零依赖）。它命中挑战页时抛 `PageRejectedError`，此时才升级到 `SiteSessionManager` 或逐页 `fetch_page(engine="auto")`。
+> 适用范围：本文件第 1 节的三条会话路径按依赖分层选择——层 0 静态页用 `static_session.StaticBatchSession`（受限并发 HTTP，零依赖）；需要渲染但不需要挑战求解、或本机只有层 1 时用 `browser_session.BrowserBatchSession`（单 browser/context 多 tab，只要 playwright/patchright）；需要挑战求解的诊断/会话用 `site_session.SiteSessionManager`（层 2+，带 challenge 监视与重验证屏障）。三者的预热、同源与验证语义一致，命中挑战都抛 `PageRejectedError`（`SiteSessionManager` 例外：它会暂停并发并重验证），由调用方决定升档。
+
+## 选哪条会话路径
+
+| 条件 | 路径 | 依赖 |
+| --- | --- | --- |
+| 页面静态可取（层 0 就够） | `StaticBatchSession` | 无 |
+| 页面需渲染，且本机只有 playwright/patchright | `BrowserBatchSession` | 层 1 |
+| 页面有挑战/指纹拦截，或需要人工验证 + 求解接力 | `SiteSessionManager` | 层 2（+ 层 3 可选） |
+
+先按"首页是否能在层 0 拿到正文"判定：`static_session` 预热失败或正文过短（SPA 空壳）时改 `browser_session`；`browser_session` 预热/子页抛 `PageRejectedError` 且 `result.block_reasons` 非空时才是挑战页，这时才升到层 2。
 
 ## 必须遵循的顺序
 
@@ -12,6 +22,38 @@
 6. 任务完成后再关闭整个会话，不要为每个 URL 创建并销毁浏览器。并发数应小于等于 `max_pages`，并按站点容量设置较小上限。
 
 Cloudflare cookie 可能与域名、出口 IP 和浏览器指纹绑定。跨 origin 或跨子域不保证共享验证成果；必要时为每个需要独立验证的 origin 分别预热。
+
+## 层 1 浏览器会话（无求解器也能批量渲染）
+
+只有 playwright/patchright 时，用 `browser_session.BrowserBatchSession`：一个 browser、一个 context、每页一个 tab，按 `concurrency` 受限并发。它不装也不依赖 scrapling，因此主要面向"JS 渲染得到正文、但没有挑战"的批量任务；DOM 可用，所以 `expected_selector`/`wait_selector` 都能校验（`StaticBatchSession` 只能用 `expected_texts`）。
+
+```python
+from browser_session import BrowserBatchSession, BrowserSessionOptions
+from site_session import SiteRequest
+
+
+async def fetch_rendered(home_url: str, urls: list[str], proxy: str) -> list[str]:
+    options = BrowserSessionOptions(
+        home_url=home_url,
+        proxy=proxy,
+        headless=True,
+        max_pages=6,
+        concurrency=2,
+        timeout_ms=60_000,
+        wall_timeout_ms=90_000,
+        post_wait_ms=1_500,          # 给客户端渲染留时间
+        expected_home_texts=("已知业务关键词",),
+    )
+    async with BrowserBatchSession(options) as site:
+        await site.warmup()
+        results = await site.fetch_many([SiteRequest(url) for url in urls])
+        return [result.html for result in results]
+```
+
+- 挑战页不求解：命中时抛 `PageRejectedError` 并把 `block_reasons` 带在结果里，据此决定升到层 2 或改用人工验证。
+- 人工验证：`headless=False` + `challenge_wait_ms=300000` 时，每页在预算内等验证标记消失再取源码（无头模式下该参数会被拒绝，因为没有人工可介入）。批量下建议只在首页预热阶段开有头。
+- 想复用登录/验证态跨进程时给 `profile_dir`（目录由调用方管理，不会被自动删除）；不给自己用一次性 context。
+- 截图（排查用）设 `screenshot_dir`，文件名由 `request_slug()` 从 URL 生成。
 
 ## Scrapling 会话模式
 
