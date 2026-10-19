@@ -12,7 +12,7 @@
 | 通用 Markdown 语法与排版 | [markdown-style](../../markdown-style/SKILL.md) | 使用适用排版规范，不让排版改变职责或业务内容 |
 | 测试、交付验收与 UI QA 的关系 | [测试相关职责表](../../web-app-testing/references/skill-boundaries.md) | 指定领域维护位置，不在治理文档另定测试门禁 |
 
-`AGENTS.md` 是简短入口；README 是人类检索入口；`docs/` 提供维护导读与决策说明；`SKILL.md` 是分发给代理的能力指引。本规范和内容规范存于 `skill-authoring-sync/references/`，相关维护 skill 按需引用同一份正文，可从 harness 链接目录读取。仓库独有的脚本和协作说明则在定位真源后读取；不将安装目录的父目录当作仓库根。链接可帮助读取，不代表工具一定发现或自动执行。
+`AGENTS.md` 是简短入口；README 是人类检索入口；`docs/` 提供维护导读与决策说明；`SKILL.md` 是分发给代理的能力指引。本规范和内容规范存于 `skill-authoring-sync/references/`，相关维护 skill 按需引用同一份正文，可从 harness 链接目录读取。仓库独有的脚本和协作说明则在[定位真源](../SKILL.md#定位真源仓库)后读取；不将安装目录的父目录当作仓库根。链接可帮助读取，不代表工具一定发现或自动执行。
 
 ### 内容划分与依赖
 

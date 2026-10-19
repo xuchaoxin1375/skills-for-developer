@@ -4,7 +4,7 @@ description: >
   在 agent harness 中新建自定义 skill 并同步到真源仓库集中管理：skill 真源提交、治理规则的定义与修改，
   以及把本机 harness 配置偏好（如 OpenCode TUI `cli.json`）回写真源、按真源恢复本机配置。
   当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、说“同步配置”“同步 opencode 设置/偏好”，
-  或复盘/同步/分发/校验/查变更已有 skill 时使用此 Skill。
+  或复盘/同步/分发/校验/查变更已有 skill，以及需要定位真源仓库、避免在任意目录全盘搜索时使用此 Skill。
 ---
 
 # Skill 新建与真源同步规范
@@ -16,6 +16,18 @@ description: >
 **链接**（Windows Junction、Linux symlink），不存实体。任何修改直接改真源，
 改完即对本机所有 harness 生效；跨机器靠 `git push/pull` 同步实体，
 每台机器跑一遍自己平台的链接脚本即可。
+
+## 定位真源仓库
+
+在任意目录工作时，按下列顺序查找，命中即停，不做全盘 `find` 或逐级向上遍历：
+
+1. **当前目录**：同时存在 `skills/` 与 `scripts/link-skills.ps1`（Linux 为 `scripts/link-skills.sh`），即真源根。
+2. **本机惯例克隆位置**（分发默认约定，实际以本机克隆为准）：
+   - Windows：`C:\repos\skills-for-developer`
+   - WSL / Linux / macOS：`~/repos/skills-for-developer`
+3. **仍未命中**：只在用户主目录及各盘 `repos` 类目录的两层内做有界搜索，或直接向用户询问路径；不扫描全盘、不反复猜测。
+
+Windows 与 WSL/Linux 各用自己的克隆：WSL 内用 `~/repos/...`，不要把 `/mnt/c/...` 下的 Windows 克隆当作 Linux 真源，链接类型随宿主平台选择（Windows Junction / Linux symlink）。
 
 **适用范围**：各 agent harness（OpenCode / Codex / Claude / Agents 通用 / dsh）的自定义 skill，
 以及 harness 侧配置偏好（如 OpenCode TUI `cli.json`、全局 `AGENTS.md`）的真源同步。
@@ -135,4 +147,4 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 - 不把 harness 链接本体提交到 git；`git add` 只点名实体文件。
 - `git commit/push` 必须用户明确指示才做。
 - 不在 harness 侧手工存放实体副本；所有改动走“真源 → 链接生效”单向流动。
-- skill 正文、引用、示例、配套脚本中不得出现仓库外真实路径（本机绝对路径如 `C:\Users\…`、`C:\tools\…`、`/home/…`，写死的 `/tmp/…`）：真实引用只许仓库内相对路径或 URL；示例路径必须用 `<…>` 占位符；约定俗成的标准位置须用环境变量形式（如 `%USERPROFILE%`、`$HOME`、`$XDG_RUNTIME_DIR`）而非写死；历史/迁移说明中提及的已删除旧路径须标注“旧/已删除”。
+- skill 正文、引用、示例、配套脚本中不得出现仓库外真实路径（本机绝对路径如 `C:\Users\…`、`C:\tools\…`、`/home/…`，写死的 `/tmp/…`）：真实引用只许仓库内相对路径或 URL；示例路径必须用 `<…>` 占位符；约定俗成的标准位置须用环境变量形式（如 `%USERPROFILE%`、`$HOME`、`$XDG_RUNTIME_DIR`）而非写死；本文「定位真源仓库」记录的 `C:\repos\skills-for-developer` 与 `~/repos/skills-for-developer` 属分发约定位置，不视为个人机器路径；历史/迁移说明中提及的已删除旧路径须标注“旧/已删除”。
