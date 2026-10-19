@@ -6,6 +6,7 @@
 - 按主问题选择编写、资料提炼、实战补丁或分发入口；不默认启动所有流程或子代理。
 - 改动职责或触发条件时更新 README 索引和相关引用；可变规则保持一个维护位置。
 - 验证强度与变更风险相称，报告结构检查、桌面走查和真实执行各自的事实与限制。
+- 本仓库不维护 CHANGELOG：变更以 `git log` 和提交信息为准；只有影响使用、触发或兼容性的变化需要同步到 README 或相关说明。
 - 分发复用仓库链接脚本；过程产物放被忽略的 `.workspaces/`，不进入 skill 实体。
 - 文档排版与图示按 [markdown-style](skills/markdown-style/SKILL.md)：结构、流程、依赖类示意图用 Mermaid，不用框线字符画。
 - Windows 下通过 PowerShell 读取含非 ASCII 的 UTF-8 文件前，按 [PowerShell 编码读取规则](skills/powershell-pitfalls/SKILL.md#文件读取与输出编码agent-读文件前)选择命令与保真回退。

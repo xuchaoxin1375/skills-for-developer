@@ -16,8 +16,8 @@
 cd <项目目录>
 pnpm install
 pnpm run build
-pnpm dlx serve dist    # 默认 http://localhost:3000；或 python3 -m http.server 8000
-# vite 项目也可用：pnpm run preview （默认 http://localhost:4173）
+pnpm dlx serve dist    # 默认端口通常为 3000；或 python3 -m http.server <port>
+# vite 项目也可用：pnpm run preview （默认端口通常为 4173）
 ```
 
 验证：`curl -s -o /dev/null -w "%{http_code}" http://localhost:PORT` 期望 200。

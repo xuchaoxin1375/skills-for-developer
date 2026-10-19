@@ -50,7 +50,7 @@
 - [WSL 复用 Windows 侧 OpenCode 配置](docs/wsl-opencode-reuse.md)：完整配置（含模型配置）在 WSL 侧的复用范围、方式选型、密钥红线与验证（复用后默认不测活）；skill 分发仍走链接脚本。
 - [Skill 仓库治理](docs/skill-governance.md)：规则归属、职责划分、变更流程与分级验证。
 - [Skill 内容与语言规范](docs/skill-content-guidelines.md)：约束强度、正文与参考落点、指令措辞、术语、例子和写作复核。
-- [更新日志](CHANGELOG.md)：迁移历史与重要变更记录。
+- 变更历史：直接看 `git log`；本仓库不维护独立 CHANGELOG，提交信息按 Conventional Commits 记录目的与影响。
 - [Skill 编写、提炼与维护协作](docs/skill-authoring-workflow.md)：`reference-to-skill`、社区版 `skill-creator`、`skill-patcher` 与 `skill-authoring-sync` 的职责、引用方式和维护取舍，含社区版/系统版区分与验证边界。
 - [测试相关 Skill 的职责与维护边界](skills/web-app-testing/references/skill-boundaries.md)：测试设计、交付等级与证据、UI 专项、工具打包和仓库 CI 的唯一维护位置；按需协作并复用计划与有效证据。
 - [测试资源预算与回收](skills/web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)：测试与验收先设容量、并发及期限，登记资源归属，验明异常回收再重试；web-app-testing、ai-verified-delivery与frontend-qa共用。

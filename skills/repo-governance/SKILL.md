@@ -31,7 +31,7 @@ description: >
 1. `.gitattributes`：明确适用行尾；有必要的归一化与业务变更分开，提交遵循已有授权。
 2. `.gitignore`：再清理已被追踪的应忽略文件。
 3. 实际可用的 `README.md`，需要明确分发许可时处理 `LICENSE`。
-4. 按实际贡献/分发补 `CONTRIBUTING.md`、`SECURITY.md`、行为准则、责任映射、变更记录和模板。
+4. 按实际贡献/分发补 `CONTRIBUTING.md`、`SECURITY.md`、行为准则、责任映射、变更记录（有版本边界时）和模板。
 5. 复用 Linter、Formatter 与适用 hooks/提交约定。
 6. 实际 CI 平台、依赖更新与安全扫描；发布供应链按风险渐进接入。
 7. `AGENTS.md`（AI 指令）最后汇总。
@@ -139,7 +139,7 @@ indent_style = tab
 | `SECURITY.md` | 有外部用户/漏洞接收职责时建议 | 可用私密上报渠道、响应政策、避免公开披露未修复漏洞；没有授权不虚构联系人或 SLA |
 | `CODE_OF_CONDUCT.md` | 有社区协作时按需求 | 确认的行为准则、实际执行责任和联系方式 |
 | `CODEOWNERS`（放 `.github/`） | 推荐 | 至少一行：`* @owner`；多 Owner 示例：`docs/ @docs-owner`、`*.js @js-owner` |
-| `CHANGELOG.md` | 推荐 | Keep a Changelog 格式：`## [Unreleased]` 起手，发版按 `## [x.y.z] - 日期` 追加 |
+| `CHANGELOG.md` | 有版本发布时推荐 | Keep a Changelog 格式：`## [Unreleased]` 起手，发版按 `## [x.y.z] - 日期` 追加；持续交付且以 `git log` 为真源的小仓库可不维护 |
 | Issue / PR 模板 | 推荐 | 路径 `.github/ISSUE_TEMPLATE/bug_report.md`、`feature_request.md`、`PULL_REQUEST_TEMPLATE.md`；bug 模板须含复现步骤、期望、实际、环境四栏；PR 模板须含关联 Issue、变更说明、测试证据三栏 |
 
 ---
