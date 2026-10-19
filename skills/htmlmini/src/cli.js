@@ -44,11 +44,12 @@ OPTIONS
                    bypass env proxy (default follows HTTP_PROXY/HTTPS_PROXY/NO_PROXY)
   --noproxy        force direct connection, ignoring env proxy
   --render         on static 403/5xx, fall back to browser rendering, then extract.
-                   Chain: save_page (needs its Python env) -> system Chrome
-                   headless dump-dom (zero-dep) -> friendly error.
+                   Chain: save_page (needs a layer >= 1 engine: playwright/patchright,
+                   scrapling, or cloak-cdp) -> system Chrome headless dump-dom
+                   (zero-dep) -> friendly error.
                    404/timeout/network errors still throw without rendering
   --headful        show the browser window during fallback rendering
-                   (implies --render; only supported by the save_page path,
+                   (implies --render; needs a layer >= 1 save_page engine,
                    for first-time manual verification)
   --render-timeout-ms <ms>
                    timeout for the fallback browser render (default 300000;
@@ -57,6 +58,15 @@ OPTIONS
                    explicit Chrome/Chromium binary for the zero-dep chrome
                    fallback (default auto-detects: PATH, common paths,
                    Playwright browser cache; or HTMLMINI_CHROME_BIN)
+  --python-bin <path>
+                   explicit Python interpreter for --render (save_page) and the
+                   optional Trafilatura pass. Default: "python"/"python3" on PATH,
+                   which is often NOT the environment that has playwright or
+                   scrapling installed; env: HTMLMINI_PYTHON. Use "auto" to scan
+                   this machine (conda/venv/uv/PATH) and pick an interpreter that
+                   has a layer >= 1 engine. When rendering fails for lack of an
+                   engine, the error also names such an interpreter if one exists.
+                   Disable scanning with HTMLMINI_ENV_SCAN=0.
   --extractor <name>
                    extraction engine: auto (default) | defuddle | trafilatura | semantic | ui | passthrough
                    auto chain: non-HTML passthrough -> Defuddle -> Trafilatura (only if "pip install trafilatura"
@@ -132,6 +142,7 @@ let render = false;
 let renderTimeoutMs;
 let headful = false;
 let chromeBin;
+let pythonBin;
 let attrs = 'semantic';
 let format = 'compact';
 let pruneEmpty = false;
@@ -154,7 +165,7 @@ for (let i = 0; i < argv.length; i++) {
       log.error('--output needs a file argument');
       process.exit(2);
     }
-  } else if (a === '--mode' || a === '--extractor' || a === '--attrs' || a === '--format' || a === '--completion' || a === '--proxy' || a === '--chrome-bin') {
+  } else if (a === '--mode' || a === '--extractor' || a === '--attrs' || a === '--format' || a === '--completion' || a === '--proxy' || a === '--chrome-bin' || a === '--python-bin') {
     const v = argv[++i];
     if (!v) {
       log.error(`${a} needs a value`);
@@ -166,6 +177,7 @@ for (let i = 0; i < argv.length; i++) {
     else if (a === '--format') format = v;
     else if (a === '--proxy') proxy = v;
     else if (a === '--chrome-bin') chromeBin = v;
+    else if (a === '--python-bin') pythonBin = v;
     else await printCompletion(v);
   } else if (a === '--compact') {
     format = 'compact';
@@ -191,7 +203,7 @@ for (let i = 0; i < argv.length; i++) {
       log.error(`--render-timeout-ms needs a positive number of ms (got "${v ?? ''}")`);
       process.exit(2);
     }
-  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--attrs=') || a.startsWith('--format=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--render-timeout-ms=')) {
+  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--attrs=') || a.startsWith('--format=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--python-bin=') || a.startsWith('--render-timeout-ms=')) {
     const [k, v] = splitEq(a);
     if (k === '--mode') mode = v;
     else if (k === '--extractor') extractor = v;
@@ -200,6 +212,7 @@ for (let i = 0; i < argv.length; i++) {
     else if (k === '--output') output = v;
     else if (k === '--proxy') proxy = v;
     else if (k === '--chrome-bin') chromeBin = v;
+    else if (k === '--python-bin') pythonBin = v;
     else if (k === '--render-timeout-ms') {
       renderTimeoutMs = Number(v);
       if (!Number.isFinite(renderTimeoutMs) || renderTimeoutMs <= 0) {
@@ -243,7 +256,7 @@ if (source === '-' && process.stdin.isTTY) {
 
 try {
   const startedAt = Date.now();
-  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render: true } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }) });
+  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render: true } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }) });
   const total = `total ${fmtMs(Date.now() - startedAt)}`;
   if (output) {
     // 与 stdout 分支同口径：结果已以换行结尾时不再补，避免落盘文件尾部多出空行。

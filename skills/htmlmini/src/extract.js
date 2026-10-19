@@ -282,7 +282,82 @@ function findRenderScript() {
   );
 }
 
-export async function findPython() {
+const PYTHON_BIN_ENV = 'HTMLMINI_PYTHON';
+const ENV_SCAN_ENV = 'HTMLMINI_ENV_SCAN';              // '0' 关闭自动扫描
+const ENV_SCAN_SCRIPT_ENV = 'HTMLMINI_ENV_SCAN_SCRIPT'; // 测试/自备: 覆盖 check_environment.py 路径
+
+/** 显式指定的解释器：--python-bin 优先，其次 HTMLMINI_PYTHON；"auto" 表示扫描后自动选择。 */
+export function pythonBinOverride(pythonBin) {
+  const explicit = String(pythonBin ?? '').trim() || (process.env[PYTHON_BIN_ENV] ?? '').trim();
+  return explicit || null;
+}
+
+function findEnvScanScript() {
+  const override = (process.env[ENV_SCAN_SCRIPT_ENV] ?? '').trim();
+  if (override) return existsSync(override) ? override : null;
+  const sibling = resolvePath(
+    dirname(fileURLToPath(import.meta.url)),
+    '..',
+    '..',
+    'resilient-browser-fetch',
+    'scripts',
+    'check_environment.py',
+  );
+  return existsSync(sibling) ? sibling : null;
+}
+
+/**
+ * 扫描本机哪个解释器具备所需层（借 resilient-browser-fetch 的 check_environment.py --list-envs）。
+ * 只在需要时调用，结果按进程缓存；任何失败都返回 null，绝不打断主流程。
+ */
+export async function findCapablePython(required = ['playwright']) {
+  if ((process.env[ENV_SCAN_ENV] ?? '').trim() === '0') return null;
+  const script = findEnvScanScript();
+  if (!script) return null;
+  if (envScanCache !== undefined) return envScanCache;
+  let runner;
+  try {
+    runner = await findDefaultPython(); // 用 PATH 上的解释器跑扫描；它只要能跑标准库即可
+    if (!runner) throw new Error('no python on PATH');
+  } catch {
+    envScanCache = null;
+    return null;
+  }
+  const program = [
+    'import json, sys',
+    'sys.path.insert(0, sys.argv[1])',
+    'import check_environment as ce',
+    `required = tuple(${JSON.stringify(required)})`,
+    'envs = ce.scan_environments(required, sys.argv[1])',
+    'usable = [e for e in envs if e.get("ok") and not e.get("satisfies")]',
+    'print(json.dumps({"recommended": usable[0]["path"] if usable else None,',
+    '                  "engines": usable[0]["engines"] if usable else [],',
+    '                  "manager": usable[0].get("manager") if usable else None},',
+    '                 ensure_ascii=False))',
+  ].join('\n');
+  try {
+    const { stdout } = await execFileAsync(
+      runner,
+      ['-X', 'utf8', '-c', program, dirname(script)],
+      { timeout: 120_000, windowsHide: true },
+    );
+    const parsed = JSON.parse(String(stdout).trim().split('\n').pop() || '{}');
+    envScanCache = parsed && parsed.recommended ? parsed : null;
+  } catch (e) {
+    log.debug('render', `解释器环境扫描失败，忽略: ${e.message}`);
+    envScanCache = null;
+  }
+  return envScanCache;
+}
+
+let envScanCache;
+
+/** 清空解释器扫描缓存（环境变量变化或测试需要重新扫描时用）。 */
+export function resetEnvScanCache() {
+  envScanCache = undefined;
+}
+
+async function findDefaultPython() {
   const cands = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
   for (const bin of cands) {
     try {
@@ -292,7 +367,38 @@ export async function findPython() {
       // 换下一个候选解释器
     }
   }
-  throw new Error('render requested but no python found (tried python/python3); install Python 3.10+ to use --render');
+  return null;
+}
+
+export async function findPython({ pythonBin } = {}) {
+  const explicit = pythonBinOverride(pythonBin);
+  if (explicit === 'auto') {
+    const found = await findCapablePython(['playwright']);
+    if (!found) {
+      throw new Error(
+        `${PYTHON_BIN_ENV}=auto 扫描后仍未找到具备层 >= 1 引擎的解释器；` +
+          '请按 resilient-browser-fetch references/installation.md 安装 playwright/scrapling，' +
+          '或用 ' + PYTHON_BIN_ENV + ' / --python-bin 指定具体解释器',
+      );
+    }
+    log.info('render', `解释器自动选择: ${found.recommended} (${found.manager ?? '未知管理方式'}; 引擎: ${(found.engines ?? []).join(', ') || '无'})`);
+    return found.recommended;
+  }
+  if (explicit) {
+    // 显式指定就不做隐式回退：指错了要立刻知道，而不是悄悄换个解释器。
+    try {
+      await execFileAsync(explicit, ['--version'], { timeout: 10_000, windowsHide: true });
+    } catch (e) {
+      throw new Error(`--python-bin/${PYTHON_BIN_ENV} interpreter is not usable: ${explicit} (${e.message})`);
+    }
+    return explicit;
+  }
+  const cands = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
+  const found = await findDefaultPython();
+  if (found) return found;
+  throw new Error(
+    `render requested but no python found (tried python/python3); install Python 3.10+ to use --render, or point --python-bin / ${PYTHON_BIN_ENV} at the environment that has playwright or scrapling`,
+  );
 }
 
 let renderSeq = 0;
@@ -376,12 +482,13 @@ export function pickPlaywrightChrome(root, platform = process.platform) {
   } catch {
     return null;
   }
+  // 新旧布局并存：chrome-win64 取代了 chrome-win，mac/linux 同理；只认旧布局会误报"未发现浏览器"。
   const layout =
     platform === 'win32'
-      ? { re: /^chromium-(\d+)$/, full: ['chrome-win', 'chrome.exe'], shell: ['chrome-headless-shell-win64', 'chrome-headless-shell.exe'] }
+      ? { re: /^chromium-(\d+)$/, full: ['chrome-win64', 'chrome.exe'], legacy: ['chrome-win', 'chrome.exe'], shell: ['chrome-headless-shell-win64', 'chrome-headless-shell.exe'] }
       : platform === 'darwin'
-        ? { re: /^chromium-(\d+)$/, full: ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'], shell: ['chromium_headless_shell', 'chrome-headless-shell'] }
-        : { re: /^chromium-(\d+)$/, full: ['chrome-linux', 'chrome'], shell: ['chromium_headless_shell', 'chrome-headless-shell'] };
+        ? { re: /^chromium-(\d+)$/, full: ['chrome-mac-arm64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'], legacy: ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'], shell: ['chromium_headless_shell', 'chrome-headless-shell'] }
+        : { re: /^chromium-(\d+)$/, full: ['chrome-linux64', 'chrome'], legacy: ['chrome-linux', 'chrome'], shell: ['chromium_headless_shell', 'chrome-headless-shell'] };
   const versions = [];
   for (const e of entries) {
     if (!e.isDirectory()) continue;
@@ -390,8 +497,10 @@ export function pickPlaywrightChrome(root, platform = process.platform) {
   }
   versions.sort((a, b) => b.ver - a.ver);
   for (const v of versions) {
-    const full = join(root, v.name, ...layout.full);
-    if (existsSync(full)) return full;
+    for (const relative of [layout.full, layout.legacy]) {
+      const candidate = join(root, v.name, ...relative);
+      if (existsSync(candidate)) return candidate;
+    }
   }
   for (const v of versions) {
     const sh = join(root, v.name, ...layout.shell);
@@ -474,59 +583,147 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   return html;
 }
 
-export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin } = {}) {
-  const script = await savePageUsable();
-  if (script) return runSavePage(url, { script, proxy, renderTimeoutMs, headful });
-  if (headful) {
-    throw new Error(
-      '--headful needs the save_page renderer for manual verification, but its Python env is not ready here; install per resilient-browser-fetch references/installation.md, then retry',
-    );
-  }
+export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, pythonBin } = {}) {
+  const { script, engines, solver, python } = await renderCapability(pythonBin);
+  const canSavePage =
+    Boolean(script) && (engines === null || engines.some((name) => BROWSER_ENGINES.includes(name)));
+
+  // Chrome 无头 dump-dom 不支持开窗，--headful 只走 save_page 通路。
   let found = null;
-  if (chromeBin) {
-    if (!existsSync(chromeBin)) throw new Error(`chrome binary not found: ${chromeBin} (--chrome-bin)`);
-    found = { bin: chromeBin, source: 'explicit' };
-  } else {
-    try {
-      found = findChromeBin();
-    } catch {
-      found = null;
+  if (!headful) {
+    if (chromeBin) {
+      if (!existsSync(chromeBin)) throw new Error(`chrome binary not found: ${chromeBin} (--chrome-bin)`);
+      found = { bin: chromeBin, source: 'explicit' };
+    } else {
+      try {
+        found = findChromeBin();
+      } catch {
+        found = null;
+      }
     }
   }
-  if (!found) {
+
+  // 有求解引擎、需要开窗、或本机没有 Chrome 时，save_page 更合适；层 1 与 Chrome 同能力时优先零依赖通路。
+  if (canSavePage && (solver || headful || !found)) {
+    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python });
+  }
+  if (found) {
+    try {
+      return await runChromeDump(url, { proxy, timeoutMs: Math.min(renderTimeoutMs, 120_000), chromeBin: found.bin, chromeSource: found.source });
+    } catch (chromeErr) {
+      if (!canSavePage) throw chromeErr;
+      // 零依赖通路崩了（进程退出码异常、超时等）时，同能力的 save_page 值得再试一次。
+      log.info('render', `chrome 通路失败，改用 save_page 重试: ${chromeErr.message}`);
+      try {
+        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python });
+      } catch (saveErr) {
+        throw new Error(`${chromeErr.message}; save_page 回退也失败: ${saveErr.message}`);
+      }
+    }
+  }
+  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python });
+  const alternative = await findCapablePython(['playwright']).catch(() => null);
+  if (headful) {
     throw new Error(
-      'render requested but neither save_page env (scrapling) nor system Chrome/Chromium (PATH, common paths, Playwright cache) is available; install per resilient-browser-fetch references/installation.md, or specify one with --chrome-bin / HTMLMINI_CHROME_BIN',
+      '--headful needs the save_page renderer for manual verification, but no browser-capable engine is available here (layer >= 1: playwright/patchright, scrapling, or cloak-cdp); install per resilient-browser-fetch references/installation.md, then retry'
+      + pythonHint(python, alternative),
     );
   }
-  return runChromeDump(url, { proxy, timeoutMs: Math.min(renderTimeoutMs, 120_000), chromeBin: found.bin, chromeSource: found.source });
+  throw new Error(
+    'render requested but neither save_page (layer >= 1: playwright/patchright, scrapling, or cloak-cdp) nor system Chrome/Chromium (PATH, common paths, Playwright cache) is available; install per resilient-browser-fetch references/installation.md, or specify one with --chrome-bin / HTMLMINI_CHROME_BIN'
+    + pythonHint(python, alternative),
+  );
 }
 
-// save_page 可用性探测：从不抛错，不可用返回 null（调用方再定去向）。
-async function savePageUsable() {
+/** 渲染通路不可用时提示实际用到的解释器，以及怎么换到装了依赖的环境。 */
+function pythonHint(python, alternative) {
+  const probed = python ? ` (probed interpreter: ${python})` : ' (no usable python interpreter was found)';
+  const suggestion =
+    alternative && alternative.recommended && alternative.recommended !== python
+      ? `; another interpreter on this machine has it: ${alternative.recommended} (${(alternative.engines ?? []).join(', ') || 'layer >= 1'}) — point --python-bin at it, or set ${PYTHON_BIN_ENV}=auto`
+      : '';
+  return `${probed}; if the engines live in another environment (conda/venv), point --python-bin or ${PYTHON_BIN_ENV} at it, or list candidates with resilient-browser-fetch check_environment.py --list-envs${suggestion}`;
+}
+
+
+// save_page 可用性探测：从不抛错。判定口径是"层 ≥1 有可用引擎"（playwright/scrapling/cloak-cdp），
+// 不再要求必须装 scrapling；静态抓取仍由本模块自己完成。
+// 但层 1 与零依赖 Chrome 直渲能力重叠（都只是渲染、都不求解挑战），
+// 因此只在下列情况优先 save_page：有求解引擎（层 2/3）、需要 --headful、或本机没有 Chrome。
+const BROWSER_ENGINES = ['playwright', 'scrapling', 'cloak-cdp'];
+const SOLVER_ENGINES = ['scrapling', 'cloak-cdp'];
+const RENDER_ENGINES_ENV = 'HTMLMINI_RENDER_ENGINES';
+
+async function probeRenderEngines(python, script) {
+  // 测试/高级钩子：直接声明可用引擎，跳过 python 探测。
+  const declared = (process.env[RENDER_ENGINES_ENV] ?? '').trim();
+  if (declared) return declared.split(',').map((s) => s.trim()).filter(Boolean);
+  const program = [
+    'import json, sys',
+    'sys.path.insert(0, sys.argv[1])',
+    'import resilient_fetch as rf',
+    'print(json.dumps(list(rf.available_engines())))',
+  ].join('\n');
+  try {
+    const { stdout } = await execFileAsync(python, ['-X', 'utf8', '-c', program, dirname(script)], {
+      timeout: 60_000,
+      windowsHide: true,
+    });
+    const parsed = JSON.parse(String(stdout).trim() || '[]');
+    return Array.isArray(parsed) ? parsed.map((s) => String(s)) : null;
+  } catch (e) {
+    log.debug('render', `引擎探测失败，回退到 scrapling 导入探测: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * 汇总 save_page 通路的可用性：engines 为 null 表示"按旧口径信任脚本"（显式覆盖或旧版 skill）。
+ * python 为实际探测用的解释器，供调用方在失败信息里指名，或提示改用 --python-bin。
+ */
+async function renderCapability(pythonBin) {
   let script;
   try {
     script = findRenderScript();
   } catch {
-    return null;
+    return { script: null, engines: null, solver: false, python: null };
   }
-  // 显式覆盖（测试桩/自备渲染器）视为可用，不探依赖。
-  if ((process.env[RENDER_SCRIPT_ENV] ?? '').trim()) return script;
+  // 显式覆盖（测试桩/自备渲染器）视为可用且具求解能力，不探依赖。
+  if ((process.env[RENDER_SCRIPT_ENV] ?? '').trim()) return { script, engines: null, solver: true, python: null };
   let python;
   try {
-    python = await findPython();
-  } catch {
-    return null;
+    python = await findPython({ pythonBin });
+  } catch (e) {
+    // 默认探测失败只当作"没有 python"；显式指定的解释器不可用是配置错误，必须让用户看到。
+    if (pythonBinOverride(pythonBin)) throw e;
+    return { script: null, engines: null, solver: false, python: null };
   }
-  try {
-    await execFileAsync(python, ['-X', 'utf8', '-c', 'import scrapling'], { timeout: 60_000, windowsHide: true });
-    return script;
-  } catch {
-    return null;
+  const engines = await probeRenderEngines(python, script);
+  if (engines === null) {
+    // 兼容旧版 resilient-browser-fetch（无 available_engines）或探测整体失败：
+    // 退回"能否 import scrapling"的旧口径，宁可不判死。
+    try {
+      await execFileAsync(python, ['-X', 'utf8', '-c', 'import scrapling'], { timeout: 60_000, windowsHide: true });
+      return { script, engines: ['scrapling'], solver: true, python };
+    } catch {
+      return { script: null, engines: null, solver: false, python };
+    }
   }
+  log.debug('render', `save_page 可用引擎: ${engines.join(', ') || '无'} (python: ${python})`);
+  return { script, engines, solver: engines.some((name) => SOLVER_ENGINES.includes(name)), python };
 }
 
-async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
-  const python = await findPython();
+/** save_page 是否有层 ≥1 的可用引擎；供测试与调用方判断渲染通路。 */
+export async function savePageUsable(pythonBin) {
+  const { script, engines } = await renderCapability(pythonBin);
+  if (!script) return null;
+  if (engines === null || engines.some((name) => BROWSER_ENGINES.includes(name))) return script;
+  return null;
+}
+
+
+async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python }) {
+  const interpreter = python ?? (await findPython({ pythonBin }));
   const proxyUrl = resolveProxy(url, { proxy });
   const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
   // -X utf8 + PYTHONUTF8：子进程日志强制 UTF-8 输出，本侧按 UTF-8 增量解码、
@@ -536,7 +733,7 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
   else args.push('--discover-proxy');
   if (headful) args.push('--headful');
   const proxyNote = describeProxy(url, proxy);
-  log.info('render', `engine=save-page${headful ? ' headful' : ''} [proxy: ${proxyNote === 'none' ? 'none, render script discovers its own' : proxyNote}]`);
+  log.info('render', `engine=save-page${headful ? ' headful' : ''} [python: ${interpreter}] [proxy: ${proxyNote === 'none' ? 'none, render script discovers its own' : proxyNote}]`);
   const tail = [];
   let tailSize = 0;
   const TAIL_CAP = 256 * 1024;
@@ -550,7 +747,7 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful }) {
     await new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(python, args, {
+      child = spawn(interpreter, args, {
         cwd: dirname(script),
         env: { ...process.env, PYTHONUTF8: '1' },
         windowsHide: true,
@@ -634,7 +831,7 @@ export function isRenderableError(e) {
 
 export async function readWithRender(
   source,
-  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {},
+  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin } = {},
 ) {
   const remote = /^https?:\/\//i.test(source ?? '');
   const tRead = Date.now();
@@ -660,6 +857,7 @@ export async function readWithRender(
         ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
         ...(headful ? { headful: true } : {}),
         ...(chromeBin == null ? {} : { chromeBin }),
+        ...(pythonBin == null ? {} : { pythonBin }),
       },
     );
     return done({ html, source, contentType: 'text/html', rendered: true });
@@ -1204,9 +1402,12 @@ function runWithStdin(bin, args, input, { timeoutMs, maxBuffer = 32 * 1024 * 102
 /**
  * 可选的 Trafilatura 增强：本机有 Python + trafilatura 模块时才生效，
  * 否则静默返回 { ok: false }，调用方继续走下一级回退。
+ * 指定了 --python-bin / HTMLMINI_PYTHON 时只试那个解释器（显式即显式）。
  */
-export async function tryTrafilatura(html) {
-  for (const bin of ['python3', 'python']) {
+export async function tryTrafilatura(html, { pythonBin } = {}) {
+  const explicit = pythonBinOverride(pythonBin);
+  const bins = explicit ? [explicit] : ['python3', 'python'];
+  for (const bin of bins) {
     let res;
     try {
       res = await runWithStdin(bin, ['-c', TRAFILATURA_PY], html, { timeoutMs: TRAFILATURA_TIMEOUT_MS });
@@ -1291,7 +1492,7 @@ export function titleFromText(s) {
  * 非 HTML 输入（markdown/纯文本/JSON）任何模式下都透传原文，不硬抽；
  * 强制指定 extractor 时同理（硬把 markdown 当 HTML 解析只会得到空标题）。
  */
-export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false } = {}) {
+export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false, pythonBin } = {}) {
   if (!EXTRACTORS.includes(extractor)) {
     throw new Error(`unknown extractor "${extractor}"（可选: ${EXTRACTORS.join(', ')}）`);
   }
@@ -1394,7 +1595,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   }
 
   if (extractor === 'trafilatura') {
-    const alt = await tryTrafilatura(html);
+    const alt = await tryTrafilatura(html, { pythonBin });
     if (alt.ok && alt.text.length >= MIN_ARTICLE_CHARS) {
       return finish(alt.text, 'trafilatura', defuddle ?? {});
     }
@@ -1413,7 +1614,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
     return finish(defuddle.content, 'defuddle', defuddle);
   }
 
-  const alt = await tryTrafilatura(html);
+  const alt = await tryTrafilatura(html, { pythonBin });
   // 与下面 semantic 档同口径：面板/表单页（UI 信号多）且抽出的文字不长时，
   // Trafilatura 只能拿到导航/表头碎片，应交回 UI 清单，而不是抢走结果。
   if (alt.ok && alt.text.length >= MIN_ARTICLE_CHARS && (alt.text.length >= UI_SWITCH_CHARS || uiSignalCount(html) < 3)) {
@@ -1499,7 +1700,7 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin } = {}) {
+export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -1521,6 +1722,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
         ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
         ...(headful ? { headful: true } : {}),
         ...(chromeBin == null ? {} : { chromeBin }),
+        ...(pythonBin == null ? {} : { pythonBin }),
       },
     );
     html = r.html;
@@ -1535,7 +1737,7 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (src === 'stdin' || src === 'content' ? src : src.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty });
+  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, ...(pythonBin == null ? {} : { pythonBin }) });
   log.debug('extract', `mode=${mode} requested=${res.requested} used=${res.used} reduction=${res.stats.reductionPct}% title="${res.title ?? ''}"`);
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);

@@ -1,7 +1,7 @@
 // 可靠性回归：node tests/reliability.mjs（已接入 pnpm test）。
 // 全内置合成输入 + 本地回环 HTTP/临时文件，无外部网络依赖。
 import { strict as assert } from 'node:assert';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -11,7 +11,10 @@ import {
   challengeSignals,
   decodeHtml,
   extractHtml,
+  findCapablePython,
   findPython,
+  pythonBinOverride,
+  resetEnvScanCache,
   hostBypassed,
   maskProxy,
   pickPlaywrightChrome,
@@ -22,6 +25,7 @@ import {
   renderViaBrowser,
   resolveProxy,
   runExtract,
+  savePageUsable,
   skeletonFromMarkdown,
   tryTrafilatura,
 } from '../src/extract.js';
@@ -607,6 +611,198 @@ open(out, 'w', encoding='utf-8').write(
   }
 }
 
+// ---- 13b. 解释器选择：--python-bin / HTMLMINI_PYTHON 显式即显式，指错不回退 ----
+{
+  let py = null;
+  try {
+    py = await findPython();
+  } catch {
+    py = null;
+  }
+  if (!py) {
+    console.log('skip python-bin tests (no python)');
+  } else {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t13b-'));
+    const saved = {
+      HTMLMINI_PYTHON: process.env.HTMLMINI_PYTHON,
+      HTMLMINI_RENDER_SCRIPT: process.env.HTMLMINI_RENDER_SCRIPT,
+      HTMLMINI_RENDER_ENGINES: process.env.HTMLMINI_RENDER_ENGINES,
+      HTMLMINI_CHROME_BIN: process.env.HTMLMINI_CHROME_BIN,
+    };
+    try {
+      const bad = path.join(dir, 'no-such-python.exe');
+      ok(pythonBinOverride() === null, '默认没有解释器覆盖');
+      ok((await findPython({ pythonBin: py })) === py, '--python-bin 指定可用解释器即采用');
+      ok((await savePageUsable(py)) !== null, '显式解释器可探测 save_page 通路');
+
+      process.env.HTMLMINI_PYTHON = py;
+      ok(pythonBinOverride() === py, 'HTMLMINI_PYTHON 作为覆盖候选');
+      ok(pythonBinOverride(path.join(dir, 'flag')) === path.join(dir, 'flag'), '--python-bin 优先于环境变量');
+      delete process.env.HTMLMINI_PYTHON;
+
+      let err = null;
+      try {
+        await findPython({ pythonBin: bad });
+      } catch (e) {
+        err = e;
+      }
+      ok(err && /not usable/.test(err.message) && err.message.includes(bad), '显式解释器不可用即报错，不回退到 python/python3');
+
+      let renderErr = null;
+      try {
+        await renderViaBrowser(`${base}/always502`, { pythonBin: bad, renderTimeoutMs: 5000 });
+      } catch (e) {
+        renderErr = e;
+      }
+      ok(renderErr && /not usable/.test(renderErr.message), '渲染通路把解释器配置错误抛给调用方');
+
+      // 环境变量指错时，--render 失败信息要能指名用了哪个解释器。
+      process.env.HTMLMINI_PYTHON = bad;
+      let envErr = null;
+      try {
+        await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 5000 });
+      } catch (e) {
+        envErr = e;
+      }
+      ok(envErr && envErr.message.includes(bad), 'HTMLMINI_PYTHON 指错时错误信息包含该路径');
+      delete process.env.HTMLMINI_PYTHON;
+
+      // 默认通路不可用时，错误里要提示实际探测的解释器与 --python-bin。
+      // 用测试钩子声明"只有层 0 引擎"，并把零依赖 Chrome 也指错，逼出双通路皆无的分支。
+      // 注意：不能同时设 HTMLMINI_RENDER_SCRIPT——显式自备渲染器按契约视为可用。
+      process.env.HTMLMINI_RENDER_ENGINES = 'static';
+      process.env.HTMLMINI_CHROME_BIN = path.join(dir, 'no-such-chrome');
+      let hintErr = null;
+      try {
+        await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 5000 });
+      } catch (e) {
+        hintErr = e;
+      }
+      ok(hintErr && /neither save_page/.test(hintErr.message), '渲染不可用时给出安装指引');
+      ok(hintErr && /--python-bin|HTMLMINI_PYTHON/.test(hintErr.message), '渲染不可用时提示如何指定解释器');
+      ok(hintErr && /probed interpreter: /.test(hintErr.message), '渲染不可用时点名实际探测的解释器');
+      for (const k of ['HTMLMINI_RENDER_ENGINES', 'HTMLMINI_CHROME_BIN']) delete process.env[k];
+    } finally {
+      for (const k of Object.keys(saved)) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+}
+
+// ---- 13c. 环境扫描：HTMLMINI_PYTHON=auto 与失败路径上的备用解释器建议 ----
+{
+  let py = null;
+  try {
+    py = await findPython();
+  } catch {
+    py = null;
+  }
+  if (!py) {
+    console.log('skip env-scan tests (no python)');
+  } else {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t13c-'));
+    const saved = {
+      HTMLMINI_PYTHON: process.env.HTMLMINI_PYTHON,
+      HTMLMINI_ENV_SCAN_SCRIPT: process.env.HTMLMINI_ENV_SCAN_SCRIPT,
+      HTMLMINI_ENV_SCAN: process.env.HTMLMINI_ENV_SCAN,
+      HTMLMINI_RENDER_SCRIPT: process.env.HTMLMINI_RENDER_SCRIPT,
+      HTMLMINI_RENDER_ENGINES: process.env.HTMLMINI_RENDER_ENGINES,
+      HTMLMINI_CHROME_BIN: process.env.HTMLMINI_CHROME_BIN,
+    };
+    const scanStub = async (target, engines) => {
+      const stubDir = path.join(dir, target);
+      await mkdir(stubDir, { recursive: true });
+      const file = path.join(stubDir, 'check_environment.py');
+      await writeFile(
+        file,
+        'def scan_environments(required, scripts_dir):\n'
+          + '    return [\n'
+          + `        {"ok": True, "path": ${JSON.stringify(engines.recommended)}, "engines": ${JSON.stringify(engines.of)}, "manager": "conda:fake", "satisfies": []},\n`
+          + '        {"ok": True, "path": "C:/fake/system/python.exe", "engines": ["static"], "manager": "system", "satisfies": list(required)},\n'
+          + '    ]\n',
+        'utf8',
+      );
+      return file;
+    };
+    try {
+      // 1) 扫描能挑出具备层的解释器（推荐项指向真实可用的 python）
+      const goodScan = await scanStub('scan-good', { recommended: py, of: ['static', 'playwright'] });
+      process.env.HTMLMINI_ENV_SCAN_SCRIPT = goodScan;
+      resetEnvScanCache();
+      const found = await findCapablePython(['playwright']);
+      ok(found && found.recommended === py, '环境扫描返回具备层 >= 1 的解释器');
+      ok((found.engines ?? []).includes('playwright'), '扫描结果带上该解释器的引擎列表');
+
+      // 2) HTMLMINI_PYTHON=auto：渲染自动改用扫描到的解释器
+      const saveStub = path.join(dir, 'stub_save.py');
+      await writeFile(
+        saveStub,
+        `import sys
+argv = sys.argv[1:]
+out = argv[argv.index('--out') + 1]
+open(out, 'w', encoding='utf-8').write(
+    '<!doctype html><html><head><title>自动解释器</title></head><body>'
+    '<article><h1>自动解释器标题</h1><p>' + '自动选择的解释器渲染内容足够长可以被识别。' * 10 + '</p></article>'
+    '</body></html>'
+)
+`,
+        'utf8',
+      );
+      process.env.HTMLMINI_RENDER_SCRIPT = saveStub;
+      process.env.HTMLMINI_PYTHON = 'auto';
+      ok((await findPython()) === py, 'HTMLMINI_PYTHON=auto 解析成扫描到的解释器');
+      const autoTitle = await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 30000 });
+      ok(autoTitle.trim() === '自动解释器', 'auto 选择的解释器完成了 save_page 渲染');
+      delete process.env.HTMLMINI_PYTHON;
+      delete process.env.HTMLMINI_RENDER_SCRIPT;
+
+      // 3) 扫描不可用时，auto 给出明确错误而不是静默失败
+      process.env.HTMLMINI_ENV_SCAN_SCRIPT = path.join(dir, 'missing-scan.py');
+      resetEnvScanCache();
+      ok((await findCapablePython(['playwright'])) === null, '扫描脚本缺失时返回 null 而不抛错');
+      process.env.HTMLMINI_ENV_SCAN_SCRIPT = goodScan;
+      process.env.HTMLMINI_ENV_SCAN = '0';
+      resetEnvScanCache();
+      let disabled = 'unset';
+      try {
+        disabled = await findPython({ pythonBin: 'auto' });
+      } catch (e) {
+        disabled = e.message;
+      }
+      ok(/仍未找到|not usable|未找到/.test(String(disabled)), '关闭扫描时 auto 明确报错');
+      delete process.env.HTMLMINI_ENV_SCAN;
+
+      // 4) 双通路皆无时，错误信息建议扫描到的备用解释器
+      process.env.HTMLMINI_RENDER_ENGINES = 'static';
+      process.env.HTMLMINI_CHROME_BIN = path.join(dir, 'no-such-chrome');
+      const scanHint = await scanStub('scan-hint', {
+        recommended: 'C:/fake/conda/envs/scrapling/python.exe',
+        of: ['static', 'scrapling'],
+      });
+      process.env.HTMLMINI_ENV_SCAN_SCRIPT = scanHint;
+      resetEnvScanCache();
+      let hintErr = null;
+      try {
+        await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 5000 });
+      } catch (e) {
+        hintErr = e;
+      }
+      ok(hintErr && hintErr.message.includes('C:/fake/conda/envs/scrapling/python.exe'), '渲染不可用时点名另一台环境的解释器');
+      ok(hintErr && /HTMLMINI_PYTHON=auto/.test(hintErr.message), '并给出 auto 这条快捷方式');
+      for (const k of ['HTMLMINI_RENDER_ENGINES', 'HTMLMINI_CHROME_BIN', 'HTMLMINI_ENV_SCAN_SCRIPT']) delete process.env[k];
+    } finally {
+      for (const k of Object.keys(saved)) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+}
+
 // ---- 14. Chrome 直渲通路：零依赖回退 / headful 限制 / save_page 优先 ----
 {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t14-'));
@@ -713,19 +909,120 @@ open(out, 'w', encoding='utf-8').write(
       await writeFile(f, 'x');
       return f;
     };
-    const winFull1200 = await touch('win', 'chromium-1200', 'chrome-win', 'chrome.exe');
-    const winFull1210 = await touch('win', 'chromium-1210', 'chrome-win', 'chrome.exe');
+    const winFull = await touch('win', 'chromium-1200', 'chrome-win64', 'chrome.exe');
+    const winFull1210 = await touch('win', 'chromium-1210', 'chrome-win64', 'chrome.exe');
     ok(pickPlaywrightChrome(path.join(dir, 'win'), 'win32') === winFull1210, 'win 取版本最大者');
     ok(pickPlaywrightChrome(path.join(dir, 'empty'), 'win32') === null, '空缓存返回 null');
     const winShell = await touch('win-shell', 'chromium-1200', 'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
     ok(pickPlaywrightChrome(path.join(dir, 'win-shell'), 'win32') === winShell, 'win 无完整版时用无头壳兜底');
 
-    const linFull = await touch('lin', 'chromium-1180', 'chrome-linux', 'chrome');
-    ok(pickPlaywrightChrome(path.join(dir, 'lin'), 'linux') === linFull, 'linux 布局命中');
-    const macFull = await touch('mac', 'chromium-1190', 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
-    ok(pickPlaywrightChrome(path.join(dir, 'mac'), 'darwin') === macFull, 'mac 布局命中');
+    // 旧布局（chrome-win/chrome-linux/chrome-mac）仍需命中：两个版本的新旧目录并存时优先取版本大者。
+    const winLegacy = await touch('win-legacy', 'chromium-1100', 'chrome-win', 'chrome.exe');
+    ok(pickPlaywrightChrome(path.join(dir, 'win-legacy'), 'win32') === winLegacy, 'win 旧布局 chrome-win 仍命中');
+    const winMixed = await touch('win-mixed', 'chromium-1130', 'chrome-win', 'chrome.exe');
+    const winMixedNew = await touch('win-mixed', 'chromium-1200', 'chrome-win64', 'chrome.exe');
+    ok(pickPlaywrightChrome(path.join(dir, 'win-mixed'), 'win32') === winMixedNew, 'win 新旧布局并存取版本大者');
+
+    const linFull = await touch('lin', 'chromium-1180', 'chrome-linux64', 'chrome');
+    ok(pickPlaywrightChrome(path.join(dir, 'lin'), 'linux') === linFull, 'linux 新布局命中');
+    const linLegacy = await touch('lin-legacy', 'chromium-1180', 'chrome-linux', 'chrome');
+    ok(pickPlaywrightChrome(path.join(dir, 'lin-legacy'), 'linux') === linLegacy, 'linux 旧布局命中');
+    const macFull = await touch('mac', 'chromium-1190', 'chrome-mac-arm64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
+    ok(pickPlaywrightChrome(path.join(dir, 'mac'), 'darwin') === macFull, 'mac 新布局命中');
     ok(pickPlaywrightChrome(path.join(dir, 'lin'), 'win32') === null, '平台布局错配不命中');
-    void winFull1200;
+    void winFull;
+    void winMixed;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// ---- 16. save_page 可用性口径：层 >= 1 才走 save_page，层 0 退化到零依赖 Chrome ----
+{
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t16-'));
+  try {
+    const fakeChrome = path.join(dir, 'fake-chrome.mjs');
+    await writeFile(
+      fakeChrome,
+      `import { appendFileSync } from 'node:fs';
+const marker = process.env.CHROME_MARKER;
+if (marker) appendFileSync(marker, 'chrome-invoked\\n');
+process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head><body>'
+  + '<article><h1>Chrome标题</h1><p>' + 'Chrome正文内容足够长可以被识别为主体。'.repeat(10) + '</p></article>'
+  + '</body></html>');
+`,
+      'utf8',
+    );
+    const chromeMarker = path.join(dir, 'chrome.log');
+    const saved = {};
+    for (const k of [
+      'HTMLMINI_RENDER_SCRIPT',
+      'HTMLMINI_CHROME_BIN',
+      'HTMLMINI_CHROME_EXTRA_ARGS',
+      'HTMLMINI_RENDER_ENGINES',
+      'CHROME_MARKER',
+    ]) {
+      saved[k] = process.env[k];
+    }
+    try {
+      delete process.env.HTMLMINI_RENDER_SCRIPT; // 用真实同级脚本，让引擎探测生效
+      process.env.HTMLMINI_CHROME_BIN = process.execPath;
+      process.env.HTMLMINI_CHROME_EXTRA_ARGS = fakeChrome;
+      process.env.CHROME_MARKER = chromeMarker;
+      process.env.HTMLMINI_RENDER_ENGINES = 'playwright';
+      const probeOk = (await savePageUsable()) !== null;
+      if (!probeOk) {
+        console.log('skip save_page engine-floor (renderer not installed beside htmlmini)');
+      } else {
+        ok((await savePageUsable()) !== null, '层 1 引擎被判为 save_page 可用');
+        process.env.HTMLMINI_RENDER_ENGINES = 'scrapling,cloak-cdp';
+        ok((await savePageUsable()) !== null, '层 2/3 引擎被判为 save_page 可用');
+        process.env.HTMLMINI_RENDER_ENGINES = 'static';
+        ok((await savePageUsable()) === null, '只有层 0 时不判 save_page 可用');
+        const degraded = await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 30000 });
+        ok(degraded.trim() === 'Chrome页', '只有层 0 时退化到零依赖 Chrome 通路');
+        ok(existsSync(chromeMarker), '退化路径确实调用了 Chrome');
+
+        // 层 1 与零依赖 Chrome 同能力（都只渲染、不求解挑战）：有 Chrome 时仍走 Chrome，避免为渲染再启 python 通路。
+        process.env.HTMLMINI_RENDER_ENGINES = 'playwright';
+        await rm(chromeMarker, { force: true });
+        const parity = await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 30000 });
+        ok(parity.trim() === 'Chrome页', '层 1 与 Chrome 同能力时仍走零依赖通路');
+        ok(existsSync(chromeMarker), '同能力场景下 save_page 未被优先调用');
+
+        // 没有求解引擎、又没有 Chrome 时，层 1 仍是最后兜底（此处 save_page 真实执行并按其校验失败）。
+        process.env.HTMLMINI_CHROME_BIN = path.join(dir, '不存在-chrome.exe');
+        let fallbackErr = null;
+        try {
+          await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 30000 });
+        } catch (e) {
+          fallbackErr = e;
+        }
+        ok(fallbackErr && /browser render failed/.test(fallbackErr.message), '无 Chrome 时层 1 兜底走 save_page');
+        process.env.HTMLMINI_CHROME_BIN = process.execPath;
+
+        // 零依赖通路崩溃但同能力引擎仍在时，再试一次 save_page（错误里两段都要出现）。
+        const brokenChrome = path.join(dir, 'broken-chrome.mjs');
+        await writeFile(brokenChrome, 'process.exit(21);\n', 'utf8');
+        process.env.HTMLMINI_CHROME_EXTRA_ARGS = brokenChrome;
+        let doubleErr = null;
+        try {
+          await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 30000 });
+        } catch (e) {
+          doubleErr = e;
+        }
+        ok(
+          doubleErr && /chrome render failed/.test(doubleErr.message) && /save_page 回退也失败/.test(doubleErr.message),
+          'Chrome 通路失败后回退 save_page 并合并报错',
+        );
+        process.env.HTMLMINI_CHROME_EXTRA_ARGS = fakeChrome;
+      }
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

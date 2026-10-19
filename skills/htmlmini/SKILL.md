@@ -56,9 +56,11 @@ URL 或页面 + 查看/取数意图同样触发：含 URL 并要求看其中数�
 
 `htmlmini_extract_url` 只做静态抓取：默认跟随任务/宿主的代理环境变量，可经 `proxy` 参数覆盖（URL 或 `"direct"`）；403/5xx 自动补一次浏览器头重试（同路线）。
 一步到位的用法：`htmlmini <URL> --render` 或 MCP `render:true`——静态优先，静态 403/5xx 才自动回退浏览器渲染再按文件模式提取；
-渲染链为 save_page（环境就绪时用，同代理，cloak 不必接）→ 本机普通 Chrome 无头 dump-dom（零依赖）→ 友好报错，实际走了哪条会打 `htmlmini: [render] engine=… [proxy: …]` 日志；
+渲染链为 save_page（层 ≥1 引擎就绪且更合适时用，同代理，cloak 不必接）→ 本机普通 Chrome 无头 dump-dom（零依赖）→ 友好报错，实际走了哪条会打 `htmlmini: [render] engine=… [proxy: …]` 日志；
+通路选择口径：save_page 有求解引擎（scrapling/cloak-cdp）、或需要 `--headful`、或本机没有 Chrome 时走 save_page；层 1（playwright/patchright）与 Chrome 同为"只渲染不求解"，此时优先零依赖 Chrome，Chrome 通路崩了再回退 save_page 重试一次（错误里两段都会出现）；
+save_page 与 Trafilatura 都跑在某个 Python 解释器上，默认取 PATH 的 `python`/`python3`——**这往往不是装了 playwright/scrapling 的那个环境**（conda/venv 常需显式指定）。用 `--python-bin <解释器>` / MCP `python_bin` / 环境变量 `HTMLMINI_PYTHON` 指向目标环境；`--python-bin auto`（或 `HTMLMINI_PYTHON=auto`）会扫描本机候选环境并自动挑一个具备层 ≥1 引擎的，选定后打日志说明用了谁；显式给出路径后不做隐式回退，指错直接报错并带上路径。渲染因缺引擎失败时，错误信息会点名实际探测的解释器，并在本机存在更合适的环境时给出其路径（可用 `HTMLMINI_ENV_SCAN=0` 关闭扫描）。查本机各环境具备哪些层，用 `resilient-browser-fetch/scripts/check_environment.py --list-envs`；
 Chrome 通路按显式 `--chrome-bin` / `chrome_bin` / `HTMLMINI_CHROME_BIN` → PATH → 系统常用路径 → Playwright 缓存（`PLAYWRIGHT_BROWSERS_PATH` 可改位置，完整版优先取版本最大者）选择；
-首次人工验证用 `--headful` / `headful:true`（仅 save_page 通路支持）；
+首次人工验证用 `--headful` / `headful:true`（只支持 save_page 通路，且需要层 ≥1 引擎；Chrome dump-dom 无法开窗）；
 404/超时/断网直接抛错，不烧浏览器时间。
 连续/成批多页不要循环调 `--render`（每页一次浏览器创建/销毁，又慢又多新指纹）：同站多页走 `resilient-browser-fetch` 的批量会话（单浏览器预热屏障 + 会话复用 + 受限并发，见其 `references/batch-workflows.md`），落盘后再逐个 `htmlmini_extract_file`；
 临时 profile 随会话关闭自动清理，`--profile-dir` 只用于跨重启保留，涨磁盘且不跨进程共用。

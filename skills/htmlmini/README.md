@@ -13,7 +13,7 @@ JS 静态提取这条线上，[Defuddle](https://github.com/kepano/defuddle)（O
 | 工具 | 定位 | 相对 htmlmini |
 |---|---|---|
 | `Mozilla Readability` / `@extractus/article-extractor` | 经典正文提取 | 下位：保守启发式，代码块/SPA 易损坏 |
-| `Trafilatura`（Python） | 基准测试精度冠军，多语言/元数据强 | 正文质量上位，已作为**可选二级引擎**接入（`pip install trafilatura` 后自动生效，缺席静默跳过） |
+| `Trafilatura`（Python） | 基准测试精度冠军，多语言/元数据强 | 正文质量上位，已作为**可选二级引擎**接入（`pip install trafilatura` 后自动生效，缺席静默跳过；装在非 PATH 环境时用 `--python-bin` / `HTMLMINI_PYTHON` 指定解释器） |
 | `Microsoft MarkItDown`（+ `markitdown-mcp`） | 通用文件转 Markdown（pdf/docx/xlsx/html…） | 更通用但 HTML 去样板弱于 Defuddle；office/pdf 类任务请用它，不归 htmlmini 管 |
 | `Playwright MCP` / Firecrawl / Jina Reader | 浏览器渲染 + 可访问树 / 托管提取 | 动态 JS/强反爬场景的上位，但重（浏览器/付费服务/联网）；htmlmini 只做静态，动态页先走 `resilient-browser-fetch` 渲染再喂给 htmlmini（见"流水线"） |
 | `pandoc` / `html2text` / `inscriptis` | 格式转换 | 只转格式不去样板，省 token 远不如 |
@@ -95,8 +95,9 @@ htmlmini: [write] copilot.clean.html 200.3 KB (total 2.24s)
 静态抓取先跟随环境代理、403/5xx 自动补一次浏览器头；仍失败时两种走法：
 
 ```bash
-# 一条命令（静态优先，403/5xx 自动回退渲染；cloak 不必接，
-# save_page 环境就绪用它，否则用本机普通 Chrome 无头直渲）
+# 一条命令（静态优先，403/5xx 自动回退渲染；cloak 不必接。
+# 通路选择：save_page 有求解引擎（scrapling/cloak-cdp）、或要 --headful、或本机无 Chrome 时走 save_page；
+# 层 1（playwright/patchright）与 Chrome 同为"只渲染不求解"，此时优先零依赖 Chrome，崩了再回退 save_page）
 htmlmini "https://example.com/app" --render --proxy 'http://127.0.0.1:<port>' --json
 
 # 浏览器选择（Chrome 通路）：显式 --chrome-bin / HTMLMINI_CHROME_BIN 优先，
@@ -105,8 +106,17 @@ htmlmini "https://example.com/app" --render --proxy 'http://127.0.0.1:<port>' --
 # 自定义缓存位置走 PLAYWRIGHT_BROWSERS_PATH）。实际用了哪个看
 # `htmlmini: [render] engine=… src=… [proxy: …]` 日志。
 
-# 首次人工验证（save_page 通路开有头窗口；Chrome 通路不支持有头）
+# 首次人工验证（save_page 通路开有头窗口，需要层 >= 1 引擎；Chrome 通路不支持有头）
 htmlmini "https://example.com/app" --render --headful
+
+# Python 环境选择（save_page 与 Trafilatura 都靠它）：默认 PATH 的 python/python3，
+# 往往不是装了 playwright/scrapling 的环境（conda/venv 常见）。指定后不回退、指错即报错：
+htmlmini "https://example.com/app" --render --python-bin 'C:\Users\me\.conda\envs\scrapling\python.exe'
+# 懒人版：扫一遍本机（conda/venv/uv/PATH），自动挑一个具备层 >= 1 引擎的解释器
+htmlmini "https://example.com/app" --render --python-bin auto
+# 或 export HTMLMINI_PYTHON=<解释器路径|auto>；渲染失败时错误信息也会点名可用的解释器。
+# 关闭扫描：HTMLMINI_ENV_SCAN=0；手动排查：
+python ../resilient-browser-fetch/scripts/check_environment.py --list-envs --require-stealth
 
 # 手工两步（渲染产物旁的 <name>.html.meta.json 会被自动利用）
 python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html --proxy 'http://127.0.0.1:<port>'
@@ -130,7 +140,7 @@ htmlmini app.html --json
 | 工具 | 说明 |
 |---|---|
 | `htmlmini_extract_file(path, mode?, extractor?)` | 提取本地 HTML 文件（含渲染后产物） |
-| `htmlmini_extract_url(url, mode?, extractor?, proxy?, render?, render_timeout_ms?)` | 抓取并提取远程 URL（静态抓取：跟随环境代理，403/5xx 补一次浏览器头；`render` 为 true 时静态 403/5xx 自动回退浏览器渲染；动态页也可走上面流水线） |
+| `htmlmini_extract_url(url, mode?, extractor?, proxy?, render?, render_timeout_ms?)` | 抓取并提取远程 URL（静态抓取：跟随环境代理，403/5xx 补一次浏览器头；`render` 为 true 时静态 403/5xx 自动回退浏览器渲染；动态页也可走上面流水线）。`headful` / `chrome_bin` / `python_bin` 同样可在 MCP 上传入 |
 | `htmlmini_extract_html(html_content, mode?, extractor?)` | 就地清洗一段已抓取的 HTML 字符串 |
 
 工具参数与 CLI 的 `mode` / `extractor` / `attrs` / `format` / `prune_empty` 同名同取值，具体取值以 `htmlmini --help` 与工具 schema 为准。

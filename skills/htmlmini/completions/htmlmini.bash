@@ -18,10 +18,11 @@ _htmlmini() {
     --proxy) COMPREPLY=( $(compgen -W "direct" -- "$cur") ); return 0 ;;
     --completion) COMPREPLY=( $(compgen -W "bash powershell" -- "$cur") ); return 0 ;;
     --chrome-bin) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
+    --python-bin) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
     -o|--output) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
   esac
   if [[ "$cur" == -* ]]; then
-    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --proxy --noproxy --render --headful --render-timeout-ms --chrome-bin --output --quiet --verbose --list-modes --list-extractors --completion --help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --proxy --noproxy --render --headful --render-timeout-ms --chrome-bin --python-bin --output --quiet --verbose --list-modes --list-extractors --completion --help" -- "$cur") )
   else
     COMPREPLY=( $(compgen -f -- "$cur") )
   fi

@@ -19,7 +19,7 @@ const formatDesc =
 const pruneEmptyDesc =
   'Only meaningful for mode "html". Drop containers left empty after cleaning (empty div/span/nav/header ...), which is often most of the bytes; table/form/pre structure is kept. Default false: empty wrappers are preserved.';
 
-async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, proxy, render, renderTimeoutMs, headful, chromeBin }) {
+async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin }) {
   const { html, source, contentType } = await readWithRender(
     src,
     {
@@ -28,6 +28,7 @@ async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, p
       ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
       ...(headful ? { headful: true } : {}),
       ...(chromeBin == null ? {} : { chromeBin }),
+      ...(pythonBin == null ? {} : { pythonBin }),
     },
   );
   const sibling = await readSiblingMeta(source);
@@ -36,7 +37,7 @@ async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, p
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (source === 'stdin' ? 'stdin' : source.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor, contentType, attrs, format, pruneEmpty });
+  const res = await extractHtml(html, { url, extractor, contentType, attrs, format, pruneEmpty, ...(pythonBin == null ? {} : { pythonBin }) });
   if (sibling) res.meta = sibling.meta;
   return renderResult(res, mode);
 }
@@ -49,7 +50,7 @@ const server = new McpServer({
 const fileDesc =
   'Extract the core content of a local HTML file, stripping CSS/JS/boilerplate. Works for static files, design mockups, and browser-rendered pages saved by resilient-browser-fetch (a "<file>.meta.json" next to the HTML is auto-used for the page URL). Article pages use Defuddle; dashboards/UI design pages automatically fall back to a UI-component inventory (headings, landmarks, fields, buttons, tables). Use mode "json" when you need metadata + which extractor was used + token-savings stats.';
 const urlDesc =
-  'Fetch a URL then extract its core content as Markdown, stripping CSS/JS/ads/nav (built on Defuddle + schema.org metadata). Static fetch only by default: follows HTTP(S)_PROXY env (NO_PROXY exempt) unless "proxy" overrides; retries once with browser headers on 403/5xx and names challenge signs in the error. Set "render" to fall back to browser rendering (resilient-browser-fetch save_page, same proxy) on static 403/5xx — needs its Python env installed. For JS-heavy pages you can also render first yourself, then feed the saved HTML to htmlmini_extract_file. Use "skeleton" for huge pages or "json" when you need metadata + token-savings stats.';
+  'Fetch a URL then extract its core content as Markdown, stripping CSS/JS/ads/nav (built on Defuddle + schema.org metadata). Static fetch only by default: follows HTTP(S)_PROXY env (NO_PROXY exempt) unless "proxy" overrides; retries once with browser headers on 403/5xx and names challenge signs in the error. Set "render" to fall back to browser rendering (resilient-browser-fetch save_page, same proxy) on static 403/5xx — needs a layer >= 1 engine (playwright/patchright, scrapling, or cloak-cdp) installed. For JS-heavy pages you can also render first yourself, then feed the saved HTML to htmlmini_extract_file. Use "skeleton" for huge pages or "json" when you need metadata + token-savings stats.';
 const htmlDesc =
   'Clean raw HTML given as a string (e.g. page source a harness already fetched): returns only the core content as Markdown so the model can summarize it without burning tokens on CSS/JS.';
 
@@ -75,7 +76,7 @@ const shapeUrl = {
   render: z
     .boolean()
     .optional()
-    .describe('On static 403/5xx, fall back to browser rendering via resilient-browser-fetch save_page (same proxy as this fetch), then extract. Needs its Python env installed; bounded by its own timeout.'),
+    .describe('On static 403/5xx, fall back to browser rendering via resilient-browser-fetch save_page (same proxy as this fetch), then extract. Needs an installed engine at layer >= 1 (playwright/patchright, scrapling, or cloak-cdp); bounded by its own timeout.'),
   render_timeout_ms: z
     .number()
     .optional()
@@ -88,6 +89,10 @@ const shapeUrl = {
     .string()
     .optional()
     .describe('Explicit Chrome/Chromium binary for the zero-dep chrome fallback (overrides auto-detection: PATH, common paths, Playwright cache).'),
+  python_bin: z
+    .string()
+    .optional()
+    .describe('Explicit Python interpreter for the render fallback and the optional Trafilatura pass. Default is "python"/"python3" on PATH, which is often not the environment that has playwright/scrapling installed; also read from HTMLMINI_PYTHON. Use "auto" to scan this machine (conda/venv/uv/PATH) and pick an interpreter that has a layer >= 1 engine.'),
 };
 const shapeHtml = {
   html_content: z.string().describe('Raw HTML source code string'),
@@ -103,13 +108,13 @@ server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, e
   content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false }) }],
 }));
 
-server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, proxy, render, render_timeout_ms, headful, chrome_bin }) => ({
+server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
       format: format ?? 'compact', pruneEmpty: prune_empty ?? false,
-      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin,
+      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin,
     }),
   }],
 }));
@@ -123,13 +128,13 @@ server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async
   content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false }) }],
 }));
 
-server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, proxy, render, render_timeout_ms, headful, chrome_bin }) => ({
+server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
       format: format ?? 'compact', pruneEmpty: prune_empty ?? false,
-      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin,
+      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin,
     }),
   }],
 }));
