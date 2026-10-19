@@ -1,18 +1,28 @@
 """Orchestrate reliable, isolated browser fetches for protected web pages.
 
 This module adds process isolation, proxy safety, engine fallback, content
-validation, and normalized diagnostics around Scrapling and CloakBrowser.
-It is intentionally optimized for reliable single-page jobs; callers that
-need a continuous batch should reuse an ``AsyncStealthySession`` instead.
+validation, and normalized diagnostics around a layered engine set:
+
+- level 0 ``static``: stdlib HTTP, no third-party dependency;
+- level 1 ``playwright``: plain headless rendering, no challenge solving;
+- level 2 ``scrapling``: anti-detect rendering with Cloudflare solving;
+- level 3 ``cloak-cdp``: CloakBrowser fingerprint base driven through Scrapling.
+
+``auto`` tries only the engines that are actually installed, from the lowest
+level up, so a missing enhancement package downgrades the run instead of
+failing it. It is intentionally optimized for reliable single-page jobs;
+callers that need a continuous batch should reuse a session manager instead.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import gzip
 import hashlib
 import html as html_module
 import importlib.metadata
+import importlib.util
 import json
 import logging
 import os
@@ -24,14 +34,20 @@ import subprocess
 import sys
 import tempfile
 import time
+import zlib
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse, urlsplit, urlunsplit
-from urllib.request import ProxyHandler, build_opener
+from urllib.error import HTTPError, URLError
+from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
+from urllib.request import ProxyHandler, Request, build_opener
 
 DEFAULT_TIMEOUT_MS = 300_000
 MIN_SOLVER_TIMEOUT_MS = 60_000
+CHALLENGE_POLL_INTERVAL_SEC = 1.0
+CHALLENGE_LOG_EVERY_SEC = 15.0
+CHALLENGE_SETTLE_MS = 1_500
 PROXY_REGISTRY_PATH = Path.home() / ".config" / "proxy-resources.json"
 BLOCK_HINTS = (
     "access denied",
@@ -42,7 +58,30 @@ BLOCK_HINTS = (
     "cf-error-details",
 )
 
+# ---- 引擎能力分层 ----
+# 层 0 零第三方依赖，层 1 只需 playwright/patchright，层 2 起才需要 scrapling。
+# auto 只升档到"已安装"的引擎，缺件记 unavailable 而不算失败。
+CAP_HTTP = "http"
+CAP_RENDER = "render"
+CAP_SOLVE = "solve-challenge"
+CAP_CDP = "cdp"
+
+# 尝试结果分类:调用方据此区分"该装依赖"与"该换路线"。
+KIND_OK = "ok"
+KIND_UNAVAILABLE = "unavailable"
+KIND_BLOCKED = "blocked"
+KIND_EMPTY = "blocked_or_empty"
+KIND_RUNTIME = "runtime_error"
+
+# worker 把引擎缺件写成 EngineUnavailableError，父进程按此标记回判分类。
+UNAVAILABLE_ERROR_MARKER = "EngineUnavailableError"
+
 __all__ = [
+    "ENGINES",
+    "ENGINE_CHOICES",
+    "EngineAvailability",
+    "EngineSpec",
+    "EngineUnavailableError",
     "FetchAttempt",
     "FetchError",
     "FetchFailed",
@@ -50,7 +89,14 @@ __all__ = [
     "FetchOutcome",
     "FetchResult",
     "ProxyUnavailableError",
+    "available_engines",
+    "curl_cffi_available",
+    "engine_availability",
+    "engine_order",
     "fetch_page",
+    "fetch_with_static",
+    "playwright_api_name",
+    "reset_availability_cache",
     "save_page",
 ]
 
@@ -63,6 +109,12 @@ class FetchError(RuntimeError):
 
 class ProxyUnavailableError(FetchError):
     """Indicate that a required proxy could not be discovered or reached."""
+
+    pass
+
+
+class EngineUnavailableError(FetchError):
+    """Indicate that an engine's own dependencies are missing in this environment."""
 
     pass
 
@@ -123,6 +175,7 @@ class FetchAttempt:
     status: int | None = None
     reasons: tuple[str, ...] = ()
     error: str | None = None
+    kind: str = KIND_OK
     rejected_html: str | None = field(default=None, repr=False)
 
     def as_metadata(self) -> dict[str, Any]:
@@ -131,6 +184,7 @@ class FetchAttempt:
         metadata: dict[str, Any] = {
             "engine": self.engine,
             "ok": self.ok,
+            "kind": self.kind,
             "elapsed_sec": self.elapsed_sec,
         }
         if self.status is not None:
@@ -160,6 +214,36 @@ class FetchFailed(FetchError):
         super().__init__(f"所有引擎均无法获取有效页面: {url}")
         self.url = url
         self.attempts = attempts
+
+    @property
+    def unavailable_engines(self) -> tuple[str, ...]:
+        """Name the engines that could not even start for missing dependencies."""
+
+        return tuple(item.engine for item in self.attempts if item.kind == KIND_UNAVAILABLE)
+
+    @property
+    def blocked_engines(self) -> tuple[str, ...]:
+        """Name the engines that ran but were rejected as challenge or empty pages."""
+
+        return tuple(
+            item.engine for item in self.attempts if item.kind in (KIND_BLOCKED, KIND_EMPTY)
+        )
+
+    def describe(self) -> str:
+        """Summarize the failure for logs and calling agents."""
+
+        if self.attempts and len(self.unavailable_engines) == len(self.attempts):
+            missing = sorted({item.error for item in self.attempts if item.error})
+            detail = "；".join(item for item in missing if item)
+            return (
+                f"没有可用引擎(缺件: {detail or '见 attempts.json'})；"
+                "若依赖装在别的 Python 环境，请改用该环境的解释器运行"
+                "(如 conda run -n <env> --no-capture-output python ...)，"
+                "或用 check_environment.py --list-envs 查看哪个环境具备所需层"
+            )
+        if self.attempts and len(self.blocked_engines) == len(self.attempts):
+            return "所有已尝试引擎都返回挑战页或空内容；请升档、换代理或改用有头人工验证"
+        return f"所有引擎均无法获取有效页面(尝试 {len(self.attempts)} 个)"
 
 
 def setup_logging(verbose: bool) -> None:
@@ -285,6 +369,102 @@ def block_reasons(page_html: str) -> list[str]:
     return sorted(set(reasons))
 
 
+def log_manual_verification_hint(wait_ms: int, *, headful: bool) -> None:
+    """Tell the operator what to do when a headful run may hit a challenge."""
+
+    if not headful:
+        return
+    if wait_ms > 0:
+        logging.info(
+            "有头模式: 若窗口中出现人机验证，请在窗口内完成；脚本会在 %.0f 秒内轮询页面，"
+            "验证通过后立即保存并关闭窗口。",
+            wait_ms / 1000,
+        )
+    else:
+        logging.info(
+            "有头模式: 若窗口中出现人机验证，请完成它；当前 --challenge-wait-ms 为 0，"
+            "脚本不会等待，建议设为 300000 给人工留出时间。"
+        )
+
+
+def wait_for_manual_verification(
+    read_html: Callable[[], str],
+    wait_ms: int,
+    *,
+    label: str = "页面",
+    headful: bool = False,
+) -> tuple[bool, float]:
+    """Poll a page until block markers clear or the wait budget runs out.
+
+    Returns ``(cleared, waited_sec)``。有头模式下会打印人工指引与进度，
+    这样操作者知道窗口在等他点验证，而不是以为脚本卡住了。
+    """
+
+    started = time.monotonic()
+    budget = max(0, int(wait_ms)) / 1000
+    if budget <= 0:
+        return (not block_reasons(read_html()), 0.0)
+    next_log = 0.0
+    while True:
+        elapsed = time.monotonic() - started
+        if not block_reasons(read_html()):
+            if elapsed >= CHALLENGE_POLL_INTERVAL_SEC:
+                logging.info("验证已通过(等待 %.0f 秒)，继续抓取。", elapsed)
+            return True, elapsed
+        if elapsed >= budget:
+            logging.warning("%s 在 %.0f 秒内未通过验证，按当前页面继续。", label, budget)
+            return False, elapsed
+        if elapsed >= next_log:
+            next_log = elapsed + CHALLENGE_LOG_EVERY_SEC
+            logging.info(
+                "%s 仍在等待验证: 已等 %.0f/%.0f 秒%s",
+                label,
+                elapsed,
+                budget,
+                "，请在有头窗口内完成人机验证"
+                if headful
+                else "，无头模式请改用 --headful 人工验证或层 2/3 求解",
+            )
+        time.sleep(CHALLENGE_POLL_INTERVAL_SEC)
+
+
+async def wait_for_manual_verification_async(
+    read_html: Callable[[], Awaitable[str]],
+    wait_ms: int,
+    *,
+    label: str = "页面",
+    headful: bool = False,
+) -> tuple[bool, float]:
+    """Async twin of :func:`wait_for_manual_verification` for CDP sessions."""
+
+    started = time.monotonic()
+    budget = max(0, int(wait_ms)) / 1000
+    if budget <= 0:
+        return (not block_reasons(await read_html()), 0.0)
+    next_log = 0.0
+    while True:
+        elapsed = time.monotonic() - started
+        if not block_reasons(await read_html()):
+            if elapsed >= CHALLENGE_POLL_INTERVAL_SEC:
+                logging.info("验证已通过(等待 %.0f 秒)，继续抓取。", elapsed)
+            return True, elapsed
+        if elapsed >= budget:
+            logging.warning("%s 在 %.0f 秒内未通过验证，按当前页面继续。", label, budget)
+            return False, elapsed
+        if elapsed >= next_log:
+            next_log = elapsed + CHALLENGE_LOG_EVERY_SEC
+            logging.info(
+                "%s 仍在等待验证: 已等 %.0f/%.0f 秒%s",
+                label,
+                elapsed,
+                budget,
+                "，请在有头窗口内完成人机验证"
+                if headful
+                else "，无头模式请改用 --headful 人工验证或层 2/3 求解",
+            )
+        await asyncio.sleep(CHALLENGE_POLL_INTERVAL_SEC)
+
+
 def atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -366,6 +546,296 @@ def response_to_result(engine: str, url: str, response: Any, started: float) -> 
     )
 
 
+# ---- 层 0:stdlib HTTP(零第三方依赖)----
+STATIC_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+STATIC_HEADERS = {
+    "User-Agent": STATIC_USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Encoding": "gzip, deflate",
+    "Connection": "close",
+}
+
+
+def decode_static_body(
+    payload: bytes, content_type: str | None, content_encoding: str | None
+) -> str:
+    """Decode a static body from transport headers, then sniffed, then fallback charsets."""
+
+    encoding = (content_encoding or "").strip().lower()
+    if encoding == "gzip":
+        payload = gzip.decompress(payload)
+    elif encoding == "deflate":
+        try:
+            payload = zlib.decompress(payload)
+        except zlib.error:
+            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
+
+    candidates: list[str] = []
+    if content_type:
+        declared = re.search(r"charset=[\"']?([\w\-]+)", content_type, re.I)
+        if declared:
+            candidates.append(declared.group(1))
+    sniffed = re.search(rb"charset=[\"']?([\w\-]+)", payload[:2048], re.I)
+    if sniffed:
+        candidates.append(sniffed.group(1).decode("ascii", errors="replace"))
+    candidates.extend(("utf-8", "gb18030"))
+
+    for candidate in candidates:
+        try:
+            return payload.decode(candidate)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return payload.decode("utf-8", errors="replace")
+
+
+def static_proxy_map(proxy: str | None) -> dict[str, str]:
+    """Map one proxy URL onto urllib's per-scheme proxy dictionary."""
+
+    return {"http": proxy, "https": proxy} if proxy else {}
+
+
+def fetch_with_static_curl_cffi(config: dict[str, Any], started: float) -> FetchResult:
+    """Fetch through curl_cffi when the proxy scheme needs it (TLS-level disguise)."""
+
+    try:
+        from curl_cffi import requests as curl_requests
+    except Exception as exc:
+        raise EngineUnavailableError(
+            "static 引擎需要 curl_cffi 才能走该代理；请安装 curl_cffi 或改用 http(s) 代理。"
+        ) from exc
+    proxy = config.get("proxy")
+    response = curl_requests.get(
+        config["url"],
+        headers=STATIC_HEADERS,
+        proxies={"http": proxy, "https": proxy} if proxy else None,
+        timeout=max(config["timeout_ms"] / 1000, 1.0),
+        impersonate="chrome",
+    )
+    page_html = response.text
+    return FetchResult(
+        engine="static",
+        url=config["url"],
+        final_url=str(response.url),
+        status=int(response.status_code),
+        html=page_html,
+        elapsed_sec=round(time.perf_counter() - started, 3),
+        title=extract_title(page_html),
+        block_reasons=block_reasons(page_html),
+        versions=package_versions(),
+    )
+
+
+def static_request(
+    opener: Any, url: str, headers: dict[str, str], timeout: float
+) -> tuple[int, str, bytes, str | None, str | None]:
+    """Perform one stdlib request, returning transport details instead of raising on 4xx/5xx."""
+
+    request = Request(url, headers=headers)
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            return (
+                int(getattr(response, "status", 200) or 200),
+                response.geturl(),
+                response.read(),
+                response.headers.get("Content-Type"),
+                response.headers.get("Content-Encoding"),
+            )
+    except HTTPError as exc:
+        # 4xx/5xx 按"拿到了内容"返回，交给内容校验判定是拦截还是正常错误页。
+        with exc:
+            return (
+                int(exc.code),
+                exc.geturl(),
+                exc.read() or b"",
+                exc.headers.get("Content-Type") if exc.headers else None,
+                exc.headers.get("Content-Encoding") if exc.headers else None,
+            )
+
+
+def fetch_with_static(config: dict[str, Any]) -> FetchResult:
+    """Fetch the page with the standard library only; never launches a browser."""
+
+    proxy = config.get("proxy")
+    scheme = urlparse(proxy).scheme.lower() if proxy else ""
+    started = time.perf_counter()
+    if scheme in {"socks5", "socks5h"} or (scheme and scheme not in {"http", "https"}):
+        if not curl_cffi_available():
+            raise EngineUnavailableError(
+                f"static 引擎不支持 {scheme or '该'} 代理且未安装 curl_cffi；"
+                "请安装 curl_cffi，或改用 http(s) 代理，或升档到浏览器引擎。"
+            )
+        return fetch_with_static_curl_cffi(config, started)
+
+    headers = dict(STATIC_HEADERS)
+    if config.get("locale"):
+        headers["Accept-Language"] = str(config["locale"])
+    opener = build_opener(ProxyHandler(static_proxy_map(proxy)))
+    timeout = max(config["timeout_ms"] / 1000, 1.0)
+    last_error: Exception | None = None
+    for attempt in range(1, config["retries"] + 1):
+        try:
+            status, final_url, body, content_type, content_encoding = static_request(
+                opener, config["url"], headers, timeout
+            )
+        except (URLError, OSError, ValueError) as exc:
+            last_error = exc
+            if attempt < config["retries"]:
+                logging.warning("static 抓取失败 %s/%s: %s", attempt, config["retries"], exc)
+                time.sleep(config["retry_delay"])
+            continue
+        page_html = decode_static_body(body, content_type, content_encoding)
+        return FetchResult(
+            engine="static",
+            url=config["url"],
+            final_url=final_url,
+            status=status,
+            html=page_html,
+            elapsed_sec=round(time.perf_counter() - started, 3),
+            title=extract_title(page_html),
+            block_reasons=block_reasons(page_html),
+            versions=package_versions(),
+        )
+    raise FetchError(f"static 抓取失败({config['retries']} 次尝试): {last_error}")
+
+
+# ---- 层 1:playwright/patchright 渲染(无挑战求解)----
+def load_playwright_factory() -> Any:
+    """Import the sync API of patchright when present, else of plain Playwright."""
+
+    name = playwright_api_name()
+    if name is None:
+        raise EngineUnavailableError(
+            "未安装 playwright/patchright；请安装后运行 `playwright install chromium`，"
+            "或用 --real-chrome/--executable-path 指向系统浏览器。"
+        )
+    module = importlib.import_module(f"{name}.sync_api")
+    factory = getattr(module, "sync_playwright", None)
+    if factory is None:
+        raise EngineUnavailableError(f"{name}.sync_api 缺少 sync_playwright。")
+    return factory
+
+
+def playwright_launch_kwargs(config: dict[str, Any]) -> dict[str, Any]:
+    """Translate normalized config into Chromium launch options."""
+
+    kwargs: dict[str, Any] = {"headless": not config["headful"]}
+    proxy = config.get("proxy")
+    if proxy:
+        parsed = urlparse(proxy)
+        server = f"{parsed.scheme}://{parsed.hostname or ''}"
+        if parsed.port:
+            server = f"{server}:{parsed.port}"
+        credentials = bool(parsed.username)
+        if credentials and parsed.scheme.lower().startswith("socks"):
+            raise FetchError("playwright 不支持带凭据的 socks 代理；请改用 http 代理或层 2/3。")
+        entry: dict[str, Any] = {"server": server}
+        if credentials:
+            entry["username"] = unquote(parsed.username or "")
+            entry["password"] = unquote(parsed.password or "")
+        kwargs["proxy"] = entry
+    if config.get("executable_path"):
+        kwargs["executable_path"] = config["executable_path"]
+    elif config.get("real_chrome"):
+        kwargs["channel"] = "chrome"
+    return kwargs
+
+
+def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str]:
+    """Open the URL in a plain browser context and return (html, status, final_url)."""
+
+    factory = load_playwright_factory()
+    timeout_ms = int(config["timeout_ms"])
+    launch_kwargs = playwright_launch_kwargs(config)
+    context_kwargs: dict[str, Any] = {}
+    if config.get("locale"):
+        context_kwargs["locale"] = config["locale"]
+    if config.get("timezone"):
+        context_kwargs["timezone_id"] = config["timezone"]
+    profile_dir = Path(config["profile_dir"]) / "playwright" if config.get("profile_dir") else None
+    screenshot = Path(config["screenshot"]) if config.get("screenshot") else None
+    if screenshot:
+        screenshot.parent.mkdir(parents=True, exist_ok=True)
+
+    with factory() as playwright:
+        browser = None
+        if profile_dir:
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            context = playwright.chromium.launch_persistent_context(
+                str(profile_dir), **launch_kwargs, **context_kwargs
+            )
+        else:
+            browser = playwright.chromium.launch(**launch_kwargs)
+            context = browser.new_context(**context_kwargs)
+        try:
+            page = context.new_page()
+            response = page.goto(config["url"], timeout=timeout_ms, wait_until="load")
+            if config.get("network_idle"):
+                page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            # 层 1 没有求解器，但有人: 有头模式先给人时间过验证，再等选择器/截图/取源码，
+            # 否则 --wait-selector 会先在挑战页上超时，人工验证永远等不到。
+            manual_wait_ms = int(config.get("challenge_wait_ms") or 0)
+            if config.get("headful") and manual_wait_ms > 0:
+                cleared, _waited = wait_for_manual_verification(
+                    lambda: page.content(),
+                    manual_wait_ms,
+                    label=config["url"],
+                    headful=True,
+                )
+                if cleared:
+                    # 验证后页面通常还会再跳一次，给它一点稳定时间。
+                    page.wait_for_timeout(CHALLENGE_SETTLE_MS)
+            if config.get("wait_selector"):
+                page.wait_for_selector(
+                    config["wait_selector"], state="visible", timeout=timeout_ms
+                )
+            if config.get("post_wait_ms"):
+                page.wait_for_timeout(int(config["post_wait_ms"]))
+            if screenshot:
+                page.screenshot(path=str(screenshot), full_page=True)
+            page_html = page.content()
+            final_url = page.url
+            status = response.status if response is not None else None
+        finally:
+            try:
+                context.close()
+            finally:
+                if browser is not None:
+                    browser.close()
+    return page_html, status, final_url
+
+
+def fetch_with_playwright(config: dict[str, Any]) -> FetchResult:
+    """Render with a plain browser: fast, dependency-light, no challenge solving."""
+
+    started = time.perf_counter()
+    try:
+        page_html, status, final_url = render_with_playwright(config)
+    except (EngineUnavailableError, FetchError):
+        raise
+    except Exception as exc:
+        message = str(exc)
+        if "Executable doesn't exist" in message or "playwright install" in message:
+            raise EngineUnavailableError(
+                f"未找到浏览器二进制；请运行 `playwright install chromium`，"
+                f"或用 --real-chrome/--executable-path 指定系统浏览器。原始信息: {message}"
+            ) from exc
+        raise FetchError(f"playwright 渲染失败: {message}") from exc
+    return FetchResult(
+        engine="playwright",
+        url=config["url"],
+        final_url=final_url,
+        status=status,
+        html=page_html,
+        elapsed_sec=round(time.perf_counter() - started, 3),
+        title=extract_title(page_html),
+        block_reasons=block_reasons(page_html),
+        versions=package_versions(),
+    )
+
+
 def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> dict[str, Any]:
     """Translate normalized worker configuration into Scrapling session options."""
 
@@ -386,15 +856,17 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
 
     screenshot = config.get("screenshot")
     challenge_wait_ms = config.get("challenge_wait_ms", 0)
+    headful = bool(config.get("headful"))
     if screenshot or challenge_wait_ms:
         if cdp_url:
 
             async def after_solver_async(page: Any) -> None:
-                deadline = time.monotonic() + challenge_wait_ms / 1000
-                while challenge_wait_ms and time.monotonic() < deadline:
-                    if not block_reasons(await page.content()):
-                        break
-                    await asyncio.sleep(1)
+                await wait_for_manual_verification_async(
+                    lambda: page.content(),
+                    challenge_wait_ms,
+                    label=config["url"],
+                    headful=headful,
+                )
                 if screenshot:
                     await page.screenshot(path=screenshot, full_page=True)
 
@@ -402,11 +874,12 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
         else:
 
             def after_solver_sync(page: Any) -> None:
-                deadline = time.monotonic() + challenge_wait_ms / 1000
-                while challenge_wait_ms and time.monotonic() < deadline:
-                    if not block_reasons(page.content()):
-                        break
-                    time.sleep(1)
+                wait_for_manual_verification(
+                    lambda: page.content(),
+                    challenge_wait_ms,
+                    label=config["url"],
+                    headful=headful,
+                )
                 if screenshot:
                     page.screenshot(path=screenshot, full_page=True)
 
@@ -441,8 +914,8 @@ def fetch_with_scrapling(config: dict[str, Any]) -> FetchResult:
     try:
         from scrapling.fetchers import StealthyFetcher
     except Exception as exc:
-        raise FetchError(
-            "无法导入 StealthyFetcher；请安装 requirements.txt 并运行 `scrapling install`。"
+        raise EngineUnavailableError(
+            "未安装 scrapling[fetchers]；请安装 requirements-stealth.txt 并运行 `scrapling install`。"
         ) from exc
     started = time.perf_counter()
     logging.info("使用 Scrapling Python API，代理=%s", redact_proxy(config.get("proxy")))
@@ -481,8 +954,9 @@ async def fetch_with_cloak_cdp_async(config: dict[str, Any]) -> FetchResult:
         from cloakbrowser import launch_async, launch_persistent_context_async
         from scrapling.fetchers import StealthyFetcher
     except Exception as exc:
-        raise FetchError(
-            "Cloak CDP 回退不可用；请安装 requirements-cloak.txt 并运行 `python -m cloakbrowser install`。"
+        raise EngineUnavailableError(
+            "层 3 不可用:需要层 2 的 scrapling[fetchers] 与 cloakbrowser；"
+            "请安装 requirements-cloak.txt 并运行 `python -m cloakbrowser install`。"
         ) from exc
 
     started = time.perf_counter()
@@ -529,7 +1003,7 @@ def fetch_with_cloak_cdp(config: dict[str, Any]) -> FetchResult:
 def fetch_with_scrapling_cli(config: dict[str, Any], worker_dir: Path) -> FetchResult:
     executable = shutil.which("scrapling")
     if not executable:
-        raise FetchError("未找到 scrapling CLI。")
+        raise EngineUnavailableError("未找到 scrapling CLI；该引擎仅用于排障。")
     started = time.perf_counter()
     output = worker_dir / "cli.html"
     command = [
@@ -591,18 +1065,29 @@ def write_worker_result(worker_dir: Path, result: FetchResult) -> None:
     )
 
 
+def run_engine(
+    engine: str, config: dict[str, Any], worker_dir: Path
+) -> FetchResult:
+    """Dispatch one engine by name inside its isolated worker process."""
+
+    if engine == "static":
+        return fetch_with_static(config)
+    if engine == "playwright":
+        return fetch_with_playwright(config)
+    if engine == "scrapling":
+        return fetch_with_scrapling(config)
+    if engine == "cloak-cdp":
+        return fetch_with_cloak_cdp(config)
+    if engine == "scrapling-cli":
+        return fetch_with_scrapling_cli(config, worker_dir)
+    raise FetchError(f"未知引擎: {engine}")
+
+
 def worker_main(engine: str, config_path: Path, worker_dir: Path) -> int:
     worker_dir.mkdir(parents=True, exist_ok=True)
     config = json.loads(config_path.read_text(encoding="utf-8"))
     try:
-        if engine == "scrapling":
-            result = fetch_with_scrapling(config)
-        elif engine == "cloak-cdp":
-            result = fetch_with_cloak_cdp(config)
-        elif engine == "scrapling-cli":
-            result = fetch_with_scrapling_cli(config, worker_dir)
-        else:
-            raise FetchError(f"未知引擎: {engine}")
+        result = run_engine(engine, config, worker_dir)
         write_worker_result(worker_dir, result)
         return 0
     except Exception as exc:
@@ -715,10 +1200,195 @@ def save_success(result: FetchResult, out: Path, attempts: list[dict[str, Any]])
     )
 
 
+@dataclass(frozen=True)
+class EngineAvailability:
+    """Describe whether one engine can run in the current interpreter environment."""
+
+    ok: bool
+    detail: str
+    missing: tuple[str, ...] = ()
+
+    def reason(self) -> str:
+        """Render a human-readable explanation including missing dependencies."""
+
+        if self.missing:
+            return f"{self.detail}(缺失: {', '.join(self.missing)})"
+        return self.detail
+
+
+@dataclass(frozen=True)
+class EngineSpec:
+    """Declare one engine's capability level and its dependency probe."""
+
+    name: str
+    level: int
+    capabilities: frozenset[str]
+    requires: tuple[str, ...]
+    probe: Callable[[], EngineAvailability]
+    in_auto: bool = True
+
+
+def curl_cffi_available() -> bool:
+    """Report whether the optional layer-0 enhancement (socks/TLS disguise) is installed."""
+
+    return importlib.util.find_spec("curl_cffi") is not None
+
+
+def probe_static() -> EngineAvailability:
+    """Report the stdlib HTTP engine, which works without any third-party package."""
+
+    optional = "" if curl_cffi_available() else "；未安装 curl_cffi(socks5 代理与 TLS 级伪装不可用)"
+    return EngineAvailability(True, f"stdlib HTTP 直连可用{optional}")
+
+
+def playwright_api_name() -> str | None:
+    """Return the stealth-flavoured fork when present, else plain Playwright."""
+
+    for name in ("patchright", "playwright"):
+        if importlib.util.find_spec(name) is not None:
+            return name
+    return None
+
+
+def probe_playwright() -> EngineAvailability:
+    """Report the plain rendering engine, which deliberately has no solver."""
+
+    name = playwright_api_name()
+    if name is None:
+        return EngineAvailability(False, "未安装 playwright/patchright", ("playwright", "patchright"))
+    return EngineAvailability(True, f"{name} 已安装(仅渲染，不求解挑战)")
+
+
+def probe_scrapling() -> EngineAvailability:
+    """Report the anti-detect engine that solves Cloudflare/Turnstile challenges."""
+
+    if importlib.util.find_spec("scrapling") is None:
+        return EngineAvailability(False, "未安装 scrapling", ("scrapling[fetchers]",))
+    try:
+        from scrapling.fetchers import StealthyFetcher  # noqa: F401
+    except Exception as exc:
+        return EngineAvailability(False, f"StealthyFetcher 不可导入: {exc}", ("scrapling[fetchers]",))
+    return EngineAvailability(True, "StealthyFetcher 可导入")
+
+
+def probe_cloak_cdp() -> EngineAvailability:
+    """Report the CloakBrowser fingerprint base, which still needs layer 2 to drive pages."""
+
+    layer_two = probe_scrapling()
+    if not layer_two.ok:
+        return EngineAvailability(False, f"层 2 未就绪: {layer_two.detail}", ("scrapling[fetchers]",))
+    if importlib.util.find_spec("cloakbrowser") is None:
+        return EngineAvailability(False, "未安装 cloakbrowser", ("cloakbrowser",))
+    return EngineAvailability(True, "cloakbrowser + StealthyFetcher 就绪")
+
+
+def probe_scrapling_cli() -> EngineAvailability:
+    """Report the CLI entry point, which only exists for PATH/安装排障."""
+
+    executable = shutil.which("scrapling")
+    if not executable:
+        return EngineAvailability(False, "未在 PATH 找到 scrapling CLI", ("scrapling 命令",))
+    return EngineAvailability(True, executable)
+
+
+ENGINES: dict[str, EngineSpec] = {
+    spec.name: spec
+    for spec in (
+        EngineSpec("static", 0, frozenset({CAP_HTTP}), (), probe_static),
+        EngineSpec(
+            "playwright",
+            1,
+            frozenset({CAP_HTTP, CAP_RENDER}),
+            ("playwright|patchright",),
+            probe_playwright,
+        ),
+        EngineSpec(
+            "scrapling", 2, frozenset({CAP_RENDER, CAP_SOLVE}), ("scrapling[fetchers]",), probe_scrapling
+        ),
+        EngineSpec(
+            "cloak-cdp",
+            3,
+            frozenset({CAP_RENDER, CAP_SOLVE, CAP_CDP}),
+            ("cloakbrowser",),
+            probe_cloak_cdp,
+        ),
+        EngineSpec(
+            "scrapling-cli",
+            3,
+            frozenset({CAP_RENDER, CAP_SOLVE}),
+            ("scrapling 命令",),
+            probe_scrapling_cli,
+            in_auto=False,
+        ),
+    )
+}
+
+ENGINE_CHOICES = ("auto", "static", "playwright", "scrapling", "cloak-cdp", "scrapling-cli")
+WORKER_ENGINE_CHOICES = tuple(name for name in ENGINE_CHOICES if name != "auto")
+
+_AVAILABILITY_CACHE: dict[str, EngineAvailability] = {}
+
+
+def engine_availability(name: str) -> EngineAvailability:
+    """Probe one engine once per process; probing never raises."""
+
+    if name not in ENGINES:
+        raise ValueError(f"未知引擎: {name}")
+    cached = _AVAILABILITY_CACHE.get(name)
+    if cached is None:
+        try:
+            cached = ENGINES[name].probe()
+        except Exception as exc:  # 探测失败按不可用处理，不中断升档
+            cached = EngineAvailability(False, f"探测失败: {exc}", ())
+        _AVAILABILITY_CACHE[name] = cached
+    return cached
+
+
+def reset_availability_cache() -> None:
+    """Forget cached probe results (tests and long-lived callers)."""
+
+    _AVAILABILITY_CACHE.clear()
+
+
+def engine_capabilities(selected: str) -> frozenset[str]:
+    """Return the capability union an explicit engine or an ``auto`` run can reach."""
+
+    if selected != "auto":
+        return ENGINES[selected].capabilities
+    reachable = [name for name in available_engines() if ENGINES[name].in_auto]
+    if not reachable:  # 无可用引擎时按全部声明能力校验，保持旧告警口径
+        reachable = [spec.name for spec in ENGINES.values() if spec.in_auto]
+    capabilities: set[str] = set()
+    for name in reachable:
+        capabilities |= ENGINES[name].capabilities
+    return frozenset(capabilities)
+
+
 def engine_order(selected: str) -> list[str]:
-    if selected == "auto":
-        return ["scrapling", "cloak-cdp"]
-    return [selected]
+    """List engines to try: explicit selection stays strict, ``auto`` upgrades by level."""
+
+    if selected != "auto":
+        return [selected]
+    return [name for name in available_engines() if ENGINES[name].in_auto]
+
+
+def available_engines() -> tuple[str, ...]:
+    """List installed engines from the lowest capability level up."""
+
+    return tuple(
+        spec.name
+        for spec in sorted(ENGINES.values(), key=lambda item: (item.level, item.name))
+        if engine_availability(spec.name).ok
+    )
+
+
+def attempt_kind(reasons: Sequence[str], error: str | None) -> str:
+    """Classify a failed attempt so callers can tell missing deps from real blocks."""
+
+    if error is not None:
+        return KIND_UNAVAILABLE if UNAVAILABLE_ERROR_MARKER in error else KIND_RUNTIME
+    blockers = [reason for reason in reasons if not reason.startswith("content_too_short")]
+    return KIND_BLOCKED if blockers else KIND_EMPTY
 
 
 def validation_reasons(result: FetchResult, min_bytes: int, expected_texts: list[str]) -> list[str]:
@@ -738,10 +1408,33 @@ def validate_options(options: FetchOptions) -> None:
     parsed = urlparse(options.url.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("url 必须是完整的 HTTP(S) URL。")
-    if options.engine not in {"auto", "scrapling", "cloak-cdp", "scrapling-cli"}:
-        raise ValueError(f"未知 engine: {options.engine}")
-    if options.timeout_ms < MIN_SOLVER_TIMEOUT_MS:
-        raise ValueError(f"启用 Cloudflare 求解时 timeout_ms 不得低于 {MIN_SOLVER_TIMEOUT_MS}。")
+    if options.engine not in ENGINE_CHOICES:
+        raise ValueError(f"未知 engine: {options.engine} (可选: {', '.join(ENGINE_CHOICES)})")
+    capabilities = engine_capabilities(options.engine)
+    if CAP_SOLVE in capabilities:
+        if options.timeout_ms < MIN_SOLVER_TIMEOUT_MS:
+            raise ValueError(
+                f"启用 Cloudflare 求解时 timeout_ms 不得低于 {MIN_SOLVER_TIMEOUT_MS}。"
+            )
+    elif options.timeout_ms < 1_000:
+        raise ValueError("timeout_ms 至少为 1000。")
+    if options.engine == "static":
+        if options.headful:
+            raise ValueError("static 引擎不启动浏览器，--headful 无意义；请改用 playwright 及以上层。")
+        skipped = [
+            flag
+            for flag, enabled in (
+                ("--real-chrome", options.real_chrome),
+                ("--geoip", options.geoip),
+                ("--humanize", options.humanize),
+                ("--hide-canvas", options.hide_canvas),
+                ("--network-idle", options.network_idle),
+                ("--screenshot", bool(options.screenshot)),
+            )
+            if enabled
+        ]
+        if skipped:
+            logging.warning("static 引擎忽略浏览器专属参数: %s", ", ".join(skipped))
     if options.retries not in range(1, 4):
         raise ValueError("retries 必须在 1 到 3 之间。")
     if options.retry_delay < 0:
@@ -831,9 +1524,57 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
         options.wall_timeout_ms or options.timeout_ms + options.challenge_wait_ms + 90_000
     )
     attempts: list[FetchAttempt] = []
+    order = engine_order(options.engine)
+    skipped = (
+        [
+            name
+            for name, spec in sorted(ENGINES.items(), key=lambda item: item[1].level)
+            if spec.in_auto and name not in order
+        ]
+        if options.engine == "auto"
+        else []
+    )
+    if options.headful:
+        log_manual_verification_hint(options.challenge_wait_ms, headful=True)
+    if skipped:
+        logging.info(
+            "缺件或未启用，已跳过: %s",
+            ", ".join(f"{name}({engine_availability(name).reason()})" for name in skipped),
+        )
+        if any(engine_availability(name).ok is False for name in skipped):
+            logging.info(
+                "依赖可能装在别的 Python 环境: 请改用该环境的解释器运行本脚本，"
+                "或用 check_environment.py --list-envs 查看哪个环境具备所需层。"
+            )
+    if not order:
+        for name in skipped:
+            availability = engine_availability(name)
+            attempts.append(
+                FetchAttempt(
+                    engine=name,
+                    ok=False,
+                    elapsed_sec=0.0,
+                    kind=KIND_UNAVAILABLE,
+                    error=f"引擎不可用: {availability.reason()}",
+                )
+            )
+        raise FetchFailed(url, tuple(attempts))
 
-    for engine in engine_order(options.engine):
+    for engine in order:
         started = time.perf_counter()
+        availability = engine_availability(engine)
+        if not availability.ok:
+            attempts.append(
+                FetchAttempt(
+                    engine=engine,
+                    ok=False,
+                    elapsed_sec=0.0,
+                    kind=KIND_UNAVAILABLE,
+                    error=f"引擎不可用: {availability.reason()}",
+                )
+            )
+            logging.warning("跳过 %s: %s", engine, availability.reason())
+            continue
         try:
             logging.info("开始引擎: %s", engine)
             result = run_isolated_engine(engine, config, wall_timeout_ms)
@@ -844,6 +1585,7 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
                 status=result.status,
                 elapsed_sec=result.elapsed_sec,
                 reasons=tuple(reasons),
+                kind=KIND_OK if not reasons else attempt_kind(reasons, None),
                 rejected_html=result.html if reasons else None,
             )
             attempts.append(attempt)
@@ -851,12 +1593,14 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
                 continue
             return FetchOutcome(result=result, attempts=tuple(attempts), proxy=proxy)
         except Exception as exc:
+            message = str(exc)
             attempts.append(
                 FetchAttempt(
                     engine=engine,
                     ok=False,
                     elapsed_sec=round(time.perf_counter() - started, 3),
-                    error=str(exc),
+                    error=message,
+                    kind=attempt_kind((), message),
                 )
             )
             logging.warning("%s 失败: %s", engine, exc)
@@ -889,12 +1633,17 @@ def save_page(options: FetchOptions, out: str | Path) -> FetchOutcome:
         atomic_write_text(
             attempts_path,
             json.dumps(
-                {"url": exc.url, "attempts": [attempt.as_metadata() for attempt in exc.attempts]},
+                {
+                    "url": exc.url,
+                    "schema_version": 2,
+                    "summary": exc.describe(),
+                    "attempts": [attempt.as_metadata() for attempt in exc.attempts],
+                },
                 ensure_ascii=False,
                 indent=2,
             ),
         )
-        logging.error("所有引擎均失败；尝试记录: %s", attempts_path)
+        logging.error("所有引擎均失败:%s；尝试记录: %s", exc.describe(), attempts_path)
         raise
 
     write_attempt_diagnostics(outcome.attempts, output)
@@ -916,7 +1665,7 @@ def save_page(options: FetchOptions, out: str | Path) -> FetchOutcome:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="通过 Scrapling/CloakBrowser 保存受保护页面的渲染后 HTML。"
+        description="按能力分层抓取页面并保存渲染后 HTML(static → playwright → scrapling → cloak-cdp)。"
     )
     parser.add_argument("--url", help="目标 HTTP(S) URL。")
     parser.add_argument("--out", default="page.html", help="成功页面的输出路径。")
@@ -930,15 +1679,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--engine",
-        choices=("auto", "scrapling", "cloak-cdp", "scrapling-cli"),
+        choices=ENGINE_CHOICES,
         default="auto",
-        help="auto 依次尝试 Scrapling API 和 CloakBrowser CDP；CLI 仅用于诊断。",
+        help=(
+            "auto 按可用层从低到高尝试:static → playwright → scrapling → cloak-cdp；"
+            "显式指定某个引擎时缺件会直接失败。"
+        ),
     )
     parser.add_argument(
         "--timeout-ms",
         type=int,
         default=DEFAULT_TIMEOUT_MS,
-        help="每个浏览器操作超时，默认 300000。",
+        help="每个引擎的操作超时，默认 300000；层 0/1 可用更小值。",
     )
     parser.add_argument(
         "--wall-timeout-ms",
@@ -977,9 +1729,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--humanize", action="store_true", help="CloakBrowser 使用人类化输入行为。")
     parser.add_argument("--hide-canvas", action="store_true")
-    parser.add_argument("--real-chrome", action="store_true", help="Scrapling 使用系统 Chrome。")
-    parser.add_argument("--profile-dir", help="持久配置根目录，用于复用 cookie/localStorage。")
-    parser.add_argument("--executable-path", help="Scrapling 自定义 Chromium/Chrome 绝对路径。")
+    parser.add_argument(
+        "--real-chrome", action="store_true", help="层 1/2 使用系统 Chrome 而非安装的浏览器。"
+    )
+    parser.add_argument(
+        "--profile-dir",
+        help="持久配置根目录，用于复用 cookie/localStorage；按引擎分子目录(playwright/scrapling/cloak)。",
+    )
+    parser.add_argument(
+        "--executable-path", help="自定义 Chromium/Chrome 绝对路径(层 1/2 可用)。"
+    )
     parser.add_argument(
         "--network-idle", action="store_true", help="等待 networkidle；长连接页面可能不适用。"
     )
@@ -988,7 +1747,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
         "--worker-engine",
-        choices=("scrapling", "cloak-cdp", "scrapling-cli"),
+        choices=WORKER_ENGINE_CHOICES,
         help=argparse.SUPPRESS,
     )
     parser.add_argument("--worker-config", help=argparse.SUPPRESS)

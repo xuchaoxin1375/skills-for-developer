@@ -29,9 +29,9 @@ Linux/macOS：
 ```bash
 conda create -n scrapling python=3.12 -y  # 已有环境时省略
 PYTHON="$(conda run -n scrapling python -c 'import sys; print(sys.executable)')"
-uv pip install --python "$PYTHON" -r <skill-dir>/requirements.txt
-conda run -n scrapling scrapling install
-conda run -n scrapling python <skill-dir>/scripts/check_environment.py
+uv pip install --python "$PYTHON" -r <skill-dir>/requirements-stealth.txt
+conda run -n scrapling --no-capture-output scrapling install
+conda run -n scrapling --no-capture-output python -X utf8 <skill-dir>/scripts/check_environment.py
 ```
 
 Windows PowerShell：
@@ -39,20 +39,26 @@ Windows PowerShell：
 ```powershell
 conda create -n scrapling python=3.12 -y  # 已有环境时省略
 $Python = (conda run -n scrapling python -c "import sys; print(sys.executable)" | Select-Object -Last 1).Trim()
-uv pip install --python $Python -r <skill-dir>\requirements.txt
-conda run -n scrapling scrapling install
-conda run -n scrapling python <skill-dir>\scripts\check_environment.py
+uv pip install --python $Python -r <skill-dir>\requirements-stealth.txt
+conda run -n scrapling --no-capture-output scrapling install
+conda run -n scrapling --no-capture-output python -X utf8 <skill-dir>\scripts\check_environment.py
 ```
 
-运行脚本时使用 `conda run -n <env> python ...` 或先 `conda activate <env>`。不要用环境 A 的 Python 加载包，却因为 PATH 顺序调用环境 B 的 `scrapling` 命令；诊断脚本会分别报告当前解释器和当前环境旁的 CLI。
+运行脚本时使用 `conda run -n <env> --no-capture-output python -X utf8 ...` 或先 `conda activate <env>`。`conda run` 不带 `--no-capture-output` 时会捕获子进程输出再用自己的 stdout 重印，在 GBK 代码页的 Windows 上遇到中文输出会 `UnicodeEncodeError`（实测），必须带上。不要用环境 A 的 Python 加载包，却因为 PATH 顺序调用环境 B 的 `scrapling` 命令；诊断脚本会分别报告当前解释器和当前环境旁的 CLI。
+
+不确定哪个环境有目标层时，用 `check_environment.py --list-envs` 扫描（识别 `conda:<env>`/`conda:base`/`venv`/`venv(uv)`/`system`，按可运行层排序并给出建议命令）；诊断按"运行它的解释器"判定，未 activate 直接调用 `...\envs\<name>\python.exe` 也会被正确识别为 conda 环境。
 
 ## Linux（优先）
 
-使用 CPython 3.10+ 和独立虚拟环境。先安装 Scrapling；只有默认引擎失败或明确需要 CloakBrowser 指纹底座时才安装可选依赖。
+使用 CPython 3.10+ 和独立虚拟环境。层 0（静态 HTTP）不需要任何第三方包，可直接用；需要渲染时按需加层 1，需要挑战求解时再加层 2，只有明确需要 CloakBrowser 指纹底座时才装层 3。
 
 ```bash
 python3 -m venv .venv
-uv pip install --python .venv/bin/python -r <skill-dir>/requirements.txt
+# 层 1（按需）
+uv pip install --python .venv/bin/python playwright
+.venv/bin/playwright install chromium
+# 层 2（挑战求解，按需）
+uv pip install --python .venv/bin/python -r <skill-dir>/requirements-stealth.txt
 .venv/bin/scrapling install
 ```
 
@@ -61,7 +67,7 @@ uv pip install --python .venv/bin/python -r <skill-dir>/requirements.txt
 ```bash
 . .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r <skill-dir>/requirements.txt
+python -m pip install -r <skill-dir>/requirements-stealth.txt
 scrapling install
 ```
 
@@ -94,7 +100,7 @@ export DISPLAY=:99
 ```powershell
 powershell -NoProfile
 py -3.12 -m venv .venv
-uv pip install --python .\.venv\Scripts\python.exe -r <skill-dir>\requirements.txt
+uv pip install --python .\.venv\Scripts\python.exe -r <skill-dir>\requirements-stealth.txt
 .\.venv\Scripts\scrapling.exe install
 $env:SCRAPE_PROXY = "http://127.0.0.1:<port>"
 .\.venv\Scripts\python.exe <skill-dir>\scripts\resilient_fetch.py --url "https://example.com" --out ".\page.html"
@@ -108,7 +114,7 @@ WSL 内的 `127.0.0.1` 不应假定等同 Windows 宿主。先确认 Mihomo 的�
 
 ```bash
 python3 -m venv .venv
-uv pip install --python .venv/bin/python -r <skill-dir>/requirements.txt
+uv pip install --python .venv/bin/python -r <skill-dir>/requirements-stealth.txt
 .venv/bin/scrapling install
 export SCRAPE_PROXY='http://127.0.0.1:<port>'
 .venv/bin/python <skill-dir>/scripts/resilient_fetch.py --url 'https://example.com' --out './page.html'
@@ -118,7 +124,7 @@ Apple Silicon 与 Intel 必须使用匹配当前 Python 架构的浏览器和虚
 
 ## 版本与代理下载
 
-本技能的 requirements 文件限定到已验证的 `0.4.x` API 范围。升级到 `0.5+` 前重新核对 `StealthyFetcher`、`solve_cloudflare`、`cdp_url` 和 CloakBrowser `launch_async` 的签名并重跑真实站点验证。
+本技能按层限定依赖范围：`curl_cffi` 可选（本机实测 0.15.0 可用），层 2 的 `scrapling[fetchers]` 限定 `>=0.4.11,<0.6`，层 3 的 `cloakbrowser` 限定 `>=0.4.10,<0.5`。`0.5` 的 `StealthyFetcher`、`solve_cloudflare` 与层 1/2 的 `headless` 参数已在本机实测通过；放开 `0.6+` 或 `cloakbrowser 0.5+` 前，重新核对 `StealthyFetcher`、`solve_cloudflare`、`cdp_url` 和 CloakBrowser `launch_async` 的签名，并用真实挑战站点重跑逐层验证。
 
 开发或修改技能脚本时安装质量检查依赖：
 

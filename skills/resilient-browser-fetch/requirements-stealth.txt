@@ -1,0 +1,5 @@
+# 层 2：反检测渲染 + Cloudflare/Turnstile 挑战求解（StealthyFetcher）。
+# 安装后还要运行 `scrapling install` 装浏览器依赖；国内先配置下载路线。
+# 本机实测 0.5 可用；0.6 未验证前不要放开上界。
+-r requirements.txt
+scrapling[fetchers]>=0.4.11,<0.6

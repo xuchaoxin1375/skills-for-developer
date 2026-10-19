@@ -144,34 +144,73 @@ Gemini 的默认发现位置是：
 
 ## 安装 Python 与浏览器依赖
 
-先选择实际运行脚本的环境，并按 [平台与依赖](platforms.md) 准备包源和浏览器下载路线；国内浏览器安装前先设置下载代理，不能用后续抓取的 `--proxy` 替代。`scrapling install` 还会执行 Playwright 系统依赖步骤，影响因平台而异，执行前核对该版本行为与权限。Conda 环境示例：
+依赖按引擎分层，只装当前任务需要的层；`auto` 会在缺件时自动跳过对应引擎。
 
-Windows PowerShell：
+| 层 | 用途 | 安装 |
+| --- | --- | --- |
+| 0 | 静态 HTTP（默认可用） | 无需安装；需要 socks 代理或 TLS 级伪装时再装 `curl_cffi` |
+| 1 | 无头/有头渲染 | `playwright`（或 `patchright`）+ `playwright install chromium` |
+| 2 | 挑战求解 | `requirements-stealth.txt` + `scrapling install` |
+| 3 | 指纹底座 | `requirements-cloak.txt` + `python -m cloakbrowser install` |
+
+先选择实际运行脚本的环境，并按 [平台与依赖](platforms.md) 准备包源和浏览器下载路线；国内浏览器安装前先设置下载代理，不能用后续抓取的 `--proxy` 替代。`scrapling install` 还会执行 Playwright 系统依赖步骤，影响因平台而异，执行前核对该版本行为与权限。Conda 环境示例（Windows PowerShell）：
 
 ```powershell
 $Python = (conda run -n scrapling python -c "import sys; print(sys.executable)" | Select-Object -Last 1).Trim()
-uv pip install --python $Python -r (Join-Path $SkillDir "requirements.txt")
-conda run -n scrapling scrapling install
-conda run -n scrapling python (Join-Path $SkillDir "scripts\check_environment.py") --proxy "http://127.0.0.1:<port>"
+# 层 1（按需）
+uv pip install --python $Python playwright
+conda run -n scrapling --no-capture-output playwright install chromium
+# 层 2（挑战求解，按需）
+uv pip install --python $Python -r (Join-Path $SkillDir "requirements-stealth.txt")
+conda run -n scrapling --no-capture-output scrapling install
+conda run -n scrapling --no-capture-output python -X utf8 (Join-Path $SkillDir "scripts\check_environment.py") --proxy "http://127.0.0.1:<port>"
 ```
+
+> `conda run` 必须带 `--no-capture-output`：不带时它会先捕获子进程输出、再用自己的 stdout 重印，在 GBK 代码页的 Windows 控制台上，本 Skill 的中文输出会直接触发 `UnicodeEncodeError: 'gbk' codec can't encode character ...`（实测）。`--no-capture-output` 让子进程直接写终端，配合 `-X utf8` 才是可靠组合。
 
 Linux/macOS：
 
 ```bash
 PYTHON="$(conda run -n scrapling python -c 'import sys; print(sys.executable)')"
-uv pip install --python "$PYTHON" -r "$SKILL_DIR/requirements.txt"
-conda run -n scrapling scrapling install
-conda run -n scrapling python "$SKILL_DIR/scripts/check_environment.py" --proxy 'http://127.0.0.1:<port>'
+uv pip install --python "$PYTHON" -r "$SKILL_DIR/requirements-stealth.txt"   # 层 2，按需
+conda run -n scrapling --no-capture-output scrapling install
+conda run -n scrapling --no-capture-output python -X utf8 "$SKILL_DIR/scripts/check_environment.py" --proxy 'http://127.0.0.1:<port>'
 ```
 
-没有 Conda 时，将 `<目标环境解释器>` 替换为 `.venv/bin/python` 或 Windows 的 `.venv\Scripts\python.exe`。没有 `uv` 时，在同一环境中使用 `python -m pip install -r requirements.txt`。
+没有 Conda 时，将 `<目标环境解释器>` 替换为 `.venv/bin/python` 或 Windows 的 `.venv\Scripts\python.exe`。没有 `uv` 时，在同一环境中使用 `python -m pip install -r requirements-stealth.txt`。
 
-只有需要 CloakBrowser 回退时才安装可选依赖：
+### 用哪个解释器运行：先扫描，不要假设 PATH 上的 `python` 是全的
+
+`python scripts/resilient_fetch.py` 与 `python scripts/check_environment.py` 都用**运行它的那个解释器**去找依赖层，全局默认环境常常只有层 0/1。先扫描本机候选环境：
+
+```bash
+python <skill-dir>/scripts/check_environment.py --list-envs                 # 只列，不判定
+python <skill-dir>/scripts/check_environment.py --list-envs --require-stealth  # 缺层则退出码 1
+```
+
+输出会列出每个候选解释器的管理方式（`conda:<env>`、`conda:base`、`venv`、`venv(uv)`、`system`）、Python 版本、**可运行的层**、已装包，并按能力排序给出建议命令，例如：
+
+```text
+[OK] conda:scrapling    %USERPROFILE%\.conda\envs\scrapling\python.exe  (来源: conda-envs)
+     Python 3.13.13  层 0/1/2/3  引擎: static, playwright, scrapling, cloak-cdp
+[WARN] system           <PATH 上的解释器>  (来源: current)
+     Python 3.13.15  层 0/1  引擎: static, playwright
+     缺: scrapling
+建议解释器(满足 scrapling): %USERPROFILE%\.conda\envs\scrapling\python.exe
+   直接调用: & "%USERPROFILE%\.conda\envs\scrapling\python.exe" -X utf8 <scripts>/resilient_fetch.py --url <URL>
+   conda:    conda run -n scrapling --no-capture-output python -X utf8 <scripts>/resilient_fetch.py --url <URL>
+```
+
+候选来源包括当前解释器、`VIRTUAL_ENV`/`CONDA_PREFIX`、PATH 上的 `python`/`python3`/`python3.1x`、Windows `py -0p` 启动器、conda 环境（`~/.conda/environments.txt` 与常见根目录及其 `envs/`）、venv/virtualenv/uv 常见目录；按解析后的真实路径去重，最多探测 12 个，每个用子进程 `-X utf8` 探测，不 activate、不改环境。`--list-envs` 可与 `--json` 组合，便于脚本解析。
+
+只有需要 CloakBrowser 底座（层 3）时才安装可选依赖：
 
 ```bash
 uv pip install --python <目标环境解释器> -r "$SKILL_DIR/requirements-cloak.txt"
 <目标环境解释器> -m cloakbrowser install
 ```
+
+需要在 CI 或安装校验中把某层标为必需时，用 `--require-playwright`、`--require-stealth`、`--require-cloak`；默认只有 Python 版本是必需的，缺层只报 WARN，退出码仍为 0。
 
 开发或修改本 Skill 时，额外安装 `requirements-dev.txt`，并运行 Ruff、Pyright 和 pytest；仅使用 Skill 时不需要开发依赖。
 
@@ -180,7 +219,7 @@ uv pip install --python <目标环境解释器> -r "$SKILL_DIR/requirements-cloa
 安装后验证三层：
 
 1. Agent 能发现 `SKILL.md`。
-2. 目标 Python 环境能导入 Scrapling、定位同环境 CLI，运行 `check_environment.py` 完成只读诊断；该脚本不证明 Scrapling 浏览器已启动。
-3. 实际调用脚本或模块启动所需引擎，取回受控页面并断言内容，再验证任务目标及运行时代理。
+2. 目标 Python 环境能运行 `check_environment.py` 完成只读诊断，并确认输出末尾的"可用引擎"行符合预期层级；该脚本不证明浏览器已启动。
+3. 实际抓一个受控页面并按层断言：层 0 用静态页、层 1 用客户端渲染页、层 2/3 用挑战页，再核对 `.meta.json` 的 `engine` 与 `.attempts.json` 的 `kind`。
 
 更新源码时，链接安装会自动看到变化；复制安装需要重新复制 Skill 目录。更新依赖或浏览器版本后，重新运行环境诊断和最小 smoke test。不要把真实 profile 当作源码同步目录，也不要在多个浏览器进程之间共享同一个持久 profile。

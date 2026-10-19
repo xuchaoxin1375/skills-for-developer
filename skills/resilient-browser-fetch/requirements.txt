@@ -1,1 +1,6 @@
-scrapling[fetchers]>=0.4.11,<0.5
+# 层 0（static）：标准库 HTTP 抓取，默认不需要安装任何包。
+#
+# 需要下面任一能力时，取消对应行的注释后安装：
+#   curl_cffi：socks5 代理，以及 TLS 级伪装（impersonate）
+# 本机实测 0.15.0 可用。
+# curl_cffi>=0.15,<1

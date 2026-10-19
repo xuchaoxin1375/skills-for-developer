@@ -8,6 +8,7 @@ import os
 
 from resilient_fetch import (
     DEFAULT_TIMEOUT_MS,
+    ENGINE_CHOICES,
     FetchFailed,
     FetchOptions,
     ProxyUnavailableError,
@@ -39,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default="page.html")
     parser.add_argument("--proxy", default=os.getenv("SCRAPE_PROXY"))
     parser.add_argument("--discover-proxy", action="store_true")
-    parser.add_argument("--engine", choices=("auto", "scrapling", "cloak-cdp"), default="auto")
+    parser.add_argument("--engine", choices=ENGINE_CHOICES, default="auto")
     parser.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS)
     parser.add_argument("--wall-timeout-ms", type=int)
     parser.add_argument("--headful", action="store_true")

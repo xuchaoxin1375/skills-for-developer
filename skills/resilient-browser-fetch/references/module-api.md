@@ -2,20 +2,23 @@
 
 将 `<skill-dir>/scripts` 加入 `PYTHONPATH` 或 `sys.path` 后，按任务类型导入 `resilient_fetch` 或 `site_session`。导入模块不会启动浏览器、修改日志配置或写文件。
 
+可用层由**导入并运行这段代码的解释器**决定（层 2/3 的包必须装在该解释器所在环境里），换环境即可换层，不需要重新安装本 Skill 的代码。调用方若要在渲染/求解环境里运行，请用该环境的解释器启动进程（如 `conda run -n <env> --no-capture-output python -X utf8 <脚本>`），或先 `conda activate`；同机哪些解释器具备哪些层，用 `check_environment.py --list-envs` 查询。
+
 ## 模块定位
 
-`resilient_fetch` 不是新的 Cloudflare 求解器。实际挑战识别与交互仍由 Scrapling 完成，CloakBrowser 只提供可选的 Chromium 指纹底座。本模块的意义是把容易遗漏且跨项目重复出现的可靠性措施组合成一个明确契约。
+`resilient_fetch` 不是新的 Cloudflare 求解器。实际挑战识别与交互仍由 Scrapling 完成，CloakBrowser 只提供可选的 Chromium 指纹底座。本模块的意义是把容易遗漏且跨项目重复出现的可靠性措施组合成一个明确契约，并按能力分层调度引擎：层 0 `static`（标准库 HTTP）、层 1 `playwright`、层 2 `scrapling`、层 3 `cloak-cdp`，层 1 以下的引擎没有任何第三方依赖。
 
 | 能力 | 直接调用 Scrapling | `resilient_fetch` |
 | --- | --- | --- |
 | Cloudflare 求解算法 | Scrapling 原生实现 | 仍使用 Scrapling，不声称更强 |
 | 浏览器生命周期 | 调用者管理 | 每个引擎在隔离子进程中运行，并有硬超时和进程树回收 |
-| 失败回退 | 调用者编排 | `Scrapling → CloakBrowser CDP` 顺序回退 |
+| 引擎可用性 | 调用者自行判断 | 注册表 + 进程内探测；`auto` 只升档到已安装的引擎 |
+| 失败回退 | 调用者编排 | `static → playwright → scrapling → cloak-cdp` 按层升档 |
 | 代理安全 | 调用者处理 | 代理预检、本地端口发现、默认禁止静默直连、凭据遮蔽 |
 | 成功判断 | 通常由调用者判断 | 同时检查 HTTP 状态、挑战特征、最小字节数和业务文本 |
-| 结果模型 | Scrapling `Response` | 统一为 `FetchResult`、`FetchAttempt` 和 `FetchOutcome` |
+| 结果模型 | Scrapling `Response` | 统一为 `FetchResult`、`FetchAttempt`（含 `kind` 失败分类）和 `FetchOutcome` |
 | 文件输出 | 调用者实现 | 可选原子写入、SHA-256、元数据、失败 HTML 和尝试记录 |
-| 批量共享会话 | 调用者自行实现状态协调 | `site_session` 提供预热、人工接管通知、就绪屏障、同源限制和重验证 |
+| 批量共享会话 | 调用者自行实现状态协调 | `site_session` 提供预热、人工接管通知、就绪屏障、同源限制和重验证（当前仅层 2） |
 
 因此，`resilient_fetch` 适合一次性页面任务、作业队列中的独立任务、未知站点诊断和需要可预测失败边界的服务。连续批量、首页预热、人工首次验证和多 tab 复用使用 `site_session`。需要自定义复杂 `page_action` 或直接操作 Playwright `Page` 时才绕过管理器调用 Scrapling 原生 session。
 
@@ -25,15 +28,22 @@
 flowchart TD
     Caller[Python 调用者或 CLI] --> Options[FetchOptions 校验]
     Options --> Proxy[代理解析、发现与直连保护]
-    Proxy --> Worker[隔离 worker + 硬超时]
-    Worker --> Scrapling[Scrapling StealthyFetcher]
-    Scrapling --> Validate{状态与内容验证}
+    Proxy --> Available{引擎可用性探测}
+    Available -->|未安装| Unavailable[记 kind=unavailable 并跳过]
+    Available -->|已安装| Worker[隔离 worker + 硬超时]
+    Worker --> Static[层 0 static: stdlib HTTP]
+    Static --> Validate{状态与内容验证}
     Validate -->|有效| Outcome[FetchOutcome]
-    Validate -->|仍被拦截或异常| Fallback[CloakBrowser Chromium]
-    Fallback --> CDP[Scrapling 通过 CDP 接管并求解]
-    CDP --> Validate2{再次验证}
+    Validate -->|挑战或空页| Playwright[层 1 playwright 渲染]
+    Playwright --> Validate2{再次验证}
     Validate2 -->|有效| Outcome
-    Validate2 -->|失败| Failed[FetchFailed + FetchAttempt 列表]
+    Validate2 -->|挑战或空页| Scrapling[层 2 scrapling 求解]
+    Scrapling --> Validate3{再次验证}
+    Validate3 -->|有效| Outcome
+    Validate3 -->|仍被拦截| Cloak[层 3 cloak-cdp 求解]
+    Cloak --> Validate4{再次验证}
+    Validate4 -->|有效| Outcome
+    Validate4 -->|失败| Failed[FetchFailed + FetchAttempt 列表]
     Outcome --> Pure[fetch_page: 只返回内存结果]
     Outcome --> Files[save_page: 原子写入 HTML 与诊断]
 ```
@@ -74,8 +84,19 @@ print([attempt.as_metadata() for attempt in outcome.attempts])
 `fetch_page()` 返回 `FetchOutcome`，不会写 HTML、元数据或诊断文件：
 
 - `outcome.result`：`FetchResult`，包含 `html`、`title`、`status`、`final_url`、`engine`、耗时和版本。
-- `outcome.attempts`：每个引擎的 `FetchAttempt`；被拒绝页面保存在 `rejected_html`，便于调用者自行诊断。
+- `outcome.attempts`：每个被尝试（或被缺件跳过）的引擎的 `FetchAttempt`；被拒绝页面保存在 `rejected_html`，`kind` 给出 `unavailable` / `blocked` / `blocked_or_empty` / `runtime_error` / `ok` 分类。
 - `outcome.proxy`：最终使用的代理，可能因显式允许直连而为 `None`。
+
+`FetchFailed` 另外提供 `unavailable_engines`、`blocked_engines` 与 `describe()`，便于调用方区分"该装依赖"和"该换路线"：
+
+```python
+except FetchFailed as exc:
+    if exc.unavailable_engines and not exc.blocked_engines:
+        print("按层安装依赖后再试:", exc.unavailable_engines)
+    else:
+        print("已尝试引擎被拦截，考虑升档或换出口:", exc.blocked_engines)
+    print(exc.describe())
+```
 
 ## 获取并保存
 
@@ -102,7 +123,35 @@ outcome = save_page(
 
 `fetch_page()` 为单页可靠性使用隔离子进程，并可能按顺序启动 Scrapling 与 CloakBrowser。它适合单次调用、作业队列中的独立任务和故障隔离，不适合在连续批量任务中对很多 URL 直接并发调用，否则会创建多个浏览器并重复验证。
 
-连续批量或 sitemap 任务使用 [batch-workflows.md](batch-workflows.md) 中的 `SiteSessionManager`：先首页预热，再复用一个 browser/context 和多个 tab。
+连续批量或 sitemap 任务使用 [batch-workflows.md](batch-workflows.md) 中的 `SiteSessionManager`（需要渲染或挑战求解）或 `StaticBatchSession`（层 0 静态页，零依赖）：先首页预热，再复用同一会话做受限并发。
+
+## 静态批量会话（层 0）
+
+目标页面都是静态正文时，用 `static_session.StaticBatchSession`，不需要浏览器、不需要 scrapling：
+
+```python
+from static_session import StaticBatchSession, StaticSessionOptions
+
+options = StaticSessionOptions(
+    home_url="https://example.com/",
+    proxy="http://127.0.0.1:<port>",
+    max_pages=8,
+    concurrency=4,
+    timeout_ms=30_000,
+    wall_timeout_ms=60_000,
+)
+
+async with StaticBatchSession(options) as site:
+    await site.warmup()  # 单路验证首页与出口，失败即 WarmupError
+    results = await site.fetch_many([f"https://example.com/page/{i}" for i in range(1, 6)])
+```
+
+与浏览器会话的差异（有意为之）：
+
+- 不求解挑战、不做重验证：命中挑战特征时抛 `PageRejectedError`，结果里的 `block_reasons` 供调用方决定升档到 `SiteSessionManager` 或 `fetch_page(engine="auto")`；
+- 没有 DOM 引擎：`expected_selector` 直接报错，`wait_selector` 忽略并告警，严格检查请用 `expected_texts`；
+- 并发受 `concurrency` 信号量约束，每页各自有 `wall_timeout_ms` 硬超时；超时抛 `PageTimeoutError`；
+- `timeout_ms` 是单次 HTTP 超时，没有浏览器那套 60000 ms 下限，默认 30 秒。
 
 ## 长期站点会话
 
@@ -111,7 +160,7 @@ outcome = save_page(
 - `SiteSessionOptions`：绑定首页、代理、profile、并发、超时和浏览器身份。
 - `SiteRequest`：描述一个同源 URL。默认只使用状态码、挑战特征、最小正文大小和最终 origin 做基础检查；`expected_texts`、`expected_selector`、`wait_selector`、`case_sensitive=True` 和 `require_same_path=True` 都是调用者显式启用的严格条件。
 - `SiteSessionManager`：异步上下文管理器；提供 `warmup()`、`fetch()` 和 `fetch_many()`。
-- `ChallengeEvent`：挑战监视器通知；有头模式下调用者提醒用户操作同一个窗口。
+- `ChallengeEvent`：挑战监视器通知；有头模式下调用者提醒用户操作同一个窗口。检测到挑战时会打印"最多等待 N 秒"，验证通过后打印"浏览器验证已通过(等待 X 秒)，继续会话"，让操作者知道窗口在等他而不是卡住了。
 - `WarmupError`、`PageRejectedError`、`PageTimeoutError`：保留请求、渲染结果或失败原因的结构化异常。
 
 ```python

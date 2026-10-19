@@ -25,6 +25,25 @@ def make_result(**overrides: Any) -> subject.FetchResult:
     return subject.FetchResult(**values)
 
 
+AUTO_LEVELS = ("static", "playwright", "scrapling", "cloak-cdp")
+
+
+def stub_availability(
+    monkeypatch: pytest.MonkeyPatch, installed: tuple[str, ...] | None = None
+) -> None:
+    """Pin engine probing so unit tests never depend on the host environment."""
+
+    names = AUTO_LEVELS if installed is None else installed
+    monkeypatch.setattr(
+        subject,
+        "engine_availability",
+        lambda name: subject.EngineAvailability(name in names, "stub"),
+    )
+    monkeypatch.setattr(
+        subject, "available_engines", lambda: tuple(name for name in AUTO_LEVELS if name in names)
+    )
+
+
 @pytest.mark.parametrize(
     ("proxy", "endpoint"),
     [
@@ -162,6 +181,7 @@ def test_validation_reasons_combines_content_expectations_and_status() -> None:
 
 
 def test_fetch_page_returns_structured_outcome(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_availability(monkeypatch)
     monkeypatch.setattr(subject, "run_isolated_engine", lambda *args: make_result())
     outcome = subject.fetch_page(
         subject.FetchOptions(
@@ -176,9 +196,11 @@ def test_fetch_page_returns_structured_outcome(monkeypatch: pytest.MonkeyPatch) 
     assert outcome.proxy is None
     assert len(outcome.attempts) == 1
     assert outcome.attempts[0].ok
+    assert outcome.attempts[0].kind == subject.KIND_OK
 
 
 def test_fetch_page_falls_back_after_rejected_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_availability(monkeypatch, ("scrapling", "cloak-cdp"))
     results = iter(
         [
             make_result(status=403, html="challenge", block_reasons=["cloudflare_interstitial"]),
@@ -192,9 +214,11 @@ def test_fetch_page_falls_back_after_rejected_content(monkeypatch: pytest.Monkey
     assert outcome.result.engine == "cloak-cdp"
     assert [attempt.ok for attempt in outcome.attempts] == [False, True]
     assert outcome.attempts[0].rejected_html == "challenge"
+    assert outcome.attempts[0].kind == subject.KIND_BLOCKED
 
 
 def test_fetch_page_raises_structured_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_availability(monkeypatch)
     monkeypatch.setattr(
         subject,
         "run_isolated_engine",
@@ -206,6 +230,36 @@ def test_fetch_page_raises_structured_failure(monkeypatch: pytest.MonkeyPatch) -
         )
     assert captured.value.url == "https://example.com"
     assert captured.value.attempts[0].status == 403
+    assert captured.value.blocked_engines == ("scrapling",)
+
+
+def test_fetch_page_records_missing_engines_without_running_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub_availability(monkeypatch, ())
+    monkeypatch.setattr(
+        subject,
+        "run_isolated_engine",
+        lambda *args: pytest.fail("缺件引擎不应启动 worker"),
+    )
+    with pytest.raises(subject.FetchFailed) as captured:
+        subject.fetch_page(subject.FetchOptions(url="https://example.com"))
+    assert captured.value.unavailable_engines == AUTO_LEVELS
+    assert all(item.kind == subject.KIND_UNAVAILABLE for item in captured.value.attempts)
+    assert "缺件" in captured.value.describe()
+
+
+def test_fetch_page_reports_explicit_missing_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_availability(monkeypatch, ())
+    monkeypatch.setattr(
+        subject, "run_isolated_engine", lambda *args: pytest.fail("缺件引擎不应启动 worker")
+    )
+    with pytest.raises(subject.FetchFailed) as captured:
+        subject.fetch_page(
+            subject.FetchOptions(url="https://example.com", engine="scrapling", timeout_ms=60_000)
+        )
+    assert captured.value.unavailable_engines == ("scrapling",)
+    assert captured.value.attempts[0].kind == subject.KIND_UNAVAILABLE
 
 
 def test_save_page_uses_fetch_api_and_writes_metadata(
@@ -268,6 +322,40 @@ def test_worker_main_serializes_failure(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert error == {"engine": "scrapling", "error": "FetchError: failed safely"}
 
 
-def test_engine_order() -> None:
+@pytest.mark.parametrize("selected", ["static", "playwright", "scrapling", "cloak-cdp", "scrapling-cli"])
+def test_engine_order_keeps_explicit_selection_strict(selected: str) -> None:
+    assert subject.engine_order(selected) == [selected]
+
+
+def test_engine_order_auto_upgrades_by_level(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_availability(monkeypatch, ("scrapling", "cloak-cdp"))
     assert subject.engine_order("auto") == ["scrapling", "cloak-cdp"]
-    assert subject.engine_order("scrapling-cli") == ["scrapling-cli"]
+
+
+def test_engine_order_auto_uses_only_installed_engines(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_availability(monkeypatch, ("static", "playwright"))
+    assert subject.engine_order("auto") == ["static", "playwright"]
+
+
+def test_engine_order_auto_never_includes_diagnostic_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_availability(monkeypatch, AUTO_LEVELS)
+    assert "scrapling-cli" not in subject.engine_order("auto")
+
+
+def test_attempt_kind_separates_missing_deps_from_blocks() -> None:
+    assert subject.attempt_kind(("cloudflare_interstitial",), None) == subject.KIND_BLOCKED
+    assert subject.attempt_kind(("http_status:403",), None) == subject.KIND_BLOCKED
+    assert subject.attempt_kind(("content_too_short:12",), None) == subject.KIND_EMPTY
+    assert subject.attempt_kind((), "scrapling: FetchError: boom") == subject.KIND_RUNTIME
+    assert (
+        subject.attempt_kind((), "scrapling: EngineUnavailableError: 未安装 scrapling")
+        == subject.KIND_UNAVAILABLE
+    )
+
+
+def test_attempt_metadata_reports_kind() -> None:
+    attempt = subject.FetchAttempt(
+        "scrapling", False, 0.0, error="引擎不可用", kind=subject.KIND_UNAVAILABLE
+    )
+    assert attempt.as_metadata()["kind"] == subject.KIND_UNAVAILABLE
+    assert attempt.as_metadata()["engine"] == "scrapling"

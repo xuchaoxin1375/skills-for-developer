@@ -1,5 +1,7 @@
 # 批量、并发与 Sitemap
 
+> 适用范围：本文件的会话预热、挑战暂停与重验证屏障只对**需要浏览器**的批量任务（层 1 及以上）成立，当前 `SiteSessionManager` 仍只建 Scrapling 会话，即批量默认要求层 2。纯静态批量（层 0 就能拿到的页面）不需要浏览器，也不需要 scrapling：用 `static_session.StaticBatchSession`（受限并发 HTTP，零依赖）。它命中挑战页时抛 `PageRejectedError`，此时才升级到 `SiteSessionManager` 或逐页 `fetch_page(engine="auto")`。
+
 ## 必须遵循的顺序
 
 1. 按站点 origin、代理出口和浏览器身份对 URL 分组。

@@ -177,7 +177,13 @@ def _normalized_path(url: str) -> str:
 
 
 def _default_session_factory(**kwargs: Any) -> Any:
-    from scrapling.fetchers import AsyncStealthySession
+    try:
+        from scrapling.fetchers import AsyncStealthySession
+    except Exception as exc:
+        raise SiteSessionError(
+            "批量会话需要层 2:请安装 requirements-stealth.txt 并运行 `scrapling install`；"
+            "纯静态批量(层 0)不需要浏览器，直接用受限并发 HTTP 抓取即可。"
+        ) from exc
 
     return AsyncStealthySession(**kwargs)
 
@@ -441,7 +447,8 @@ class SiteSessionManager:
     ) -> None:
         notified = False
         stop = stop_event or asyncio.Event()
-        deadline = asyncio.get_running_loop().time() + self.options.wall_timeout_ms / 1000
+        started_at = asyncio.get_running_loop().time()
+        deadline = started_at + self.options.wall_timeout_ms / 1000
         wait_for_load_state = getattr(page, "wait_for_load_state", None)
         if callable(wait_for_load_state):
             try:
@@ -472,12 +479,17 @@ class SiteSessionManager:
                     wall_timeout_ms=self.options.wall_timeout_ms,
                 )
                 logging.warning(
-                    "检测到浏览器验证%s: %s",
-                    "；可在窗口中人工完成" if not self.options.headless else "",
+                    "检测到浏览器验证%s: %s；最多等待 %.0f 秒，验证通过后自动继续。",
+                    "；可在窗口中人工完成" if not self.options.headless else "；无头模式请改用有头人工验证",
                     url,
+                    self.options.wall_timeout_ms / 1000,
                 )
                 await self._notify_challenge(event)
             elif notified and not reasons:
+                logging.info(
+                    "浏览器验证已通过(等待 %.0f 秒)，继续会话。",
+                    asyncio.get_running_loop().time() - started_at,
+                )
                 return
 
     async def _notify_challenge(self, event: ChallengeEvent) -> None:
