@@ -122,6 +122,14 @@ export SCRAPE_PROXY='http://127.0.0.1:<port>'
 
 Apple Silicon 与 Intel 必须使用匹配当前 Python 架构的浏览器和虚拟环境。CloakBrowser 二进制若被 Gatekeeper 隔离，先核对官方发行说明和签名，再按官方说明处理 quarantine；不要关闭整机安全机制。
 
+## 临时 profile 与磁盘残留
+
+不传 `--profile-dir` 时不会创建持久 profile：引擎隔离 worker 用 `tempfile.TemporaryDirectory` 存放本次数据，浏览器使用该层自己的临时 profile，进程正常退出即随目录删除。因此处理单个页面不需要 `--profile-dir`，也不会留下持久 profile 目录；只有异常终止（被强杀、超过 `--wall-timeout-ms` 被终止、崩溃）才来不及清理。
+
+排查磁盘占用或清理时，按前缀检查系统临时目录（Windows `%TEMP%`，Linux/macOS `$TMPDIR` 或 `/tmp`）：各引擎 worker 的 `resilient-fetch-<engine>-*`，以及 Playwright 的 `playwright_chromiumdev_profile-*`、`playwright-artifacts-*`、`playwright-download-*`（后两类用连字符前缀，profile 类用下划线，过滤时不要只写一种）。这些目录不会自行回收，只会累积；删除前确认没有采集进程正在使用，删除失败通常是文件仍被占用。
+
+`--profile-dir` 的持久 profile 按层分为 `playwright/`、`scrapling/`、`cloak/` 子目录，可能持续增长；不再跨进程复用时删除整个根目录即可，同一根目录不得由多个进程同时打开。
+
 ## 版本与代理下载
 
 本技能按层限定依赖范围：`curl_cffi` 可选（本机实测 0.15.0 可用），层 2 的 `scrapling[fetchers]` 限定 `>=0.4.11,<0.6`，层 3 的 `cloakbrowser` 限定 `>=0.4.10,<0.5`。`0.5` 的 `StealthyFetcher`、`solve_cloudflare` 与层 1/2 的 `headless` 参数已在本机实测通过；放开 `0.6+` 或 `cloakbrowser 0.5+` 前，重新核对 `StealthyFetcher`、`solve_cloudflare`、`cdp_url` 和 CloakBrowser `launch_async` 的签名，并用真实挑战站点重跑逐层验证。

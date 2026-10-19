@@ -42,8 +42,8 @@ description: >
 
 4. 高对抗站点在无头失败后，使用 `--headful --humanize` 重试；Linux 服务器先配置 Xvfb。**层 1（playwright）现在也支持有头人工验证**：配合 `--challenge-wait-ms 300000`，脚本会打开可见窗口并在预算内轮询页面，等你手动过完验证再继续（此前层 1 会直接保存挑战页）。有头模式会先打印操作指引；无头模式若撞上挑战，日志会提示改用 `--headful` 或层 2/3。代理地区未知时不要硬编码语言和时区；已知地区时同时设置 `--locale` 与 `--timezone`，或安装 `cloakbrowser[geoip]` 后使用 `--geoip`。
 5. 自动求解返回后仍停在挑战页时，使用 `--challenge-wait-ms 300000 --profile-dir <专用目录>`。有头模式允许用户在这段时间人工完成一次验证，后续运行复用 cookie/localStorage。脚本在该根目录下分别使用 `scrapling/` 与 `cloak/`，避免两种浏览器共享同一 profile。
-6. 默认使用状态码、挑战特征、正文大小和最终 origin 做宽松检查。只有用户要求严格验证或目标已知会返回软错误页时，才增加 `--wait-selector`、`--expect-text`、固定路径或业务字段断言；不要把易变商品文案默认写成成功条件。
-7. 检查 `<输出>.meta.json` 的最终 URL、状态码、引擎、耗时、版本、哈希和尝试记录。失败时检查 `<输出>.attempts.json` 里每个引擎的 `kind`：`unavailable` 表示缺依赖（该装层），`blocked`/`blocked_or_empty` 表示被拦截或空页（该升档、换代理或人工验证），`runtime_error` 表示运行期异常；被拒收的正文在 `<输出>.<引擎>.blocked.html`。
+6. 默认使用状态码、挑战特征、正文大小和最终 origin 做宽松检查。只有用户要求严格验证或目标已知会返回软错误页时，才增加 `--wait-selector`、`--expect-text`、固定路径或业务字段断言；不要把易变商品文案默认写成成功条件。状态码本身不足以判定拦截：HTTP 403 且正文没有拦截特征、长度达标、期望文本全部命中时，按可用内容接受并在 `notes` 记 `http_status:403:accepted_by_content`（日志会告警）；这类正文可能尚未水合，需要完整客户端渲染时显式指定 `--engine scrapling` 等更高层。其余 4xx/5xx 仍按失败处理。
+7. 检查 `<输出>.meta.json` 的最终 URL、状态码、引擎、耗时、版本、哈希、`notes` 和尝试记录。失败时检查 `<输出>.attempts.json` 里每个引擎的 `kind`：`unavailable` 表示缺依赖（该装层），`blocked`/`blocked_or_empty` 表示被拦截或空页（该升档、换代理或人工验证），`runtime_error` 表示运行期异常；被拒收的正文在 `<输出>.<引擎>.blocked.html`。汇报结果时用表格汇总：本次实际出口（直连，还是哪个代理/登记名；必要时用外部 IP 检测页核对）、每个引擎的模式与结果（引擎、有无头、状态码、耗时）、最终文件与大小、以及 `notes` 里的软状态码等注记；不要只报模式与引擎名。
 
 修改 Python 脚本后，使用相同的安装器安装 `requirements-dev.txt`，并在技能目录运行以下质量门禁；三条命令必须全部以退出码 `0` 完成：
 
@@ -91,7 +91,7 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 
 目标页面多于一个或需要访问 sitemap 时，必须读取 [references/batch-workflows.md](references/batch-workflows.md)，并按依赖分层选会话：静态正文用 `static_session.StaticBatchSession`（层 0，零依赖）；需要渲染但不需要挑战求解、或本机只有层 1 时用 `browser_session.BrowserBatchSession`（单 browser/context 多 tab，只要 playwright/patchright）；需要挑战求解用 `site_session.SiteSessionManager`。三者都先在一个会话中单路访问站点首页，完成验证并确认正常内容后，再放开多 tab 并发；前两者命中挑战页即抛 `PageRejectedError` 供升档。访问 sitemap 时使用“首页预热 → sitemap index/子 sitemap → 详情页”的顺序，不要让 sitemap 成为新会话的首个验证页面。
 
-连续批量任务优先复用同一运行中的窗口、context 和临时 profile；多个 tab 对应受限并发，任务结束后再关闭整个浏览器。预热后的子页面先轻量导航并验证内容，检测到新挑战时才暂停队列、重新预热并启用求解重试。不要为每个 URL 或 worker 反复创建、销毁浏览器。仅在跨进程、跨重启或需要保留人工验证成果时使用 `--profile-dir`；profile 可能积累缓存、Service Worker、IndexedDB 和 cookie，占用较多磁盘，且不得由多个进程同时打开。
+连续批量任务优先复用同一运行中的窗口、context 和临时 profile；多个 tab 对应受限并发，任务结束后再关闭整个浏览器。预热后的子页面先轻量导航并验证内容，检测到新挑战时才暂停队列、重新预热并启用求解重试。不要为每个 URL 或 worker 反复创建、销毁浏览器。仅在跨进程、跨重启或需要保留人工验证成果时使用 `--profile-dir`；profile 可能积累缓存、Service Worker、IndexedDB 和 cookie，占用较多磁盘，且不得由多个进程同时打开。不传 `--profile-dir` 的临时 profile 正常退出会自行清理，异常终止则残留在系统临时目录，识别与清理见 references/platforms.md 的临时 profile 与磁盘残留一节。
 
 ## 引擎分层与选择
 
@@ -116,6 +116,19 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 默认挑战操作超时为 300000 ms。不要把它降到 60000 ms 以下；验证可能经历多轮跳转。日志中的 `Cloudflare page didn't disappear after 10s` 和 `captcha is still present, solving again` 表示 Scrapling 正在同一页面继续求解，不是终态失败；`No Cloudflare challenge found` 表示页面本来就是正常内容，也不是失败。不要据此中止进程。仅在返回内容仍为挑战页、引擎抛错或达到 `--wall-timeout-ms` 后判失败。需要给内部求解更多轮次时提高硬超时，例如 `--timeout-ms 300000 --wall-timeout-ms 600000`。`--retries` 只控制导航或代理错误重试，与 Cloudflare 内部求解轮次无关。
 
 不要默认启用 `--network-idle`，因为分析、广告和长连接会使它永远不空闲。不要在挑战阶段禁用图片、样式或其他资源。仅当目标明确需要系统 Chrome 时使用 `--real-chrome`；否则使用该层自己安装的浏览器。不要让多个进程并发使用同一 `--profile-dir`（脚本按层分子目录 `playwright/`、`scrapling/`、`cloak/`）。
+
+页面"加载完成"的判定决定取源码与关闭窗口的时机，用 `--wait-until` 显式指定（层 1/2/3；层 0 无浏览器，会告警忽略）。有头人工验证、`--wait-selector`、`--post-wait-ms` 都在取源码之前依次执行。
+
+| 选项 | 判定条件 | 适用与注意 |
+| --- | --- | --- |
+| `--wait-until commit` | 收到响应即取 | 只要服务端首屏字节；层 2/3 近似为不等页面脚本执行 |
+| `--wait-until domcontentloaded` | DOM 解析完成 | 最快拿到 SSR 正文；WAF 站点更容易抓到挑战中间页 |
+| `--wait-until load` | load 事件（默认，含图片等子资源） | 与历史行为一致 |
+| `--wait-until networkidle` | 网络空闲（约 500ms 无连接） | 长连接/轮询页可能永不空闲；`--network-idle` 是同一等待的遗留写法 |
+| `--wait-selector <sel>` | 等到该选择器可见 | SPA 指定内容出现的最可靠判据，可与任一等待条件叠加 |
+| `--post-wait-ms <ms>` | 取源码前再静置 | 兜底给客户端渲染留时间（默认 1000） |
+
+等待条件越早，越容易在 WAF 站点上抓到挑战中间页；那会被挑战特征识别并升档，不是误判。层 2/3 的加载与关闭由 Scrapling 管理，`commit`/`domcontentloaded` 映射为它的 `load_dom=False`。
 
 ## 代理与凭据
 

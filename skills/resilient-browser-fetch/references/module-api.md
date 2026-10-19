@@ -53,6 +53,8 @@ flowchart TD
 - worker 隔离防止浏览器启动、挑战循环或关闭阶段拖死调用进程。
 - `wall_timeout_ms` 是调用者可预测的硬上限，不等同于 Scrapling 的页面操作超时。
 - 回退引擎返回 HTTP `200` 也必须经过内容验证，避免把挑战页当成业务页面。
+- 状态码不单独判拦截：403 且正文无拦截特征、长度达标、调用方期望文本命中时按可用内容接受，并在 `result.notes` 记 `http_status:403:accepted_by_content`；其余 4xx/5xx 仍失败。
+- `wait_until` 决定取源码与关闭窗口的时机（层 1/2/3）：`commit` / `domcontentloaded` / `load`(默认) / `networkidle`；层 2/3 把前两者映射为 Scrapling 的 `load_dom=False`。
 - `fetch_page()` 不写业务文件；`save_page()` 才拥有文件副作用。
 
 ## 获取页面但不写文件
@@ -65,6 +67,7 @@ options = FetchOptions(
     discover_proxy=True,
     timeout_ms=300_000,
     wall_timeout_ms=600_000,
+    wait_until="load",          # commit | domcontentloaded | load | networkidle
     expected_texts=("Example Domain",),
 )
 
@@ -83,7 +86,7 @@ print([attempt.as_metadata() for attempt in outcome.attempts])
 
 `fetch_page()` 返回 `FetchOutcome`，不会写 HTML、元数据或诊断文件：
 
-- `outcome.result`：`FetchResult`，包含 `html`、`title`、`status`、`final_url`、`engine`、耗时和版本。
+- `outcome.result`：`FetchResult`，包含 `html`、`title`、`status`、`final_url`、`engine`、耗时、版本和 `notes`（不影响判定的注记，如按内容接受的 403）。
 - `outcome.attempts`：每个被尝试（或被缺件跳过）的引擎的 `FetchAttempt`；被拒绝页面保存在 `rejected_html`，`kind` 给出 `unavailable` / `blocked` / `blocked_or_empty` / `runtime_error` / `ok` 分类。
 - `outcome.proxy`：最终使用的代理，可能因显式允许直连而为 `None`。
 
