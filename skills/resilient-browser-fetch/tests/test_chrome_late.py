@@ -168,6 +168,84 @@ def test_batch_helper_flags_block_pages() -> None:
     )
 
 
+def test_unhydrated_shell_is_not_accepted_as_rendered() -> None:
+    shell = f'<html><body data-filler="{"x" * 8000}"><div id="app"></div></body></html>'
+    assert subject.looks_like_app_shell(shell) is True
+    hydrated = f'<html><body data-filler="{"x" * 8000}"><p>{"正文内容" * 100}</p></body></html>'
+    assert subject.looks_like_app_shell(hydrated) is False
+
+
+def test_site_error_state_is_told_apart_from_content() -> None:
+    error_text = "Something went wrong. Something isn't right and an error has occurred."
+    assert subject.looks_like_render_error(error_text) is True
+    assert subject.looks_like_render_error("Unable to connect to the Internet") is True
+    # 正文长、只是提到错误机制的文章不算错误态
+    assert subject.looks_like_render_error("教程正文。" * 300 + "unable to connect") is False
+    assert subject.looks_like_soft_error(error_text) is True
+    # 通用说法不单独成立: 前端 bundle 里也常见
+    assert subject.looks_like_soft_error("Something went wrong") is False
+
+
+def test_soft_error_page_is_flagged_but_a_long_article_is_not() -> None:
+    error_page = (
+        "<html><body><h1>La Bonita Supermarkets</h1>"
+        "<p>Unable to connect to the Internet</p></body></html>"
+    )
+    assert "site_error_shell" in engine_subject.block_reasons(error_page)
+    article = (
+        "<html><body><article><p>" + ("排障教程正文。" * 500) +
+        "unable to connect to the internet</p></article></body></html>"
+    )
+    assert "site_error_shell" not in engine_subject.block_reasons(article)
+
+
+def test_product_page_with_a_transient_error_banner_is_not_an_error() -> None:
+    # 商品页上挂着一块瞬时错误横幅是常见情况, 不能因此把整页判成失败。
+    product = (
+        "<html><head><title>Catering Package 20-25 Person</title></head><body>"
+        "<h1>Catering Package 20-25 Person</h1><p>Unable to connect to the Internet</p>"
+        "<p>" + ("套餐包含米饭、豆类、酱料与玉米饼。" * 60) + "</p></body></html>"
+    )
+    assert "site_error_shell" not in engine_subject.block_reasons(product)
+    assert subject.soft_error_phrase(product) is None
+
+
+def test_render_wait_keeps_waiting_on_a_shell_until_the_budget() -> None:
+    class FakePage:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def evaluate(self, script: str) -> dict:
+            self.calls += 1
+            return {
+                "html": "<html><body>" + ("x" * 8000) + "<div id=app></div></body></html>",
+                "title": "商店",
+                "ready": "complete",
+                "text": "Loading…",
+                "textLen": 9,
+            }
+
+    page = FakePage()
+    render = subject.wait_for_rendered_page(page, budget_ms=300, poll_ms=0.05)
+    assert render.state == subject.STATE_SHELL, "稳定但没水合的空壳不能当成正文"
+    assert page.calls >= 3, "空壳应被继续观察而不是立刻接受"
+
+
+def test_render_wait_reports_the_site_error_state() -> None:
+    class FakePage:
+        def evaluate(self, script: str) -> dict:
+            return {
+                "html": "<html><body><p>Unable to connect to the Internet</p></body></html>",
+                "title": "商店",
+                "ready": "complete",
+                "text": "Unable to connect to the Internet",
+                "textLen": 38,
+            }
+
+    render = subject.wait_for_rendered_page(FakePage(), budget_ms=200, poll_ms=0.05)
+    assert render.state == subject.STATE_ERROR
+
+
 def test_sweep_stale_profiles_removes_only_old_leftovers(tmp_path: Path) -> None:
     old = tmp_path / f"{subject.PROFILE_DIR_PREFIX}old"
     old.mkdir()

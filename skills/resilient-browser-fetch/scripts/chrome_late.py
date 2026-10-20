@@ -20,10 +20,12 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,11 +44,35 @@ PROFILE_DIR_PREFIX = "chrome-late-"
 # 留出足够余量避免误删仍在使用的目录。
 STALE_PROFILE_AGE_SEC = 600
 
-# 页面状态: 正文 / 挑战进行中 / 已被拒绝 / 空
+# 页面状态: 正文 / 挑战进行中 / 已被拒绝 / 空 / 未水合的应用壳 / 站点自报错误
 STATE_CONTENT = "content"
 STATE_CHALLENGE = "challenge"
 STATE_BLOCKED = "blocked"
 STATE_EMPTY = "empty"
+STATE_SHELL = "shell"
+STATE_ERROR = "error"
+
+# 站点自己吐的错误外壳与错误态文案: HTTP 200、内容是站点框架 + 一句错误说明。
+# 命中说明状态码正常但没有正文, 按内容缺失处理(升档或换路线), 不要当成成功。
+# 只收足够特异的说法: "something went wrong" 这类通用词在前端 bundle 里也常见,
+# 单靠它判失败会误伤正常页面; 通用说法靠"可见文字很少"这个附加条件来收口。
+SOFT_ERROR_PHRASES = (
+    "there was an error processing your request",
+    "an error occurred while processing your request",
+    "something went wrong on our end",
+    "we're sorry, something went wrong",
+    "something isn't right and an error has occurred",
+    "unable to connect to the internet",
+)
+# 错误态页面本身内容很少; 正文多的页面即使带着同样的说法也不是错误页
+# (商品页上挂着一块瞬时错误横幅是常见情况, 不能因此把整页判成失败)。
+SOFT_ERROR_MAX_TEXT_CHARS = 400
+
+# "HTML 很大但可见文字很少"= 客户端渲染的应用还没水合完(壳页面)。
+# 阈值与 htmlmini 的壳判定接近: HTML >= 5 KB 且可见文字 < 400 字符。
+# 壳只用于"继续等", 不直接判失败: 短但合法的页面不能被误杀。
+SHELL_MIN_HTML_BYTES = 5_000
+SHELL_MAX_TEXT_CHARS = 400
 
 # 挑战页的共同特征。多数 WAF 挑战页没有 <title>, 但也有站点会写 "Just a moment...";
 # 命中任一特征只说明"站点还没放行", 不等于"被拒绝"。
@@ -207,6 +233,92 @@ def classify_page_state(title: str, html: str) -> str:
     return STATE_CONTENT
 
 
+def visible_text(page_html: str) -> str:
+    """Extract the visible text of a rendered page.
+
+    Scripts, styles and markup are dropped first, so a page that only carries
+    a big inline bundle does not look like it has content.
+    """
+
+    without_code = re.sub(
+        r"(?is)<(script|style|noscript|template)\b.*?</\1>", " ", page_html
+    )
+    without_tags = re.sub(r"(?s)<[^>]+>", " ", without_code)
+    return re.sub(r"\s+", " ", without_tags).strip()
+
+
+def visible_text_length(page_html: str) -> int:
+    """Return how much visible text a rendered page carries."""
+
+    return len(visible_text(page_html))
+
+
+def soft_error_phrase(page_html: str) -> str | None:
+    """Tell the site's own error page from content that merely mentions errors.
+
+    Two conditions keep false positives away: the page must carry little
+    visible text overall, and the complaint must appear near the top of it.
+    A troubleshooting article mentions the same wording in its body.
+    """
+
+    text = visible_text(page_html)
+    if not text or len(text) > SOFT_ERROR_MAX_TEXT_CHARS:
+        return None
+    head = text[:600].lower()
+    for phrase in SOFT_ERROR_PHRASES:
+        if phrase in head:
+            return phrase
+    return None
+
+
+def looks_like_app_shell(page_html: str, text_chars: int | None = None) -> bool:
+    """Tell an unhydrated client-side app shell apart from a real page.
+
+    The shell is big (the bundle is inlined) but carries almost no visible
+    text; a hydrated page has both.
+    """
+
+    if len(page_html) < SHELL_MIN_HTML_BYTES:
+        return False
+    chars = visible_text_length(page_html) if text_chars is None else text_chars
+    return chars < SHELL_MAX_TEXT_CHARS
+
+
+# 渲染等待时认的错误态文案: 只取足够特异的说法, 且要求正文很短。
+# 通用词("something went wrong")会出现在正常文章里, 不能单独当判据。
+RENDER_ERROR_PHRASES = (
+    "unable to connect to the internet",
+    "something isn't right and an error has occurred",
+    "there was an error processing your request",
+    "an error occurred while processing your request",
+    "we're sorry, something went wrong",
+)
+RENDER_ERROR_MAX_TEXT_CHARS = SOFT_ERROR_MAX_TEXT_CHARS
+
+
+def looks_like_soft_error(text: str) -> bool:
+    """Tell the site's own error state (app failed to load) from real content."""
+
+    lowered = (text or "").lower()
+    return any(phrase in lowered for phrase in SOFT_ERROR_PHRASES)
+
+
+def looks_like_render_error(text: str, total_chars: int | None = None) -> bool:
+    """Tell an app error state apart from an article that merely mentions errors.
+
+    The complaint has to sit near the top of a page that carries little text
+    overall; a troubleshooting article says the same words in its body.
+    """
+
+    if not text:
+        return False
+    total = total_chars if total_chars is not None else len(text)
+    if total > RENDER_ERROR_MAX_TEXT_CHARS:
+        return False
+    head = text[:600].lower()
+    return any(phrase in head for phrase in RENDER_ERROR_PHRASES)
+
+
 def title_state(title: str) -> str:
     """Classify a tab from its title alone, before any debugger attaches."""
 
@@ -339,6 +451,7 @@ class RenderSignal:
     state: str
     waited_ms: int
     ready_state: str = ""
+    text_chars: int = 0
 
 
 def wait_for_rendered_page(
@@ -346,6 +459,8 @@ def wait_for_rendered_page(
     *,
     budget_ms: int = DEFAULT_RENDER_TIMEOUT_MS,
     poll_ms: float = RENDER_POLL_INTERVAL_SEC,
+    expect_texts: Sequence[str] = (),
+    min_wait_ms: int = 0,
 ) -> RenderSignal:
     """Read the DOM once the page has actually finished rendering.
 
@@ -356,47 +471,81 @@ def wait_for_rendered_page(
     open never reaches "complete" and would otherwise burn the whole budget.
     A challenge that is still running is waited out too: it reloads the
     document when it succeeds.
+
+    A stable DOM is not the same as a finished page: a client-rendered app
+    often sits on a small, unchanged shell for seconds before it fills in.
+    When the caller states what the page must contain, keep waiting for that
+    text instead of returning the shell. A page that still looks like an
+    unhydrated shell (big HTML, almost no visible text) is never accepted as
+    finished either: it is waited out until the budget runs out.
     """
 
     started = time.monotonic()
     deadline = started + budget_ms / 1000
+    settle_at = started + min_wait_ms / 1000
     previous_size = 0
     stable_samples = 0
     html = ""
     title = ""
     ready_state = ""
+    text_chars = 0
+    text_head = ""
     state = STATE_EMPTY
     while True:
         try:
             snapshot = page.evaluate(
-                "() => ({html: document.documentElement.outerHTML,"
-                " title: document.title, ready: document.readyState})"
+                "() => { const t = document.body ? document.body.innerText : '';"
+                " return {html: document.documentElement.outerHTML,"
+                " title: document.title, ready: document.readyState,"
+                " text: t.slice(0, 4000), textLen: t.length}; }"
             )
             html = str(snapshot.get("html") or "")
             title = str(snapshot.get("title") or "")
             ready_state = str(snapshot.get("ready") or "")
+            text_head = str(snapshot.get("text") or "")
+            text_chars = int(snapshot.get("textLen") or 0)
         except Exception:
             # The document may be replaced while the challenge reloads it.
-            html, title, ready_state = "", "", ""
+            html, title, ready_state, text_chars, text_head = "", "", "", 0, ""
         state = classify_page_state(title, html)
         if state == STATE_BLOCKED:
             break
         size = len(html)
-        if state == STATE_CONTENT and ready_state in ("interactive", "complete"):
-            if previous_size and abs(size - previous_size) <= max(
-                2048, int(previous_size * RENDER_STABLE_RATIO)
-            ):
-                stable_samples += 1
-                if stable_samples >= 2:
-                    break
-            else:
-                stable_samples = 0
+        if previous_size and abs(size - previous_size) <= max(
+            2048, int(previous_size * RENDER_STABLE_RATIO)
+        ):
+            stable_samples += 1
+        else:
+            stable_samples = 0
+        missing = [item for item in expect_texts if item not in html]
+        shell = looks_like_app_shell(html, text_chars)
+        error_state = looks_like_render_error(text_head, text_chars)
+        waited = time.monotonic() - started
+        if (
+            state == STATE_CONTENT
+            and ready_state in ("interactive", "complete")
+            and stable_samples >= 2
+            and not missing
+            and not shell
+            and not error_state
+            and waited >= settle_at - started
+        ):
+            break
         previous_size = size
         if time.monotonic() >= deadline:
             break
         time.sleep(poll_ms)
+    if state == STATE_CONTENT and looks_like_render_error(text_head):
+        state = STATE_ERROR
+    elif state == STATE_CONTENT and looks_like_app_shell(html, text_chars):
+        state = STATE_SHELL
     return RenderSignal(
-        html, title, state, int((time.monotonic() - started) * 1000), ready_state
+        html,
+        title,
+        state,
+        int((time.monotonic() - started) * 1000),
+        ready_state,
+        text_chars,
     )
 
 

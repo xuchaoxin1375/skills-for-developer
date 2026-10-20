@@ -8,6 +8,8 @@ import os
 
 from resilient_fetch import (
     DEFAULT_PLAYWRIGHT_API,
+    DEFAULT_RENDER_TIMEOUT_MS,
+    DEFAULT_SETTLE_MS,
     DEFAULT_TIMEOUT_MS,
     ENGINE_CHOICES,
     PLAYWRIGHT_API_CHOICES,
@@ -35,6 +37,8 @@ def build_fetch_options(args: argparse.Namespace) -> FetchOptions:
         expected_texts=tuple(args.expect_text),
         save_cookies=args.save_cookies,
         save_snapshot=args.save_snapshot,
+        settle_ms=getattr(args, "settle_ms", DEFAULT_SETTLE_MS),
+        render_timeout_ms=getattr(args, "render_timeout_ms", DEFAULT_RENDER_TIMEOUT_MS),
     )
 
 
@@ -57,6 +61,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wall-timeout-ms", type=int, help=WALL_TIMEOUT_HELP)
     parser.add_argument("--headful", action="store_true")
     parser.add_argument("--expect-text", action="append", default=[])
+    parser.add_argument(
+        "--settle-ms",
+        type=int,
+        default=DEFAULT_SETTLE_MS,
+        help="chrome-late 的最小静默窗口: 这期间不接调试器。",
+    )
+    parser.add_argument(
+        "--render-timeout-ms",
+        type=int,
+        default=DEFAULT_RENDER_TIMEOUT_MS,
+        help="chrome-late 接入后等待渲染完成的上限(客户端渲染的应用要调大)。",
+    )
     parser.add_argument(
         "--save-cookies",
         help="保存浏览器 cookie (Netscape 格式，可能含会话 cookie) 供后续 HTTP 复用。",

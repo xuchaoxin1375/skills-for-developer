@@ -240,7 +240,8 @@ outcome = fetch_page(
         url="https://example.com/",
         engine="chrome-late",     # 显式选择；不进 auto
         settle_ms=5_000,          # 最小静默窗口:这段时间不接调试器
-        render_timeout_ms=15_000, # 接入后等 DOM 渲染稳定的上限
+        render_timeout_ms=15_000, # 接入后等渲染稳定的上限
+        render_min_ms=0,          # 接入后至少等这么久才认渲染完成
         timeout_ms=120_000,
         wall_timeout_ms=240_000,
         expected_texts=("Example Domain",),
@@ -251,7 +252,9 @@ print(outcome.result.notes)
 # pre_attach_state:content / final_state:content / attach_delay_ms:21480 / render_wait_ms:8320
 ```
 
-`notes` 里的四个复盘字段含义：`pre_attach_state` 是接入前页面状态（`content` / `challenge` / `blocked` / `empty`），`final_state` 是读取时的状态，`attach_delay_ms` 是从启动浏览器到接入调试器的间隔，`render_wait_ms` 是接入后等渲染稳定的耗时。`challenge` 表示站点还在挑战、没放行；`blocked` 表示已被拒绝（标题 `Access Denied` 一类）。
+`notes` 里的四个复盘字段含义：`pre_attach_state` 是接入前页面状态（`content` / `challenge` / `blocked` / `empty`），`final_state` 是读取时的状态（多出 `shell` = 一直没水合的应用壳、`error` = 站点自己报错），`attach_delay_ms` 是从启动浏览器到接入调试器的间隔，`render_wait_ms` 是接入后等渲染稳定的耗时；另有 `render_html_bytes` 与 `render_text_chars` 说明读到的页面有多大、正文有多少字。`challenge` 表示站点还在挑战、没放行；`blocked` 表示已被拒绝（标题 `Access Denied` 一类）。
+
+渲染等待的判据是"稳定"，但**稳定不等于就绪**：客户端渲染的应用常先停在稳定的小壳上，所以引擎在"HTML 很大但可见文字很少"与"站点自己报错"时会继续等；给了 `expected_texts` 时则以期望文本出现为准。`render_min_ms` 可设最短等待，`render_timeout_ms` 是上限。
 
 约束：固定有头运行（Linux 需 DISPLAY 或 Xvfb）；不支持带凭据的代理；读到的是已渲染完的页面，懒加载与折叠区不会展开；`status` 为 `None`。引擎自带的浏览器由引擎负责回收（所有权、进程树与临时 profile 清理见 SKILL.md 的“资源回收”），调用方只需在失败时核对残留。
 

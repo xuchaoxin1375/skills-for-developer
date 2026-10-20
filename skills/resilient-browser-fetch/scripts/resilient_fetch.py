@@ -55,6 +55,7 @@ from chrome_late import (
     DEFAULT_RENDER_TIMEOUT_MS,
     DEFAULT_SETTLE_MS,
     STATE_BLOCKED,
+    STATE_ERROR,
     ChromeLateError,
     OwnedBrowserProcess,
     RenderSignal,
@@ -62,6 +63,7 @@ from chrome_late import (
     find_system_browser,
     pick_rendered_page,
     proxy_server_value,
+    soft_error_phrase,
     sweep_stale_profiles,
     wait_for_page_ready,
     wait_for_rendered_page,
@@ -87,12 +89,7 @@ BLOCK_HINTS = (
 )
 # 站点自己吐的错误外壳: HTTP 200, 内容是站点框架 + 一句通用错误文案。
 # 命中说明状态码正常但没有正文, 按内容缺失处理(升档或换路线), 不要当成成功。
-SOFT_ERROR_PHRASES = (
-    "there was an error processing your request",
-    "an error occurred while processing your request",
-    "something went wrong on our end",
-    "we're sorry, something went wrong",
-)
+# 词表与 chrome-late 共用一份(chrome_late.SOFT_ERROR_PHRASES), 渲染等待也按它识别错误态。
 # 浏览器自己的网络错误页: 说明请求根本没送达站点, 不能当成"页面内容为空"。
 BROWSER_ERROR_MARKERS = (
     "err_name_not_resolved",
@@ -236,6 +233,7 @@ class FetchOptions:
     challenge_wait_ms: int = 0
     settle_ms: int = DEFAULT_SETTLE_MS
     render_timeout_ms: int = DEFAULT_RENDER_TIMEOUT_MS
+    render_min_ms: int = 0
     min_bytes: int = 300
     locale: str | None = None
     timezone: str | None = None
@@ -267,6 +265,7 @@ class FetchAttempt:
     error: str | None = None
     kind: str = KIND_OK
     rejected_html: str | None = field(default=None, repr=False)
+    notes: tuple[str, ...] = ()
 
     def as_metadata(self) -> dict[str, Any]:
         """Return a JSON-serializable summary without embedding rejected HTML."""
@@ -281,6 +280,8 @@ class FetchAttempt:
             metadata["status"] = self.status
         if self.reasons:
             metadata["reasons"] = list(self.reasons)
+        if self.notes:
+            metadata["notes"] = list(self.notes)
         if self.error:
             metadata["error"] = self.error
         return metadata
@@ -481,8 +482,9 @@ def block_reasons(page_html: str) -> list[str]:
     # 这类页面表示"站点还没放行"而不是"已拒绝"——挑战跑完会自己重载正文, 别当成终局。
     if "powered and protected by" in sample or "sec-if-cpt-container" in sample:
         reasons.append("akamai_challenge")
-    # 站点自己吐的错误外壳: HTTP 200 + 站点框架 + 一句通用错误文案
-    if any(phrase in sample for phrase in SOFT_ERROR_PHRASES):
+    # 站点自己吐的错误外壳: HTTP 200 + 站点框架 + 一句错误文案。
+    # 判定要求"可见文字很少"且"抱怨出现在正文开头", 排障文章提到同样说法不算。
+    if soft_error_phrase(page_html):
         reasons.append("site_error_shell")
     # 浏览器自身的网络错误页: 压根没拿到站点响应, 更谈不上内容。
     if any(marker in sample for marker in BROWSER_ERROR_MARKERS):
@@ -1685,6 +1687,8 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
                     budget_ms=int(
                         config.get("render_timeout_ms") or DEFAULT_RENDER_TIMEOUT_MS
                     ),
+                    expect_texts=tuple(config.get("expect_texts") or ()),
+                    min_wait_ms=int(config.get("render_min_ms") or 0),
                 )
                 html = render.html
                 title = render.title
@@ -1701,6 +1705,9 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
             browser.close()
         shutil.rmtree(profile_dir, ignore_errors=True)
 
+    reasons = list(block_reasons(html))
+    if render is not None and render.state == STATE_ERROR:
+        reasons.append("site_error_shell")
     result = FetchResult(
         engine="chrome-late",
         url=url,
@@ -1709,6 +1716,7 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
         html=html,
         elapsed_sec=time.perf_counter() - started,
         title=title,
+        block_reasons=reasons,
     )
     result.notes.extend(
         [
@@ -1720,6 +1728,8 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
             f"pre_attach_state:{signal_info.state}",
             f"final_state:{render.state if render else 'unknown'}",
             f"ready_state:{render.ready_state if render else ''}",
+            f"render_html_bytes:{len(html.encode('utf-8', errors='replace')) if render else 0}",
+            f"render_text_chars:{render.text_chars if render else 0}",
             f"attach_delay_ms:{int((time.perf_counter() - launched_at) * 1000)}",
             f"render_wait_ms:{render.waited_ms if render else 0}",
         ]
@@ -2443,6 +2453,8 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "challenge_wait_ms": options.challenge_wait_ms,
         "settle_ms": options.settle_ms,
         "render_timeout_ms": options.render_timeout_ms,
+        "render_min_ms": options.render_min_ms,
+        "expect_texts": list(options.expected_texts),
         "locale": options.locale,
         "timezone": options.timezone,
         "user_agent": options.user_agent,
@@ -2593,6 +2605,7 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
                 reasons=tuple(reasons),
                 kind=KIND_OK if not reasons else attempt_kind(reasons, None),
                 rejected_html=result.html if reasons else None,
+                notes=tuple(result.notes),
             )
             attempts.append(attempt)
             if reasons:
@@ -2778,6 +2791,15 @@ def main(argv: list[str] | None = None) -> int:
             "变成 complete 且 DOM 体积不再增长再读正文。默认 15000。"
         ),
     )
+    parser.add_argument(
+        "--render-min-ms",
+        type=int,
+        default=0,
+        help=(
+            "chrome-late 接入后至少等这么久才认渲染完成。客户端渲染的应用"
+            "常先停在稳定的小壳上, 用这个下限避免提前读走空壳。"
+        ),
+    )
     parser.add_argument("--min-bytes", type=int, default=300)
     parser.add_argument("--locale", help="BCP 47 locale，例如 en-US。")
     parser.add_argument("--timezone", help="IANA 时区，例如 America/New_York。")
@@ -2876,6 +2898,7 @@ def main(argv: list[str] | None = None) -> int:
         challenge_wait_ms=args.challenge_wait_ms,
         settle_ms=args.settle_ms,
         render_timeout_ms=args.render_timeout_ms,
+        render_min_ms=args.render_min_ms,
         min_bytes=args.min_bytes,
         locale=args.locale,
         timezone=args.timezone,
