@@ -85,21 +85,21 @@ node scripts/stamp-version.mjs 2026.10.19.1805   # 或显式指定
 ```console
 $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot.clean.html
 [2026-10-20 16:22:45,120] htmlmini: [read] fetching https://github.com/features/copilot [proxy: http://127.0.0.1:7890 (HTTPS_PROXY)]
-[2026-10-20 16:22:46,331] htmlmini: [read] https://github.com/features/copilot 855.2 KB in 1.21s status=200
+[2026-10-20 16:22:46,331] htmlmini: [read] status=200 https://github.com/features/copilot 855.2 KB in 1.21s
 [2026-10-20 16:22:46,386] htmlmini: [parse] dom 55ms
 [2026-10-20 16:22:46,411] htmlmini: [extract] used=sanitize attrs=semantic format=pretty 103.5 KB in 25ms
 [2026-10-20 16:22:46,452] htmlmini: [format] pretty 200.0 KB in 41ms
 [2026-10-20 16:22:46,495] htmlmini: [write] copilot.clean.html 200.3 KB (total 2.24s)
 ```
 
-`[read]` 汇总行带 `status=<码>`（静态抓取与 save_page 渲染取真实状态码；零依赖 chrome dump-dom 拿不到状态码，显示 `status=unknown via browser render`）。时间戳按写入时刻取，所以相邻两行之差就是该阶段耗时；`--render` 时转发自渲染子进程的多行输出也逐行带时间。要还原成没有时间戳的旧格式（例如按行首 `htmlmini:` 匹配的脚本），设 `HTMLMINI_LOG_TIME=0`。
+`[read]` 汇总行把 `status=<码>` 放在最前面，并在终端里按 2xx 绿 / 3xx 黄 / 4xx 红 / 5xx 洋红 / 未知暗色着色（重定向到文件或管道时自动退化成纯文本）。静态抓取与 save_page 渲染取真实状态码；零依赖 chrome dump-dom 拿不到状态码，显示 `status=unknown` 并追加一行说明，静态 403 后才转渲染时显示 `status=unknown (static 403)`。时间戳按写入时刻取，所以相邻两行之差就是该阶段耗时；`--render` 时转发自渲染子进程的多行输出也逐行带时间。要还原成没有时间戳的旧格式（例如按行首 `htmlmini:` 匹配的脚本），设 `HTMLMINI_LOG_TIME=0`。
 
 ### 来源哨兵行
 
 文本模式（markdown/text/html/ui/skeleton 等）的载荷默认被一对哨兵行包住，标出 URL、状态码、抓取方式与抓取时刻；正文一字不改，只是外围加边界：
 
 ```text
-<<< htmlmini:source begin url=https://example.com/app status=200 render=static fetched=2026-10-20 16:22:45,120 >>>
+<<< htmlmini:source begin status=200 url=https://example.com/app render=static fetched=2026-10-20 16:22:45,120 >>>
 …提取结果…
 <<< htmlmini:source end url=https://example.com/app >>>
 ```

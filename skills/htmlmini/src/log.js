@@ -86,3 +86,21 @@ export function fmtBytes(n) {
 export function fmtMs(ms) {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}s`;
 }
+
+/**
+ * 状态码着色：2xx 绿、3xx 黄、4xx 红、5xx 洋红、未知暗色。
+ * 只在 stderr 是终端且未设 NO_COLOR 时生效，重定向到文件/管道时保持纯文本。
+ */
+export function paintStatus(text, status) {
+  if (!process.stderr.isTTY || process.env.NO_COLOR) return text;
+  const code = !Number.isFinite(status)
+    ? '2'
+    : status < 300
+      ? '32'
+      : status < 400
+        ? '33'
+        : status < 500
+          ? '31'
+          : '35';
+  return `\x1b[${code}m${text}\x1b[0m`;
+}

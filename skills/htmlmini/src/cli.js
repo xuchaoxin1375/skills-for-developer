@@ -346,7 +346,7 @@ function markSource(out, info) {
   const status = Number.isFinite(info.status) ? String(info.status) : info.rendered ? 'unknown' : 'n/a';
   const via = info.rendered ? 'browser' : 'static';
   const body = out.replace(/\n+$/, '');
-  const begin = `<<< htmlmini:source begin url=${info.source} status=${status} render=${via} fetched=${info.fetchedAt} >>>`;
+  const begin = `<<< htmlmini:source begin status=${status} url=${info.source} render=${via} fetched=${info.fetchedAt} >>>`;
   const end = `<<< htmlmini:source end url=${info.source} >>>`;
   return body ? `${begin}\n${body}\n${end}` : `${begin}\n${end}`;
 }

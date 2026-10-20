@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { parseHTML } from 'linkedom';
 import { Defuddle } from 'defuddle/node';
 import { ProxyAgent } from 'undici';
-import { fmtBytes, fmtMs, log, timestamp } from './log.js';
+import { fmtBytes, fmtMs, log, paintStatus, timestamp } from './log.js';
 import { VERSION } from './version.js';
 
 const execFileAsync = promisify(execFile);
@@ -992,8 +992,23 @@ export async function readWithRender(
     const status = Number.isFinite(r.status) ? r.status : Number.isFinite(info.status) ? info.status : null;
     r.status = status;
     r.engine = info.engine ?? null;
-    const statusNote = Number.isFinite(status) ? ` status=${status}` : r.rendered ? ' status=unknown' : '';
-    log.info('read', `${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${statusNote}${r.rendered ? ' via browser render' : ''}`);
+    // 状态码放在最前面并着色（TTY）：它比体积/耗时更能说明这次抓取是否可信。
+    const unknown = r.rendered && !Number.isFinite(status);
+    const staticNote = Number.isFinite(info.staticStatus) ? ` (static ${info.staticStatus})` : '';
+    const statusLabel = Number.isFinite(status)
+      ? paintStatus(`status=${status}`, status)
+      : unknown
+        ? paintStatus(`status=unknown${staticNote}`, NaN)
+        : '';
+    log.info('read', `${statusLabel ? `${statusLabel} ` : ''}${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${r.rendered ? ' via browser render' : ''}`);
+    if (unknown) {
+      log.info(
+        'read',
+        info.engine === 'chrome-dump' || !info.engine
+          ? 'status unknown: chrome dump-dom 不返回 HTTP 状态码；要确切状态码请加 --render-engine playwright 或 scrapling（走 save_page，状态码来自 meta.json）'
+          : 'status unknown: save_page 的 meta.json 未给出 status（渲染成功但缺少元数据）',
+      );
+    }
     log.debug('read', `source=${r.source ?? source} status=${Number.isFinite(status) ? status : 'unknown'} contentType=${r.contentType ?? 'unknown'}${r.engine ? ` engine=${r.engine}` : ''}${remote ? ` render=${render === 'always' ? 'always' : render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
     return r;
   };
@@ -1008,7 +1023,8 @@ export async function readWithRender(
   };
   // 渲染一次并做挑战判定；bin 为空表示沿用默认解释器（PATH 的 python/python3）。
   const renderHtml = async (bin) => {
-    for (const k of Object.keys(info)) delete info[k];
+    // 只清上一轮渲染的结果，保留静态回退时记下的状态码（info.staticStatus）。
+    for (const k of ['status', 'engine', 'notes']) delete info[k];
     const html = await renderViaBrowser(source, {
       proxy,
       info,
@@ -1058,6 +1074,8 @@ export async function readWithRender(
     return done(await readSource(source, { timeoutMs, proxy }));
   } catch (e) {
     if (!isRenderableError(e)) throw e;
+    // 记下静态阶段的状态码：渲染后状态码未知时，日志能说明"静态 403 才转渲染"。
+    if (Number.isFinite(e.statusCode)) info.staticStatus = e.statusCode;
     return await renderWithEscalation();
   }
 }

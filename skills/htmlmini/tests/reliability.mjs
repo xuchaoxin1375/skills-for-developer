@@ -261,7 +261,7 @@ async function cli(args, { input, env } = {}) {
 
     // 状态码与来源哨兵：状态码进 [read] 行；文本模式用起止行包住载荷，JSON 用字段承载。
     const live = await cli([`${base}/article`]);
-    ok(live.code === 0 && /\[read\] .*status=200/.test(live.stderr), '抓取状态码写进 [read] 行');
+    ok(live.code === 0 && /\[read\] status=200 /.test(live.stderr), '抓取状态码放在 [read] 行最前面');
     const beginLine = live.stdout.split('\n')[0];
     ok(
       beginLine.startsWith('<<< htmlmini:source begin ') &&
@@ -704,6 +704,7 @@ open(out, 'w', encoding='utf-8').write(
         process.env.HTMLMINI_RENDER_SCRIPT = stub;
         const cr = await cli([`${base}/always502`, '--title', '--render', '--render-timeout-ms', '30000']);
         ok(cr.code === 0 && stripMarks(cr.stdout).trim() === '渲染页', 'CLI --render 回退成功');
+        ok(/status=unknown \(static 502\)/.test(cr.stderr), '静态 502 转渲染后日志保留静态状态码');
         ok(cr.stderr.includes('htmlmini: [render]'), '渲染日志透传到 stderr 供参考');
 
         const hf = await runExtract(`${base}/always502`, 'title', { render: true, headful: true, renderTimeoutMs: 30000 });
