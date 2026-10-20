@@ -1,10 +1,11 @@
-"""Inline a saved page's external assets so the HTML opens offline."""
+"""Localize a saved page into an offline archive, split into files by default."""
 
 from __future__ import annotations
 
 import argparse
 import base64
 import gzip
+import hashlib
 import json
 import logging
 import mimetypes
@@ -24,6 +25,7 @@ from pathlib import Path
 from resilient_fetch import (
     FetchOptions,
     ProxyUnavailableError,
+    atomic_write_bytes,
     atomic_write_text,
     resolve_proxy,
     setup_logging,
@@ -36,6 +38,8 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
 )
+ASSET_DIR_SUFFIX = "_files"
+MANIFEST_NAME = "manifest.json"
 UNFETCHABLE_PREFIXES = (
     "data:",
     "blob:",
@@ -45,6 +49,7 @@ UNFETCHABLE_PREFIXES = (
     "tel:",
     "#",
 )
+EXTENSION_ALIASES = {".jpe": ".jpg", ".jpeg": ".jpg", ".svgz": ".svg"}
 CSS_URL_RE = re.compile(
     r"""url\(\s*(?P<quote>['"]?)(?P<url>[^'")\s]+)(?P=quote)\s*\)""",
     re.IGNORECASE,
@@ -73,8 +78,8 @@ class Cookie:
 
 
 @dataclass(frozen=True)
-class InlineOptions:
-    """Configure base URL, network access, and volume limits for inlining."""
+class ArchiveOptions:
+    """Configure the archive mode, network access, and volume limits."""
 
     base_url: str | None = None
     proxy: str | None = None
@@ -83,25 +88,29 @@ class InlineOptions:
     timeout_ms: int = DEFAULT_ASSET_TIMEOUT_MS
     max_asset_bytes: int = DEFAULT_MAX_ASSET_BYTES
     max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES
-    inline_images: bool = True
-    inline_fonts: bool = True
+    include_images: bool = True
+    include_fonts: bool = True
+    single_file: bool = False
+    asset_dir: Path | None = None
 
 
 @dataclass
-class InlineResult:
-    """Record what was embedded and what was left as an online reference."""
+class ArchiveResult:
+    """Record which assets were localized and which stayed online."""
 
-    inlined: dict[str, int] = field(
+    mode: str = "split"
+    assets: dict[str, int] = field(
         default_factory=lambda: {"stylesheet": 0, "image": 0, "font": 0, "other": 0}
     )
     total_asset_bytes: int = 0
     dropped_srcsets: int = 0
+    files: list[str] = field(default_factory=list)
     skipped: list[dict[str, str]] = field(default_factory=list)
 
     @property
-    def inlined_total(self) -> int:
-        """Return how many distinct assets were embedded."""
-        return sum(self.inlined.values())
+    def asset_total(self) -> int:
+        """Return how many distinct assets were localized."""
+        return sum(self.assets.values())
 
     def note_skip(self, url: str, kind: str, reason: str) -> None:
         """Record one reference left external and why."""
@@ -256,7 +265,7 @@ def _cookie_matches(cookie: Cookie, host: str, path: str, scheme: str, now: floa
 
 
 def normalize_mime(content_type: str, url: str) -> str:
-    """Pick the most specific media type available for a data URI."""
+    """Pick the most specific media type available for one asset."""
     mime = content_type.split(";", 1)[0].strip().lower()
     if mime and mime not in {"application/octet-stream", "binary/octet-stream", "text/plain"}:
         return mime
@@ -265,7 +274,7 @@ def normalize_mime(content_type: str, url: str) -> str:
 
 
 def asset_bucket(mime: str) -> str:
-    """Group a media type into the counters reported by InlineResult."""
+    """Group a media type into the counters reported by ArchiveResult."""
     if mime == "text/css":
         return "stylesheet"
     if mime.startswith("image/"):
@@ -275,19 +284,33 @@ def asset_bucket(mime: str) -> str:
     return "other"
 
 
+def asset_filename(url: str, mime: str) -> str:
+    """Derive a stable, collision-resistant filename for one asset URL."""
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+    extension = mimetypes.guess_extension(mime) or ""
+    extension = EXTENSION_ALIASES.get(extension, extension)
+    if not extension:
+        extension = Path(urllib.parse.urlsplit(url).path).suffix
+    if not extension or len(extension) > 8:
+        extension = ".bin"
+    return f"{digest}{extension}"
+
+
 def to_data_uri(payload: bytes, mime: str) -> str:
-    """Encode bytes as a base64 data URI."""
+    """Encode bytes as a base64 data URI for single-file archives."""
     return f"data:{mime};base64,{base64.b64encode(payload).decode('ascii')}"
 
 
 class _AssetStore:
-    """Fetch each asset once and enforce the per-asset and total byte caps."""
+    """Fetch each asset once and either inline it or write it beside the page."""
 
-    def __init__(self, options: InlineOptions, fetcher: AssetFetcher, result: InlineResult) -> None:
+    def __init__(self, options: ArchiveOptions, fetcher: AssetFetcher, result: ArchiveResult) -> None:
         self.options = options
         self.fetcher = fetcher
         self.result = result
         self.cache: dict[str, _Asset | None] = {}
+        self.written: dict[str, str] = {}
+        self.manifest: list[dict[str, object]] = []
 
     def fetch(self, url: str, base_url: str | None, kind: str = "other") -> _Asset | None:
         """Return one downloaded asset, or None when it stays external."""
@@ -296,7 +319,7 @@ class _AssetStore:
             return None
         if absolute in self.cache:
             return self.cache[absolute]
-        if kind == "image" and not self.options.inline_images:
+        if kind == "image" and not self.options.include_images:
             return None
         if self.result.total_asset_bytes >= self.options.max_total_bytes:
             self.result.note_skip(absolute, kind, "total_limit")
@@ -317,42 +340,86 @@ class _AssetStore:
             return None
         mime = normalize_mime(content_type, absolute)
         bucket = asset_bucket(mime)
-        if bucket == "image" and not self.options.inline_images:
+        if bucket == "image" and not self.options.include_images:
             self.result.note_skip(absolute, kind, "images_disabled")
             self.cache[absolute] = None
             return None
-        if bucket == "font" and not self.options.inline_fonts:
+        if bucket == "font" and not self.options.include_fonts:
             self.result.note_skip(absolute, kind, "fonts_disabled")
             self.cache[absolute] = None
             return None
         asset = _Asset(url=absolute, payload=payload, mime=mime)
         self.cache[absolute] = asset
         self.result.total_asset_bytes += len(payload)
-        self.result.inlined[bucket] += 1
+        self.result.assets[bucket] += 1
         return asset
 
-    def data_uri(self, url: str, base_url: str | None, kind: str = "other") -> str | None:
-        """Return a data URI for one reference, or None when it stays external."""
+    def reference(self, url: str, base_url: str | None, kind: str, *, from_assets: bool) -> str | None:
+        """Return the local reference for one URL, in either archive mode."""
         asset = self.fetch(url, base_url, kind)
         if asset is None:
             return None
-        return to_data_uri(asset.payload, asset.mime)
+        if self.options.single_file:
+            return to_data_uri(asset.payload, asset.mime)
+        return self._write(asset, asset.payload, from_assets=from_assets)
+
+    def write_rewritten(self, asset: _Asset, payload: bytes, *, from_assets: bool) -> str:
+        """Store a rewritten stylesheet and return the reference to use for it."""
+        return self._write(asset, payload, from_assets=from_assets)
+
+    def _write(self, asset: _Asset, payload: bytes, *, from_assets: bool) -> str:
+        name = self.written.get(asset.url)
+        if name is None:
+            name = asset_filename(asset.url, asset.mime)
+            target = self.asset_dir / name
+            atomic_write_bytes(target, payload)
+            self.written[asset.url] = name
+            self.result.files.append(name)
+            self.manifest.append(
+                {
+                    "url": asset.url,
+                    "file": name,
+                    "mime": asset.mime,
+                    "bytes": len(payload),
+                }
+            )
+        prefix = "" if from_assets else f"{self.asset_dir.name}/"
+        return urllib.parse.quote(f"{prefix}{name}", safe="/")
+
+    @property
+    def asset_dir(self) -> Path:
+        """Return the directory that receives rewritten assets."""
+        if self.options.asset_dir is None:
+            raise ValueError("拆分存档需要 asset_dir。")
+        return self.options.asset_dir
+
+    def write_manifest(self) -> None:
+        """Record every written asset so a missing file is easy to trace."""
+        if self.options.single_file:
+            return
+        payload = json.dumps(
+            {"mode": "split", "assets": self.manifest}, ensure_ascii=False, indent=2
+        )
+        atomic_write_text(self.asset_dir / MANIFEST_NAME, payload + "\n")
 
 
-def _inline_css_urls(css: str, css_base: str | None, store: _AssetStore) -> str:
-    """Replace url() references inside CSS with data URIs where allowed."""
+def _rewrite_css(css: str, css_url: str, store: _AssetStore, *, from_assets: bool) -> str:
+    """Point url() references inside CSS at local copies or data URIs."""
 
     def replace(match: re.Match[str]) -> str:
-        uri = store.data_uri(match.group("url"), css_base, "css_asset")
-        return f'url("{uri}")' if uri else match.group(0)
+        target = store.reference(match.group("url"), css_url, "css_asset", from_assets=from_assets)
+        return f'url("{target}")' if target else match.group(0)
 
     return CSS_URL_RE.sub(replace, css)
 
 
-def _inline_stylesheets(
-    html: str, refs: list[_StylesheetRef], store: _AssetStore, base_url: str | None
+def _localize_stylesheets(
+    html: str,
+    refs: list[_StylesheetRef],
+    store: _AssetStore,
+    base_url: str | None,
 ) -> str:
-    """Replace stylesheet links with inline style blocks."""
+    """Rewrite stylesheet links, either inlining them or writing local files."""
     for ref in refs:
         asset = store.fetch(ref.href, base_url, "stylesheet")
         if asset is None:
@@ -360,9 +427,14 @@ def _inline_stylesheets(
         css = asset.payload.decode("utf-8", errors="replace")
         for match in CSS_IMPORT_RE.finditer(css):
             store.result.note_skip(match.group("url"), "stylesheet", "import_not_inlined")
-        css = _inline_css_urls(css, asset.url, store)
-        media = f' media="{ref.media}"' if ref.media else ""
-        html = html.replace(ref.raw, f"<style{media}>\n{css}\n</style>", 1)
+        if store.options.single_file:
+            rewritten = _rewrite_css(css, asset.url, store, from_assets=False)
+            media = f' media="{ref.media}"' if ref.media else ""
+            html = html.replace(ref.raw, f"<style{media}>\n{rewritten}\n</style>", 1)
+            continue
+        rewritten = _rewrite_css(css, asset.url, store, from_assets=True)
+        local = store.write_rewritten(asset, rewritten.encode("utf-8"), from_assets=False)
+        html = _replace_attribute(html, "href", ref.href, local)
     return html
 
 
@@ -375,45 +447,78 @@ def _replace_attribute(html: str, attribute: str, old: str, new: str) -> str:
     return html
 
 
-def _inline_images(
+def _localize_srcset(value: str, store: _AssetStore, base_url: str | None) -> str:
+    """Rewrite each srcset candidate to a local file, keeping its descriptor."""
+    candidates: list[str] = []
+    for candidate in value.split(","):
+        tokens = candidate.strip().split(None, 1)
+        if not tokens:
+            continue
+        url = tokens[0]
+        descriptor = tokens[1] if len(tokens) > 1 else ""
+        local = store.reference(url, base_url, "image", from_assets=False)
+        candidates.append(f"{local or url} {descriptor}".strip())
+    return ", ".join(candidates)
+
+
+def _localize_images(
     html: str, scan: _AssetScanner, store: _AssetStore, base_url: str | None
 ) -> str:
-    """Embed image sources and drop srcset, whose comma syntax rejects data URIs."""
+    """Point image sources at local files, or drop srcset when inlining."""
     for url in scan.image_urls:
-        uri = store.data_uri(url, base_url, "image")
-        if uri:
-            html = _replace_attribute(html, "src", url, uri)
+        local = store.reference(url, base_url, "image", from_assets=False)
+        if local:
+            html = _replace_attribute(html, "src", url, local)
     for ref in scan.srcsets:
-        if not ref.has_src:
-            first = ref.value.split(",", 1)[0].strip().split(None, 1)[0]
-            store.result.note_skip(first, "image", "srcset_without_src")
+        if store.options.single_file:
+            if not ref.has_src:
+                first = ref.value.split(",", 1)[0].strip().split(None, 1)[0]
+                store.result.note_skip(first, "image", "srcset_without_src")
+                continue
+            store.result.dropped_srcsets += 1
+            for quote in ('"', "'"):
+                html = html.replace(
+                    f"srcset={quote}{ref.value}{quote}", f"srcset={quote}{quote}", 1
+                )
             continue
-        store.result.dropped_srcsets += 1
+        rewritten = _localize_srcset(ref.value, store, base_url)
+        if rewritten == ref.value:
+            continue
         for quote in ('"', "'"):
-            html = html.replace(f"srcset={quote}{ref.value}{quote}", f"srcset={quote}{quote}", 1)
+            old = f"srcset={quote}{ref.value}{quote}"
+            if old in html:
+                html = html.replace(old, f"srcset={quote}{rewritten}{quote}", 1)
+                break
     return html
 
 
-def _inline_style_attributes(
+def _localize_style_attributes(
     html: str, values: list[str], store: _AssetStore, base_url: str | None
 ) -> str:
-    """Inline url() references inside style attributes."""
+    """Point url() references inside style attributes at local copies."""
     for value in values:
-        rewritten = _inline_css_urls(value, base_url, store)
-        if rewritten != value:
-            html = html.replace(value, rewritten, 1)
+        rewritten = _rewrite_css(value, base_url or "", store, from_assets=False)
+        if rewritten == value:
+            continue
+        for quote in ('"', "'"):
+            old = f"style={quote}{value}{quote}"
+            if old in html:
+                html = html.replace(old, f"style={quote}{rewritten}{quote}", 1)
+                break
     return html
 
 
-def inline_html(
+def archive_html(
     html: str,
-    options: InlineOptions | None = None,
+    options: ArchiveOptions,
     fetcher: AssetFetcher | None = None,
     snapshot: dict[str, tuple[bytes, str]] | None = None,
-) -> tuple[str, InlineResult]:
-    """Embed stylesheets, images, and fonts referenced by saved HTML."""
-    settings = options or InlineOptions()
-    result = InlineResult()
+) -> tuple[str, ArchiveResult]:
+    """Localize a saved page either into split files or one self-contained file."""
+    settings = options
+    if not settings.single_file and settings.asset_dir is None:
+        raise ValueError("拆分存档需要 asset_dir；单文件存档请设置 single_file=True。")
+    result = ArchiveResult(mode="single" if settings.single_file else "split")
     scan = _AssetScanner()
     scan.feed(html)
     scan.close()
@@ -421,10 +526,11 @@ def inline_html(
     network = fetcher or http_fetcher(settings, base_url)
     asset_fetcher = chain_fetchers(snapshot_fetcher(snapshot), network) if snapshot else network
     store = _AssetStore(settings, asset_fetcher, result)
-    output = _inline_stylesheets(html, scan.stylesheets, store, base_url)
-    if settings.inline_images:
-        output = _inline_images(output, scan, store, base_url)
-    output = _inline_style_attributes(output, scan.style_values, store, base_url)
+    output = _localize_stylesheets(html, scan.stylesheets, store, base_url)
+    if settings.include_images:
+        output = _localize_images(output, scan, store, base_url)
+    output = _localize_style_attributes(output, scan.style_values, store, base_url)
+    store.write_manifest()
     return output, result
 
 
@@ -471,7 +577,7 @@ def chain_fetchers(primary: AssetFetcher, fallback: AssetFetcher) -> AssetFetche
     return fetch
 
 
-def http_fetcher(options: InlineOptions, referer: str | None) -> AssetFetcher:
+def http_fetcher(options: ArchiveOptions, referer: str | None) -> AssetFetcher:
     """Build a fetcher that retrieves assets over HTTP through the configured proxy."""
     handlers: list[urllib.request.BaseHandler] = []
     if options.proxy:
@@ -528,12 +634,14 @@ def _format_counts(counts: dict[str, int]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the inliner CLI and report what was embedded."""
+    """Run the archiver CLI and report what was localized."""
     parser = argparse.ArgumentParser(
-        description="把已保存页面的外链样式、图片与字体内联成单个 HTML 文件。"
+        description="把已保存页面的外链资源整理成本地存档: 默认拆分为 HTML 加资源目录。"
     )
     parser.add_argument("input")
     parser.add_argument("-o", "--out")
+    parser.add_argument("--single-file", action="store_true", help="内联全部资源，输出单个 HTML。")
+    parser.add_argument("--asset-dir", help="拆分模式的资源目录名 (放在输出 HTML 同级)。")
     parser.add_argument("--base-url")
     parser.add_argument("--proxy", default=os.getenv("SCRAPE_PROXY"))
     parser.add_argument("--discover-proxy", action="store_true")
@@ -556,6 +664,8 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         logging.error("读取失败: %s", exc)
         return 1
+    target = Path(args.out) if args.out else source.with_name(f"{source.stem}.archive.html")
+    asset_dir = target.with_name(args.asset_dir or f"{target.stem}{ASSET_DIR_SUFFIX}")
     base_url = args.base_url or metadata_base_url(source)
     cookies: tuple[Cookie, ...] = ()
     jar_user_agent: str | None = None
@@ -575,7 +685,7 @@ def main(argv: list[str] | None = None) -> int:
             logging.error("%s", exc)
             return 1
         logging.info("已加载快照 %d 个资源 (来源 %s)", len(snapshot_assets), args.mhtml)
-    options = InlineOptions(
+    options = ArchiveOptions(
         base_url=base_url,
         proxy=args.proxy,
         user_agent=args.user_agent or jar_user_agent,
@@ -583,8 +693,10 @@ def main(argv: list[str] | None = None) -> int:
         timeout_ms=args.timeout_ms,
         max_asset_bytes=args.max_asset_bytes,
         max_total_bytes=args.max_total_bytes,
-        inline_images=not args.no_images,
-        inline_fonts=not args.no_fonts,
+        include_images=not args.no_images,
+        include_fonts=not args.no_fonts,
+        single_file=args.single_file,
+        asset_dir=None if args.single_file else asset_dir,
     )
     if args.discover_proxy and not options.proxy:
         try:
@@ -594,20 +706,21 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         options = replace(options, proxy=discovered)
 
-    output, result = inline_html(html, options, snapshot=snapshot_assets)
-    target = Path(args.out) if args.out else source.with_suffix(".offline.html")
+    output, result = archive_html(html, options, snapshot=snapshot_assets)
     atomic_write_text(target, output)
     logging.info(
-        "已写出 %s | 内联 %d 项 (%s) | 资产 %.1f KiB | 丢弃 srcset %d",
+        "已写出 %s | 模式=%s | 资源 %d 项 (%s) | 资产 %.1f KiB",
         target,
-        result.inlined_total,
-        _format_counts(result.inlined) or "无",
+        "单文件" if result.mode == "single" else "拆分",
+        result.asset_total,
+        _format_counts(result.assets) or "无",
         result.total_asset_bytes / 1024,
-        result.dropped_srcsets,
     )
+    if result.mode == "split":
+        logging.info("资源目录 %s (%d 个文件，含 %s)", asset_dir, len(result.files), MANIFEST_NAME)
     if result.skipped:
         logging.warning(
-            "未内联 %d 项，保留原链接；原因分布: %s",
+            "未本地化 %d 项，保留原链接；原因分布: %s",
             len(result.skipped),
             json.dumps(
                 {
@@ -623,8 +736,11 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "input": str(source),
                     "output": str(target),
+                    "mode": result.mode,
+                    "asset_dir": str(asset_dir) if result.mode == "split" else None,
                     "output_bytes": len(output.encode("utf-8")),
-                    "inlined": result.inlined,
+                    "assets": result.assets,
+                    "files": result.files,
                     "total_asset_bytes": result.total_asset_bytes,
                     "dropped_srcsets": result.dropped_srcsets,
                     "skipped": result.skipped,

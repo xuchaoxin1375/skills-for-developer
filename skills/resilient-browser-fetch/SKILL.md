@@ -20,7 +20,7 @@ description: >
 | 只要标题/状态码/字节数，或供其他语言调用 | `scripts/example_extract_page_info.py`（stdout JSON） | 本文件"示例脚本" |
 | 页面多于一个、需要预热/复用会话/sitemap | 三条批量会话按依赖选 | [references/batch-workflows.md](references/batch-workflows.md) |
 | 在 Python 进程内取页或存盘 | `resilient_fetch` 的 `FetchOptions`/`fetch_page`/`save_page` | [references/module-api.md](references/module-api.md) |
-| 已保存的 HTML 要离线可看 | `scripts/inline_page.py` | 本文件"示例脚本" |
+| 已保存的 HTML 要离线可看 | `scripts/archive_page.py` | 本文件"示例脚本" |
 | 安装到 Agent、换机器或换系统 | [references/installation.md](references/installation.md) | 该文件，再读 [references/platforms.md](references/platforms.md) |
 | 修改 `scripts/` 或 `tests/` | 直接改脚本，无封装入口 | 本文件"工作流"末段的质量门禁 |
 
@@ -113,18 +113,21 @@ python <skill-dir>/scripts/example_extract_page_info.py 'https://example.com/' \
   --discover-proxy --preview-chars 500
 ```
 
-存档要能离线双击打开时，接着内联外链资源；挑战站的样式与图片从快照取，不再发请求：
+存档默认拆成 HTML 加资源目录；需要单文件时加 `--single-file`：
 
 ```bash
-python <skill-dir>/scripts/inline_page.py './page.html' --mhtml './page.mhtml' \
-  -o './page.offline.html' --proxy 'http://127.0.0.1:<port>'
+python <skill-dir>/scripts/archive_page.py './page.html' --mhtml './page.mhtml' \
+  --proxy 'http://127.0.0.1:<port>'
+# 产出 page.archive.html + page.archive_files/（含 manifest.json）
+
+python <skill-dir>/scripts/archive_page.py './page.html' --single-file -o './page.offline.html'
 ```
 
+- 拆分模式保留 `<link>` 与 `srcset`，资源按内容哈希命名写入资源目录，HTML 与 CSS 用相对路径引用；单文件模式把样式换成 `<style>`、图片与字体转 base64 data URI，并清空 `srcset`（data URI 含逗号，srcset 按逗号切候选，会被解析错）。
 - 快照由浏览器会话内的 CDP 抓取，含登录态与挑战清除后的资源；`--mhtml` 命中时不走网络，缺失的资源才回退 HTTP。层 0 没有浏览器，快照与 cookie 都不产生文件。
 - 默认从同名 `page.html.meta.json` 的 `final_url` 解析相对地址，也可用 `--base-url` 指定；输入必须是 UTF-8。
-- 外链样式换成 `<style>`，图片与字体转 base64 data URI；单资产与总量上限默认 2 MiB / 30 MiB，超限或抓取失败的条目保留原 URL，并在日志与 `--json` 里给出原因。
-- 上限按去重后的资产字节计；同一图片被多处引用时 data URI 会重复写入，成品体积可明显大于该值。
-- `srcset` 会被清空而保留 `src`：data URI 含逗号，srcset 按逗号切分候选，带 data URI 的 srcset 会被解析错。`<script src>` 不内联，依赖脚本渲染的页面离线打开仍可能缺内容。
+- 单资产与总量上限默认 2 MiB / 30 MiB，超限或抓取失败的条目保留原 URL，并在日志与 `--json` 里给出原因；上限按去重后的资产字节计。
+- 单文件模式同一图片被多处引用会重复写入 data URI，成品体积明显大于拆分模式；`<script src>` 两种模式都不内联，依赖脚本渲染的页面离线打开仍可能缺内容。
 
 `--save-cookies` 导出 Netscape 格式 cookie 给 `--cookies` 用，适合只校验 cookie 的站点。挑战站的 clearance 不能跨 HTTP 栈复用：实测把 `cf_clearance` 交给 urllib、以及用 `curl_cffi` 做 TLS 伪装，同一 URL 仍返回 403，这类资源只能走快照。cookie 文件含会话凭据，不放仓库、用完删除。
 

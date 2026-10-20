@@ -7,9 +7,9 @@ import threading
 from pathlib import Path
 
 import pytest
-from inline_page import (
+from archive_page import (
+    ArchiveOptions,
     Cookie,
-    InlineOptions,
     cookie_header_for,
     http_fetcher,
     load_cookie_jar,
@@ -127,7 +127,7 @@ def test_http_fetcher_sends_exported_cookie(monkeypatch: pytest.MonkeyPatch) -> 
     thread.start()
     try:
         port = server.server_address[1]
-        options = InlineOptions(
+        options = ArchiveOptions(
             cookies=(_cookie("sid", "127.0.0.1"),),
             user_agent="UA/test",
             timeout_ms=5000,
