@@ -90,10 +90,10 @@ htmlmini "<URL>" -m -o page.md           # 长正文（FAQ、描述），首屏�
 - 渲染链：save_page（本机有层 ≥1 引擎且更合适时）→ 系统 Chrome 无头 `dump-dom`（零依赖）→ 友好报错。实际通路看 `[render] engine=…`。
 - 通路选择：save_page 有求解引擎（scrapling / cloak-cdp）、需要 `--headful`、或本机没有 Chrome 时走 save_page；层 1（playwright / patchright）与 Chrome 同为"只渲染不求解"，此时优先零依赖 Chrome，Chrome 崩了再回退 save_page 重试一次（错误里两段都会出现）。
 - save_page 与 Trafilatura 都跑在 Python 解释器上，默认取 PATH 的 `python` / `python3`，**往往不是装了 playwright / scrapling 的那个环境**（conda / venv 常见）。未显式指定时，渲染失败（挑战空壳 / 缺引擎 / 引擎报错）会自动扫描本机、换更强的解释器重试一次（层 ≥2 优先），日志 `[render]` 会打印两次用的解释器；显式路径不自动换、指错直接报错。也可直接 `--python-bin <解释器>` / MCP `python_bin` / `HTMLMINI_PYTHON`，或 `--python-bin auto`（或 `HTMLMINI_PYTHON=auto`）固定为扫描结果。`HTMLMINI_ENV_SCAN=0` 关闭扫描。
-- `--headful` / `headful:true` 只用于首次人工验证，需要 save_page 通路且有层 ≥1 引擎；Chrome `dump-dom` 不能开窗。
+- `--headful` / `headful:true` 只用于首次人工验证，需要 save_page 通路且有层 ≥1 引擎；Chrome `dump-dom` 不能开窗。`--headful` 不改变"什么时候渲染"：静态 200 的页面要 `--render=always` 才强制渲染；`--render=always --headful` 与 `--headful --render=always` 等价（参数顺序不影响语义）。
 - 404 / 超时 / 断网直接抛错，不烧浏览器时间。
 - 坑：渲染通路选到零依赖 Chrome（日志 `[render] engine=chrome-dump`）时只渲染、不求解。目标站点有挑战特征时拿到的是挑战空壳（几 KB），htmlmini 会直接报 `rendered page still looks like a challenge`（不再误报成"像客户端渲染壳"）；按提示换求解通路，`--allow-empty` 可强行取回空壳排查。
-- 已知某 origin 需要更高层（长期被 Managed Challenge 拦）时，用 `--render-engine scrapling`（或 `cloak-cdp` / `playwright`）钉住：显式指定后 save_page 只用该层、不再自动升档，缺件或失败直接报错；好处是省掉每次注定失败的 static / playwright 尝试，代价是没有升档兜底。
+- 已知某 origin 需要更高层（长期被 Managed Challenge 拦）时，用 `--render-engine scrapling`（或 `cloak-cdp` / `playwright` / `chrome-late` / `nodriver`）钉住：显式指定后 save_page 只用该层、不再自动升档，缺件或失败直接报错；好处是省掉每次注定失败的 static / playwright 尝试，代价是没有升档兜底。**挑战站点选 `chrome-late`**：它先让站点的挑战跑完再接入读取（见案例 13）。
 - 抓取失败时错误里会点名本机代理登记（`~/.config/proxy-resources.json`）的候选入口：htmlmini 不自动读登记，按提示显式 `--proxy` 或设 `HTTPS_PROXY`；404/410 不带这条提示（资源级结论，换出口不会变）。
 - 取不到正文时先让 save_page 通路接管：默认已会自动换更强的解释器重试一次；仍失败时加 `--python-bin auto`（或会话级 `HTMLMINI_PYTHON=auto`）固定为扫描结果，或按 `resilient-browser-fetch check_environment.py --list-envs` 指名层数更全的那个解释器（通常是装了求解引擎的那一个）；默认 PATH 上的 `python` 常只有层 1，被判为"只渲染"而退回 Chrome。本机确实只有层 1 时 save_page 与 Chrome 等价，改走 `resilient-browser-fetch`（需要时 `--headful` 人工验证）。
 - 手工两步（存量或排查）：先用双路对照（直连 + 代理并行；登记已有可用代理时直接用登记条目）确定可用路线并落盘，再 `htmlmini page.html`；不按 URL 重抓（要留下这次抓到的原文，加 `--save-html <路径>`：校验之前就落盘，挑战空壳报错时也能留下）。
@@ -193,6 +193,17 @@ flowchart TD
 - **别把挑战页当拦截页**：“Powered and protected by”、`sec-if-cpt-container` 表示站点还没放行，再等就有机会拿到正文；标题是 `Access Denied` 或硬 403 才表示这条路走不通。
 - 坑：把**一次**成功当成结论。同一个控制面换新 profile、换出口、隔一段时间复测可能又回到拦截页；站点风控随频次动态变化，结论必须同条件复测。
 - 完整判读与排查路径见 `resilient-browser-fetch` 的《检测层与引擎选择》——实战判读一节。
+
+## 14 客户端渲染的商城商品页：拿到应用壳，也拿到应用自己的错误态
+
+某生鲜商城的商品详情页（客户端渲染 + 同意横幅 + 检索 API 取数据）。同一 URL 在人手工的浏览器里能正常打开，自动化下却依次出现三种"看起来像结果"的东西：应用壳、站点错误态、错误态里带商品数据。
+
+- **静态 200 但只有应用壳**：HTML 12.5 KB、正文 71 字符。`--render=always` 强制渲染后，零依赖 Chrome 通路拿到 2.7 KB 的加载壳，App 自己则渲染出 “Something went wrong. Something isn't right and an error has occurred.”——这段是**应用没拿到数据后的错误态**，不是正文，也不是拦截页。
+- **关键变量是出口，不是渲染引擎**：同一份代码，直连下等满 60 s 仍是错误态；换登记里的海外代理（`--proxy http://127.0.0.1:<port>`）后，13 s 内拿到 43.7 KB 的商品页（标题、价格 $189.99、完整双语描述）。应用的数据接口在另一个地域，直连出口取不到。
+- **判据**（一次只改一个变量）：文档请求 200、`Server` 正常、所有静态资源 200 → 不是 WAF 拦截；逐秒观察正文在"壳 → 错误态 → 商品页"之间变化 → 不是资源不存在（商品 ID 有效）；只有换出口才变 → 结论落在**出口可达性**上。
+- **别把错误态当正文**：htmlmini 的默认抽出会把错误态那段文字当正文交出来（几百字符，看起来像内容）。判据是"可见文字很少 + 抱怨出现在正文开头"：正常商品页即使挂着一块瞬时错误横幅，正文很长，不该被误判；反过来，错误页只有几十字。
+- **别把应用壳当"页面没内容"**：应用壳是"还没水合"，继续等就有正文；htmlmini 对静态 200 + 短正文会直接报错提示 `--render=always`，此时用 `--render=always --render-engine chrome-late --proxy …`（或 `resilient-browser-fetch --engine chrome-late --expect-text '<产品名>'`）把水合等完。
+- 拿不准时先落盘再提取：`resilient-browser-fetch` 的 `--engine chrome-late --expect-text '<产品名>'` 拿到 HTML 快照与 `.meta.json`，再 `htmlmini page.html` 提字段；不要按 URL 反复重抓（应用错误态是间歇的，重抓也拿不到稳定的同一份）。
 
 ## 通用坑
 

@@ -140,6 +140,14 @@ let base;
     } else if (req.url === '/always502') {
       res.writeHead(502, { 'content-type': 'text/plain', server: 'cloudflare' });
       res.end('error code: 502');
+    } else if (req.url === '/shell200') {
+      // 200 但正文极短、HTML 很大: 客户端渲染的应用壳(静态抓取拿不到正文)。
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(
+        `<!doctype html><html><head><title>壳页面</title></head><body data-filler="${'x'.repeat(
+          6000,
+        )}"><div id="app"></div><p>Loading…</p></body></html>`,
+      );
     } else if (req.url === '/slow') {
       setTimeout(() => {
         try {
@@ -1176,6 +1184,28 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
 
     const bad = await cli([`${base}/always502`, '--render', '--render-engine', 'static']);
     ok(bad.code === 2 && /render-engine/.test(bad.stderr), '非渲染层取值退出 2');
+
+    // 4) 参数顺序回归: --render=always 后面跟 --headful 不能把"总是渲染"降级成"仅 403/5xx 回退"。
+    //    降级后静态 200 的应用壳不会触发渲染, 直接报"像客户端渲染壳"。
+    process.env.STUB_BODY = 'article';
+    const forced = await cli([
+      `${base}/shell200`,
+      '--render=always',
+      '--headful',
+      '--render-timeout-ms',
+      '30000',
+    ]);
+    ok(
+      forced.code === 0 && stripMarks(forced.stdout).includes('正文提到'),
+      `--render=always --headful 仍然强制渲染（退出 ${forced.code}）`
+        + ` | stdout=${JSON.stringify(stripMarks(forced.stdout).slice(0, 80))}`,
+    );
+    ok(
+      !/app shell|客户端渲染壳/.test(String(forced.stderr)),
+      '强制渲染时不再退化成"像客户端渲染壳"的报错',
+    );
+    const forcedArgv = JSON.parse(await readFile(argvLog, 'utf8'));
+    ok(forcedArgv.includes('--headful'), '强制渲染时把 --headful 透传给 save_page');
 
     process.env.HTMLMINI_RENDER_ENGINES = 'static';
     process.env.HTMLMINI_CHROME_BIN = path.join(dir, '没有-chrome');

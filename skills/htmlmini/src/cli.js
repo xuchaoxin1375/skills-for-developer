@@ -273,7 +273,8 @@ for (let i = 0; i < argv.length; i++) {
     render = v === 'always' ? 'always' : true;
   } else if (a === '--headful') {
     headful = true;
-    render = true;
+    // 只升级、不降级: --headful 跟在 --render=always 后面时不能把"总是渲染"降回"仅 403/5xx 回退"
+    render = render === 'always' ? 'always' : true;
   } else if (a === '--render-timeout-ms') {
     const v = argv[++i];
     renderTimeoutMs = Number(v);

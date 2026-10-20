@@ -155,12 +155,17 @@ htmlmini app.html -u
 # 已知该站需要层 2：钉住引擎，不再每次重跑注定失败的 static / playwright（显式即严格，缺件直接报错）
 htmlmini "https://example.com/app" --render --render-engine scrapling --python-bin auto
 
+# 挑战站点：钉住晚接入引擎（先让站点的挑战跑完再接入读取）
+htmlmini "https://example.com/app" --render=always --render-engine chrome-late --proxy 'http://127.0.0.1:<port>'
+
 # 手工两步（渲染产物旁的 <name>.html.meta.json 会被自动利用）
 python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html --proxy 'http://127.0.0.1:<port>'
 htmlmini app.html --json
 ```
 
 渲染链、通路选择（save_page vs 零依赖 Chrome）、`--chrome-bin` 探测顺序、解释器扫描与失败回退的完整口径，以及按页面类型/症状取命令的案例，见 [references/usage-cases.md](references/usage-cases.md)。
+
+**分工**：htmlmini 只做"读懂页面"（静态抓取 + 正文提取），不自己造浏览器层；需要渲染时一律调 `resilient-browser-fetch` 的 `save_page`，本机找不到它才退到零依赖 Chrome `dump-dom`（只渲染、不求解、不能开窗）。要更强的采集能力就改 `resilient-browser-fetch` 的引擎阶梯，htmlmini 自动继承。
 
 连续/成批多页不要循环调 `htmlmini URL --render`——每页一次浏览器创建/销毁，
 又慢又多新指纹，`--render` 只适合单页/零星几页。同站多页走

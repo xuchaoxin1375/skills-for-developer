@@ -322,7 +322,7 @@ export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS, proxy }
 // 渲染仍由 resilient-browser-fetch 的 save_page 执行（同代理），本文件只负责调度和提取。
 export const RENDER_TIMEOUT_MS = 300_000;
 /** 可钉住的渲染引擎：save_page 的浏览器层；static/scrapling-cli 在渲染语境下不适用。 */
-export const RENDER_ENGINE_CHOICES = ['auto', 'playwright', 'scrapling', 'cloak-cdp'];
+export const RENDER_ENGINE_CHOICES = ['auto', 'playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'];
 const RENDER_SCRIPT_ENV = 'HTMLMINI_RENDER_SCRIPT';
 
 function findRenderScript() {
@@ -773,11 +773,12 @@ export function isInterpreterRetryable(e) {
 }
 
 
-// save_page 可用性探测：从不抛错。判定口径是"层 ≥1 有可用引擎"（playwright/scrapling/cloak-cdp），
-// 不再要求必须装 scrapling；静态抓取仍由本模块自己完成。
+// save_page 可用性探测：从不抛错。判定口径是"层 ≥1 有可用引擎"（playwright/scrapling/cloak-cdp/
+// chrome-late/nodriver），不再要求必须装 scrapling；静态抓取仍由本模块自己完成。
 // 但层 1 与零依赖 Chrome 直渲能力重叠（都只是渲染、都不求解挑战），
-// 因此只在下列情况优先 save_page：有求解引擎（层 2/3）、需要 --headful、或本机没有 Chrome。
-const BROWSER_ENGINES = ['playwright', 'scrapling', 'cloak-cdp'];
+// 因此只在下列情况优先 save_page：有求解引擎（层 2/3）、需要 --headful、本机没有 Chrome，
+// 或显式钉了 chrome-late 这类"先让挑战跑完再接入"的引擎。
+const BROWSER_ENGINES = ['playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'];
 const SOLVER_ENGINES = ['scrapling', 'cloak-cdp'];
 const RENDER_ENGINES_ENV = 'HTMLMINI_RENDER_ENGINES';
 
@@ -857,6 +858,10 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
   // 逐行透传（Windows 控制台查看侧按 powershell-pitfalls 的 UTF-8 模板设置）。
   // --engine 透传：显式指定时 save_page 只用该层（不再自动升档），已知站点可省掉注定失败的升档。
   const args = ['-X', 'utf8', script, url, '--out', out, '--engine', renderEngine ?? 'auto', '--timeout-ms', String(renderTimeoutMs)];
+  // 渲染预算同时透传给引擎: 客户端渲染的应用常在静态壳上停很久, chrome-late 这类
+  // "接入后等渲染稳定"的引擎要拿到同样的上限, 否则会在半渲染状态下被读走。
+  // 上限取 60s: 够 SPA 水合, 又不至于把外层预算全耗在等一个永不稳定的 DOM 上。
+  args.push('--render-timeout-ms', String(Math.min(renderTimeoutMs, 60_000)));
   if (proxyUrl) args.push('--proxy', proxyUrl);
   else args.push('--discover-proxy');
   if (headful) args.push('--headful');
