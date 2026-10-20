@@ -80,6 +80,14 @@ BLOCK_HINTS = (
     "sorry, you have been blocked",
     "cf-error-details",
 )
+# 站点自己吐的错误外壳: HTTP 200, 内容是站点框架 + 一句通用错误文案。
+# 命中说明状态码正常但没有正文, 按内容缺失处理(升档或换路线), 不要当成成功。
+SOFT_ERROR_PHRASES = (
+    "there was an error processing your request",
+    "an error occurred while processing your request",
+    "something went wrong on our end",
+    "we're sorry, something went wrong",
+)
 # 部分站点(WAF)对可疑请求回 403，却仍下发完整正文；这类响应正文侧没有任何拦截信号。
 # 只有调用方显式断言过正文、且正文达到正常页面量级时才按可用内容接受，
 # 以免把 404/401/429/5xx，或品牌化的小体积拦截页当成正文。
@@ -307,8 +315,23 @@ class FetchFailed(FetchError):
                 "或用 check_environment.py --list-envs 查看哪个环境具备所需层"
             )
         if self.attempts and len(self.blocked_engines) == len(self.attempts):
-            return "所有已尝试引擎都返回挑战页或空内容；请升档、换代理或改用有头人工验证"
-        return f"所有引擎均无法获取有效页面(尝试 {len(self.attempts)} 个)"
+            return "所有已尝试引擎都返回挑战页或空内容；请升档、换代理或改用有头人工验证" + self.late_attach_hint()
+        return f"所有引擎均无法获取有效页面(尝试 {len(self.attempts)} 个)" + self.late_attach_hint()
+
+    def late_attach_hint(self) -> str:
+        """Suggest the late-attach route when the failure looks like a WAF block."""
+
+        for attempt in self.attempts:
+            reasons = " ".join(attempt.reasons)
+            if any(
+                marker in reasons
+                for marker in ("site_error_shell", "akamai_bot_page", "access denied", "empty")
+            ):
+                return (
+                    "；若同一页面在普通浏览器里能正常打开，可试 --engine chrome-late"
+                    "(晚接入: 先让页面自然加载, 再接入调试器读取已渲染 DOM)"
+                )
+        return ""
 
 
 def setup_logging(verbose: bool) -> None:
@@ -431,9 +454,12 @@ def block_reasons(page_html: str) -> list[str]:
         reasons.append("cloudflare_challenge_markers")
     if "challenges.cloudflare.com" in sample and "noindex,nofollow" in sample:
         reasons.append("cloudflare_interstitial")
-    # Akamai Bot Manager 的拦截页: 正文只有一小段脚本，标题为空，靠固定文案识别
+    # Akamai Bot Manager 的拦截页: 正文只有一小段脚本, 标题为空, 靠固定文案识别
     if "powered and protected by" in sample:
         reasons.append("akamai_bot_page")
+    # 站点自己吐的错误外壳: HTTP 200 + 站点框架 + 一句通用错误文案
+    if any(phrase in sample for phrase in SOFT_ERROR_PHRASES):
+        reasons.append("site_error_shell")
     return sorted(set(reasons))
 
 
@@ -2688,8 +2714,9 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=DEFAULT_SETTLE_MS,
         help=(
-            "chrome-late 的自然加载窗口:这段时间内不接调试器，"
-            "页面渲染完才接入读取；默认 12000。"
+            "chrome-late 的最小静默窗口:这段时间内不接调试器，页面渲染完才接入。"
+            "默认 5000;实测 3000 起已可放行，5000 时内容更完整，"
+            "站点采集窗口更长时调大。"
         ),
     )
     parser.add_argument("--min-bytes", type=int, default=300)

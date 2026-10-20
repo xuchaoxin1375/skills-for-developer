@@ -124,6 +124,7 @@ flowchart TD
 
 - 不要循环调 `--render`：每页一次浏览器创建 / 销毁，又慢又多新指纹。
 - 走 `resilient-browser-fetch` 的批量会话（单浏览器预热屏障 + 会话复用 + 受限并发）落盘，再逐个 `htmlmini <file>`；渲染后 HTML 同目录的 `<name>.html.meta.json` 会被自动利用，不用手传 URL。
+- 若目标属于[案例 13](#13-自动化全被拦但普通浏览器能打开)（自动化全被拦、只有普通浏览器能开），批量路线用 `resilient-browser-fetch` 的晚接入批量脚本：一次启动开多个标签、各自自然加载、最后统一接入读取，避免逐页起停。
 - 详见 [batch-workflows.md](../../resilient-browser-fetch/references/batch-workflows.md)。
 
 ## 8 超长页面只要大纲

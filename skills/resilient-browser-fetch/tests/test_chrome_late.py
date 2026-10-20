@@ -101,6 +101,73 @@ def test_wait_for_page_ready_reports_ready_when_title_appears() -> None:
     assert signal.title == "Real Page Title"
 
 
+def test_site_error_shell_is_detected_as_blocked() -> None:
+    html = (
+        "<html><head><title>Bed Bath & Beyond | The Best Deals Online</title></head>"
+        "<body><div>There was an error processing your request.</div></body></html>"
+    )
+    assert "site_error_shell" in engine_subject.block_reasons(html)
+
+
+def test_failure_message_points_at_the_late_attach_route() -> None:
+    attempt = engine_subject.FetchAttempt(
+        engine="playwright",
+        ok=False,
+        elapsed_sec=1.0,
+        reasons=("site_error_shell",),
+        kind=engine_subject.KIND_BLOCKED,
+    )
+    failure = engine_subject.FetchFailed("https://example.com/", (attempt,))
+    assert "chrome-late" in failure.describe()
+
+
+def test_bulk_readiness_waits_for_every_target() -> None:
+    payload = [
+        {"type": "page", "url": "https://example.com/a", "title": "Page A"},
+        {"type": "page", "url": "https://example.com/b", "title": "example.com/b"},
+    ]
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        signals = subject.wait_for_pages_ready(
+            port,
+            target_urls=["https://example.com/a", "https://example.com/b"],
+            min_settle_ms=0,
+            max_wait_ms=1500,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert signals["https://example.com/a"].ready is True
+    assert signals["https://example.com/b"].ready is False, "标题仍是 URL 时不算就绪"
+
+
+def test_batch_helper_flags_block_pages() -> None:
+    import example_late_batch
+
+    assert example_late_batch.looks_blocked("Access Denied", "<html></html>") is True
+    assert example_late_batch.looks_blocked("Access Denied", "x") is True
+    assert example_late_batch.looks_blocked("正常标题", "<html>正文</html>") is False
+    assert example_late_batch.slugify("Bed Bath & Beyond | 12269546", "page") == (
+        "Bed-Bath-Beyond-12269546"
+    )
+
+
 def test_sweep_stale_profiles_removes_only_old_leftovers(tmp_path: Path) -> None:
     old = tmp_path / f"{subject.PROFILE_DIR_PREFIX}old"
     old.mkdir()

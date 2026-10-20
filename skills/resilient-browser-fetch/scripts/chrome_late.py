@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 from urllib.request import ProxyHandler, build_opener
 
-DEFAULT_SETTLE_MS = 12_000
+DEFAULT_SETTLE_MS = 5_000
 READY_POLL_INTERVAL_SEC = 0.4
 DEVTOOLS_HOST = "127.0.0.1"
 PROFILE_DIR_PREFIX = "chrome-late-"
@@ -281,6 +281,52 @@ def _create_kill_on_close_job() -> int | None:
         return int(job)
     except Exception:  # job object 只是加固手段, 失败则退回常规回收
         return None
+
+
+def wait_for_pages_ready(
+    port: int,
+    *,
+    target_urls: list[str],
+    min_settle_ms: int = DEFAULT_SETTLE_MS,
+    max_wait_ms: int = 60_000,
+) -> dict[str, ReadySignal]:
+    """Wait until every requested tab has a real title, without attaching.
+
+    Several tabs can be opened in one browser launch; each keeps its own load
+    cycle, so all of them stay outside the debug session until the quiet window
+    closes.
+    """
+
+    started = time.monotonic()
+    deadline = started + max_wait_ms / 1000
+    settle_at = started + min_settle_ms / 1000
+    signals: dict[str, ReadySignal] = {}
+    while time.monotonic() < deadline:
+        try:
+            targets = read_page_targets(port)
+        except Exception:  # 浏览器未就绪时继续等待
+            time.sleep(READY_POLL_INTERVAL_SEC)
+            continue
+        for target_url in target_urls:
+            if target_url in signals:
+                continue
+            target = pick_page_target(targets, target_url)
+            if target is None:
+                continue
+            title = str(target.get("title") or "")
+            if not looks_like_url_text(title) and time.monotonic() >= settle_at:
+                signals[target_url] = ReadySignal(
+                    True, title, int((time.monotonic() - started) * 1000)
+                )
+        if len(signals) == len(target_urls):
+            break
+        time.sleep(READY_POLL_INTERVAL_SEC)
+    for target_url in target_urls:
+        signals.setdefault(
+            target_url,
+            ReadySignal(False, "", int((time.monotonic() - started) * 1000)),
+        )
+    return signals
 
 
 def sweep_stale_profiles(

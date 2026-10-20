@@ -250,6 +250,8 @@ print(outcome.result.notes)      # control_plane:late-cdp-attach / browser_chann
 
 约束：固定有头运行（Linux 需 DISPLAY 或 Xvfb）；不支持带凭据的代理；读到的是已渲染完的页面，懒加载与折叠区不会展开；`status` 为 `None`。引擎自带的浏览器由引擎负责回收（所有权、进程树与临时 profile 清理见 SKILL.md 的“资源回收”），调用方只需在失败时核对残留。
 
+同站多页用 `scripts/example_late_batch.py`（一次启动开多个标签、各自自然加载、最后统一接入读取），而不是逐页 `fetch_page`：逐页调用要付 N 次启动与 N 次静默窗口。
+
 ## 长期站点会话（层 2+）
 
 `site_session` 的主要类型（层 2+：带挑战监视与重验证屏障，需要 scrapling）：
