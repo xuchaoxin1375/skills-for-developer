@@ -122,7 +122,7 @@ outcome = save_page(
 )
 ```
 
-`save_page()` 复用同一获取 API，并原子写入 HTML、`.meta.json`、失败尝试记录和拦截诊断页。成功时仍返回 `FetchOutcome`。
+`save_page()` 复用同一获取 API，并原子写入 HTML、`.meta.json`、失败尝试记录和拦截诊断页。成功时仍返回 `FetchOutcome`。HTML 的序列化边界、与离线存档的区别见 [HTML 快照与序列化](html-snapshot.md)。
 
 ## 异常与日志
 

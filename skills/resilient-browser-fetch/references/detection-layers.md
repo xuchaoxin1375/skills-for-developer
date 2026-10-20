@@ -27,7 +27,7 @@
 - **层号是能力档位，不是隐蔽性排名。** 层 2/3 能解挑战、改指纹，但控制面仍是 Patchright；目标专门卡 Playwright/Patchright 时，层 3 不保证通过。
 - **装层 2 会改变层 1 的实际 API。** `scrapling[fetchers]` 依赖 Patchright，而层 1 默认优先 Patchright。要做原版 Playwright 与 Patchright 的 A/B，显式使用 `--playwright-api playwright` 或 `--playwright-api patchright`。
 - **`--playwright-api` 只影响层 1。** Scrapling 0.5 内部固定使用 Patchright；CloakBrowser 的 CDP 连接也由 Patchright 建立。
-- **nodriver 换的是控制面，不是指纹。** 它不伪造 canvas/WebGL/字体/GPU，也不改 TLS；Linux 服务器上仍是 Linux。无头模式明显弱于有头，反检测场景优先 `--headful`。
+- **nodriver 换的是控制面，不是指纹。** 它不伪造 canvas/WebGL/字体/GPU，也不改 TLS；Linux 服务器上仍是 Linux。无头模式明显弱于有头，反检测场景优先 `--headful`。非 Cloudflare 的 WAF（如 Akamai）通常只盯控制面与 IP，这类站点上 nodriver 有头常比层 2/3 更有效。
 - **IP、ASN、TLS、地区与行为节奏不属于引擎层。** 这些信号出问题时，换引擎通常无效，先按 `network-access` 核对出口并降低频率。
 
 ## 选择顺序
@@ -38,7 +38,7 @@
 2. **需要 JS 渲染**：层 1。真实桌面优先 `--real-chrome`；做驱动 A/B 时显式指定 `--playwright-api`。
 3. **返回 Cloudflare/Turnstile 挑战**：层 2。仍失败时先 `--headful` 人工接管，再考虑层 3；不要跳过有头直接叠加同类引擎。
 4. **指纹/环境不匹配**（canvas、WebGL、字体、Linux 服务器）：层 3；或改用真实桌面 + 系统 Chrome。
-5. **层 2 和层 3 以同一挑战签名失败，且有头/真 Chrome 也失败**：更像控制面或 IP 问题。先换出口、核对 ASN/地区，再显式试 `--engine nodriver --headful`；不要继续在 Patchright 控制面里加层。
+5. **层 2 和层 3 以同一挑战签名失败，且有头/真 Chrome 也失败**：更像控制面或 IP 问题。用户自己的浏览器能打开同一 URL 时，先换控制面试 `--engine nodriver --headful`（系统 Chrome 直接 CDP）——换出口只改 IP 信誉，改不了 Patchright 的驱动痕迹；用户浏览器也打不开时才轮到核对 ASN/地区。返回硬 403/Access Denied、页面不出现 Cloudflare 挑战时，`solve_cloudflare` 与层 2/3 都不会起作用，不要按 CF 挑战继续加层。
 6. **间歇成功、换出口后结果明显变化**：按 IP 信誉/限流处理，不换引擎。
 7. **所有浏览器层都失败，但层 0/curl_cffi 能拿到正文**：回到层 0 或检查是否根本不需要浏览器。
 
@@ -58,5 +58,26 @@ nodriver 是可选备用，不是层 2 的替代品：
 本实现锁定 nodriver 0.50.6。zendriver 是 API 相近的社区 fork，未纳入本 skill 的依赖或 `auto`；确有需要时先评估维护状态、许可和 Docker/浏览器行为，再单独验证，不能假定可直接替换。
 
 `auto` 只在 `--headful` 时把 nodriver 放到最后；无头 auto 不会尝试它。需要固定路线时显式 `--engine nodriver`。
+
+## 实战判读：Akamai 商品页
+
+某家居零售站商品详情页（Akamai Bot Manager 防护），同一 URL、同一台机器的完整尝试序列：
+
+| 路线 | 结果 | 判读 |
+| --- | --- | --- |
+| 裸 HTTP（`static`） | `403`，`Server: AkamaiGHost` | WAF 层拒绝，不是 404/410 资源级结论 |
+| 无头 `playwright` | `200`，约 115 KB，正文是站点外壳加一句通用错误文案 | 宽松校验会判成功，属于软错误页 |
+| 有头真实 Chrome（直连） | `Access Denied`，约 400 B | 有头不等于通过 |
+| 有头真实 Chrome（换美国出口） | 仍 `Access Denied` | 换出口没改变结论，排除“只是 IP 被封” |
+| `scrapling` | `403` | 控制面仍是 Patchright，与层 1 同源，一起失败不说明档位不够 |
+| `nodriver --headful` | `200`，约 1.28 MB，标题与正文命中所抓商品 | 出口与机器都没换，只换控制面即通过 |
+
+判读顺序：
+
+1. 页面里有没有 Cloudflare/Turnstile 挑战特征。没有就不是 CF 问题，`solve_cloudflare` 与层 3 不必再试。
+2. 用户自己的浏览器能不能打开同一 URL。能打开说明出口与地区正常，直接换控制面（`--engine nodriver --headful`）；打不开才去核对外部出口与 IP 信誉。
+3. 拿到 200 先看正文是不是目标内容。这类站点常用“外壳 + 通用错误文案”冒充成功，取数必须带 `--expect-text` 或 `--wait-selector`。
+
+配套命令与产物核对见 [module-api.md](module-api.md) 与 `SKILL.md` 的“工作流”第六步；本案例只解释“为什么换控制面而不是继续换层/换出口”。
 
 以上矩阵按当前锁定的 Scrapling 0.5、CloakBrowser wrapper 和 nodriver 0.50.6 整理；这些项目的控制面、浏览器渠道和挑战行为会随版本变化，升级依赖后要重新核对，不能把本表当成永久结论。通过率也高度依赖目标站点、出口 IP 和访问频率，单次成功或失败都不构成通用保证。

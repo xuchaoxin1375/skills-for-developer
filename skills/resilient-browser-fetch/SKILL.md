@@ -3,12 +3,33 @@ name: resilient-browser-fetch
 description: >
   按能力与检测层分层的稳健网页采集：层 0 标准库 HTTP、层 1 Playwright/Patchright 渲染、层 2 Scrapling 的 Cloudflare 挑战处理、层 3 可选 CloakBrowser 指纹底座，另有 nodriver 直接 CDP 的有头备用；
   auto 只升能力档、不保证隐蔽性，缺件降级而不是整体失败，遇到 404/410 等资源级状态停止升档。
-  用于抓取经 network-access 确认为挑战页的站点、Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间人工验证、拦截页识别、同站会话复用、控制面/指纹/IP 分层判断，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
+  用于抓取需渲染或经 network-access 确认为挑战页的站点、Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间人工验证、拦截页识别、同站会话复用、控制面/指纹/IP 分层判断，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；
+  也用于保存渲染后的 HTML 快照：默认只写 HTML 与元数据，图片等子资源保留原 URL；离线存档（下载或内联资源）需用户明确要求。选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
 ---
 
 # 稳健浏览器采集
 
 仅采集用户有权访问的公开或获授权页面。遵守目标服务条款、robots/速率限制和适用法律；不要自动执行登录、下单、账户创建、凭据测试或其他改变外部状态的操作。Cloudflare 通过与否受出口 IP、控制面/驱动痕迹、指纹、地区一致性和站点策略共同影响，不承诺通用通过率。层号表示能力档位，不是隐蔽性排名；控制面、指纹和 IP 的判断见 [检测层与引擎选择](references/detection-layers.md)。
+
+## 先定交付物
+
+“采集/爬取/抓取”只描述动作，不决定产物。先确认要的是哪一种，再选入口；不要把“采集产品信息”默认当成离线存档。
+
+| 目标 | 产物 | 入口 |
+| --- | --- | --- |
+| 保存页面 HTML、要 JS 渲染后的正文或商品描述、图片等保留原 URL | HTML 快照：渲染后的 DOM + `.meta.json`，不落盘子资源 | CLI `resilient_fetch.py --out` 或 `save_page` |
+| 导出产品字段、表格、价格、规格 | 结构化数据，不要求页面 HTML | `fetch_page` 取回后提取；字段来自接口时读接口 JSON |
+| 离线打开、断网可看、图片/CSS 一起保存 | 离线存档：资源目录或单文件 | `save_page` 后 `archive_page.py` 或 MHTML |
+
+这里说的 HTML 快照，通常指浏览器把渲染后的 DOM 序列化为 HTML 文本，再由 `save_page` 写入 `.html` 与 `.meta.json`；层 0 `static` 没有浏览器，保存的是 HTTP 响应正文，不执行 JS。序列化只把内存中的 DOM 树转成 HTML 文本，不等于写入磁盘；落盘是随后的独立步骤。它保存标记和文本，不包含 JS 运行时状态（变量、事件监听器、Canvas 像素等）。
+
+它不是截图、搜索引擎缓存或含资源的离线存档；“网页快照”一词有歧义，本 skill 统一用“HTML 快照”。术语、序列化边界和产物对比见 [HTML 快照与序列化](references/html-snapshot.md)。
+
+HTML 快照里的图片、字体和外部样式表/脚本仍指向原站；内联样式和脚本会留在 HTML 中。离线打开可能缺图或缺样式，但正文和 JS 渲染结果已经写入 HTML。要懒加载或点击后才出现的描述，先触发交互再取源码（CLI 的等待参数不会自动滚动或点击）；等待时用稳定的容器选择器或短文本，不要把整段易变文案当成默认成功条件。
+
+用户只说“采集/爬取产品信息”时，先确认要字段还是 HTML 快照；提到“图片保留 URL/不用下载资源”时按 HTML 快照处理，例如“采集产品信息，图片保留 URL 即可”产出 HTML + `.meta.json`，不建资源目录，也不调用 `archive_page.py`。只有明确要离线可看或连资源保存时才做离线存档。
+
+交付前核对：字段、HTML 快照、离线存档没有混用；用户只要求保留 URL 时，产物中不应新增资源目录，也不应把远程资源转成 data URI。
 
 ## 入口与读取顺序
 
@@ -17,11 +38,12 @@ description: >
 | 任务 | 入口 | 该读 |
 | --- | --- | --- |
 | 抓单个页面、诊断未知站点 | CLI `scripts/resilient_fetch.py`（默认 `--engine auto`） | 本文件"工作流"与"引擎分层与选择" |
+| 保存 HTML 快照、图片等保留原 URL | CLI `--out` 或 `save_page` | 本文件"先定交付物"与"示例脚本"；细节见 [HTML 快照与序列化](references/html-snapshot.md) |
 | 只要标题/状态码/字节数，或供其他语言调用 | `scripts/example_extract_page_info.py`（stdout JSON） | 本文件"示例脚本" |
 | 页面多于一个、需要预热/复用会话/sitemap | 三条批量会话按依赖选 | [references/batch-workflows.md](references/batch-workflows.md) |
 | 层 2/3 都卡同一挑战，怀疑控制面/指纹/IP | 先做检测层判断，再选引擎 | [references/detection-layers.md](references/detection-layers.md) |
 | 在 Python 进程内取页或存盘 | `resilient_fetch` 的 `FetchOptions`/`fetch_page`/`save_page` | [references/module-api.md](references/module-api.md) |
-| 已保存的 HTML 要离线可看 | `scripts/archive_page.py` | 本文件"示例脚本" |
+| 已保存的 HTML 要离线存档（下载/内联资源） | `scripts/archive_page.py` | 本文件"示例脚本" |
 | 安装到 Agent、换机器或换系统 | [references/installation.md](references/installation.md) | 该文件，再读 [references/platforms.md](references/platforms.md) |
 | 修改 `scripts/` 或 `tests/` | 直接改脚本，无封装入口 | 本文件"工作流"末段的质量门禁 |
 
@@ -31,8 +53,8 @@ description: >
 
 ```mermaid
 flowchart TD
-    A["任务: 拿到一个页面"] --> B{"要的结果"}
-    B -->|"存档: 离线可看 / 完整 DOM / 取证"| C{"该站已知挑战?"}
+    A["任务: 拿到一个页面"] --> B{"要的产物"}
+    B -->|"完整 DOM(含 JS): HTML 快照 / 离线存档 / 取证"| C{"该站已知挑战?"}
     B -->|"正文或字段: 摘要, 取数"| D["auto: static 优先, 命中挑战再升档"]
     C -->|"是: 有同站观测"| E["钉 --engine scrapling + save_page"]
     C -->|"否或未知"| F["钉 --engine playwright + save_page"]
@@ -42,13 +64,14 @@ flowchart TD
     D --> G
 ```
 
-- 存档要的是渲染后的完整 DOM，层 0 给不出，从最低层起跑属于纯浪费；取数才按 `auto` 从 static 起步。
+- HTML 快照和离线存档若要包含 JS 渲染结果，就要渲染后的完整 DOM，层 0 给不出，从最低层起跑属于纯浪费；确认静态正文已足够时可直接走层 0。取数才按 `auto` 从 static 起步。
+- HTML 快照只写 HTML 与 `.meta.json`，图片等子资源保留原 URL；离线存档是在校验通过后再用 `archive_page.py` 或 MHTML 下载/内联资源。
 - 钉住某层会失去升档兜底，代价与适用条件见“引擎分层与选择”。
-- 层 2 和层 3 以同一挑战签名失败时，别默认“再加一层”；先按 [检测层与引擎选择](references/detection-layers.md) 判断是控制面、指纹还是出口/IP 问题，再决定换出口或显式试 nodriver。
+- 层 2 和层 3 以同一挑战签名失败时，别默认“再加一层”；先按 [检测层与引擎选择](references/detection-layers.md) 判断是控制面、指纹还是出口/IP 问题，再决定换出口或显式试 nodriver；该文末有一次 Akamai 站点的完整判读示例。
 
-前置：先确认已走 `network-access` 排除选路问题；普通超时/直连失败不直接启动浏览器，仅当正文为挑战/拦截特征时才用本 skill，选路结论同一任务内复用。该站已有观测记录或本次已确认挑战特征时，不必再发裸请求复现 403，直接按上图取存档或升档（判定位置见 `network-access` 的“抓取前先查同站观测”）。
+前置：先确认已走 `network-access` 排除选路问题；普通超时/直连失败不直接启动浏览器，仅当正文为挑战/拦截特征时才用本 skill，选路结论同一任务内复用。该站已有观测记录或本次已确认挑战特征时，不必再发裸请求复现 403，直接按上图取 HTML 快照或升档（判定位置见 `network-access` 的“抓取前先查同站观测”）。
 
-1. 如果需要将本 Skill 安装到 Codex、Claude Code、Cursor 或 Gemini CLI，先读取 [references/installation.md](references/installation.md)。依赖按引擎分层安装，**只装当前任务需要的层**：层 0（`static`）零第三方依赖，层 1 装 `playwright`+浏览器，层 2 装 `requirements-stealth.txt` 并运行 `scrapling install`，层 3 再装 `requirements-cloak.txt` 并运行 `python -m cloakbrowser install`。直接 CDP 备用（可选）再装 `requirements-nodriver.txt`，复用系统 Chrome，不需要 `playwright install`；其许可为 AGPL-3.0，商用或 SaaS 先评估。装层 2 会带入 Patchright，层 1 的默认 API 也会随之改变；做原版 Playwright/Patchright A/B 时用 `--playwright-api` 固定。层 2 的 `scrapling install` 实际调用 Playwright 的安装器，而运行时用 Patchright；装完在同一环境补跑 `python -m patchright install chromium`，并用两边的 `install --dry-run chromium` 核对 revision，避免 `Executable doesn't exist`。随后根据当前系统读取 [references/platforms.md](references/platforms.md)，选定独立 Python 3.10+ 环境；国内安装先配置下载路线，`scrapling install` 的系统依赖步骤与页面代理分开处理。环境可以由 Conda、`venv` 或 `uv venv` 管理；Linux 是默认部署目标。先运行 `uv --version`；可用时优先执行 `uv pip install --python <目标环境解释器> ...`，不可用时回退到该环境的 `python -m pip`，不要混用两个安装器修改同一环境。安装新层会改动本机环境（下载量、浏览器二进制、系统依赖），属于需要用户同意的操作：先说明缺哪层、装什么、大概多大、用什么命令，得到同意再装；不得以“本机没装该层”为由跳过，也不得因此默认改用第三方服务。
+1. 如果需要将本 Skill 安装到 Codex、Claude Code、Cursor 或 Gemini CLI，先读取 [references/installation.md](references/installation.md)。依赖按引擎分层安装，**只装当前任务需要的层**：层 0（`static`）零第三方依赖，层 1 装 `playwright`+浏览器，层 2 装 `requirements-stealth.txt` 并运行 `scrapling install`，层 3 再装 `requirements-cloak.txt` 并运行 `python -m cloakbrowser install`。直接 CDP 备用（可选）再装 `requirements-nodriver.txt`，复用系统 Chrome，不需要 `playwright install`；其许可为 AGPL-3.0，商用或 SaaS 先评估。装层 2 会带入 Patchright，层 1 的默认 API 也会随之改变；做原版 Playwright/Patchright A/B 时用 `--playwright-api` 固定。层 2 的 `scrapling install` 实际调用 Playwright 的安装器，而运行时用 Patchright；装完在同一环境补跑 `python -m patchright install chromium`，并用两边的 `install --dry-run chromium` 核对 revision，避免 `Executable doesn't exist`。随后根据当前系统读取 [references/platforms.md](references/platforms.md)，选定独立 Python 3.10+ 环境；国内安装先配置下载路线，`scrapling install` 的系统依赖步骤与页面代理分开处理。环境可以由 Conda、`venv` 或 `uv venv` 管理；Linux 是默认部署目标。先运行 `uv --version`；可用时优先执行 `uv pip install --python <目标环境解释器> ...`，不可用时回退到该环境的 `python -m pip`，不要混用两个安装器修改同一环境。安装新层会改动本机环境（下载量、浏览器二进制、系统依赖）。会话或本机偏好没有禁止安装时按默认授权处理：报出缺哪层、装什么、大概多大，按任务选最小可用层直接安装并重跑，不要停在“是否安装”的请示上；只有用户已声明禁止安装，或安装涉及付费、账号、系统级改动时才先确认。不得以“本机没装该层”为由跳过，也不得因此默认改用第三方服务。
 2. 运行只读环境诊断：
 
    ```bash
@@ -65,7 +88,7 @@ flowchart TD
 
    明确需要本地代理但未设置 `SCRAPE_PROXY` 时，可在抓取命令中添加 `--discover-proxy`，按本机登记文件中的候选依次探测。它只取**第一个**能建立 TCP 连接的候选，不验证协议与出口；命中挑战或 403 时不要据此认定站点不可达，先用 `network-access` 的 `probe_local_proxies.py` 取 `usable[]`，再对每个可用入口各发一次目标请求。端口开放只代表存在候选服务，换出口的结论要写进报告。
 
-3. 取正文时先使用 `auto`；存档要完整 DOM 时按上面的入口图直接钉层。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。直接 CDP 的 `nodriver` 排在最后，且只在 `--headful` 时加入 `auto`；无头 `auto` 不会尝试它。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
+3. 取正文时先使用 `auto`；要 HTML 快照或离线存档时按上面的入口图直接钉层。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。直接 CDP 的 `nodriver` 排在最后，且只在 `--headful` 时加入 `auto`；无头 `auto` 不会尝试它。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
 
    ```bash
    python <skill-dir>/scripts/resilient_fetch.py \
@@ -74,15 +97,15 @@ flowchart TD
      --expect-text 'Product name'
    ```
 
-4. 高对抗站点在无头失败后，先用 `--headful` 重试——有头窗口通常比安装新层更省，指纹敏感的站点再配合 `--real-chrome` 换真实浏览器（属指纹需要，不要求目标点名系统 Chrome）；层 2/3 可加 `--humanize`。Linux 服务器先配置 Xvfb。**层 1（playwright）现在也支持有头人工验证**：配合 `--challenge-wait-ms 300000`，脚本会打开可见窗口并在预算内轮询页面，等你手动过完验证再继续（此前层 1 会直接保存挑战页）。有头模式会先打印操作指引；无头模式若撞上挑战，日志会提示改用 `--headful` 或层 2/3。如果层 2/3 都卡在同一挑战、且怀疑目标专门识别 Patchright 控制面，可显式试 `--engine nodriver --headful`：它用系统 Chrome 直接 CDP，不求解挑战、不伪造指纹，只作为控制面备用；无头 nodriver 通常明显更弱，不建议用于反检测。代理地区未知时不要硬编码语言和时区；已知地区时同时设置 `--locale` 与 `--timezone`，或安装 `cloakbrowser[geoip]` 后使用 `--geoip`。
+4. 高对抗站点在无头失败后，先用 `--headful` 重试——有头窗口通常比安装新层更省，指纹敏感的站点再配合 `--real-chrome` 换真实浏览器（属指纹需要，不要求目标点名系统 Chrome）；层 2/3 可加 `--humanize`。Linux 服务器先配置 Xvfb。**层 1（playwright）现在也支持有头人工验证**：配合 `--challenge-wait-ms 300000`，脚本会打开可见窗口并在预算内轮询页面，等你手动过完验证再继续（此前层 1 会直接保存挑战页）。有头模式会先打印操作指引；无头模式若撞上挑战，日志会提示改用 `--headful` 或层 2/3。如果层 2/3 都卡在同一挑战、且怀疑目标专门识别 Patchright 控制面，可显式试 `--engine nodriver --headful`：它用系统 Chrome 直接 CDP，不求解挑战、不伪造指纹，只作为控制面备用；无头 nodriver 通常明显更弱，不建议用于反检测。**判据**：用户自己的浏览器能打开同一 URL、自动化浏览器却被拒时，出口通常不是问题，差异在控制面或指纹，直接改走 `--engine nodriver --headful`，不要先轮换代理或继续叠加 Patchright 系引擎；Akamai 一类非 Cloudflare WAF 常直接回 403/Access Denied，`solve_cloudflare` 对它无效。代理地区未知时不要硬编码语言和时区；已知地区时同时设置 `--locale` 与 `--timezone`，或安装 `cloakbrowser[geoip]` 后使用 `--geoip`。
 5. 自动求解返回后仍停在挑战页时，使用 `--challenge-wait-ms 300000 --profile-dir <专用目录>`。有头模式允许用户在这段时间人工完成一次验证，后续运行复用 cookie/localStorage。脚本在该根目录下分别使用 `scrapling/`、`cloak/` 与 `nodriver/`，避免不同浏览器共享同一 profile。
-6. 默认使用状态码、挑战特征、正文大小和最终 origin 做宽松检查。只有用户要求严格验证或目标已知会返回软错误页时，才增加 `--wait-selector`、`--expect-text`、固定路径或业务字段断言；不要把易变商品文案默认写成成功条件。状态码本身不足以判定拦截：HTTP 403 且正文没有拦截特征、长度达标、期望文本全部命中时，按可用内容接受并在 `notes` 记 `http_status:403:accepted_by_content`（日志会告警）；这类正文可能尚未水合，需要完整客户端渲染时显式指定 `--engine scrapling` 等更高层。其余 4xx/5xx 仍按失败处理。
+6. 默认使用状态码、挑战特征、正文大小和最终 origin 做宽松检查；这套检查只挡明显的挑战页与空壳。**站点外壳配一句通用错误文案（如 “There was an error processing your request.”）属于软错误页，宽松检查会判成成功**：抓商品、详情、文章等具体资源时，至少加一项内容断言——目标标题或关键字段的 `--expect-text`，或主内容容器的 `--wait-selector`；命中的正文不含目标字段就按 `blocked_or_empty` 继续升档，不要把 200 当达成。断言用稳定字段（标题、规格名、栏目名），不要把易变促销文案写成成功条件。状态码本身不足以判定拦截：HTTP 403 且正文没有拦截特征、长度达标、期望文本全部命中时，按可用内容接受并在 `notes` 记 `http_status:403:accepted_by_content`（日志会告警）；这类正文可能尚未水合，需要完整客户端渲染时显式指定 `--engine scrapling` 等更高层。其余 4xx/5xx 仍按失败处理。
 7. 检查 `<输出>.meta.json` 的最终 URL、状态码、引擎、耗时、版本、哈希、`notes` 和尝试记录；失败时按 `<输出>.attempts.json` 里的 `kind` 处置：
 
    | `kind` 或现象 | 含义 | 下一步 |
    | --- | --- | --- |
-   | `unavailable` | 该层依赖不在当前解释器里 | 用 `check_environment.py --list-envs` 换解释器，或按 installation.md 补装该层（先征得同意，见第 1 步） |
-   | `blocked` / `blocked_or_empty` | 被挑战拦截，或只拿到空壳 | 按顺序收口：升档（已安装的更高层）→ `--headful`（必要时配合 `--real-chrome`）→ 逐个换登记中的可用出口并对目标各发一次请求 → 安装缺失的层（先征得同意）→ 第三方正文服务（先征得同意）。每一步都记录结果，本机路线全部失败才如实报告；第三方路线要在报告里注明来源与出口 |
+   | `unavailable` | 该层依赖不在当前解释器里 | 用 `check_environment.py --list-envs` 换解释器，或按 installation.md 补装该层（默认授权见第 1 步） |
+   | `blocked` / `blocked_or_empty` | 被挑战拦截，或只拿到空壳 | 按顺序收口：升档（已安装的更高层）→ `--headful`（必要时配合 `--real-chrome`）→ 逐个换登记中的可用出口并对目标各发一次请求 → 安装缺失的层（默认授权见第 1 步）→ 第三方正文服务（先征得同意）。每一步都记录结果，本机路线全部失败才如实报告；第三方路线要在报告里注明来源与出口 |
    | 结果状态为 404/410 | 服务端明确表示资源不存在或已删除，`auto` 已停止升档 | 先确认 URL、权限与站点可见性；在同一会话用对照页或公开接口核对，不要反复换引擎 |
    | `runtime_error` | 运行期异常（浏览器缺失、崩溃等） | 看该引擎报错，按 installation.md 补齐缺件后重跑 |
    | 达到 `--wall-timeout-ms` 仍无结论 | 硬上限用尽 | 提高 `--timeout-ms` 与 `--wall-timeout-ms`（如 300000/600000），或先排除出口问题 |
@@ -100,13 +123,14 @@ python -m pytest
 
 ## 示例脚本
 
-保存网页渲染后源码及 `.meta.json`；要离线存档时同时导出 MHTML 快照：
+保存渲染后的 HTML 快照（只写 HTML 与 `.meta.json`，图片等资源保留原 URL）：
 
 ```bash
 python <skill-dir>/scripts/example_save_page.py 'https://example.com/' \
-  --out './example.html' --discover-proxy --expect-text 'Example Domain' \
-  --save-snapshot './example.mhtml'
+  --out './example.html' --discover-proxy --expect-text 'Example Domain'
 ```
+
+只有明确要离线打开、连资源一起保存时，才加 `--save-snapshot` 导出 MHTML；它会包含页面资源，不是“只保留 URL”的快照。
 
 获取网页并以 JSON 打印标题、状态码、最终 URL、引擎、字节数和正文预览：
 
@@ -115,7 +139,7 @@ python <skill-dir>/scripts/example_extract_page_info.py 'https://example.com/' \
   --discover-proxy --preview-chars 500
 ```
 
-存档默认拆成 HTML 加资源目录；需要单文件时加 `--single-file`：
+`archive_page.py` 用于把已保存的 HTML 做成离线存档：默认拆成 HTML 加资源目录，需要单文件时加 `--single-file`。它会下载或内联资源，不是保存 HTML 快照的默认步骤；用户说“图片保留 URL”时不要调用。
 
 ```bash
 python <skill-dir>/scripts/archive_page.py './page.html' --mhtml './page.mhtml' \
@@ -126,12 +150,12 @@ python <skill-dir>/scripts/archive_page.py './page.html' --single-file -o './pag
 ```
 
 - 拆分模式保留 `<link>` 与 `srcset`，资源按内容哈希命名写入资源目录，HTML 与 CSS 用相对路径引用；单文件模式把样式换成 `<style>`、图片与字体转 base64 data URI，并清空 `srcset`（data URI 含逗号，srcset 按逗号切候选，会被解析错）。
-- 快照由浏览器会话内的 CDP 抓取，含登录态与挑战清除后的资源；`--mhtml` 命中时不走网络，缺失的资源才回退 HTTP。层 0 没有浏览器，快照与 cookie 都不产生文件。
+- MHTML 快照由浏览器会话内的 CDP 抓取，含登录态与挑战清除后的资源；`--mhtml` 命中时不走网络，缺失的资源才回退 HTTP。层 0 没有浏览器，快照与 cookie 都不产生文件。
 - 默认从同名 `page.html.meta.json` 的 `final_url` 解析相对地址，也可用 `--base-url` 指定；输入必须是 UTF-8。
 - 单资产与总量上限默认 2 MiB / 30 MiB，超限或抓取失败的条目保留原 URL，并在日志与 `--json` 里给出原因；上限按去重后的资产字节计。
 - 单文件模式同一图片被多处引用会重复写入 data URI，成品体积明显大于拆分模式；`<script src>` 两种模式都不内联，依赖脚本渲染的页面离线打开仍可能缺内容。
 
-`--save-cookies` 导出 Netscape 格式 cookie 给 `--cookies` 用，适合只校验 cookie 的站点。挑战站的 clearance 不能跨 HTTP 栈复用：实测把 `cf_clearance` 交给 urllib、以及用 `curl_cffi` 做 TLS 伪装，同一 URL 仍返回 403，这类资源只能走快照。cookie 文件含会话凭据，不放仓库、用完删除。
+`--save-cookies` 导出 Netscape 格式 cookie 给 `--cookies` 用，适合只校验 cookie 的站点。挑战站的 clearance 不能跨 HTTP 栈复用：实测把 `cf_clearance` 交给 urllib、以及用 `curl_cffi` 做 TLS 伪装，同一 URL 仍返回 403，这类资源只能走 MHTML 快照。cookie 文件含会话凭据，不放仓库、用完删除。
 
 任意语言可把信息示例作为子进程执行并只解析 stdout 的 JSON；抓取日志写入 stderr。Python 程序也可将 `<skill-dir>/scripts` 加入模块搜索路径，再从 `example_extract_page_info.py` 导入 `fetch_page_info()` 直接取得字典。
 
@@ -197,7 +221,7 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 
 `--headful` 对层 1/2/3 和 nodriver 都可用（弹出真实窗口，供首次人工验证）；层 0 不接受 `--headful`。`--humanize`、`--geoip`、`--hide-canvas` 只对层 2/3 生效，层 0 与 nodriver 会告警忽略。
 
-有头人工验证（层 1、层 2/3 与 nodriver 都适用）：`--headful --challenge-wait-ms 300000` 会打开可见窗口，在预算内每秒检查一次页面，挑战标记消失即继续（层 1 与 nodriver 在验证通过后才执行 `--wait-selector`/截图/取源码，因此选择器不会先在挑战页上超时）。运行时会打印操作指引与进度（首次即提示，之后每 15 秒一条"仍在等待验证"），预算用尽则按当前页面继续并在日志里说明。`--challenge-wait-ms 0` 时不会等待，有头模式会提示建议设为 300000。
+有头人工验证（层 1、层 2/3 与 nodriver 都适用）：`--headful --challenge-wait-ms 300000` 会打开可见窗口，在预算内每秒检查一次页面，挑战标记消失即继续（层 1 与 nodriver 在验证通过后才执行 `--wait-selector`/截图/取源码，因此选择器不会先在挑战页上超时）。运行时会打印操作指引与进度（首次即提示，之后每 15 秒一条"仍在等待验证"），预算用尽则按当前页面继续并在日志里说明。要让用户看着跑或手动接管时，先确认浏览器与用户桌面同会话（Windows 比对进程 `SessionId` 与 `explorer.exe`，服务会话或另一登录会话里窗口不可见），把窗口置前，并保持到验证结束或约定观察时长（纯观察不低于 60 秒）。窗口标题里出现站点名不能证明用户看见了窗口；用户说没看到时，先查会话与置前，不要直接判定是用户漏看。`--challenge-wait-ms 0` 时不会等待，有头模式会提示建议设为 300000。
 
 默认挑战操作超时为 300000 ms。不要把它降到 60000 ms 以下；验证可能经历多轮跳转。日志中的 `Cloudflare page didn't disappear after 10s` 和 `captcha is still present, solving again` 表示 Scrapling 正在同一页面继续求解，不是终态失败；`No Cloudflare challenge found` 表示页面本来就是正常内容，也不是失败。不要据此中止进程。仅在返回内容仍为挑战页、引擎抛错或达到 `--wall-timeout-ms` 后判失败。需要给内部求解更多轮次时提高硬超时，例如 `--timeout-ms 300000 --wall-timeout-ms 600000`。`--retries` 只控制导航或代理错误重试，与 Cloudflare 内部求解轮次无关。
 
