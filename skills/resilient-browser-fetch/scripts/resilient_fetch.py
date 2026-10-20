@@ -7,16 +7,19 @@ validation, and normalized diagnostics around a layered engine set:
 - level 1 ``playwright``: plain rendering through Playwright or Patchright;
 - level 2 ``scrapling``: Patchright-based rendering with Cloudflare solving;
 - level 3 ``cloak-cdp``: CloakBrowser fingerprint base driven through Scrapling;
-- explicit ``nodriver``: direct-CDP control plane on system Chrome, no solver.
+- explicit ``nodriver``: direct-CDP control plane on system Chrome, no solver;
+- explicit ``chrome-late``: let the page load first, then attach and read.
 
 ``auto`` tries only the engines that are actually installed, from the lowest
 capability level up, so a missing enhancement package downgrades the run instead
 of failing it. Layer numbers describe capability, not stealth: layers 2 and 3
 still use Patchright as the control plane. ``nodriver`` runs only when the
 caller explicitly selects it, or in ``auto`` with ``--headful`` because its
-headless mode is substantially weaker. It is intentionally optimized for
-reliable single-page jobs; callers that need a continuous batch should reuse a
-session manager instead.
+headless mode is substantially weaker. ``chrome-late`` is a different axis
+rather than a higher tier: it changes *when* the debugger attaches, so it stays
+out of the automatic ladder unless the caller asks for it. It is intentionally
+optimized for reliable single-page jobs; callers that need a continuous batch
+should reuse a session manager instead.
 """
 
 from __future__ import annotations
@@ -47,6 +50,17 @@ from typing import Any, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
 from urllib.request import ProxyHandler, Request, build_opener
+
+from chrome_late import (
+    DEFAULT_SETTLE_MS,
+    ChromeLateError,
+    OwnedBrowserProcess,
+    build_launch_args,
+    find_system_browser,
+    proxy_server_value,
+    sweep_stale_profiles,
+    wait_for_page_ready,
+)
 
 DEFAULT_TIMEOUT_MS = 300_000
 WALL_TIMEOUT_HELP = (
@@ -98,6 +112,8 @@ CAP_RENDER = "render"
 CAP_SOLVE = "solve-challenge"
 CAP_CDP = "cdp"
 CAP_DIRECT_CDP = "direct-cdp"
+# 晚接入: 不是更高的能力档位，而是改变调试器接入时机的那一维
+CAP_LATE_CDP = "late-cdp"
 
 # 尝试结果分类:调用方据此区分"该装依赖"与"该换路线"。
 KIND_OK = "ok"
@@ -130,6 +146,7 @@ __all__ = [
     "engine_availability",
     "engine_order",
     "fetch_page",
+    "fetch_with_chrome_late",
     "fetch_with_static",
     "playwright_api_name",
     "reset_availability_cache",
@@ -193,6 +210,7 @@ class FetchOptions:
     expected_texts: tuple[str, ...] = ()
     post_wait_ms: int = 1000
     challenge_wait_ms: int = 0
+    settle_ms: int = DEFAULT_SETTLE_MS
     min_bytes: int = 300
     locale: str | None = None
     timezone: str | None = None
@@ -413,6 +431,9 @@ def block_reasons(page_html: str) -> list[str]:
         reasons.append("cloudflare_challenge_markers")
     if "challenges.cloudflare.com" in sample and "noindex,nofollow" in sample:
         reasons.append("cloudflare_interstitial")
+    # Akamai Bot Manager 的拦截页: 正文只有一小段脚本，标题为空，靠固定文案识别
+    if "powered and protected by" in sample:
+        reasons.append("akamai_bot_page")
     return sorted(set(reasons))
 
 
@@ -1535,6 +1556,102 @@ def fetch_with_nodriver(config: dict[str, Any]) -> FetchResult:
     return uc.loop().run_until_complete(fetch_with_nodriver_async(config))
 
 
+def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
+    """Load the page first, then attach once and read the rendered DOM.
+
+    The browser is launched by this engine and is reclaimed on every exit path:
+    the process tree it started is terminated and its temporary profile removed.
+    """
+
+    started = time.perf_counter()
+    url = config["url"]
+    executable = find_system_browser(config.get("executable_path"))
+    if not executable:
+        raise EngineUnavailableError(
+            "chrome-late 不可用:未找到系统 Chrome/Chromium/Edge；"
+            "请安装浏览器或用 --executable-path 指定路径。"
+        )
+    if os.name != "nt" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        raise EngineUnavailableError(
+            "chrome-late 需要有头环境(Linux 需 DISPLAY 或 Xvfb)；无显示环境请改用其他引擎。"
+        )
+    try:
+        proxy = proxy_server_value(config.get("proxy"))
+    except ChromeLateError as exc:
+        raise FetchError(str(exc)) from exc
+
+    port = free_local_port()
+    profile_dir = Path(tempfile.mkdtemp(prefix="chrome-late-"))
+    browser = None
+    try:
+        stale = sweep_stale_profiles()
+        if stale:
+            logging.info("清理上一轮遗留的浏览器 profile: %s", ", ".join(stale))
+        args = build_launch_args(
+            executable=executable,
+            port=port,
+            user_data_dir=str(profile_dir),
+            url=url,
+            proxy=proxy,
+        )
+        logging.info(
+            "启动系统浏览器并等待页面自然加载(不接调试器)，之后晚接入读取: %s", executable
+        )
+        browser = OwnedBrowserProcess.launch(args)
+        signal_info = wait_for_page_ready(
+            port,
+            target_url=url,
+            min_settle_ms=int(config.get("settle_ms") or DEFAULT_SETTLE_MS),
+            max_wait_ms=int(config["timeout_ms"]),
+        )
+        if not signal_info.ready:
+            logging.info(
+                "等待到可用标题(等 %d ms)，仍按晚接入读取已渲染内容。", signal_info.waited_ms
+            )
+        factory = load_playwright_factory(config["playwright_api"])
+        with factory() as driver:
+            connected = driver.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+            try:
+                pages = [page for context in connected.contexts for page in context.pages]
+                if not pages:
+                    raise FetchError("chrome-late: 晚接入后没有可用页面。")
+                page = pages[0]
+                html = page.evaluate("() => document.documentElement.outerHTML")
+                title = page.title()
+                final_url = page.url
+                if config.get("screenshot"):
+                    page.screenshot(path=config["screenshot"], full_page=False)
+                if config.get("save_cookies"):
+                    cookies = [cookie for context in connected.contexts for cookie in context.cookies()]
+                    write_cookie_jar(config["save_cookies"], cookies)
+            finally:
+                connected.close()
+    finally:
+        if browser is not None:
+            browser.close()
+        shutil.rmtree(profile_dir, ignore_errors=True)
+
+    result = FetchResult(
+        engine="chrome-late",
+        url=url,
+        final_url=final_url,
+        status=None,
+        html=html,
+        elapsed_sec=time.perf_counter() - started,
+        title=title,
+    )
+    result.notes.extend(
+        [
+            "control_plane:late-cdp-attach",
+            f"browser_channel:system-chrome({Path(executable).name})",
+            "headless:false",
+            f"settle_ms:{int(config.get('settle_ms') or DEFAULT_SETTLE_MS)}",
+            f"ready:{str(signal_info.ready).lower()}",
+        ]
+    )
+    return result
+
+
 def fetch_with_scrapling_cli(config: dict[str, Any], worker_dir: Path) -> FetchResult:
     executable = shutil.which("scrapling")
     if not executable:
@@ -1615,6 +1732,8 @@ def run_engine(
         return fetch_with_cloak_cdp(config)
     if engine == "nodriver":
         return fetch_with_nodriver(config)
+    if engine == "chrome-late":
+        return fetch_with_chrome_late(config)
     if engine == "scrapling-cli":
         return fetch_with_scrapling_cli(config, worker_dir)
     raise FetchError(f"未知引擎: {engine}")
@@ -1922,6 +2041,21 @@ def probe_scrapling_cli() -> EngineAvailability:
     return EngineAvailability(True, executable)
 
 
+def probe_chrome_late() -> EngineAvailability:
+    """Report whether the late-attach engine can run on this machine."""
+
+    executable = find_system_browser()
+    if not executable:
+        return EngineAvailability(False, "未找到系统 Chrome/Chromium/Edge", ("系统浏览器",))
+    if os.name != "nt" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return EngineAvailability(False, "无显示环境(需 DISPLAY 或 Xvfb)", ("显示环境",))
+    if resolve_playwright_api(DEFAULT_PLAYWRIGHT_API) is None:
+        return EngineAvailability(
+            False, "未安装 playwright/patchright(晚接入需要它连接 CDP)", ("playwright|patchright",)
+        )
+    return EngineAvailability(True, f"系统浏览器 {Path(executable).name} + 晚接入可用")
+
+
 ENGINES: dict[str, EngineSpec] = {
     spec.name: spec
     for spec in (
@@ -1960,6 +2094,14 @@ ENGINES: dict[str, EngineSpec] = {
             probe_scrapling_cli,
             in_auto=False,
         ),
+        EngineSpec(
+            "chrome-late",
+            1,
+            frozenset({CAP_HTTP, CAP_RENDER, CAP_DIRECT_CDP, CAP_LATE_CDP}),
+            ("playwright|patchright", "系统 Chrome/Chromium/Edge"),
+            probe_chrome_late,
+            in_auto=False,
+        ),
     )
 }
 
@@ -1970,6 +2112,7 @@ ENGINE_CHOICES = (
     "scrapling",
     "cloak-cdp",
     "nodriver",
+    "chrome-late",
     "scrapling-cli",
 )
 WORKER_ENGINE_CHOICES = tuple(name for name in ENGINE_CHOICES if name != "auto")
@@ -2223,6 +2366,7 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "wait_until": options.wait_until,
         "post_wait_ms": options.post_wait_ms,
         "challenge_wait_ms": options.challenge_wait_ms,
+        "settle_ms": options.settle_ms,
         "locale": options.locale,
         "timezone": options.timezone,
         "user_agent": options.user_agent,
@@ -2483,7 +2627,8 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "auto 按可用引擎顺序尝试: static → playwright → scrapling → cloak-cdp；"
             "nodriver 仅在 --headful 时加入 auto，或显式 --engine nodriver。"
-            "显式指定某个引擎时缺件会直接失败。"
+            "chrome-late 先让页面自然加载再接入调试器(需 --settle-ms 调整窗口)，"
+            "只能显式指定。显式指定某个引擎时缺件会直接失败。"
         ),
     )
     parser.add_argument(
@@ -2537,6 +2682,15 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=0,
         help="求解器返回后若仍为挑战页，继续等待；有头模式下可用于人工接管。",
+    )
+    parser.add_argument(
+        "--settle-ms",
+        type=int,
+        default=DEFAULT_SETTLE_MS,
+        help=(
+            "chrome-late 的自然加载窗口:这段时间内不接调试器，"
+            "页面渲染完才接入读取；默认 12000。"
+        ),
     )
     parser.add_argument("--min-bytes", type=int, default=300)
     parser.add_argument("--locale", help="BCP 47 locale，例如 en-US。")
@@ -2634,6 +2788,7 @@ def main(argv: list[str] | None = None) -> int:
         expected_texts=tuple(args.expect_text),
         post_wait_ms=args.post_wait_ms,
         challenge_wait_ms=args.challenge_wait_ms,
+        settle_ms=args.settle_ms,
         min_bytes=args.min_bytes,
         locale=args.locale,
         timezone=args.timezone,

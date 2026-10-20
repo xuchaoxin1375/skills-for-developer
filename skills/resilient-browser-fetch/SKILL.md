@@ -1,10 +1,10 @@
 ---
 name: resilient-browser-fetch
 description: >
-  按能力与检测层分层的稳健网页采集：层 0 标准库 HTTP、层 1 Playwright/Patchright 渲染、层 2 Scrapling 的 Cloudflare 挑战处理、层 3 可选 CloakBrowser 指纹底座，另有 nodriver 直接 CDP 的有头备用；
+  按能力与检测层分层的稳健网页采集：层 0 标准库 HTTP、层 1 Playwright/Patchright 渲染、层 2 Scrapling 的 Cloudflare 挑战处理、层 3 可选 CloakBrowser 指纹底座，另有 nodriver 直接 CDP 的有头备用与 chrome-late 晚接入（先让页面自然加载、再接调试器读取）；
   auto 只升能力档、不保证隐蔽性，缺件降级而不是整体失败，遇到 404/410 等资源级状态停止升档。
-  用于抓取需渲染或经 network-access 确认为挑战页的站点、Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间人工验证、拦截页识别、同站会话复用、控制面/指纹/IP 分层判断，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；
-  也用于保存渲染后的 HTML 快照：默认只写 HTML 与元数据，图片等子资源保留原 URL；离线存档（下载或内联资源）需用户明确要求。选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
+  用于抓取需渲染或经 network-access 确认为挑战页的站点、Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间人工验证、拦截页识别、同站会话复用、控制面/指纹/IP 分层判断、接入时机、真实浏览器会话复用与同类方案对比（DrissionPage、Selenium、托管浏览器等），以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；
+  也用于保存渲染后的 HTML 快照：默认只写 HTML 与元数据，图片等子资源保留原 URL；离线存档（下载或内联资源）需用户明确要求；本 skill 启动的浏览器按所有权回收。选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
 ---
 
 # 稳健浏览器采集
@@ -97,7 +97,7 @@ flowchart TD
      --expect-text 'Product name'
    ```
 
-4. 高对抗站点在无头失败后，先用 `--headful` 重试——有头窗口通常比安装新层更省，指纹敏感的站点再配合 `--real-chrome` 换真实浏览器（属指纹需要，不要求目标点名系统 Chrome）；层 2/3 可加 `--humanize`。Linux 服务器先配置 Xvfb。**层 1（playwright）现在也支持有头人工验证**：配合 `--challenge-wait-ms 300000`，脚本会打开可见窗口并在预算内轮询页面，等你手动过完验证再继续（此前层 1 会直接保存挑战页）。有头模式会先打印操作指引；无头模式若撞上挑战，日志会提示改用 `--headful` 或层 2/3。如果层 2/3 都卡在同一挑战、且怀疑目标专门识别 Patchright 控制面，可显式试 `--engine nodriver --headful`：它用系统 Chrome 直接 CDP，不求解挑战、不伪造指纹，只作为控制面备用；无头 nodriver 通常明显更弱，不建议用于反检测。**判据**：用户自己的浏览器能打开同一 URL、自动化浏览器却被拒时，出口通常不是问题，差异在控制面或指纹，直接改走 `--engine nodriver --headful`，不要先轮换代理或继续叠加 Patchright 系引擎；Akamai 一类非 Cloudflare WAF 常直接回 403/Access Denied，`solve_cloudflare` 对它无效。代理地区未知时不要硬编码语言和时区；已知地区时同时设置 `--locale` 与 `--timezone`，或安装 `cloakbrowser[geoip]` 后使用 `--geoip`。
+4. 高对抗站点在无头失败后，先用 `--headful` 重试——有头窗口通常比安装新层更省，指纹敏感的站点再配合 `--real-chrome` 换真实浏览器（属指纹需要，不要求目标点名系统 Chrome）；层 2/3 可加 `--humanize`。Linux 服务器先配置 Xvfb。**层 1（playwright）现在也支持有头人工验证**：配合 `--challenge-wait-ms 300000`，脚本会打开可见窗口并在预算内轮询页面，等你手动过完验证再继续（此前层 1 会直接保存挑战页）。有头模式会先打印操作指引；无头模式若撞上挑战，日志会提示改用 `--headful` 或层 2/3。如果层 2/3 都卡在同一挑战、且怀疑目标专门识别 Patchright 控制面，可显式试 `--engine nodriver --headful`：它用系统 Chrome 直接 CDP，不求解挑战、不伪造指纹，只作为控制面备用；无头 nodriver 通常明显更弱，不建议用于反检测。**判据**：用户自己的浏览器能打开同一 URL、自动化浏览器却被拒时，出口通常不是问题，差异在控制面或指纹，直接改走 `--engine nodriver --headful`，不要先轮换代理或继续叠加 Patchright 系引擎；Akamai 一类非 Cloudflare WAF 常直接回 403/Access Denied，`solve_cloudflare` 对它无效。换控制面只改信号维度，站点风控随频次与时间动态变化，**任何一次通过都要同条件复测**（新 profile、换出口、隔一段时间各一次）再写进报告。**本阶梯的引擎都是“先接入调试器再导航”**；这类站点会在页面加载早期采到这个接入并判成自动化，换引擎前先试“先自然加载、后接入调试器读取”，见 [检测层与引擎选择](references/detection-layers.md) 的“读页面而不被判成自动化：晚接入”。代理地区未知时不要硬编码语言和时区；已知地区时同时设置 `--locale` 与 `--timezone`，或安装 `cloakbrowser[geoip]` 后使用 `--geoip`。
 5. 自动求解返回后仍停在挑战页时，使用 `--challenge-wait-ms 300000 --profile-dir <专用目录>`。有头模式允许用户在这段时间人工完成一次验证，后续运行复用 cookie/localStorage。脚本在该根目录下分别使用 `scrapling/`、`cloak/` 与 `nodriver/`，避免不同浏览器共享同一 profile。
 6. 默认使用状态码、挑战特征、正文大小和最终 origin 做宽松检查；这套检查只挡明显的挑战页与空壳。**站点外壳配一句通用错误文案（如 “There was an error processing your request.”）属于软错误页，宽松检查会判成成功**：抓商品、详情、文章等具体资源时，至少加一项内容断言——目标标题或关键字段的 `--expect-text`，或主内容容器的 `--wait-selector`；命中的正文不含目标字段就按 `blocked_or_empty` 继续升档，不要把 200 当达成。断言用稳定字段（标题、规格名、栏目名），不要把易变促销文案写成成功条件。状态码本身不足以判定拦截：HTTP 403 且正文没有拦截特征、长度达标、期望文本全部命中时，按可用内容接受并在 `notes` 记 `http_status:403:accepted_by_content`（日志会告警）；这类正文可能尚未水合，需要完整客户端渲染时显式指定 `--engine scrapling` 等更高层。其余 4xx/5xx 仍按失败处理。
 7. 检查 `<输出>.meta.json` 的最终 URL、状态码、引擎、耗时、版本、哈希、`notes` 和尝试记录；失败时按 `<输出>.attempts.json` 里的 `kind` 处置：
@@ -187,16 +187,20 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 
 ## 引擎分层与选择
 
+还有两条不属于引擎层的路线：站点放行凭据在用户自己的浏览器里时，复用那个会话比继续升层更有效；生态里的其他实现怎么比，见 [检测层与引擎选择](references/detection-layers.md) 的“另一条路线：复用真实浏览器会话”与“同类方案对比”。对比表里的方案**不是本 skill 的依赖**，不进 `auto` 阶梯。
+
 | 层 | engine | 能力 | 依赖 | 不做什么 |
 | --- | --- | --- | --- | --- |
 | 0 | `static` | 直连 HTTP 取正文、状态码、重定向链；可选 TLS/HTTP2 客户端伪装 | 无（stdlib）；推荐 `curl_cffi`（socks 代理、`--impersonate`） | 不执行 JS，不求解挑战 |
 | 1 | `playwright` | 无头/有头渲染、等待与交互；可用 `--playwright-api` 选择 Playwright/Patchright | `playwright` 或 `patchright` + 浏览器二进制 | 不求解挑战，指纹弱于层 2 |
 | 1/备用 | `nodriver` | 系统 Chrome 上直接 CDP 渲染；有头时作为控制面备用 | `requirements-nodriver.txt` + 系统 Chrome；AGPL-3.0 | 不求解挑战、不伪造指纹；无头明显更弱；auto 仅 `--headful` 且排最后 |
+| 1/备用 | `chrome-late` | 先让页面自然加载、再接入调试器读已渲染 DOM | 系统 Chrome/Chromium/Edge + `playwright` 或 `patchright` | 改变的是**接入时机**而非能力档位；只能显式 `--engine chrome-late` |
 | 2 | `scrapling` | 反检测渲染 + Cloudflare/Turnstile 求解 | `requirements-stealth.txt` + `scrapling install` | — |
 | 3 | `cloak-cdp` | 层 2 的指纹底座变体 | 层 2 + `requirements-cloak.txt` + `python -m cloakbrowser install` | CloakBrowser 本身不是 CAPTCHA 求解器 |
 
 - **层号是能力档位，不是隐蔽性排名。** 层 2/3 的控制面仍是 Patchright；层 3 只是把引擎/指纹底座换成 CloakBrowser。目标专门卡 Playwright/Patchright 时，继续在层 2/3 之间切换可能毫无变化，此时先读 [检测层与引擎选择](references/detection-layers.md)，再考虑换出口或显式试 nodriver。
-- `auto`：默认。按上表从低到高、只对已安装的引擎升档；缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。`nodriver` 只有加 `--headful` 时才进入 `auto`，且排在层 3 之后；无头 `auto` 不会尝试它。指定 `--engine <层>` 时缺件直接失败，便于排障。
+- `auto`：默认。按上表从低到高、只对已安装的引擎升档；缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。`nodriver` 只有加 `--headful` 时才进入 `auto`，且排在层 3 之后；无头 `auto` 不会尝试它。`chrome-late` 不进 `auto`：它换的是接入时机、每次都要新起浏览器并等待一个静默窗口，只在明确知道要用时才指定。指定 `--engine <层>` 时缺件直接失败，便于排障。
+- `chrome-late`：适用于“普通浏览器能打开、而本阶梯每个引擎都被拦”的站点。做法是自己拉起系统 Chrome **直接用命令行打开目标 URL**（不接任何调试器），等页面自然加载完（`--settle-ms`，默认 12000）再接入读取已渲染 DOM。就绪判定只读 DevTools 的 HTTP 端点，不建立调试会话——**在页面加载早期接入会被 WAF 判成自动化**。它固定有头运行，不支持带凭据的代理，读取的是已渲染完的页面（懒加载与折叠区不会展开）。细节与判读依据见 [检测层与引擎选择](references/detection-layers.md) 的“读页面而不被判成自动化：晚接入”。
 - `--playwright-api {auto,playwright,patchright}` 只控制层 1 使用哪个驱动：`auto` 仍优先 Patchright。安装层 2（`scrapling[fetchers]`）会带入 Patchright，因此层 1 的实际 API 可能从原版 Playwright 静默切换为 Patchright；做 A/B、复现历史结果或确认“是不是驱动被识别”时必须显式指定。层 2/3 内部固定使用 Patchright，该参数不会改变它们。
 - 已知某 origin 需要更高层时（例如该站长期由 Managed Challenge 拦截），直接用 `--engine <层>` 钉住：显式指定即**只用该层**（不再自动升档，缺件或失败直接报错），省掉每次重跑已经证伪的低层；代价是没有升档兜底。
 - 先信任低层：静态页在层 0 就是毫秒级，不要为了"稳"直接开层 2。命中挑战特征或空页才升档。
@@ -265,6 +269,18 @@ flowchart TD
 - 升档只在内容校验不通过时发生；缺件记 `unavailable` 并跳过，不算失败。整条流程的硬上限是 `--wall-timeout-ms`，与单层自己的 `--timeout-ms` 不同。服务端 404/410 且无挑战特征时，`auto` 在首次命中后停止升档；调用方用同一会话的对照页或公开接口确认站点可见性。
 - 校验是唯一闸门：状态码、挑战特征、最小字节、调用方期望文本都在这里判定，`--wait-until`、`--wait-selector`、`--post-wait-ms` 只改变取源码的时机。
 - 落盘只发生在 `save_page()`（CLI 默认开启）：成功写 HTML 与 `.meta.json`，失败写 `.attempts.json` 与 `<输出>.<引擎>.blocked.html`；`fetch_page()` 只返回内存结果。
+
+## 资源回收
+
+本 skill 会启动浏览器：`chrome-late` 自己拉起系统 Chrome，其余引擎经各自的库启动。这些浏览器都是重量级常驻资源（内存、句柄、端口、profile 目录），**启动与回收必须成对设计**。
+
+1. **按所有权回收。**只结束本轮自己启动的进程树：Windows 用 `taskkill /PID <pid> /T /F`，POSIX 用独立进程组 + `killpg`。**禁止按可执行文件名、端口或未核对的 PID 批量清理**，用户原有的浏览器实例要保留。接入已有会话（如远程 CDP、用户自己的浏览器）时按其所有权释放，不当作自己启动的进程处理。
+2. **覆盖四条退出路径。**成功、失败、硬超时、**启动者被强制结束**都要有回收路径。只写 `finally` 不够：调用方被 `kill -9` 或任务管理器结束时，`finally` 不会执行。兜底机制在启动时就绑定：Windows 用 `KILL_ON_JOB_CLOSE` 的作业对象（成员随句柄关闭而终止），POSIX 用独立进程组/子收割器；父进程侧再按进程树回收一次，两层都要有。
+3. **临时资源一并清理。**临时 profile、截图、cookie 导出、CDP 调试端口都要在本轮结束前确认释放；残留目录会被下一轮当成新 profile 使用或直接堆积磁盘。**调用方被强杀时自身的清理代码不会执行**，所以还要留一条自愈路径：本 skill 的晚接入引擎在每次启动时清扫上一轮遗留的 profile 目录（只删本引擎自己的前缀、且只删明显过期的），不靠"下次再说"掩盖泄漏。
+4. **报告回收结果。**汇报里写明本轮启动了几个浏览器、回收了几个、残留核对是否归零。回收未确认时停止新增实例与自动重试，先定位再继续——不叠加无人认领的浏览器，也不靠"下次再说"掩盖泄漏。
+5. **回收机制不足就别自动跑。**缺少可验证的回收路径时（如目标环境不支持作业对象/进程组），先说明风险并改为一次性采集，或交由受管 runner 执行，不在无回收能力的环境里批量拉起浏览器。
+
+预算与并发口径复用 [测试资源预算与回收](../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)，托管式回收机制见 [托管截图工作流](../browser-automation/references/screenshot-workflow.md#生命周期与托管边界)。
 
 ## 代理与凭据
 

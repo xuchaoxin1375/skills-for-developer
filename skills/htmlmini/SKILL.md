@@ -64,6 +64,7 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 - **`ui` 清单末尾被截断或长段落整条缺失**：预算与长文本上限见[案例 3](references/usage-cases.md#3-面板仪表盘设计稿)；换 `markdown` / `text`，或按锚点切出目标片段再喂一次 `ui`。
 - **403/5xx/挑战页**：先加 `--render`，静态失败才回退浏览器；静态 200 但仍被挑战或需要求解时，走 `resilient-browser-fetch` 的 save_page 落盘后再提取。渲染后仍是挑战空壳时 htmlmini 会直接点名挑战特征并按[案例 6](references/usage-cases.md#6-静态-4035xx-或挑战特征)继续，不会让你反复 `--render=always`。本地引擎与有头浏览器都不行、或页面需要你的登录态时，用自己浏览器导出 HTML 再提取；第三方 reader 与归档辅助路线（含免费额度与边界）见 [references/aux-readers.md](references/aux-readers.md)，使用前需用户同意。404/超时/断网直接报错。
 - **两个渲染通路都失败、或日志里解释器不像是装了引擎的那个**：只要没显式指定 `--python-bin`，htmlmini 已会自动扫描本机解释器并换更强的那个重试一次（层 2/3 优先，日志 `[render]` 打印两次用的解释器）。仍失败时才手动收窄：`--python-bin auto` 固定为扫描结果，或用 `<resilient-browser-fetch>/scripts/check_environment.py --list-envs` 找出带 scrapling/cloak-cdp 的那个环境再指名路径；不要因为默认 `python` 缺引擎就下"页面取不到"的结论。需要整机资源全景时先跑 [resource-inventory](../resource-inventory/SKILL.md)。
+- **正文是错误壳而不是正文**（“There was an error processing your request.”、“Powered and protected by”）：这是软错误页，别当正文用也别反复换渲染模式；按[案例 13](references/usage-cases.md#13-自动化全被拦但普通浏览器能打开)转 `resilient-browser-fetch` 的晚接入引擎（`--engine chrome-late`），先让页面自然加载再接入读取。
 - **价格/计量与页面观感不符**：优先用 JSON-LD、`itemprop` 或接口 JSON 核对；CSS 生成内容的限制见[案例 2](references/usage-cases.md#2-营销--产品--定价页)。
 - **SPA 渲染后仍缺字段或只有展示值**：查页面自己的后端接口（[案例 11](references/usage-cases.md#11-后端接口--xhr-数据源)），用返回 JSON 核对；不猜路径、不读整份 JS。
 

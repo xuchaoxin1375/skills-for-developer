@@ -2,7 +2,7 @@
 name: browser-automation
 description: >
   检查本地可用浏览器及自动化工具，定位 Chrome/Edge/Chromium 的安装路径，按任务选择浏览器操作方案和测试运行框架，并指导自动化执行。
-  用于浏览器发现、Scoop/便携浏览器复用、普通浏览器与 Playwright/Puppeteer/Selenium/MCP 工具选型、人工或无头截图、shot-quick/shot_scroll、点击填写导航与状态等待、CDP/远程浏览器会话，以及截图卡住、浏览器进程残留、超时与资源回收排障。
+  用于浏览器发现、Scoop/便携浏览器复用、普通浏览器与 Playwright/Puppeteer/Selenium/MCP 工具选型、人工或无头截图、shot-quick/shot_scroll、点击填写导航与状态等待、CDP/远程浏览器会话、接管用户已登录的浏览器会话，以及截图卡住、浏览器进程残留、超时与资源回收排障。
   测试覆盖、断言设计和回归维护走 web-app-testing，UI 缺陷分析走 frontend-qa，playwright install/scrapling install 及国内下载受阻走 network-access；不因只查浏览器便启动完整测试或 UI 验收。
 ---
 
@@ -16,7 +16,7 @@ description: >
 2. **只读检查已有能力。**查看项目依赖、锁文件、浏览器配置及当前实际可调用的工具。需要定位系统浏览器时读 [浏览器发现](references/browser-discovery.md)，用 `--list-browsers` 查常见目录、注册表和 Scoop 等渠道；不执行候选程序，不把 PATH 无结果当未安装，不通过可能自动取包的 CLI 探测。整机层面的运行时、Python 环境与代理入口用 [resource-inventory](../resource-inventory/SKILL.md) 一次看清，再回到本 skill 选方案。整机层面的运行时、Python 环境与代理入口用 [resource-inventory](../resource-inventory/SKILL.md) 一次看清，再回到本 skill 选方案。
 3. **选择一个方案。**按 [工具与框架决策](references/tool-and-framework-choice.md)复用已有工具；说明选择理由、前置条件和一个必要的回退。缺包或制品时读 [安装与国内网络](../network-access/references/browser-installation.md)，并**先向用户报选项与代价再动手**（复用环境已有的自动化能力；只补 Playwright 包并复用系统 Chrome/Edge；显式 `--engine oneshot|cdp` 加本机浏览器；确需匹配制品时才装浏览器，区分包源与制品源；或改人工截图、记录自动化未执行）；不为检查环境自动下载所有浏览器，未获用户同意不安装。
 4. **按任务执行。**独立首屏/滚动截图用 [托管截图工作流](references/screenshot-workflow.md)；点击、填写、导航、登录状态和下载等操作读 [自动化操作](references/browser-operations.md)，使用可用工具或项目运行器。测试用例与断言设计只借用 [web-app-testing](../web-app-testing/SKILL.md)所需部分，不重复建立计划。
-5. **核验结果与回收。**文件、缓存和进程存在均不能证明任务成功。按目标核验页面状态、业务结果或下载文件；报告实际浏览器版本、工具、证据及未运行项。自己启动的浏览器确认回收后再重试；连接外部会话按其所有权释放，不按进程名批量清理。
+5. **核验结果与回收。**文件、缓存和进程存在均不能证明任务成功。按目标核验页面状态、业务结果或下载文件；报告实际浏览器版本、工具、证据及未运行项。自己启动的浏览器确认回收后再重试；连接外部会话按其所有权释放，不按进程名批量清理。**任何自建（非托管脚本）的浏览器同样按所有权回收，并且要覆盖“启动者被强杀”这条路径**：正常结束时的 `finally` 不够，兜底要在启动时就绑定（Windows 作业对象、POSIX 独立进程组，或交由受管 runner 执行）。资源口径见 [测试资源预算与回收](../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)。
 
 ### 最短入口
 
@@ -43,6 +43,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 |---|---|
 | 浏览器在哪、系统版本怎么复用、包装器能否直接运行 | [浏览器发现](references/browser-discovery.md) |
 | 选现有浏览器工具、Playwright/Puppeteer/Selenium，或测试运行器 | [工具与框架决策](references/tool-and-framework-choice.md) |
+| 浏览器由谁持有、新建实例还是接管用户已登录的会话 | [浏览器归属三态](references/tool-and-framework-choice.md#浏览器归属三态) |
 | 自动点击填写、状态等待、CDP、下载和会话所有权 | [自动化操作](references/browser-operations.md) |
 | 截图命令、期限、调用端异常退出、残留进程及旧入口迁移 | [托管截图工作流](references/screenshot-workflow.md) |
 | 浏览器包/制品下载、代理、镜像和系统依赖 | [network-access 安装参考](../network-access/references/browser-installation.md) |
