@@ -37,7 +37,7 @@ harness 自带的 `web_fetch` / `web_search` 是通用抓取：不剥样板、�
 | harness `web_fetch` | — | 有 | 视页面：内容在静态 DOM 时能取到；tab 面板/layer 模板里的块漏 | 部分（每组首答） | 高（整站导航+页脚） | 1 次调用、零依赖、不落盘 | 内建 |
 
 取舍：判据不是页面类别，而是**目标块在不在静态 DOM 里**。内容随 HTML 一并下发（服务端渲染/内联）时，内建 fetch 也能拿到首屏与卡片，只做正文摘要就够用，且一次调用、零依赖；块藏在 tab 面板、layer 模板或客户端渲染里时才必然漏，用 htmlmini。要取数、要组件清单（按钮/地标/表单/图片 alt）、要结构或要落盘复用同样用 htmlmini——`ui` 打底，缺长正文再按锚点切片补一次 `markdown`。注意内建 fetch 会重复吐轮播等模板块、带 `data:` 占位图与整站页脚，这些噪声也计入 token 成本。
-需要 htmlmini 处理同一页时，仍优先 `htmlmini <URL>` / `--render` 或 save_page 直接落盘：内建 fetch 返回的是已转换文本（或 `format=html` 的源码），落盘要绕一遍模型上下文，也不带同目录 `<name>.html.meta.json`（页面 URL 会丢）。
+需要 htmlmini 处理同一页时，仍优先 `htmlmini <URL>` / `--render` 或 save_page 直接落盘：内建 fetch 返回的是已转换文本（或 `format=html` 的源码），落盘要绕一遍模型上下文，也不带同目录 `<name>.html.meta.json`（页面 URL 会丢）。要留下 htmlmini 抓到的原文与 URL 基准，用 `htmlmini <URL> --save-html <文件>`，之后任一模式读该文件即可。
 
 ## 安装
 
@@ -129,6 +129,13 @@ htmlmini "https://example.com/app" --render --headful
 # Python 环境选择（save_page 与 Trafilatura 都靠它；默认 PATH 的 python 往往不是目标环境）
 htmlmini "https://example.com/app" --render --python-bin auto
 # 或 export HTMLMINI_PYTHON=<解释器路径>；关闭扫描 HTMLMINI_ENV_SCAN=0
+
+# 渲染一次、多视图复用：留下原文 + 页面 URL，之后各模式读该文件，不重复渲染
+htmlmini "https://example.com/app" --render=always --save-html app.html -m
+htmlmini app.html -u
+
+# 已知该站需要层 2：钉住引擎，不再每次重跑注定失败的 static / playwright（显式即严格，缺件直接报错）
+htmlmini "https://example.com/app" --render --render-engine scrapling --python-bin auto
 
 # 手工两步（渲染产物旁的 <name>.html.meta.json 会被自动利用）
 python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html --proxy 'http://127.0.0.1:<port>'

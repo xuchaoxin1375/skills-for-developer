@@ -2,7 +2,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, assertUsableResult, extractHtml, readSiblingMeta, readWithRender, runExtract, renderResult } from './extract.js';
+import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, RENDER_ENGINE_CHOICES, assertUsableResult, extractHtml, readSiblingMeta, readWithRender, runExtract, renderResult, saveSourceHtml } from './extract.js';
+import { log } from './log.js';
 import { VERSION } from './version.js';
 
 const modeEnum = z.enum(MODES);
@@ -24,7 +25,7 @@ const textMaxDesc =
 const allowEmptyDesc =
   'Keep the result even when it looks like a client-rendered app shell (extracted text under 200 chars from >= 5 KB HTML). Default false: such pages return an error telling you to use render:"always", because the static HTML has no body yet.';
 
-async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin }) {
+async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin, renderEngine, saveHtml }) {
   const { html, source, contentType, rendered } = await readWithRender(
     src,
     {
@@ -34,8 +35,15 @@ async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, t
       ...(headful ? { headful: true } : {}),
       ...(chromeBin == null ? {} : { chromeBin }),
       ...(pythonBin == null ? {} : { pythonBin }),
+      ...(renderEngine == null ? {} : { renderEngine }),
+      allowEmpty: allowEmpty === true,
     },
   );
+  if (saveHtml) {
+    // 与 CLI 同口径：校验之前先落盘原文，挑战空壳报错时也留得下可复用的文件。
+    const saved = await saveSourceHtml(html, { source, outPath: saveHtml, rendered: rendered === true, contentType });
+    if (!saved) log.info('write', `save_html only applies to URL input (got ${source === 'stdin' ? 'stdin' : 'a local file'}); nothing written`);
+  }
   const sibling = await readSiblingMeta(source);
   const url = /^https?:/i.test(source)
     ? source
@@ -103,6 +111,14 @@ const shapeUrl = {
     .string()
     .optional()
     .describe('Explicit Python interpreter for the render fallback and the optional Trafilatura pass. Default is "python"/"python3" on PATH, which is often not the environment that has playwright/scrapling installed; also read from HTMLMINI_PYTHON. Use "auto" to scan this machine (conda/venv/uv/PATH) and pick an interpreter that has a layer >= 1 engine.'),
+  save_html: z
+    .string()
+    .optional()
+    .describe('Absolute path: write the HTML actually used for extraction (static fetch, or the rendered page when render is on) plus a sibling "<path>.meta.json" holding the page URL. Reuse that file with htmlmini_extract_file for other modes instead of re-fetching or re-rendering. Raw HTML (not the cleaned "html" mode output), written before content validation so it survives a challenge-shell error. URL input only.'),
+  render_engine: z
+    .enum(RENDER_ENGINE_CHOICES)
+    .optional()
+    .describe('Pin the save_page engine instead of letting it auto-upgrade: "auto" (default) tries every installed layer from the lowest; an explicit layer (playwright | scrapling | cloak-cdp) runs that engine only — a missing layer fails instead of falling back. Use it on an origin you already know needs layer 2, to skip the attempts that are known to be rejected.'),
 };
 const shapeHtml = {
   html_content: z.string().describe('Raw HTML source code string'),
@@ -120,13 +136,13 @@ server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, e
   content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
-server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
+server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin, save_html, render_engine }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
       format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
-      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin,
+      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin, saveHtml: save_html, renderEngine: render_engine,
     }),
   }],
 }));

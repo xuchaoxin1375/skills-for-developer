@@ -19,6 +19,7 @@
 | 要表格 / 嵌套 / 表单初始态 | 9 |
 | 输入是 markdown / 纯文本 / JSON | 10 |
 | 页面由后端接口供数，要完整字段 | 11 |
+| 论坛 / 评论区 / 列表页，首屏不是全部 | 12 |
 
 ## 1 文章、博客、文档
 
@@ -62,7 +63,8 @@ htmlmini "<URL>" -m -o page.md           # 长正文（FAQ、描述），首屏�
 - 不加 `--render` 时，静态 HTML 往往只有应用壳 / 离线页（正文几十字节）。htmlmini 会在正文 < 200 字符且 HTML ≥ 5 KB 时报错并提示 `--render=always`（退出码 1），不再把壳当正文；确认页面本来就这么短才加 `--allow-empty`，`title` / `skeleton` 不触发该检查。
 - 坑：默认 `--render` **只对静态 403/5xx 回退**；静态 200 的页面它仍走静态抓取，不水合，很容易误判成"页面没写"。
 - 坑：渲染后 `ui` 仍缺长正文，通常不是渲染失败，而是 `ui` 的单条长度上限——换 `markdown` / `text` 或加 `--text-max 0`。
-- 要多次复用：先落盘一次 `--render=always --mode html --attrs none -o page.html`，之后 `htmlmini page.html -m` / `-u` 各视图都读本地文件，不必反复启浏览器（单次渲染通常几十秒）。
+- 要多次复用：加 `--save-html page.html` 把这次提取实际用到的原文（渲染后 DOM）与该页 URL（写进同名 `page.html.meta.json`）一起落盘；之后 `htmlmini page.html -m` / `-u` 各视图都读这个文件，不必反复启浏览器（单次渲染通常几十秒）。
+- 坑：**不要拿 `--mode html` 的清洗产物当复用文件**。清洗掉 class/id/role 后样板剪裁会变、链接也失去 URL 基准：同一页直抓得 1313 字符 markdown，改用清洗产物得 2363（多出楼层操作条、分页、时间戳等），`--attrs none` 时 `ui` 清单从 2605 字符掉到 1557。
 
 ## 5 输出只剩区块标题
 
@@ -89,7 +91,31 @@ htmlmini "<URL>" -m -o page.md           # 长正文（FAQ、描述），首屏�
 - save_page 与 Trafilatura 都跑在 Python 解释器上，默认取 PATH 的 `python` / `python3`，**往往不是装了 playwright / scrapling 的那个环境**（conda / venv 常见）。用 `--python-bin <解释器>` / MCP `python_bin` / `HTMLMINI_PYTHON` 指定；`--python-bin auto`（或 `HTMLMINI_PYTHON=auto`）会扫描本机并挑一个具备层 ≥1 引擎的。显式路径不做隐式回退，指错直接报错。`HTMLMINI_ENV_SCAN=0` 关闭扫描。
 - `--headful` / `headful:true` 只用于首次人工验证，需要 save_page 通路且有层 ≥1 引擎；Chrome `dump-dom` 不能开窗。
 - 404 / 超时 / 断网直接抛错，不烧浏览器时间。
-- 手工两步（存量或排查）：先用双路对照（直连 + 代理并行）确定可用路线并落盘，再 `htmlmini page.html`；不按 URL 重抓。
+- 坑：渲染通路选到零依赖 Chrome（日志 `[render] engine=chrome-dump`）时只渲染、不求解。目标站点有挑战特征时拿到的是挑战空壳（几 KB），htmlmini 会直接报 `rendered page still looks like a challenge`（不再误报成"像客户端渲染壳"）；按提示换求解通路，`--allow-empty` 可强行取回空壳排查。
+- 已知某 origin 需要更高层（长期被 Managed Challenge 拦）时，用 `--render-engine scrapling`（或 `cloak-cdp` / `playwright`）钉住：显式指定后 save_page 只用该层、不再自动升档，缺件或失败直接报错；好处是省掉每次注定失败的 static / playwright 尝试，代价是没有升档兜底。
+- 抓取失败时错误里会点名本机代理登记（`~/.config/proxy-resources.json`）的候选入口：htmlmini 不自动读登记，按提示显式 `--proxy` 或设 `HTTPS_PROXY`；404/410 不带这条提示（资源级结论，换出口不会变）。
+- 取不到正文时先让 save_page 通路接管：加 `--python-bin auto`（或会话级 `HTMLMINI_PYTHON=auto`），让它扫描本机并挑到层数更全的那个解释器（通常是装了求解引擎的那一个）；默认 PATH 上的 `python` 常只有层 1，被判为"只渲染"而退回 Chrome。本机确实只有层 1 时 save_page 与 Chrome 等价，改走 `resilient-browser-fetch`（需要时 `--headful` 人工验证）。
+- 手工两步（存量或排查）：先用双路对照（直连 + 代理并行；登记已有可用代理时直接用登记条目）确定可用路线并落盘，再 `htmlmini page.html`；不按 URL 重抓（要留下这次抓到的原文，加 `--save-html <路径>`：校验之前就落盘，挑战空壳报错时也能留下）。
+
+通路与失败分流：
+
+```mermaid
+flowchart TD
+    S["htmlmini URL"] --> A{静态结果}
+    A -->|"200 且正文够长"| X["按文件模式提取"]
+    A -->|"200 但正文极短"| RA["--render=always"]
+    A -->|"403/5xx"| R["--render"]
+    RA --> P{"解释器里有层 ≥2 求解引擎?"}
+    R --> P
+    P -->|"有"| SP["save_page 通路: 求解后取正文"]
+    P -->|"只有层 1"| CH["零依赖 Chrome dump-dom: 只渲染"]
+    CH --> Q{结果只有几 KB、无正文?}
+    Q -->|"是"| FIX["挑战空壳, 不是水合问题: 加 --python-bin auto, 或转 resilient-browser-fetch"]
+    Q -->|"否"| X
+    SP --> X
+```
+
+`--headful` 或本机没有 Chrome 时也走 save_page 通路。
 
 ## 7 同站多页批量
 
@@ -140,6 +166,14 @@ htmlmini "<URL>" -m -o page.md           # 长正文（FAQ、描述），首屏�
 - 接口可能返回页面没展示的内部字段（成本价、内部编码）；只取回答所需字段，不整包倾倒。
 - 只采集当前用户有权访问的数据；遵守站点条款、robots 与频率限制，不用接口绕过登录、付费墙或权限。
 - 批量脚本要容错字段缺失和类型变化，记录实际接口与抓取时间；不要把一次接口形状当成长期契约。
+
+## 12 论坛、评论区、列表页：首屏不是全部
+
+正文、评论区、列表项按滚动或分页懒加载，首屏只含前若干条。
+
+- 不要用渲染后的节点数当覆盖度：例，渲染 DOM 里 7 条评论，站点自己的接口报 `posts_count: 111`，差一个数量级。
+- 先取站点自身总数：分页接口或页面内计数（例：Discourse 的 `/t/<id>.json` 给 `posts_count` 与完整 `post_stream.stream`，`?page=N` 取后续页）。这些是同源资源，与主目标走同一路线、同一会话，不为每个端点新开浏览器。
+- 只做摘要时在结果里写覆盖范围（如“覆盖前 7 楼 / 共 111 楼”）；要全量按[案例 7](#7-同站多页批量)用会话批量逐页取。
 
 ## 通用坑
 

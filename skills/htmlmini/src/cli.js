@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
-import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, runExtract } from './extract.js';
+import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, RENDER_ENGINE_CHOICES, runExtract } from './extract.js';
 import { fmtBytes, fmtMs, log, setLogLevel } from './log.js';
 import { VERSION, VERSION_LINE } from './version.js';
 
@@ -78,6 +78,21 @@ OPTIONS
                    has a layer >= 1 engine. When rendering fails for lack of an
                    engine, the error also names such an interpreter if one exists.
                    Disable scanning with HTMLMINI_ENV_SCAN=0.
+  --save-html <path>
+                   write the HTML that was actually used for extraction (static
+                   fetch, or the rendered page with --render) to this file, plus a
+                   sibling "<path>.meta.json" with the page URL. Reuse that file for
+                   later views / other modes instead of re-fetching or re-rendering;
+                   URL input only. Content is raw (not the cleaned "html" mode
+                   output), and it is written before content validation, so the raw
+                   HTML survives a challenge-shell or empty-page error.
+  --render-engine <name>
+                   pin the save_page engine instead of auto-upgrading:
+                   auto (default) | playwright | scrapling | cloak-cdp. An explicit
+                   layer runs that engine only (a missing layer fails instead of
+                   falling back) and forces the save_page pathway. Use it on an
+                   origin you already know needs layer 2, to skip the attempts that
+                   are known to be rejected.
   --extractor <name>
                    extraction engine: auto (default) | defuddle | trafilatura | semantic | ui | passthrough
                    auto chain: non-HTML passthrough -> Defuddle -> Trafilatura (only if "pip install trafilatura"
@@ -158,6 +173,8 @@ let renderTimeoutMs;
 let headful = false;
 let chromeBin;
 let pythonBin;
+let saveHtml;
+let renderEngine;
 let attrs = 'semantic';
 let format = 'compact';
 let pruneEmpty = false;
@@ -185,7 +202,7 @@ for (let i = 0; i < argv.length; i++) {
       log.error('--output needs a file argument');
       process.exit(2);
     }
-  } else if (a === '--mode' || a === '--extractor' || a === '--attrs' || a === '--format' || a === '--completion' || a === '--proxy' || a === '--chrome-bin' || a === '--python-bin') {
+  } else if (a === '--mode' || a === '--extractor' || a === '--attrs' || a === '--format' || a === '--completion' || a === '--proxy' || a === '--chrome-bin' || a === '--python-bin' || a === '--save-html' || a === '--render-engine') {
     const v = argv[++i];
     if (!v) {
       log.error(`${a} needs a value`);
@@ -198,6 +215,8 @@ for (let i = 0; i < argv.length; i++) {
     else if (a === '--proxy') proxy = v;
     else if (a === '--chrome-bin') chromeBin = v;
     else if (a === '--python-bin') pythonBin = v;
+    else if (a === '--save-html') saveHtml = v;
+    else if (a === '--render-engine') renderEngine = v;
     else await printCompletion(v);
   } else if (a === '--compact') {
     format = 'compact';
@@ -248,7 +267,7 @@ for (let i = 0; i < argv.length; i++) {
       log.error(`--render-timeout-ms needs a positive number of ms (got "${v ?? ''}")`);
       process.exit(2);
     }
-  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--attrs=') || a.startsWith('--format=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--python-bin=') || a.startsWith('--render-timeout-ms=')) {
+  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--attrs=') || a.startsWith('--format=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--python-bin=') || a.startsWith('--save-html=') || a.startsWith('--render-engine=') || a.startsWith('--render-timeout-ms=')) {
     const [k, v] = splitEq(a);
     if (k === '--mode') mode = v;
     else if (k === '--extractor') extractor = v;
@@ -258,6 +277,8 @@ for (let i = 0; i < argv.length; i++) {
     else if (k === '--proxy') proxy = v;
     else if (k === '--chrome-bin') chromeBin = v;
     else if (k === '--python-bin') pythonBin = v;
+    else if (k === '--save-html') saveHtml = v;
+    else if (k === '--render-engine') renderEngine = v;
     else if (k === '--render-timeout-ms') {
       renderTimeoutMs = Number(v);
       if (!Number.isFinite(renderTimeoutMs) || renderTimeoutMs <= 0) {
@@ -287,6 +308,10 @@ if (!ATTR_POLICIES.includes(attrs)) {
   log.error(`unknown --attrs policy "${attrs}" (use: ${ATTR_POLICIES.join(' | ')})`);
   process.exit(2);
 }
+if (renderEngine !== undefined && !RENDER_ENGINE_CHOICES.includes(renderEngine)) {
+  log.error(`unknown --render-engine "${renderEngine}" (use: ${RENDER_ENGINE_CHOICES.join(' | ')}) — static/scrapling-cli are not render engines`);
+  process.exit(2);
+}
 if (!FORMAT_POLICIES.includes(format)) {
   log.error(`unknown --format policy "${format}" (use: ${FORMAT_POLICIES.join(' | ')})`);
   process.exit(2);
@@ -301,7 +326,7 @@ if (source === '-' && process.stdin.isTTY) {
 
 try {
   const startedAt = Date.now();
-  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }) });
+  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(saveHtml === undefined ? {} : { saveHtml }) });
   const total = `total ${fmtMs(Date.now() - startedAt)}`;
   if (output) {
     // 与 stdout 分支同口径：结果已以换行结尾时不再补，避免落盘文件尾部多出空行。

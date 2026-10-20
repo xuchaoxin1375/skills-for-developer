@@ -265,6 +265,70 @@ async function cli(args, { input, env } = {}) {
   }
 }
 
+// ---- 5c. --save-html：落盘原文 + 同名 meta，供后续模式等价复用 ----
+{
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-save-'));
+  try {
+    const savedHtml = path.join(dir, 'saved.html');
+    const directPath = path.join(dir, 'direct.md');
+    const direct = await cli([`${base}/article`, '-m', '-o', directPath]);
+    const withSave = await cli([`${base}/article`, '-m', '--save-html', savedHtml, '-o', path.join(dir, 'out.md')]);
+    ok(direct.code === 0 && withSave.code === 0 && existsSync(savedHtml), '--save-html 写出原文');
+    const meta = JSON.parse(await readFile(`${savedHtml}.meta.json`, 'utf8'));
+    ok(meta.url === `${base}/article` && meta.rendered === false, 'meta 记下源 URL 与静态抓取');
+    ok(withSave.stderr.includes('[write]') && withSave.stderr.includes('static fetch'), '日志写明落盘与来源');
+
+    // 关键回归：复用文件必须与直抓等价（URL 基准与 fetchCss 都要跟过来）。
+    const directMd = await readFile(directPath, 'utf8');
+    const reuse = await cli([savedHtml, '-m']);
+    ok(reuse.code === 0 && reuse.stdout === directMd, '复用文件与直抓结果一致');
+
+    const local = path.join(dir, 'local.html');
+    await writeFile(local, '<html><head><title>本地</title></head><body><p>x</p></body></html>');
+    const loc = await cli([local, '--save-html', path.join(dir, 'copy.html')]);
+    ok(
+      loc.code === 0 && !existsSync(path.join(dir, 'copy.html')) && loc.stderr.includes('only applies to URL input'),
+      '本地文件输入不写文件并提示',
+    );
+
+    const missing = await cli([`${base}/missing`, '--save-html', path.join(dir, 'nope.html')]);
+    ok(missing.code === 1 && !existsSync(path.join(dir, 'nope.html')), '抓取失败不落盘（404 先抛错）');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// ---- 5d. 抓取失败时的本机代理登记提示（只提示，不自动改路线） ----
+{
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-registry-'));
+  const saved = process.env.HTMLMINI_PROXY_REGISTRY;
+  try {
+    const registry = path.join(dir, 'proxy-resources.json');
+    await writeFile(
+      registry,
+      JSON.stringify({ default: 'demo', proxies: [{ name: 'demo', url: 'http://user:pw@127.0.0.1:18080' }] }),
+    );
+    process.env.HTMLMINI_PROXY_REGISTRY = registry;
+    // 127.0.0.1:9 是 discard 端口，连接必被拒绝 → 触发传输层失败。
+    const dead = 'http://127.0.0.1:9/x';
+    const hint = await cli([dead, '--title']);
+    ok(hint.code === 1 && hint.stderr.includes('127.0.0.1:18080'), '传输失败时点名登记里的候选入口');
+    ok(hint.stderr.includes('proxy registry'), '提示说明 htmlmini 不自动读登记');
+    ok(!hint.stderr.includes('user:pw'), '登记提示不泄露凭据');
+
+    const explicit = await cli([dead, '--title', '--proxy', 'http://127.0.0.1:9/']);
+    ok(!explicit.stderr.includes('proxy registry'), '显式指定路线后不再提示登记');
+
+    process.env.HTMLMINI_PROXY_REGISTRY = path.join(dir, '不存在.json');
+    const none = await cli([dead, '--title']);
+    ok(none.code === 1 && !none.stderr.includes('proxy registry'), '登记读不到时不加噪声');
+  } finally {
+    if (saved === undefined) delete process.env.HTMLMINI_PROXY_REGISTRY;
+    else process.env.HTMLMINI_PROXY_REGISTRY = saved;
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 // ---- 6. trafilatura：缺席给安装提示（本机无模块，确定性覆盖） ----
 {
   // 探针必须给真正可提取的正文：trafilatura 对无正文的短片段会以退出码 3 结束
@@ -343,6 +407,21 @@ async function cli(args, { input, env } = {}) {
     arguments: { html_content: '<html><head><title>存活</title></head><body><button>按我</button></body></html>' },
   });
   ok(good.result && good.result.content[0].text.includes('按我'), '出错后服务仍可用');
+
+  // save_html 是 handleSource 的另一条入口，MCP 侧同样要落盘原文 + meta。
+  const mcpDir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-mcp-save-'));
+  try {
+    const savedPath = path.join(mcpDir, 'mcp.html');
+    const murl = await rpc('tools/call', {
+      name: 'htmlmini_extract_url',
+      arguments: { url: `${base}/article`, save_html: savedPath },
+    });
+    ok(murl.result && murl.result.content[0].text.includes('正文内容足够长'), 'MCP extract_url 返回正文');
+    ok(existsSync(savedPath) && existsSync(`${savedPath}.meta.json`), 'MCP save_html 落盘原文与 meta');
+    ok(JSON.parse(await readFile(`${savedPath}.meta.json`, 'utf8')).url === `${base}/article`, 'MCP meta 记下源 URL');
+  } finally {
+    await rm(mcpDir, { recursive: true, force: true });
+  }
   child.kill();
 }
 
@@ -899,6 +978,119 @@ open(out, 'w', encoding='utf-8').write(
       }
     }
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// ---- 14b. 渲染后的挑战空壳判据 + --render-engine 钉层 ----
+{
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t14b-'));
+  const saved = {};
+  for (const k of [
+    'HTMLMINI_RENDER_SCRIPT',
+    'HTMLMINI_CHROME_BIN',
+    'HTMLMINI_CHROME_EXTRA_ARGS',
+    'HTMLMINI_RENDER_ENGINES',
+    'STUB_ARGV',
+    'CHROME_MARKER',
+  ]) {
+    saved[k] = process.env[k];
+  }
+  try {
+    const argvLog = path.join(dir, 'argv.json');
+    const chromeMarker = path.join(dir, 'chrome.log');
+    const stub = path.join(dir, 'stub_save.py');
+    // 桩按 STUB_BODY 选择输出：challenge（挑战空壳）/ article（长正文，含挑战字样但不该误判）。
+    await writeFile(
+      stub,
+      `import json, os, sys
+argv = sys.argv[1:]
+out = argv[argv.index('--out') + 1]
+open(os.getenv('STUB_ARGV'), 'w').write(json.dumps(argv))
+mode = os.getenv('STUB_BODY') or 'article'
+if mode == 'challenge':
+    html = ('<!doctype html><html><head><title>Just a moment...</title></head><body>'
+            '<div id="cf-chl-widget">Enable JavaScript and cookies to continue</div></body></html>')
+elif mode == 'short-mention':
+    html = ('<!doctype html><html><head><title>联系表单</title></head><body><form><p>'
+            '本站用 challenges.cloudflare.com 与 turnstile 做验证。'
+            '</p></form></body></html>')
+else:
+    html = ('<!doctype html><html><head><title>挑战机制</title></head><body><article><h1>挑战机制</h1><p>'
+            + '正文提到 challenges.cloudflare.com 与 turnstile 的机制。' * 30
+            + '</p></article></body></html>')
+open(out, 'w', encoding='utf-8').write(html)
+`,
+      'utf8',
+    );
+    const fakeChrome = path.join(dir, 'fake-chrome.mjs');
+    await writeFile(
+      fakeChrome,
+      `import { appendFileSync } from 'node:fs';
+const marker = process.env.CHROME_MARKER;
+if (marker) appendFileSync(marker, 'chrome-invoked\\n');
+process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head><body>'
+  + '<article><h1>Chrome标题</h1><p>' + 'Chrome正文内容足够长可以被识别为主体。'.repeat(10) + '</p></article>'
+  + '</body></html>');
+`,
+      'utf8',
+    );
+    process.env.HTMLMINI_RENDER_SCRIPT = stub;
+    process.env.STUB_ARGV = argvLog;
+    process.env.HTMLMINI_CHROME_BIN = process.execPath;
+    process.env.HTMLMINI_CHROME_EXTRA_ARGS = fakeChrome;
+    process.env.CHROME_MARKER = chromeMarker;
+
+    // 1) 渲染后仍是挑战空壳：报挑战而不是"像客户端渲染壳"，并给可行下一步。
+    process.env.STUB_BODY = 'challenge';
+    let guardErr = null;
+    try {
+      await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+    } catch (e) {
+      guardErr = e;
+    }
+    ok(guardErr && /looks like a challenge/.test(guardErr.message), `挑战空壳被判为挑战（实得 ${guardErr && guardErr.message.slice(0, 80)}）`);
+    ok(guardErr && /--python-bin auto/.test(guardErr.message), '挑战判定给出求解引擎的下一步');
+    ok(guardErr && !/app shell/.test(guardErr.message), '不再误报成客户端渲染壳');
+    const kept = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000, allowEmpty: true });
+    ok(typeof kept === 'string', '--allow-empty 仍可取回挑战 HTML 供排查');
+
+    // 2) 正文里出现挑战字样不该误判：长正文、以及"短但有内容"的页面都不算空壳。
+    process.env.STUB_BODY = 'article';
+    const long = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+    ok(long.includes('正文提到'), '长正文提到挑战机制不被误判');
+    process.env.STUB_BODY = 'short-mention';
+    const shortMention = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+    ok(typeof shortMention === 'string' && shortMention.includes('验证'), '短页面提到挑战域名不被误判（判据是内部标识而非裸词）');
+
+    // 3) --render-engine 钉住时强制 save_page，不让零依赖 Chrome 顶掉选择。
+    process.env.STUB_BODY = 'article';
+    if (existsSync(chromeMarker)) await rm(chromeMarker, { force: true });
+    const pinned = await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 30000, renderEngine: 'playwright' });
+    ok(pinned.trim() === '挑战机制', '钉层后走 save_page 取得正文');
+    const pinnedArgv = JSON.parse(await readFile(argvLog, 'utf8'));
+    ok(pinnedArgv.includes('--engine') && pinnedArgv.includes('playwright'), '钉层透传给 save_page');
+    ok(!existsSync(chromeMarker), '钉层时零依赖 Chrome 未被调用');
+
+    const bad = await cli([`${base}/always502`, '--render', '--render-engine', 'static']);
+    ok(bad.code === 2 && /render-engine/.test(bad.stderr), '非渲染层取值退出 2');
+
+    process.env.HTMLMINI_RENDER_ENGINES = 'static';
+    process.env.HTMLMINI_CHROME_BIN = path.join(dir, '没有-chrome');
+    delete process.env.HTMLMINI_RENDER_SCRIPT;
+    let pinErr = null;
+    try {
+      await runExtract(`${base}/always502`, 'title', { render: true, renderTimeoutMs: 5000, renderEngine: 'scrapling' });
+    } catch (e) {
+      pinErr = e;
+    }
+    ok(pinErr && /--render-engine scrapling needs the save_page renderer/.test(pinErr.message), '钉层但缺 save_page 通路时直说原因');
+  } finally {
+    delete process.env.STUB_BODY;
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
     await rm(dir, { recursive: true, force: true });
   }
 }

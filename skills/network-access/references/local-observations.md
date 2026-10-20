@@ -164,3 +164,23 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 对照：第三方 reader 服务取回的首屏字段与本地有头结果一致，两个来源互证内容未失真；该路线在 skill 中属需用户同意的回退，不作为本地失败后的默认动作。
 
 未验证：层 2/3 的自动求解表现、`--headful` 在其他拦截站点的通过率、真实浏览器带既有 cookie 与全新 profile 的差异、`--real-chrome` 无头形态的适用范围、Linux/macOS 与有头所需 Xvfb、跨日稳定性。
+
+## 2026-10-20 挑战站点：层选择与论坛帖覆盖度
+
+执行环境：国内 Windows；代理由本机登记条目提供（端口以 `<port>` 占位），未做出口 IP 回显核验。目标为某 Cloudflare 保护的 Discourse 论坛公开帖及其同源接口；总结任务触发。
+
+| 路线与方式 | 结果 |
+| --- | --- |
+| 直连（不走代理） | 连接超时（单次上限约 21 秒），未取到正文 |
+| 登记代理 + 层 0 `static` | 403，`cloudflare_interstitial` |
+| 登记代理 + 层 1 `playwright`（无头） | 403，`cloudflare_challenge_markers`、`cloudflare_interstitial` |
+| 登记代理 + 层 2 `scrapling` | 200，渲染后 HTML 约 731 KB；求解约 7–10 秒。`--engine scrapling` 钉层比 `auto` 少两次注定失败的升档尝试 |
+| 同上 + 同帖 `.json` 接口 | 200，约 53 KB JSON：`posts_count: 111`、`reply_count: 65`、`post_stream.stream` 111 个 id，首屏只内联 20 楼 |
+| 同上 + `.json?page=2` | 200，20 楼，`post_number` 21–40 |
+
+- 该 origin 当前需层 2；层 0/1 均判挑战。已知这一事实后不必每次重跑低层。
+- **渲染 HTML 的节点数不等于内容总量**：同帖渲染 DOM 只含 7 个楼层元素，站点接口报 111 楼。用渲染节点数写"覆盖一致"会得出错误的完整性结论。
+- `htmlmini` 的 URL 抓取只跟环境代理变量或 `--proxy`，不读本机登记：未指定时日志为 `[proxy: none]` 并直接失败（约 11 秒），失败原因是路线未指定，不是站点不可达。
+- `htmlmini --render` 在默认解释器（只有层 1）下选零依赖 Chrome `dump-dom`，得到约 8 KB 挑战空壳，随后报"像客户端渲染壳、请用 `--render=always`"；加 `--python-bin auto` 选到带求解引擎的解释器后改走 save_page，约 18 秒取得正文。提示与真实原因不一致，重复 `--render=always` 不会改善。
+
+未验证：其他挑战站点的层通过率、`--headful` 表现、profile 复用对 clearance 的保持时长、Linux/macOS、跨日波动与该站速率限制。

@@ -17,13 +17,15 @@ _htmlmini() {
     --format) COMPREPLY=( $(compgen -W "$formats" -- "$cur") ); return 0 ;;
     --proxy) COMPREPLY=( $(compgen -W "direct" -- "$cur") ); return 0 ;;
     --render) COMPREPLY=( $(compgen -W "auto always" -- "$cur") ); return 0 ;;
+    --render-engine) COMPREPLY=( $(compgen -W "auto playwright scrapling cloak-cdp" -- "$cur") ); return 0 ;;
     --completion) COMPREPLY=( $(compgen -W "bash powershell" -- "$cur") ); return 0 ;;
     --chrome-bin) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
     --python-bin) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
+    --save-html) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
     -o|--output) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
   esac
   if [[ "$cur" == -* ]]; then
-    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --text-max --allow-empty --proxy --noproxy --render --render-always --headful --render-timeout-ms --chrome-bin --python-bin --output --quiet --verbose --list-modes --list-extractors --completion --help --version -V" -- "$cur") )
+    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --text-max --allow-empty --proxy --noproxy --render --render-always --headful --render-timeout-ms --render-engine --chrome-bin --python-bin --save-html --output --quiet --verbose --list-modes --list-extractors --completion --help --version -V" -- "$cur") )
   else
     COMPREPLY=( $(compgen -f -- "$cur") )
   fi

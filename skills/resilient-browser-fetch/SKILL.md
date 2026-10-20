@@ -131,6 +131,7 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 | 3 | `cloak-cdp` | 层 2 的指纹底座变体 | 层 2 + `requirements-cloak.txt` + `python -m cloakbrowser install` | CloakBrowser 本身不是 CAPTCHA 求解器 |
 
 - `auto`：默认。按上表从低到高、只对已安装的引擎升档；缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。指定 `--engine <层>` 时缺件直接失败，便于排障。
+- 已知某 origin 需要更高层时（例如该站长期由 Managed Challenge 拦截），直接用 `--engine <层>` 钉住：显式指定即**只用该层**（不再自动升档，缺件或失败直接报错），省掉每次重跑已经证伪的低层；代价是没有升档兜底。
 - 先信任低层：静态页在层 0 就是毫秒级，不要为了"稳"直接开层 2。命中挑战特征或空页才升档。
 - 层 0 被 TLS/客户端指纹检查挡住时（同一 URL 对 Python 栈直接 403、连接重置或只回空壳），先装推荐的 `curl_cffi` 再加 `--impersonate chrome124` 重试；它只改 TLS/HTTP2 指纹（可过部分站点的客户端检查），**不解 JS 挑战**，挑战仍需层 2。目标写具体版本（`chrome124`/`chrome136`/`safari184` 等）而不是 `chrome` 这类滚动别名，别名指向的 Chrome 版本会随 curl_cffi 升级漂移、不便复现；未装 `curl_cffi` 或目标非法时该参数直接报错，不会静默退回 stdlib 指纹。浏览器层自带指纹，传了会告警忽略。
 
@@ -177,16 +178,18 @@ CLI 与 `fetch_page()`/`save_page()` 走同一条流水线；下图是它对调�
 ```mermaid
 flowchart TD
     A[CLI 参数与 FetchOptions 校验] --> B[代理解析: SCRAPE_PROXY 或 --discover-proxy, 默认禁止静默直连]
-    B --> C{引擎阶梯: auto 只列已安装的层}
+    B --> C{"引擎阶梯: auto 只列已安装的层; --engine <层> 钉住起点"}
     C ---|该层缺件| U[缺件层: 记 kind=unavailable 并跳过]
     C --> D[隔离子进程 + wall_timeout_ms 硬上限]
     D --> E[在所选层内取正文]
     E --> W["取源码前(层 1/2/3 依次): wait_until 加载判定, 挑战与人工验证等待, wait-selector, post-wait-ms"]
     W --> V{内容校验: 状态码, 挑战特征, 最小字节, 期望文本, 软 403 接受}
     V -->|通过| S[save_page: 原子写 HTML 与 .meta.json]
+    V -->|"404/410 且无挑战特征"| X["资源级结论: 停止升档"]
     V -->|挑战或空页| N{还有更高层可升?}
     N -->|有| C
     N -->|没有| F[FetchFailed: .attempts.json 与各层 .blocked.html]
+    X --> F
     S --> R[汇报: 实际出口, 各引擎模式与结果, 文件与大小, notes]
 ```
 

@@ -44,6 +44,8 @@ flowchart TD
     Cloak --> Validate4{再次验证}
     Validate4 -->|有效| Outcome
     Validate4 -->|失败| Failed[FetchFailed + FetchAttempt 列表]
+    Validate & Validate2 & Validate3 & Validate4 -->|"404/410 且无挑战特征"| Stopped["资源级结论: 停止升档"]
+    Stopped --> Failed
     Outcome --> Pure[fetch_page: 只返回内存结果]
     Outcome --> Files[save_page: 原子写入 HTML 与诊断]
 ```

@@ -1,6 +1,6 @@
-import { readFile, readdir, unlink } from 'node:fs/promises';
-import { existsSync, readdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile, execFileSync, spawn } from 'node:child_process';
@@ -27,6 +27,8 @@ export const DEFAULT_UA =
 const MIN_ARTICLE_CHARS = 50;
 const UI_SWITCH_CHARS = 300;
 const TRAFILATURA_TIMEOUT_MS = 15000;
+// 渲染后判"仍是挑战空壳"的正文上限：真内容页不会短到这个程度（与"应用壳"判据同量级）。
+const BODY_CHALLENGE_MAX_CHARS = 300;
 // 远程抓取超时：之前无超时，黑洞主机可无限挂起。默认 30s，测试可经 timeoutMs 覆盖。
 export const FETCH_TIMEOUT_MS = 30000;
 
@@ -181,6 +183,62 @@ export function challengeSignals(headers) {
   return sigs;
 }
 
+/** 渲染后正文里的挑战特征：零依赖 Chrome 只渲染、不求解，拿到空壳时靠它把原因说对。 */
+export function bodyChallengeSignals(html) {
+  const s = String(html ?? '');
+  const sigs = [];
+  const title = (s.match(/<title[^>]*>([\s\S]{0,120}?)<\/title>/i)?.[1] ?? '').replace(/\s+/g, ' ').trim();
+  // 标题是强判据：挑战中间页的标题就是这几句，正常内容页不会长这样。
+  if (/just a moment|attention required|checking your browser|verifying you are human|请稍候|正在验证/i.test(title)) {
+    return [`challenge title "${title}"`];
+  }
+  // 其余判据只在正文极短时才认：避免把讲 Cloudflare / 嵌入 Turnstile 组件但确有内容的页面误判。
+  const text = s
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length > BODY_CHALLENGE_MAX_CHARS) return sigs;
+  // 这些是 Cloudflare 自己的内部标识（DOM id、挑战脚本 URL），几乎不会出现在正常正文里；
+  // 裸词 "turnstile" / "challenges.cloudflare.com" 不算——文档页与表单页都会有。
+  if (/cf-chl|__cf_chl|_cf_chl_opt|cdn-cgi\/challenge/i.test(s)) sigs.push('cloudflare challenge markers');
+  if (/challenges\.cloudflare\.com\/(turnstile|[^"'\s]*\.js)/i.test(s)) sigs.push('cloudflare turnstile script');
+  return sigs;
+}
+
+const PROXY_REGISTRY_ENV = 'HTMLMINI_PROXY_REGISTRY';
+const DEFAULT_PROXY_REGISTRY = join(homedir(), '.config', 'proxy-resources.json');
+
+/**
+ * 读本机代理登记（network-access 约定的 ~/.config/proxy-resources.json）里的候选入口。
+ * 只读不探测：本函数用在失败路径上补提示，不替用户改路线。
+ */
+export function proxyRegistryCandidates(registryPath) {
+  const file = registryPath ?? process.env[PROXY_REGISTRY_ENV] ?? DEFAULT_PROXY_REGISTRY;
+  try {
+    const data = JSON.parse(readFileSync(file, 'utf8'));
+    const list = Array.isArray(data?.proxies) ? data.proxies : [];
+    return list
+      .map((p) => (typeof p === 'string' ? p : p?.url))
+      .filter((u) => typeof u === 'string' && u.trim());
+  } catch {
+    return [];
+  }
+}
+
+/** 抓取失败时的登记提示：htmlmini 不自动读登记文件，得让调用方知道有条现成的路。 */
+function registryHint(source, proxy) {
+  if (proxy !== undefined) return '';
+  const { origin } = proxyOrigin(source, { proxy });
+  const cands = proxyRegistryCandidates();
+  if (!cands.length) return '';
+  const shown = cands.map((u) => maskProxy(u)).join(', ');
+  return origin === 'none'
+    ? `; no proxy in use and this machine has a proxy registry (~/.config/proxy-resources.json): ${shown} — htmlmini does not read it automatically, pass --proxy <url> or set HTTPS_PROXY`
+    : `; the ${origin} proxy failed; the machine registry also lists: ${shown} — try them one by one instead of concluding the site is unreachable`;
+}
+
 function failureHint(res) {
   const status = res.status;
   if (status === 429) {
@@ -226,9 +284,9 @@ export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS, proxy }
         dispatcher,
       });
     const fail = (e) => {
-      if (e && e.name === 'TimeoutError') throw new Error(`fetch timeout after ${timeoutMs}ms: ${source}${via}`);
-      if (proxyUrl) throw new Error(`${e.message} (via proxy ${maskProxy(proxyUrl)} for ${source})`);
-      throw e;
+      if (e && e.name === 'TimeoutError') throw new Error(`fetch timeout after ${timeoutMs}ms: ${source}${via}${registryHint(source, proxy)}`);
+      if (proxyUrl) throw new Error(`${e.message} (via proxy ${maskProxy(proxyUrl)} for ${source})${registryHint(source, proxy)}`);
+      throw new Error(`${e.message}${registryHint(source, proxy)}`);
     };
     let res;
     try {
@@ -247,7 +305,9 @@ export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS, proxy }
     }
     if (!res.ok) {
       const initial = firstStatus && firstStatus !== res.status ? ` (initial ${firstStatus} with minimal headers)` : '';
-      const err = new Error(`HTTP ${res.status} fetching ${source}${initial}${via}${failureHint(res)}`);
+      // 登记提示只对"可能是路线问题"的状态出现：404/410 是资源级结论，换出口不会变。
+      const routeHint = res.status === 403 || (res.status >= 500 && res.status <= 599) ? registryHint(source, proxy) : '';
+      const err = new Error(`HTTP ${res.status} fetching ${source}${initial}${via}${failureHint(res)}${routeHint}`);
       err.statusCode = res.status;
       throw err;
     }
@@ -261,6 +321,8 @@ export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS, proxy }
 // 静态抓取报 403/5xx 才回退到浏览器（404/超时/断网直接抛，不烧浏览器时间）。
 // 渲染仍由 resilient-browser-fetch 的 save_page 执行（同代理），本文件只负责调度和提取。
 export const RENDER_TIMEOUT_MS = 300_000;
+/** 可钉住的渲染引擎：save_page 的浏览器层；static/scrapling-cli 在渲染语境下不适用。 */
+export const RENDER_ENGINE_CHOICES = ['auto', 'playwright', 'scrapling', 'cloak-cdp'];
 const RENDER_SCRIPT_ENV = 'HTMLMINI_RENDER_SCRIPT';
 
 function findRenderScript() {
@@ -584,10 +646,20 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   return html;
 }
 
-export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, pythonBin } = {}) {
+export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, pythonBin, renderEngine } = {}) {
   const { script, engines, solver, python } = await renderCapability(pythonBin);
   const canSavePage =
     Boolean(script) && (engines === null || engines.some((name) => BROWSER_ENGINES.includes(name)));
+  // 显式钉住引擎：save_page 只在那个引擎上跑（缺件直接失败），因此通路必须走 save_page，
+  // 否则零依赖 Chrome 会顶掉用户的选择，钉层等于没生效。
+  const pinned = renderEngine && renderEngine !== 'auto' ? renderEngine : null;
+  if (pinned && !canSavePage) {
+    const alternative = await findCapablePython(['playwright']).catch(() => null);
+    throw new Error(
+      `--render-engine ${pinned} needs the save_page renderer (resilient-browser-fetch), but no browser-capable engine is available here`
+      + pythonHint(python, alternative),
+    );
+  }
 
   // Chrome 无头 dump-dom 不支持开窗，--headful 只走 save_page 通路。
   let found = null;
@@ -604,9 +676,9 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
     }
   }
 
-  // 有求解引擎、需要开窗、或本机没有 Chrome 时，save_page 更合适；层 1 与 Chrome 同能力时优先零依赖通路。
-  if (canSavePage && (solver || headful || !found)) {
-    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python });
+  // 有求解引擎、需要开窗、本机没有 Chrome，或显式钉了引擎时，save_page 更合适；层 1 与 Chrome 同能力时优先零依赖通路。
+  if (canSavePage && (pinned || solver || headful || !found)) {
+    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine });
   }
   if (found) {
     try {
@@ -616,13 +688,13 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
       // 零依赖通路崩了（进程退出码异常、超时等）时，同能力的 save_page 值得再试一次。
       log.info('render', `chrome 通路失败，改用 save_page 重试: ${chromeErr.message}`);
       try {
-        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python });
+        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine });
       } catch (saveErr) {
         throw new Error(`${chromeErr.message}; save_page 回退也失败: ${saveErr.message}`);
       }
     }
   }
-  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python });
+  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine });
   const alternative = await findCapablePython(['playwright']).catch(() => null);
   if (headful) {
     throw new Error(
@@ -723,13 +795,14 @@ export async function savePageUsable(pythonBin) {
 }
 
 
-async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python }) {
+async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine }) {
   const interpreter = python ?? (await findPython({ pythonBin }));
   const proxyUrl = resolveProxy(url, { proxy });
   const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
   // -X utf8 + PYTHONUTF8：子进程日志强制 UTF-8 输出，本侧按 UTF-8 增量解码、
   // 逐行透传（Windows 控制台查看侧按 powershell-pitfalls 的 UTF-8 模板设置）。
-  const args = ['-X', 'utf8', script, url, '--out', out, '--engine', 'auto', '--timeout-ms', String(renderTimeoutMs)];
+  // --engine 透传：显式指定时 save_page 只用该层（不再自动升档），已知站点可省掉注定失败的升档。
+  const args = ['-X', 'utf8', script, url, '--out', out, '--engine', renderEngine ?? 'auto', '--timeout-ms', String(renderTimeoutMs)];
   if (proxyUrl) args.push('--proxy', proxyUrl);
   else args.push('--discover-proxy');
   if (headful) args.push('--headful');
@@ -832,7 +905,7 @@ export function isRenderableError(e) {
 
 export async function readWithRender(
   source,
-  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin } = {},
+  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin, renderEngine, allowEmpty = false } = {},
 ) {
   const remote = /^https?:\/\//i.test(source ?? '');
   const tRead = Date.now();
@@ -843,6 +916,15 @@ export async function readWithRender(
     log.info('read', `${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${r.rendered ? ' via browser render' : ''}`);
     log.debug('read', `source=${r.source ?? source} contentType=${r.contentType ?? 'unknown'}${remote ? ` render=${render === 'always' ? 'always' : render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
     return r;
+  };
+  // 渲染通路拿到的仍是挑战空壳时，别把"水合没做"当成原因：零依赖 Chrome 只渲染、不求解。
+  // 正文极短且带挑战特征才判（见 bodyChallengeSignals），长文章提到挑战机制不会误伤。
+  const guardRendered = (r) => {
+    const sigs = bodyChallengeSignals(r.html);
+    if (!sigs.length || allowEmpty) return r;
+    throw new Error(
+      `rendered page still looks like a challenge (${sigs.join(', ')}): the rendering pathway does not solve challenges — add --python-bin auto (or set HTMLMINI_PYTHON=auto) so the save_page engine (scrapling/cloak-cdp) solves it, or fetch it with resilient-browser-fetch (--headful for manual verification). Pass --allow-empty to keep the challenge HTML anyway.`,
+    );
   };
   // render="always"：静态 200 也照样渲染。客户端渲染页的正文在水合后才进 DOM，
   // 静态抓到的 HTML 是 200 却没有正文，只按 403/5xx 回退永远等不到渲染。
@@ -855,9 +937,10 @@ export async function readWithRender(
         ...(headful ? { headful: true } : {}),
         ...(chromeBin == null ? {} : { chromeBin }),
         ...(pythonBin == null ? {} : { pythonBin }),
+        ...(renderEngine == null ? {} : { renderEngine }),
       },
     );
-    return done({ html, source, contentType: 'text/html', rendered: true });
+    return done(guardRendered({ html, source, contentType: 'text/html', rendered: true }));
   }
   if (!remote || !render) {
     return done(await readSource(source, { timeoutMs, proxy }));
@@ -874,9 +957,10 @@ export async function readWithRender(
         ...(headful ? { headful: true } : {}),
         ...(chromeBin == null ? {} : { chromeBin }),
         ...(pythonBin == null ? {} : { pythonBin }),
+        ...(renderEngine == null ? {} : { renderEngine }),
       },
     );
-    return done({ html, source, contentType: 'text/html', rendered: true });
+    return done(guardRendered({ html, source, contentType: 'text/html', rendered: true }));
   }
 }
 
@@ -904,6 +988,33 @@ export async function readSiblingMeta(filePath) {
   } catch {
     return null;
   }
+}
+
+/**
+ * 把本次实际用于提取的 HTML（静态抓取的原文或浏览器渲染后的原文）落盘，并写同名
+ * `.meta.json` 记下源 URL 与是否走过渲染，供后续任一模式复用（等价于"渲染一次、多视图"）。
+ *
+ * 为什么落盘原文而不是 `--mode html` 的清洗产物：清洗去掉 class/id/role 等信号后，
+ * Defuddle 的样板剪裁与 ui 清单会变化（实测同一页 markdown 由 1313 字符变 2363，
+ * `--attrs none` 时 ui 清单少近一半），相对链接也会失去 URL 基准变成 file:///。
+ * 落盘位置与是否渲染由调用方决定；非 URL 输入返回 null，由调用方提示。
+ */
+export async function saveSourceHtml(html, { source, outPath, rendered = false, contentType = null } = {}) {
+  if (!outPath || !/^https?:\/\//i.test(source ?? '')) return null;
+  const bytes = Buffer.byteLength(html, 'utf8');
+  await writeFile(outPath, html, 'utf8');
+  // 同一份 URL 基准要跟着走，否则后续本地提取会把相对链接解析成 file:///。
+  const meta = {
+    url: source,
+    savedBy: `htmlmini/${VERSION}`,
+    savedAt: new Date().toISOString(),
+    rendered: rendered === true,
+    contentType: contentType ?? 'text/html',
+    bytes,
+  };
+  await writeFile(`${outPath}.meta.json`, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+  log.info('write', `saved source HTML ${outPath} (${fmtBytes(bytes)}${rendered ? ', browser render' : ', static fetch'})`);
+  return outPath;
 }
 
 function collectText(el) {
@@ -1887,7 +1998,7 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin } = {}) {
+export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin, renderEngine, saveHtml } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -1911,12 +2022,21 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
         ...(headful ? { headful: true } : {}),
         ...(chromeBin == null ? {} : { chromeBin }),
         ...(pythonBin == null ? {} : { pythonBin }),
+        ...(renderEngine == null ? {} : { renderEngine }),
+        allowEmpty,
       },
     );
     html = r.html;
     src = r.source;
     contentType = r.contentType ?? guessContentTypeFromPath(src);
     rendered = r.rendered === true;
+    if (saveHtml) {
+      // 落盘放在校验之前：即使随后被判挑战页/空壳而报错，抓到的原文仍可复用与诊断。
+      const saved = await saveSourceHtml(html, { source: src, outPath: saveHtml, rendered, contentType });
+      if (!saved) {
+        log.info('write', `--save-html only applies to URL input (got ${src === 'stdin' ? 'stdin' : 'a local file'}); nothing written`);
+      }
+    }
     if (!/^https?:\/\//i.test(src) && src !== 'stdin') {
       sibling = await readSiblingMeta(src);
     }
