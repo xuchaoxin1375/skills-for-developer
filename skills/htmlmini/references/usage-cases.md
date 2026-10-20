@@ -88,13 +88,13 @@ htmlmini "<URL>" -m -o page.md           # 长正文（FAQ、描述），首屏�
 - 一条命令：`htmlmini "<URL>" --render`——静态优先，403/5xx 才回退浏览器渲染，再按文件模式提取。
 - 渲染链：save_page（本机有层 ≥1 引擎且更合适时）→ 系统 Chrome 无头 `dump-dom`（零依赖）→ 友好报错。实际通路看 `[render] engine=…`。
 - 通路选择：save_page 有求解引擎（scrapling / cloak-cdp）、需要 `--headful`、或本机没有 Chrome 时走 save_page；层 1（playwright / patchright）与 Chrome 同为"只渲染不求解"，此时优先零依赖 Chrome，Chrome 崩了再回退 save_page 重试一次（错误里两段都会出现）。
-- save_page 与 Trafilatura 都跑在 Python 解释器上，默认取 PATH 的 `python` / `python3`，**往往不是装了 playwright / scrapling 的那个环境**（conda / venv 常见）。用 `--python-bin <解释器>` / MCP `python_bin` / `HTMLMINI_PYTHON` 指定；`--python-bin auto`（或 `HTMLMINI_PYTHON=auto`）会扫描本机并挑一个具备层 ≥1 引擎的。显式路径不做隐式回退，指错直接报错。`HTMLMINI_ENV_SCAN=0` 关闭扫描。
+- save_page 与 Trafilatura 都跑在 Python 解释器上，默认取 PATH 的 `python` / `python3`，**往往不是装了 playwright / scrapling 的那个环境**（conda / venv 常见）。未显式指定时，渲染失败（挑战空壳 / 缺引擎 / 引擎报错）会自动扫描本机、换更强的解释器重试一次（层 ≥2 优先），日志 `[render]` 会打印两次用的解释器；显式路径不自动换、指错直接报错。也可直接 `--python-bin <解释器>` / MCP `python_bin` / `HTMLMINI_PYTHON`，或 `--python-bin auto`（或 `HTMLMINI_PYTHON=auto`）固定为扫描结果。`HTMLMINI_ENV_SCAN=0` 关闭扫描。
 - `--headful` / `headful:true` 只用于首次人工验证，需要 save_page 通路且有层 ≥1 引擎；Chrome `dump-dom` 不能开窗。
 - 404 / 超时 / 断网直接抛错，不烧浏览器时间。
 - 坑：渲染通路选到零依赖 Chrome（日志 `[render] engine=chrome-dump`）时只渲染、不求解。目标站点有挑战特征时拿到的是挑战空壳（几 KB），htmlmini 会直接报 `rendered page still looks like a challenge`（不再误报成"像客户端渲染壳"）；按提示换求解通路，`--allow-empty` 可强行取回空壳排查。
 - 已知某 origin 需要更高层（长期被 Managed Challenge 拦）时，用 `--render-engine scrapling`（或 `cloak-cdp` / `playwright`）钉住：显式指定后 save_page 只用该层、不再自动升档，缺件或失败直接报错；好处是省掉每次注定失败的 static / playwright 尝试，代价是没有升档兜底。
 - 抓取失败时错误里会点名本机代理登记（`~/.config/proxy-resources.json`）的候选入口：htmlmini 不自动读登记，按提示显式 `--proxy` 或设 `HTTPS_PROXY`；404/410 不带这条提示（资源级结论，换出口不会变）。
-- 取不到正文时先让 save_page 通路接管：加 `--python-bin auto`（或会话级 `HTMLMINI_PYTHON=auto`），让它扫描本机并挑到层数更全的那个解释器（通常是装了求解引擎的那一个）；默认 PATH 上的 `python` 常只有层 1，被判为"只渲染"而退回 Chrome。本机确实只有层 1 时 save_page 与 Chrome 等价，改走 `resilient-browser-fetch`（需要时 `--headful` 人工验证）。
+- 取不到正文时先让 save_page 通路接管：默认已会自动换更强的解释器重试一次；仍失败时加 `--python-bin auto`（或会话级 `HTMLMINI_PYTHON=auto`）固定为扫描结果，或按 `resilient-browser-fetch check_environment.py --list-envs` 指名层数更全的那个解释器（通常是装了求解引擎的那一个）；默认 PATH 上的 `python` 常只有层 1，被判为"只渲染"而退回 Chrome。本机确实只有层 1 时 save_page 与 Chrome 等价，改走 `resilient-browser-fetch`（需要时 `--headful` 人工验证）。
 - 手工两步（存量或排查）：先用双路对照（直连 + 代理并行；登记已有可用代理时直接用登记条目）确定可用路线并落盘，再 `htmlmini page.html`；不按 URL 重抓（要留下这次抓到的原文，加 `--save-html <路径>`：校验之前就落盘，挑战空壳报错时也能留下）。
 
 通路与失败分流：
@@ -110,7 +110,9 @@ flowchart TD
     P -->|"有"| SP["save_page 通路: 求解后取正文"]
     P -->|"只有层 1"| CH["零依赖 Chrome dump-dom: 只渲染"]
     CH --> Q{结果只有几 KB、无正文?}
-    Q -->|"是"| FIX["挑战空壳, 不是水合问题: 加 --python-bin auto, 或转 resilient-browser-fetch"]
+    Q -->|"是"| ESC["自动扫描并换更强解释器重试一次 (层 >= 2 优先)"]
+    ESC -->|"仍失败"| FIX["加 --python-bin auto 固定, 或转 resilient-browser-fetch"]
+    ESC -->|"拿到正文"| X
     Q -->|"否"| X
     SP --> X
 ```

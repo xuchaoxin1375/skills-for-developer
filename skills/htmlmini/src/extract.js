@@ -369,22 +369,35 @@ function findEnvScanScript() {
   return existsSync(sibling) ? sibling : null;
 }
 
+/** 引擎名 → 层号；扫描结果缺 levels 时按引擎名推导（兼容旧版脚本与测试桩）。 */
+const ENGINE_LEVELS = { static: 0, playwright: 1, patchright: 1, scrapling: 2, 'cloak-cdp': 3 };
+
+function candidateLevel(entry) {
+  const declared = Math.max(0, ...(entry?.levels ?? []));
+  const derived = Math.max(
+    0,
+    ...(entry?.engines ?? []).map((name) => ENGINE_LEVELS[String(name).toLowerCase()] ?? 0),
+  );
+  return Math.max(declared, derived);
+}
+
 /**
- * 扫描本机哪个解释器具备所需层（借 resilient-browser-fetch 的 check_environment.py --list-envs）。
- * 只在需要时调用，结果按进程缓存；任何失败都返回 null，绝不打断主流程。
+ * 扫描本机候选解释器，返回按能力排序的可用列表（借 resilient-browser-fetch 的 check_environment.py --list-envs）。
+ * 只在需要时调用，结果按 required 组合缓存；任何失败都返回空数组，绝不打断主流程。
  */
-export async function findCapablePython(required = ['playwright']) {
-  if ((process.env[ENV_SCAN_ENV] ?? '').trim() === '0') return null;
+export async function scanPythonEnvironments(required = ['playwright']) {
+  if ((process.env[ENV_SCAN_ENV] ?? '').trim() === '0') return [];
+  const key = required.join(',');
+  if (envScanCache.has(key)) return envScanCache.get(key);
   const script = findEnvScanScript();
-  if (!script) return null;
-  if (envScanCache !== undefined) return envScanCache;
+  if (!script) return [];
   let runner;
   try {
     runner = await findDefaultPython(); // 用 PATH 上的解释器跑扫描；它只要能跑标准库即可
     if (!runner) throw new Error('no python on PATH');
   } catch {
-    envScanCache = null;
-    return null;
+    envScanCache.set(key, []);
+    return [];
   }
   const program = [
     'import json, sys',
@@ -393,31 +406,59 @@ export async function findCapablePython(required = ['playwright']) {
     `required = tuple(${JSON.stringify(required)})`,
     'envs = ce.scan_environments(required, sys.argv[1])',
     'usable = [e for e in envs if e.get("ok") and not e.get("satisfies")]',
-    'print(json.dumps({"recommended": usable[0]["path"] if usable else None,',
-    '                  "engines": usable[0]["engines"] if usable else [],',
-    '                  "manager": usable[0].get("manager") if usable else None},',
-    '                 ensure_ascii=False))',
+    'print(json.dumps([{"path": e.get("path"), "engines": list(e.get("engines") or []),',
+    '                  "levels": list(e.get("levels") or []), "manager": e.get("manager")}',
+    '                 for e in usable], ensure_ascii=False))',
   ].join('\n');
+  let candidates = [];
   try {
     const { stdout } = await execFileAsync(
       runner,
       ['-X', 'utf8', '-c', program, dirname(script)],
       { timeout: 120_000, windowsHide: true },
     );
-    const parsed = JSON.parse(String(stdout).trim().split('\n').pop() || '{}');
-    envScanCache = parsed && parsed.recommended ? parsed : null;
+    const parsed = JSON.parse(String(stdout).trim().split('\n').pop() || '[]');
+    if (Array.isArray(parsed)) candidates = parsed.filter((e) => e && e.path);
   } catch (e) {
     log.debug('render', `解释器环境扫描失败，忽略: ${e.message}`);
-    envScanCache = null;
   }
-  return envScanCache;
+  envScanCache.set(key, candidates);
+  return candidates;
 }
 
-let envScanCache;
+const envScanCache = new Map();
 
 /** 清空解释器扫描缓存（环境变量变化或测试需要重新扫描时用）。 */
 export function resetEnvScanCache() {
-  envScanCache = undefined;
+  envScanCache.clear();
+}
+
+/** 扫描后挑第一个具备所需层的解释器；没有则 null。 */
+export async function findCapablePython(required = ['playwright']) {
+  const [first] = await scanPythonEnvironments(required);
+  if (!first) return null;
+  return { recommended: first.path, engines: first.engines ?? [], manager: first.manager ?? null };
+}
+
+/**
+ * 渲染失败后是否可以换更强的解释器再试。
+ * 显式指定了解释器就尊重用户选择；配置类错误换环境也没用。
+ */
+export async function pickStrongerPython({ pythonBin, current = null, minLevel = 2 } = {}) {
+  if (pythonBinOverride(pythonBin)) return null;
+  const candidates = await scanPythonEnvironments(['playwright']);
+  const currentPath = current ? resolvePath(String(current)).toLowerCase() : null;
+  for (const entry of candidates) {
+    if (candidateLevel(entry) < minLevel) continue;
+    if (currentPath && resolvePath(String(entry.path)).toLowerCase() === currentPath) continue;
+    return {
+      recommended: entry.path,
+      engines: entry.engines ?? [],
+      manager: entry.manager ?? null,
+      level: candidateLevel(entry),
+    };
+  }
+  return null;
 }
 
 async function findDefaultPython() {
@@ -718,6 +759,18 @@ function pythonHint(python, alternative) {
   return `${probed}; if the engines live in another environment (conda/venv), point --python-bin or ${PYTHON_BIN_ENV} at it, or list candidates with resilient-browser-fetch check_environment.py --list-envs${suggestion}`;
 }
 
+/**
+ * 渲染失败是否值得换一个更强的解释器再试一次。
+ * 配置类错误（找不到渲染器/解释器、目标资源 404/410、域名解析失败）换环境无用。
+ */
+export function isInterpreterRetryable(e) {
+  const m = String(e?.message ?? '');
+  if (!m) return false;
+  if (/renderer not found|no python found|interpreter is not usable/i.test(m)) return false;
+  if (/ENOTFOUND|EAI_AGAIN|\b(?:404|410)\b/.test(m)) return false;
+  return /challenge|save_page|engine|引擎|render|渲染|chrome|dump-dom|timeout|超时/i.test(m);
+}
+
 
 // save_page 可用性探测：从不抛错。判定口径是"层 ≥1 有可用引擎"（playwright/scrapling/cloak-cdp），
 // 不再要求必须装 scrapling；静态抓取仍由本模块自己完成。
@@ -926,21 +979,48 @@ export async function readWithRender(
       `rendered page still looks like a challenge (${sigs.join(', ')}): the rendering pathway does not solve challenges — add --python-bin auto (or set HTMLMINI_PYTHON=auto) so the save_page engine (scrapling/cloak-cdp) solves it, or fetch it with resilient-browser-fetch (--headful for manual verification). Pass --allow-empty to keep the challenge HTML anyway.`,
     );
   };
+  // 渲染一次并做挑战判定；bin 为空表示沿用默认解释器（PATH 的 python/python3）。
+  const renderHtml = async (bin) => {
+    const html = await renderViaBrowser(source, {
+      proxy,
+      ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
+      ...(headful ? { headful: true } : {}),
+      ...(chromeBin == null ? {} : { chromeBin }),
+      ...(bin == null ? {} : { pythonBin: bin }),
+      ...(renderEngine == null ? {} : { renderEngine }),
+    });
+    return guardRendered({ html, source, contentType: 'text/html', rendered: true });
+  };
+  // 首次渲染失败（含拿到挑战空壳）且用户没显式指定解释器时，扫描本机是否有更强的候选
+  // （层 2/3 带挑战求解），最多换一次。显式指定即尊重用户选择，不自动换。
+  const renderWithEscalation = async () => {
+    try {
+      return done(await renderHtml(pythonBin));
+    } catch (e) {
+      if (!isInterpreterRetryable(e)) throw e;
+      let current = null;
+      try {
+        current = await findPython({ pythonBin });
+      } catch {
+        current = null;
+      }
+      const stronger = await pickStrongerPython({ pythonBin, current }).catch(() => null);
+      if (!stronger) throw e;
+      log.info(
+        'render',
+        `渲染未成功，改用更强的解释器重试: ${stronger.recommended} (层 ${stronger.level}; 引擎: ${stronger.engines.join(', ') || '未知'})`,
+      );
+      try {
+        return done(await renderHtml(stronger.recommended));
+      } catch (retryErr) {
+        throw new Error(`${e.message}; 改用 ${stronger.recommended} 重试后仍失败: ${retryErr.message}`);
+      }
+    }
+  };
   // render="always"：静态 200 也照样渲染。客户端渲染页的正文在水合后才进 DOM，
   // 静态抓到的 HTML 是 200 却没有正文，只按 403/5xx 回退永远等不到渲染。
   if (remote && render === 'always') {
-    const html = await renderViaBrowser(
-      source,
-      {
-        proxy,
-        ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
-        ...(headful ? { headful: true } : {}),
-        ...(chromeBin == null ? {} : { chromeBin }),
-        ...(pythonBin == null ? {} : { pythonBin }),
-        ...(renderEngine == null ? {} : { renderEngine }),
-      },
-    );
-    return done(guardRendered({ html, source, contentType: 'text/html', rendered: true }));
+    return await renderWithEscalation();
   }
   if (!remote || !render) {
     return done(await readSource(source, { timeoutMs, proxy }));
@@ -949,18 +1029,7 @@ export async function readWithRender(
     return done(await readSource(source, { timeoutMs, proxy }));
   } catch (e) {
     if (!isRenderableError(e)) throw e;
-    const html = await renderViaBrowser(
-      source,
-      {
-        proxy,
-        ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
-        ...(headful ? { headful: true } : {}),
-        ...(chromeBin == null ? {} : { chromeBin }),
-        ...(pythonBin == null ? {} : { pythonBin }),
-        ...(renderEngine == null ? {} : { renderEngine }),
-      },
-    );
-    return done(guardRendered({ html, source, contentType: 'text/html', rendered: true }));
+    return await renderWithEscalation();
   }
 }
 

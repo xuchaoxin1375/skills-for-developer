@@ -75,8 +75,11 @@ OPTIONS
                    which is often NOT the environment that has playwright or
                    scrapling installed; env: HTMLMINI_PYTHON. Use "auto" to scan
                    this machine (conda/venv/uv/PATH) and pick an interpreter that
-                   has a layer >= 1 engine. When rendering fails for lack of an
-                   engine, the error also names such an interpreter if one exists.
+                   has a layer >= 1 engine.
+                   Without an explicit value, a failed render (challenge shell,
+                   missing engine, engine error) is retried once with the strongest
+                   interpreter the scan finds (layer >= 2 preferred, i.e. a
+                   challenge solver); the log names both interpreters.
                    Disable scanning with HTMLMINI_ENV_SCAN=0.
   --save-html <path>
                    write the HTML that was actually used for extraction (static

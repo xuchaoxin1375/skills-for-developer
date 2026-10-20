@@ -13,8 +13,11 @@ import {
   extractHtml,
   findCapablePython,
   findPython,
+  isInterpreterRetryable,
+  pickStrongerPython,
   pythonBinOverride,
   resetEnvScanCache,
+  scanPythonEnvironments,
   hostBypassed,
   maskProxy,
   pickPlaywrightChrome,
@@ -881,6 +884,71 @@ open(out, 'w', encoding='utf-8').write(
         if (saved[k] === undefined) delete process.env[k];
         else process.env[k] = saved[k];
       }
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+}
+
+// ---- 13d. 渲染失败自动升档：扫描到更强解释器，显式指定时不换 ----
+{
+  let py = null;
+  try {
+    py = await findPython();
+  } catch {
+    py = null;
+  }
+  if (!py) {
+    console.log('skip env-scan escalation tests (no python)');
+  } else {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t13d-'));
+    const saved = {
+      HTMLMINI_PYTHON: process.env.HTMLMINI_PYTHON,
+      HTMLMINI_ENV_SCAN_SCRIPT: process.env.HTMLMINI_ENV_SCAN_SCRIPT,
+      HTMLMINI_ENV_SCAN: process.env.HTMLMINI_ENV_SCAN,
+    };
+    const strong = 'C:/fake/conda/envs/scrapling/python.exe';
+    const weak = 'C:/fake/system/python.exe';
+    try {
+      delete process.env.HTMLMINI_PYTHON;
+      const stubDir = path.join(dir, 'scan');
+      await mkdir(stubDir, { recursive: true });
+      await writeFile(
+        path.join(stubDir, 'check_environment.py'),
+        'def scan_environments(required, scripts_dir):\n'
+          + '    return [\n'
+          + `        {"ok": True, "path": ${JSON.stringify(strong)}, "engines": ["static", "playwright", "scrapling"], "levels": [0, 1, 2], "manager": "conda:scrapling", "satisfies": []},\n`
+          + `        {"ok": True, "path": ${JSON.stringify(weak)}, "engines": ["static", "playwright"], "levels": [0, 1], "manager": "system", "satisfies": []},\n`
+          + '    ]\n',
+        'utf8',
+      );
+      process.env.HTMLMINI_ENV_SCAN_SCRIPT = path.join(stubDir, 'check_environment.py');
+      resetEnvScanCache();
+
+      const list = await scanPythonEnvironments(['playwright']);
+      ok(list.length === 2 && list[0].path === strong, '扫描返回按能力排序的候选列表');
+      ok((await findCapablePython(['playwright'])).recommended === strong, 'findCapablePython 仍取扫描首选');
+
+      const picked = await pickStrongerPython({ pythonBin: undefined, current: weak });
+      ok(picked && picked.recommended === strong && picked.level >= 2, '未显式指定时挑出层 >= 2 的更强解释器');
+      ok((await pickStrongerPython({ pythonBin: weak, current: weak })) === null, '显式指定解释器后不再自动升档');
+      ok((await pickStrongerPython({ pythonBin: undefined, current: strong })) === null, '当前已是扫描首选时不重复升档');
+
+      process.env.HTMLMINI_ENV_SCAN = '0';
+      resetEnvScanCache();
+      ok((await pickStrongerPython({ pythonBin: undefined, current: weak })) === null, 'HTMLMINI_ENV_SCAN=0 时关闭自动升档');
+      delete process.env.HTMLMINI_ENV_SCAN;
+
+      ok(isInterpreterRetryable(new Error('rendered page still looks like a challenge (cloudflare)')), '挑战判定可触发升档');
+      ok(isInterpreterRetryable(new Error('save_page: 所有引擎均失败')), '引擎失败可触发升档');
+      ok(!isInterpreterRetryable(new Error('HTTP 404 not found')), '404 不触发升档');
+      ok(!isInterpreterRetryable(new Error('--python-bin/HTMLMINI_PYTHON interpreter is not usable: x')), '解释器配置错误不触发升档');
+      ok(!isInterpreterRetryable(new Error('no python found (tried python/python3)')), '没有 python 时不触发升档');
+    } finally {
+      for (const k of Object.keys(saved)) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+      resetEnvScanCache();
       await rm(dir, { recursive: true, force: true });
     }
   }

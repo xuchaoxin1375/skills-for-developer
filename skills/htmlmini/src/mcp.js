@@ -110,7 +110,7 @@ const shapeUrl = {
   python_bin: z
     .string()
     .optional()
-    .describe('Explicit Python interpreter for the render fallback and the optional Trafilatura pass. Default is "python"/"python3" on PATH, which is often not the environment that has playwright/scrapling installed; also read from HTMLMINI_PYTHON. Use "auto" to scan this machine (conda/venv/uv/PATH) and pick an interpreter that has a layer >= 1 engine.'),
+    .describe('Explicit Python interpreter for the render fallback and the optional Trafilatura pass. Default is "python"/"python3" on PATH, which is often not the environment that has playwright/scrapling installed; also read from HTMLMINI_PYTHON. Use "auto" to scan this machine (conda/venv/uv/PATH) and pick an interpreter that has a layer >= 1 engine. When no explicit value is given, a failed render is retried once with the strongest interpreter the scan finds (layer >= 2, i.e. a challenge solver, preferred).'),
   save_html: z
     .string()
     .optional()

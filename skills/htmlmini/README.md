@@ -128,6 +128,8 @@ htmlmini "https://example.com/app" --render --headful
 
 # Python 环境选择（save_page 与 Trafilatura 都靠它；默认 PATH 的 python 往往不是目标环境）
 htmlmini "https://example.com/app" --render --python-bin auto
+# 不指定时，渲染失败（挑战空壳/缺引擎/引擎报错）会自动扫描并换更强的解释器重试一次（层 2/3 优先），
+# 日志里会打印两次用的解释器；显式指定 --python-bin / HTMLMINI_PYTHON 则不自动换。
 # 或 export HTMLMINI_PYTHON=<解释器路径>；关闭扫描 HTMLMINI_ENV_SCAN=0
 
 # 渲染一次、多视图复用：留下原文 + 页面 URL，之后各模式读该文件，不重复渲染
