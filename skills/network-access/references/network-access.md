@@ -87,6 +87,8 @@ curl 默认不会把 HTTP 403 判为进程失败，下载交付可用 `--fail` �
 | HTTP 5xx（含 500/502/503/504 及 Cloudflare 520 系） | 简头 curl 的 5xx 可能是反爬指纹拦截，不是源站死的充分证据。先保留状态码、正文与 `cf-ray`/`server` 头等证据，再换出口有界对照一次（直连↔代理，沿用“有界诊断与超时”的单次上限，不叠加自动重试）；另一路成功即沿用该路。两路一致 5xx 时补一次异构对照：补全浏览器头（Accept/Accept-Language/Upgrade-Insecure-Requests/Sec-Fetch-*）重测，或同路线 `curl_cffi`，或真实浏览器；出现 302 跳 `/_sc/challenge`、`/_sec/`、`challenge`、`captcha`、`turnstile`，或 403 带 `sct`/`cf_clearance` cookie、`X-Robots-Tag: noindex`，即按挑战页转 `resilient-browser-fetch`。异构仍 5xx 才判源站故障并记录，不逐个出口轮询，不转镜像加速 |
 | HTTP 404 或加速站拒绝 URL | 检查原始链接、分支/标签、服务支持范围；GitHub 私有资源也可能以 404 隐藏权限问题 |
 
+代理端口开放、能连目标只证明链路可用，不等于出口能过 WAF。WAF 还会看 ASN、地区、IP 信誉、TLS/浏览器指纹和会话行为；同一代理下载文档正常，目标站点仍可能因机房 ASN、地区不匹配或短时间高频请求直接 403。换出口时记录实际出口、ASN/地区和目标响应，不要用“能连”代替“能过”，也不要用轮换出口规避明确的限流冷却。
+
 GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-remaining`、`x-ratelimit-reset` 与 `retry-after`。官方规则要求等待指定冷却；已确认次级限流且无等待值时至少等 1 分钟，后续再指数退避。供应商明确规则优先于通用退避起点，不能将所有 403 当作网络不通。
 
 ## 无代理的 GitHub 文件加速

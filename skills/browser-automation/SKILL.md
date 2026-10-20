@@ -49,7 +49,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 | 测什么、断言、测试数据与回归维护 | [web-app-testing](../web-app-testing/SKILL.md) |
 | 页面哪里有问题、布局/交互/可访问性诊断 | [frontend-qa](../frontend-qa/SKILL.md) |
 
-资源预算政策复用 [测试资源预算与回收](../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)，不用完整测试 skill 代替工具操作说明。普通页面提取沿用 `htmlmini`；挑战页经网络分流确认后才用 `resilient-browser-fetch`。这些工具不会因引用本 skill 自动获得截图 guardian 的回收保证。
+资源预算政策复用 [测试资源预算与回收](../web-app-testing/references/environment-and-maintenance.md#测试资源预算与回收)，不用完整测试 skill 代替工具操作说明。普通页面提取沿用 `htmlmini`；挑战页经网络分流确认后才用 `resilient-browser-fetch`，反检测的控制面/指纹/IP 分层与 Playwright/Patchright 选择也由该 skill 负责。这些工具不会因引用本 skill 自动获得截图 guardian 的回收保证。
 
 ### 验证与限制
 

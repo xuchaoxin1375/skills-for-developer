@@ -87,7 +87,7 @@ Node 项目将上述两条 Python 命令分别替换为 `pnpm exec playwright in
 
 ### Scrapling 与其他下载器
 
-Scrapling 使用目标环境里的 `scrapling` CLI；其 Playwright 子进程继承安装环境的 `HTTPS_PROXY` 和 `PLAYWRIGHT_*` 设置。先核对该版本安装行为：`scrapling install` 可能同时执行系统依赖安装，不能直接当作纯下载替换命令。需要拆分阶段、处理安装标记或 Linux 权限时，读 [Scrapling 安装行为](../../resilient-browser-fetch/references/platforms.md#scrapling-安装行为)。
+Scrapling 使用目标环境里的 `scrapling` CLI；其 Playwright 子进程继承安装环境的 `HTTPS_PROXY` 和 `PLAYWRIGHT_*` 设置。先核对该版本安装行为：`scrapling install` 可能同时执行系统依赖安装，不能直接当作纯下载替换命令。需要拆分阶段、处理安装标记或 Linux 权限时，读 [Scrapling 安装行为](../../resilient-browser-fetch/references/platforms.md#scrapling-安装行为)。`scrapling install` 只安装 Playwright 锁定的浏览器 revision，而 Scrapling 的 Patchright 层需要 Patchright 的 revision；装完补跑目标环境的 `python -m patchright install chromium`，并用两边 `install --dry-run chromium` 对齐，见 [安装与 Agent 集成](../../resilient-browser-fetch/references/installation.md) 的“浏览器 revision 与 install 命令”。
 
 `SCRAPE_PROXY`、抓取参数 `--proxy` 和 Playwright `launch(proxy=...)` 控制页面访问，不替代下载代理；反过来，`HTTPS_PROXY` 下载成功也不证明页面访问已走代理。CloakBrowser 有自己的二进制与下载器，不能假定 `PLAYWRIGHT_DOWNLOAD_HOST` 对它生效；按其实际版本支持配置并单独验证。
 

@@ -12,13 +12,15 @@
 
 已核对的 Scrapling 0.4.11 与 0.4.15 中，`scrapling install` 依次调用当前解释器的 `playwright install chromium`、`playwright install-deps chromium`，再更新 TLD 数据，并写入包目录下的安装标记。因此它不只是浏览器下载：Linux 上可能触及系统包与提权；Windows 的 Playwright CLI 可能调用 Media Feature Pack 安装脚本。执行前核对本地 `scrapling install --help`、`python -m playwright install-deps --dry-run chromium` 输出、系统权限及代理继承。其他版本检查本地实现，不从命令名推断行为。
 
+`scrapling install` 装的是 Playwright 锁定的 revision，而层 2 运行时用 Patchright；两者 revision 不一致时会出现 `Executable doesn't exist ... chromium-xxxx`。装完在同一解释器补跑 `python -m patchright install chromium`，并用两边 `install --dry-run chromium` 的 `Install location` 对齐；具体命令与边界见 [安装与 Agent 集成](installation.md) 的“浏览器 revision 与 install 命令”。
+
 需要完整初始化且系统依赖步骤已确认适用于当前平台时，沿用该版本官方 `scrapling install` 入口。若系统依赖已由镜像/管理员提供、任务只需修复缺失浏览器，可在同一目标环境单独运行 `python -m playwright install chromium`，并明确系统依赖与其他初始化未由这条命令覆盖；不要给包安装或整个抓取过程一律加 `sudo`。
 
-出现 `The dependencies are already installed` 只表示命中安装标记，不证明当前缓存、Playwright 版本或系统库可用。升级包、换运行用户或缓存路径后先实际启动；缺浏览器时定向补齐，确需重跑完整初始化才核对 `--force`，不默认强制重装或手工伪造标记。
+出现 `The dependencies are already installed` 只表示命中安装标记，不证明当前缓存、Playwright/Patchright 版本或系统库可用。升级包、换运行用户或缓存路径后先实际启动；缺浏览器时定向补齐，确需重跑完整初始化才核对 `--force`，不默认强制重装或手工伪造标记。
 
-`check_environment.py` 检查解释器、包导入、CLI、代理端口和可选 CloakBrowser 文件信息，不启动 Scrapling 浏览器；它通过后仍须用实际 fetcher 取回一个受控页面并断言内容。
+`check_environment.py` 检查解释器、包导入、CLI、代理端口、可选 CloakBrowser 文件信息和可选 nodriver/system Chrome，不启动 Scrapling 浏览器；它通过后仍须用实际 fetcher 取回一个受控页面并断言内容。
 
-系统 Chrome 未识别时，可按 [浏览器发现](../../browser-automation/references/browser-discovery.md) 只读补查注册表、Scoop 等常用位置，再核对当前 fetcher 支持的参数。发现的 Edge/Chromium 不自动等同于 `--real-chrome` 所要求的 Google Chrome，也不能代替 CloakBrowser 专用制品。
+系统 Chrome 未识别时，可按 [浏览器发现](../../browser-automation/references/browser-discovery.md) 只读补查注册表、Scoop 等常用位置，再核对当前 fetcher 支持的参数。发现的 Edge/Chromium 不自动等同于 `--real-chrome` 所要求的 Google Chrome，也不能代替 CloakBrowser 专用制品；nodriver 复用系统 Chrome，缺少时同样无法启动。
 
 ## Conda 环境配合 uv
 
@@ -82,6 +84,17 @@ uv pip install --python .venv/bin/python -r <skill-dir>/requirements-cloak.txt
 
 `scrapling install` 的浏览器与系统依赖步骤见上方说明。CloakBrowser 使用自己的 Chromium，按该版本发行与校验机制验证，使用 `python -m cloakbrowser install` 预下载，不在首次业务抓取时才发现缺失。它的二进制下载与 Playwright 独立；精简 Linux 镜像仍可能需要 `playwright install-deps chromium` 提供系统库，这一步不下载 Playwright 浏览器。
 
+直接 CDP 备用（nodriver）只在明确需要绕开 Patchright 控制面时安装。它复用系统 Chrome/Chromium，不需要 `playwright install`，但宿主机或容器内必须有可启动的 Chrome：
+
+```bash
+uv pip install --python .venv/bin/python -r <skill-dir>/requirements-nodriver.txt
+.venv/bin/python <skill-dir>/scripts/check_environment.py --require-nodriver
+# 反检测场景优先有头；无头通常明显更弱
+.venv/bin/python <skill-dir>/scripts/resilient_fetch.py --engine nodriver --headful ...
+```
+
+nodriver 的许可为 AGPL-3.0；它不求解挑战、不伪造指纹，也不改变 TLS 或 IP。精简容器若没有 Chrome 和系统库，先按 Chromium 的发行说明补齐，不要把 `--no-sandbox` 当作默认修复。
+
 无桌面服务器保持默认无头。需要有头排障时配置真实 X11/Wayland，或使用 Xvfb：
 
 ```bash
@@ -89,6 +102,8 @@ sudo apt-get update && sudo apt-get install -y xvfb
 Xvfb :99 -screen 0 1920x1080x24 >$HOME/xvfb.log 2>&1 &
 export DISPLAY=:99
 .venv/bin/python <skill-dir>/scripts/resilient_fetch.py --headful --humanize ...
+# 控制面备用：系统 Chrome + 直接 CDP
+.venv/bin/python <skill-dir>/scripts/resilient_fetch.py --engine nodriver --headful ...
 ```
 
 容器内的 `127.0.0.1` 是容器自身。代理运行在宿主机时，使用可路由的宿主地址；Linux Docker 可显式添加 `--add-host=host.docker.internal:host-gateway`。给 Chromium 足够的 `/dev/shm`，避免以 `--no-sandbox` 掩盖权限或容器配置问题。
@@ -106,7 +121,7 @@ $env:SCRAPE_PROXY = "http://127.0.0.1:<port>"
 .\.venv\Scripts\python.exe <skill-dir>\scripts\resilient_fetch.py --url "https://example.com" --out ".\page.html"
 ```
 
-没有 `uv` 时执行 `.\.venv\Scripts\Activate.ps1`，再使用 `python -m pip install -r ...`。可选 CloakBrowser 使用 `requirements-cloak.txt` 和 `.\.venv\Scripts\python.exe -m cloakbrowser install`。只有 `--real-chrome` 才要求系统 Google Chrome；找不到时使用 `--executable-path "C:\<完整路径>\chrome.exe"`。保持源码、日志和 HTML 为 UTF-8。
+没有 `uv` 时执行 `.\.venv\Scripts\Activate.ps1`，再使用 `python -m pip install -r ...`。可选 CloakBrowser 使用 `requirements-cloak.txt` 和 `.\.venv\Scripts\python.exe -m cloakbrowser install`。可选 nodriver 使用 `requirements-nodriver.txt`，复用系统 Chrome；用 `--engine nodriver --headful` 做控制面备用，`--real-chrome` 对它无效。只有 `--real-chrome` 或 nodriver 才要求系统 Chrome；找不到时对层 1 使用 `--executable-path "C:\<完整路径>\chrome.exe"`。保持源码、日志和 HTML 为 UTF-8。
 
 WSL 内的 `127.0.0.1` 不应假定等同 Windows 宿主。先确认 Mihomo 的监听地址、防火墙和 WSL 到宿主的路由，再运行环境诊断。
 
@@ -120,7 +135,7 @@ export SCRAPE_PROXY='http://127.0.0.1:<port>'
 .venv/bin/python <skill-dir>/scripts/resilient_fetch.py --url 'https://example.com' --out './page.html'
 ```
 
-Apple Silicon 与 Intel 必须使用匹配当前 Python 架构的浏览器和虚拟环境。CloakBrowser 二进制若被 Gatekeeper 隔离，先核对官方发行说明和签名，再按官方说明处理 quarantine；不要关闭整机安全机制。
+Apple Silicon 与 Intel 必须使用匹配当前 Python 架构的浏览器和虚拟环境。CloakBrowser 二进制若被 Gatekeeper 隔离，先核对官方发行说明和签名，再按官方说明处理 quarantine；不要关闭整机安全机制。nodriver 复用系统 Google Chrome，需确认 Chrome 能正常启动；它不需要单独的浏览器下载。
 
 ## 临时 profile 与磁盘残留
 
@@ -128,11 +143,11 @@ Apple Silicon 与 Intel 必须使用匹配当前 Python 架构的浏览器和虚
 
 排查磁盘占用或清理时，按前缀检查系统临时目录（Windows `%TEMP%`，Linux/macOS `$TMPDIR` 或 `/tmp`）：各引擎 worker 的 `resilient-fetch-<engine>-*`，以及 Playwright 的 `playwright_chromiumdev_profile-*`、`playwright-artifacts-*`、`playwright-download-*`（后两类用连字符前缀，profile 类用下划线，过滤时不要只写一种）。这些目录不会自行回收，只会累积；删除前确认没有采集进程正在使用，删除失败通常是文件仍被占用。
 
-`--profile-dir` 的持久 profile 按层分为 `playwright/`、`scrapling/`、`cloak/` 子目录，可能持续增长；不再跨进程复用时删除整个根目录即可，同一根目录不得由多个进程同时打开。
+`--profile-dir` 的持久 profile 按层分为 `playwright/`、`scrapling/`、`cloak/`、`nodriver/` 子目录，可能持续增长；不再跨进程复用时删除整个根目录即可，同一根目录不得由多个进程同时打开。
 
 ## 版本与代理下载
 
-本技能按层限定依赖范围：`curl_cffi` 为层 0 推荐项（TLS/HTTP2 客户端伪装与 socks 代理；本机实测 0.15.0 可用），层 2 的 `scrapling[fetchers]` 限定 `>=0.4.11,<0.6`，层 3 的 `cloakbrowser` 限定 `>=0.4.10,<0.5`。`0.5` 的 `StealthyFetcher`、`solve_cloudflare` 与层 1/2 的 `headless` 参数已在本机实测通过；放开 `0.6+` 或 `cloakbrowser 0.5+` 前，重新核对 `StealthyFetcher`、`solve_cloudflare`、`cdp_url` 和 CloakBrowser `launch_async` 的签名，并用真实挑战站点重跑逐层验证。
+本技能按层限定依赖范围：`curl_cffi` 为层 0 推荐项（TLS/HTTP2 客户端伪装与 socks 代理；本机实测 0.15.0 可用），层 2 的 `scrapling[fetchers]` 限定 `>=0.4.11,<0.6`，层 3 的 `cloakbrowser` 限定 `>=0.4.10,<0.5`，可选 nodriver 限定 `>=0.50.6,<0.51`（AGPL-3.0）。`0.5` 的 `StealthyFetcher`、`solve_cloudflare` 与层 1/2 的 `headless` 参数已在本机实测通过；放开 `0.6+`、`cloakbrowser 0.5+` 或 `nodriver 0.51+` 前，重新核对 `StealthyFetcher`、`solve_cloudflare`、`cdp_url`、CloakBrowser `launch_async` 和 nodriver `start`/`create_context` 的签名，并用真实挑战站点重跑逐层验证。
 
 开发或修改技能脚本时安装质量检查依赖：
 

@@ -20,6 +20,7 @@ from resilient_fetch import (
     engine_availability,
     parse_proxy_endpoint,
     reset_availability_cache,
+    resolve_playwright_api,
     wait_for_proxy,
 )
 
@@ -479,6 +480,11 @@ def main() -> int:
     parser.add_argument("--proxy", default=os.getenv("SCRAPE_PROXY"))
     parser.add_argument("--require-cloak", action="store_true")
     parser.add_argument(
+        "--require-nodriver",
+        action="store_true",
+        help="把 nodriver(显式/有头后备的直接 CDP 引擎)标为必需；需要系统 Chrome。",
+    )
+    parser.add_argument(
         "--require-stealth",
         action="store_true",
         help="把 scrapling[fetchers](层 2 及挑战求解)标为必需。",
@@ -503,6 +509,7 @@ def main() -> int:
             ("playwright", args.require_playwright),
             ("scrapling", args.require_stealth),
             ("cloak-cdp", args.require_cloak),
+            ("nodriver", args.require_nodriver),
         )
         if enabled
     )
@@ -547,14 +554,24 @@ def main() -> int:
         required=False,
     )
 
-    playwright_api = next(
-        (name for name in ("patchright", "playwright") if package_version(name) is not None), None
-    )
+    playwright_apis = {
+        name: package_version(name)
+        for name in ("patchright", "playwright")
+        if package_version(name) is not None
+    }
+    resolved_api = resolve_playwright_api()
+    if playwright_apis:
+        playwright_detail = ", ".join(
+            f"{name} {version}" for name, version in playwright_apis.items()
+        )
+        playwright_detail += f"；auto 解析为 {resolved_api}"
+    else:
+        playwright_detail = "未安装(层 1 不可用)"
     add_check(
         checks,
         "playwright",
-        playwright_api is not None,
-        f"{playwright_api} {package_version(playwright_api)}" if playwright_api else "未安装(层 1 不可用)",
+        bool(playwright_apis),
+        playwright_detail,
         required=args.require_playwright,
     )
     browsers = playwright_browsers()
@@ -612,9 +629,25 @@ def main() -> int:
         checks,
         "system-chrome",
         bool(browsers),
-        str(browsers[0]) if browsers else "未发现；仅 --real-chrome 需要",
+        str(browsers[0]) if browsers else "未发现；--real-chrome 与 nodriver 需要",
         required=False,
     )
+    nodriver = package_version("nodriver")
+    add_check(
+        checks,
+        "nodriver",
+        nodriver is not None,
+        nodriver or "未安装(可选，AGPL-3.0；直接 CDP，不下载浏览器)",
+        required=args.require_nodriver,
+    )
+    if nodriver:
+        add_check(
+            checks,
+            "nodriver-chrome",
+            bool(browsers),
+            str(browsers[0]) if browsers else "未发现系统 Chrome；nodriver 无法启动",
+            required=args.require_nodriver,
+        )
 
     if args.proxy:
         try:
@@ -635,7 +668,9 @@ def main() -> int:
         {
             "name": name,
             "level": ENGINES[name].level,
+            "order": ENGINES[name].order or ENGINES[name].level * 10,
             "in_auto": ENGINES[name].in_auto,
+            "auto_requires_headful": ENGINES[name].auto_requires_headful,
             "ok": engine_availability(name).ok,
             "detail": engine_availability(name).reason(),
         }
@@ -643,11 +678,17 @@ def main() -> int:
         if name != "auto"
     ]
     usable = [item["name"] for item in engines if item["ok"] and item["in_auto"]]
+    headful_only = [
+        item["name"]
+        for item in engines
+        if item["ok"] and item["in_auto"] and item["auto_requires_headful"]
+    ]
 
     payload = {
         "platform": platform.platform(),
         "engines": engines,
         "usable_engines": usable,
+        "headful_only_engines": headful_only,
         "checks": checks,
     }
     if args.json:
@@ -657,9 +698,12 @@ def main() -> int:
         for check in checks:
             state = "OK" if check["ok"] else ("FAIL" if check["required"] else "WARN")
             print(f"[{state}] {check['name']}: {check['detail']}")
-        print(
-            "可用引擎(auto 顺序): " + (", ".join(usable) if usable else "无(缺件明细见上)")
+        engine_line = "可用引擎(auto 顺序): " + (
+            ", ".join(usable) if usable else "无(缺件明细见上)"
         )
+        if headful_only:
+            engine_line += "；仅有头加入 auto: " + ", ".join(headful_only)
+        print(engine_line)
 
     return 1 if any(check["required"] and not check["ok"] for check in checks) else 0
 

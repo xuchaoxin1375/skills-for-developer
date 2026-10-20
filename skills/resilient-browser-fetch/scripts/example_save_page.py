@@ -7,8 +7,10 @@ import logging
 import os
 
 from resilient_fetch import (
+    DEFAULT_PLAYWRIGHT_API,
     DEFAULT_TIMEOUT_MS,
     ENGINE_CHOICES,
+    PLAYWRIGHT_API_CHOICES,
     WALL_TIMEOUT_HELP,
     FetchFailed,
     FetchOptions,
@@ -26,6 +28,7 @@ def build_fetch_options(args: argparse.Namespace) -> FetchOptions:
         proxy=args.proxy,
         discover_proxy=args.discover_proxy,
         engine=args.engine,
+        playwright_api=getattr(args, "playwright_api", DEFAULT_PLAYWRIGHT_API),
         timeout_ms=args.timeout_ms,
         wall_timeout_ms=args.wall_timeout_ms,
         headful=args.headful,
@@ -44,6 +47,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--proxy", default=os.getenv("SCRAPE_PROXY"))
     parser.add_argument("--discover-proxy", action="store_true")
     parser.add_argument("--engine", choices=ENGINE_CHOICES, default="auto")
+    parser.add_argument(
+        "--playwright-api",
+        choices=PLAYWRIGHT_API_CHOICES,
+        default=DEFAULT_PLAYWRIGHT_API,
+        help="层 1 使用 auto/playwright/patchright；默认 auto (Patchright 优先)。",
+    )
     parser.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS)
     parser.add_argument("--wall-timeout-ms", type=int, help=WALL_TIMEOUT_HELP)
     parser.add_argument("--headful", action="store_true")

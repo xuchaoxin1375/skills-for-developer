@@ -1,0 +1,3 @@
+# 可选：直接 CDP 引擎（显式 --engine nodriver；auto 仅在 --headful 时加入）。
+# 许可 AGPL-3.0，商用/SaaS 先评估；复用系统 Chrome，不下载浏览器。
+nodriver>=0.50.6,<0.51

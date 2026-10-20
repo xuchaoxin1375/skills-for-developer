@@ -304,7 +304,7 @@ async def test_lifecycle_guards(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_missing_playwright_maps_to_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(subject, "playwright_api_name", lambda: None)
+    monkeypatch.setattr(subject, "resolve_playwright_api", lambda *_args: None)
     session = subject.BrowserBatchSession(options("https://site.test"))
     async with session:
         with pytest.raises(subject.EngineUnavailableError):

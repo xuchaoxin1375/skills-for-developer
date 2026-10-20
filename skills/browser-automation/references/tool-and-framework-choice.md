@@ -21,6 +21,7 @@
 | 已依赖 Puppeteer，任务主要围绕其已支持的浏览器/API | 沿用 Puppeteer | 按锁定版本的支持范围选择；不为统一术语改写有效脚本 |
 | 已有 WebDriver/Grid、企业语言栈或远程执行基础 | 沿用 Selenium/WebDriver 与现有远程设施 | 核对浏览器/驱动版本、会话期限和远程释放；不靠本机进程树推断远端已回收 |
 | 确需连接外部 Chromium 会话或托管浏览器 | 工具支持的远程连接/CDP | 核对协议兼容性、授权和会话所有权；channel 启动独立实例，不能替代连接已有会话 |
+| 目标有 Cloudflare/Turnstile 或明确反自动化，需要渲染/求解 | [resilient-browser-fetch](../../resilient-browser-fetch/SKILL.md) 的分层采集 | 这不是普通 E2E；先区分控制面、指纹与出口。Playwright/Patchright 可用 `--playwright-api` 固定驱动；层 2/3 仍走 Patchright，直接 CDP 的 nodriver 仅作有头备用（AGPL-3.0） |
 
 默认给一个推荐，不并行启动多个引擎比较。能力缺失时先说明缺口，再按任务选择一个可验证的替代；不因发现系统浏览器就覆盖项目原基线。远程服务的可用性、计费和期限按实际配置核对，不预设本机已装某种 MCP 或托管平台。
 

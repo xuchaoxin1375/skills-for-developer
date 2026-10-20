@@ -4,14 +4,19 @@ This module adds process isolation, proxy safety, engine fallback, content
 validation, and normalized diagnostics around a layered engine set:
 
 - level 0 ``static``: stdlib HTTP, no third-party dependency;
-- level 1 ``playwright``: plain headless rendering, no challenge solving;
-- level 2 ``scrapling``: anti-detect rendering with Cloudflare solving;
-- level 3 ``cloak-cdp``: CloakBrowser fingerprint base driven through Scrapling.
+- level 1 ``playwright``: plain rendering through Playwright or Patchright;
+- level 2 ``scrapling``: Patchright-based rendering with Cloudflare solving;
+- level 3 ``cloak-cdp``: CloakBrowser fingerprint base driven through Scrapling;
+- explicit ``nodriver``: direct-CDP control plane on system Chrome, no solver.
 
 ``auto`` tries only the engines that are actually installed, from the lowest
-level up, so a missing enhancement package downgrades the run instead of
-failing it. It is intentionally optimized for reliable single-page jobs;
-callers that need a continuous batch should reuse a session manager instead.
+capability level up, so a missing enhancement package downgrades the run instead
+of failing it. Layer numbers describe capability, not stealth: layers 2 and 3
+still use Patchright as the control plane. ``nodriver`` runs only when the
+caller explicitly selects it, or in ``auto`` with ``--headful`` because its
+headless mode is substantially weaker. It is intentionally optimized for
+reliable single-page jobs; callers that need a continuous batch should reuse a
+session manager instead.
 """
 
 from __future__ import annotations
@@ -74,6 +79,12 @@ TERMINAL_STATUS_CODES = frozenset({404, 410})
 WAIT_UNTIL_CHOICES = ("commit", "domcontentloaded", "load", "networkidle")
 DEFAULT_WAIT_UNTIL = "load"
 
+# 层 1 的底层 API。Patchright 优先是既有行为；显式指定便于原版 Playwright 与
+# Patchright 做同目标 A/B。注意: Scrapling 0.5 内部固定使用 Patchright，本选项
+# 只影响层 1 和 browser_session。
+PLAYWRIGHT_API_CHOICES = ("auto", "playwright", "patchright")
+DEFAULT_PLAYWRIGHT_API = "auto"
+
 # 层 0 的 TLS/HTTP2 客户端伪装(需 curl_cffi)。默认写具体版本而不是 "chrome" 这类滚动别名:
 # 别名指向的 Chrome 版本会随 curl_cffi 升级漂移(实测 JA4 第三段不同: chrome vs chrome124)，
 # 固定版本才能复现与对照。
@@ -86,6 +97,7 @@ CAP_HTTP = "http"
 CAP_RENDER = "render"
 CAP_SOLVE = "solve-challenge"
 CAP_CDP = "cdp"
+CAP_DIRECT_CDP = "direct-cdp"
 
 # 尝试结果分类:调用方据此区分"该装依赖"与"该换路线"。
 KIND_OK = "ok"
@@ -100,6 +112,7 @@ UNAVAILABLE_ERROR_MARKER = "EngineUnavailableError"
 __all__ = [
     "ENGINES",
     "ENGINE_CHOICES",
+    "PLAYWRIGHT_API_CHOICES",
     "EngineAvailability",
     "EngineSpec",
     "EngineUnavailableError",
@@ -120,6 +133,7 @@ __all__ = [
     "fetch_with_static",
     "playwright_api_name",
     "reset_availability_cache",
+    "resolve_playwright_api",
     "save_page",
     "validate_identity_headers",
     "validate_impersonate",
@@ -173,6 +187,7 @@ class FetchOptions:
     retries: int = 1
     retry_delay: float = 2.0
     headful: bool = False
+    playwright_api: str = DEFAULT_PLAYWRIGHT_API
     wait_selector: str | None = None
     wait_until: str = DEFAULT_WAIT_UNTIL
     expected_texts: tuple[str, ...] = ()
@@ -624,7 +639,14 @@ async def capture_page_snapshot_async(page: Any, target: Path) -> int:
 
 def package_versions() -> dict[str, str]:
     versions: dict[str, str] = {}
-    for package in ("scrapling", "cloakbrowser", "playwright", "patchright", "curl_cffi"):
+    for package in (
+        "scrapling",
+        "cloakbrowser",
+        "playwright",
+        "patchright",
+        "nodriver",
+        "curl_cffi",
+    ):
         try:
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
@@ -900,14 +922,16 @@ def fetch_with_static(config: dict[str, Any]) -> FetchResult:
 
 
 # ---- 层 1:playwright/patchright 渲染(无挑战求解)----
-def load_playwright_factory() -> Any:
-    """Import the sync API of patchright when present, else of plain Playwright."""
+def load_playwright_factory(api: str = DEFAULT_PLAYWRIGHT_API) -> Any:
+    """Import the requested sync API, defaulting to Patchright when installed."""
 
-    name = playwright_api_name()
+    name = resolve_playwright_api(api)
     if name is None:
+        requested = f"{api} " if api != "auto" else ""
         raise EngineUnavailableError(
-            "未安装 playwright/patchright；请安装后运行 `playwright install chromium`，"
-            "或用 --real-chrome/--executable-path 指向系统浏览器。"
+            f"未安装 {requested}playwright/patchright；请安装后运行 "
+            "`playwright install chromium`，或用 --real-chrome/--executable-path "
+            "指向系统浏览器。"
         )
     module = importlib.import_module(f"{name}.sync_api")
     factory = getattr(module, "sync_playwright", None)
@@ -944,7 +968,8 @@ def playwright_launch_kwargs(config: dict[str, Any]) -> dict[str, Any]:
 def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str]:
     """Open the URL in a plain browser context and return (html, status, final_url)."""
 
-    factory = load_playwright_factory()
+    api = str(config.get("playwright_api") or DEFAULT_PLAYWRIGHT_API)
+    factory = load_playwright_factory() if api == DEFAULT_PLAYWRIGHT_API else load_playwright_factory(api)
     timeout_ms = int(config["timeout_ms"])
     launch_kwargs = playwright_launch_kwargs(config)
     context_kwargs: dict[str, Any] = {}
@@ -1022,6 +1047,38 @@ def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str
     return page_html, status, final_url
 
 
+def browser_channel_for_config(config: dict[str, Any], default: str = "chromium") -> str:
+    """Describe which browser binary a Playwright-based engine is likely to launch."""
+
+    if config.get("executable_path"):
+        return "custom-chromium"
+    if config.get("real_chrome"):
+        return "system-chrome"
+    return default
+
+
+def append_identity_notes(
+    result: FetchResult,
+    *,
+    control_plane: str,
+    browser_channel: str,
+    headful: bool,
+    playwright_api: str | None = None,
+) -> None:
+    """Attach machine-readable control-plane and browser identity to a result."""
+
+    notes = [
+        f"control_plane:{control_plane}",
+        f"browser_channel:{browser_channel}",
+        f"headless:{str(not headful).lower()}",
+    ]
+    if playwright_api:
+        notes.append(f"playwright_api:{playwright_api}")
+    for note in notes:
+        if note not in result.notes:
+            result.notes.append(note)
+
+
 def fetch_with_playwright(config: dict[str, Any]) -> FetchResult:
     """Render with a plain browser: fast, dependency-light, no challenge solving."""
 
@@ -1038,7 +1095,7 @@ def fetch_with_playwright(config: dict[str, Any]) -> FetchResult:
                 f"或用 --real-chrome/--executable-path 指定系统浏览器。原始信息: {message}"
             ) from exc
         raise FetchError(f"playwright 渲染失败: {message}") from exc
-    return FetchResult(
+    result = FetchResult(
         engine="playwright",
         url=config["url"],
         final_url=final_url,
@@ -1049,6 +1106,18 @@ def fetch_with_playwright(config: dict[str, Any]) -> FetchResult:
         block_reasons=block_reasons(page_html),
         versions=package_versions(),
     )
+    api = (
+        resolve_playwright_api(str(config.get("playwright_api") or DEFAULT_PLAYWRIGHT_API))
+        or str(config.get("playwright_api") or DEFAULT_PLAYWRIGHT_API)
+    )
+    append_identity_notes(
+        result,
+        control_plane=api,
+        browser_channel=browser_channel_for_config(config),
+        headful=bool(config.get("headful")),
+        playwright_api=api,
+    )
+    return result
 
 
 def scrapling_wait_kwargs(wait_until: str) -> dict[str, Any]:
@@ -1166,7 +1235,16 @@ def fetch_with_scrapling(config: dict[str, Any]) -> FetchResult:
     started = time.perf_counter()
     logging.info("使用 Scrapling Python API，代理=%s", redact_proxy(config.get("proxy")))
     response = StealthyFetcher.fetch(config["url"], **scrapling_kwargs(config))
-    return result_from_response("scrapling", config, response, started)
+    result = result_from_response("scrapling", config, response, started)
+    # Scrapling 0.5 的 StealthyFetcher 内部使用 Patchright；升级到 0.6+ 时重新核对。
+    append_identity_notes(
+        result,
+        control_plane="patchright",
+        browser_channel=browser_channel_for_config(config),
+        headful=bool(config.get("headful")),
+        playwright_api="patchright",
+    )
+    return result
 
 
 def free_local_port() -> int:
@@ -1234,7 +1312,16 @@ async def fetch_with_cloak_cdp_async(config: dict[str, Any]) -> FetchResult:
         response = await StealthyFetcher.async_fetch(
             config["url"], **scrapling_kwargs(config, cdp_url=websocket)
         )
-        return result_from_response("cloak-cdp", config, response, started)
+        result = result_from_response("cloak-cdp", config, response, started)
+        # CloakBrowser 只换引擎/指纹底座；驱动仍是 Scrapling 0.5 的 Patchright CDP。
+        append_identity_notes(
+            result,
+            control_plane="patchright-over-cdp",
+            browser_channel="cloak-chromium",
+            headful=bool(config.get("headful")),
+            playwright_api="patchright",
+        )
+        return result
     finally:
         try:
             await asyncio.wait_for(browser.close(), timeout=15)
@@ -1244,6 +1331,208 @@ async def fetch_with_cloak_cdp_async(config: dict[str, Any]) -> FetchResult:
 
 def fetch_with_cloak_cdp(config: dict[str, Any]) -> FetchResult:
     return asyncio.run(fetch_with_cloak_cdp_async(config))
+
+
+# ---- 直接 CDP:nodriver(显式选择；auto 仅有头时作为后备)----
+def nodriver_launch_kwargs(config: dict[str, Any]) -> dict[str, Any]:
+    """Translate normalized config into nodriver launch options."""
+
+    browser_args: list[str] = []
+    if config.get("user_agent"):
+        browser_args.append(f"--user-agent={config['user_agent']}")
+    if config.get("locale"):
+        browser_args.append(f"--lang={config['locale']}")
+    kwargs: dict[str, Any] = {
+        "headless": not bool(config.get("headful")),
+        "browser_args": browser_args or None,
+    }
+    if config.get("executable_path"):
+        kwargs["browser_executable_path"] = str(config["executable_path"])
+    if config.get("profile_dir"):
+        kwargs["user_data_dir"] = str(Path(str(config["profile_dir"])) / "nodriver")
+    return kwargs
+
+
+async def wait_for_nodriver_ready(tab: Any, wait_until: str, timeout_ms: int) -> None:
+    """Wait for the requested document readiness without enabling Runtime/Network domains."""
+
+    if wait_until == "commit":
+        return
+    wanted = {"interactive", "complete"} if wait_until == "domcontentloaded" else {"complete"}
+    deadline = time.monotonic() + timeout_ms / 1000
+    while time.monotonic() < deadline:
+        try:
+            state = await tab.evaluate("document.readyState")
+        except Exception as exc:
+            raise FetchError(f"nodriver 读取 document.readyState 失败: {exc}") from exc
+        if str(state) in wanted:
+            return
+        await asyncio.sleep(0.1)
+    logging.warning("nodriver 等待 document.readyState=%s 超时，按当前页面继续。", wanted)
+
+
+async def wait_for_nodriver_challenge(tab: Any, budget_ms: int) -> None:
+    """Give a headed user time to clear a challenge without enabling extra CDP domains."""
+
+    if budget_ms <= 0:
+        return
+    deadline = time.monotonic() + budget_ms / 1000
+    last_log = 0.0
+    while time.monotonic() < deadline:
+        html = await tab.get_content()
+        if not block_reasons(html):
+            return
+        now = time.monotonic()
+        if now - last_log >= CHALLENGE_LOG_EVERY_SEC:
+            logging.info("nodriver 仍在等待人工验证，剩余约 %d 秒。", int(deadline - now))
+            last_log = now
+        await asyncio.sleep(CHALLENGE_POLL_INTERVAL_SEC)
+
+
+async def capture_nodriver_snapshot(tab: Any, uc: Any, target: Path) -> int:
+    """Capture an MHTML snapshot through the already-attached CDP session."""
+
+    # nodriver 的 CDP 命令使用 format_；返回值是序列化字符串，不是对象。
+    snapshot = await tab.send(uc.cdp.page.capture_snapshot(format_="mhtml"))
+    data = snapshot if isinstance(snapshot, str) else getattr(snapshot, "data", None)
+    if data is None and isinstance(snapshot, Mapping):
+        data = snapshot.get("data")
+    if not data:
+        raise FetchError("nodriver Page.captureSnapshot 返回空快照。")
+    payload = str(data).encode("utf-8")
+    atomic_write_bytes(target, payload)
+    return len(payload)
+
+
+def nodriver_cookie_records(cookies: Any) -> list[dict[str, Any]]:
+    """Normalize nodriver CDP cookies for the shared Netscape jar writer."""
+
+    records: list[dict[str, Any]] = []
+    for cookie in cookies or ():
+        records.append(
+            {
+                "name": getattr(cookie, "name", None),
+                "value": getattr(cookie, "value", None),
+                "domain": getattr(cookie, "domain", None),
+                "path": getattr(cookie, "path", None),
+                "expires": getattr(cookie, "expires", None),
+                "secure": bool(getattr(cookie, "secure", False)),
+                "httpOnly": bool(getattr(cookie, "http_only", False)),
+            }
+        )
+    return records
+
+
+async def fetch_with_nodriver_async(config: dict[str, Any]) -> FetchResult:
+    """Render through nodriver's direct CDP control plane on system Chrome."""
+
+    started = time.perf_counter()
+    try:
+        import nodriver as uc
+    except Exception as exc:
+        raise EngineUnavailableError(
+            "未安装 nodriver；请先评估 AGPL-3.0，再安装 requirements-nodriver.txt。"
+        ) from exc
+
+    logging.info(
+        "启动 nodriver(直接 CDP): headless=%s, proxy=%s",
+        not bool(config.get("headful")),
+        redact_proxy(config.get("proxy")),
+    )
+    browser = await uc.start(**nodriver_launch_kwargs(config))
+    try:
+        proxy = config.get("proxy")
+        if proxy:
+            # create_context 需要新建一个 window 作为宿主；headless 下 new_window=False
+            # 且没有现存窗口时，Chrome 会报 "no browser is open"。
+            tab = await browser.create_context(
+                url=config["url"],
+                proxy_server=str(proxy),
+                new_window=True,
+            )
+        else:
+            tab = await browser.get(config["url"])
+
+        await wait_for_nodriver_ready(
+            tab,
+            str(config.get("wait_until") or DEFAULT_WAIT_UNTIL),
+            int(config["timeout_ms"]),
+        )
+        if config.get("locale"):
+            await tab.send(
+                uc.cdp.emulation.set_locale_override(locale=str(config["locale"]))
+            )
+        if config.get("timezone"):
+            await tab.send(
+                uc.cdp.emulation.set_timezone_override(timezone_id=str(config["timezone"]))
+            )
+        if config.get("wait_selector"):
+            try:
+                await tab.select(
+                    str(config["wait_selector"]),
+                    timeout=int(config["timeout_ms"]) / 1000,
+                )
+            except Exception as exc:
+                raise FetchError(f"nodriver 等待选择器失败: {exc}") from exc
+        if config.get("post_wait_ms"):
+            await asyncio.sleep(int(config["post_wait_ms"]) / 1000)
+        if config.get("headful") and config.get("challenge_wait_ms"):
+            await wait_for_nodriver_challenge(tab, int(config["challenge_wait_ms"]))
+        if config.get("screenshot"):
+            screenshot = Path(str(config["screenshot"]))
+            screenshot.parent.mkdir(parents=True, exist_ok=True)
+            await tab.save_screenshot(str(screenshot), format="png", full_page=True)
+        if config.get("save_snapshot"):
+            written = await capture_nodriver_snapshot(
+                tab, uc, Path(str(config["save_snapshot"]))
+            )
+            logging.info("已保存页面快照 %s (%d 字节)", config["save_snapshot"], written)
+
+        page_html = await tab.get_content()
+        final_url = str(getattr(tab.target, "url", None) or config["url"])
+        result = FetchResult(
+            engine="nodriver",
+            url=config["url"],
+            final_url=final_url,
+            status=None,
+            html=page_html,
+            elapsed_sec=round(time.perf_counter() - started, 3),
+            title=extract_title(page_html),
+            block_reasons=block_reasons(page_html),
+            versions=package_versions(),
+        )
+        append_identity_notes(
+            result,
+            control_plane="direct-cdp",
+            browser_channel="system-chrome",
+            headful=bool(config.get("headful")),
+        )
+        if config.get("save_cookies"):
+            cookies = await browser.cookies.get_all()
+            user_agent = await tab.evaluate("navigator.userAgent")
+            export_cookies(
+                config,
+                nodriver_cookie_records(cookies),
+                str(user_agent) if user_agent else config.get("user_agent"),
+            )
+        return result
+    finally:
+        try:
+            browser.stop()
+        except Exception as exc:  # pragma: no cover - 关闭失败不应遮蔽抓取结果
+            logging.warning("nodriver 关闭阶段异常: %s", exc)
+
+
+def fetch_with_nodriver(config: dict[str, Any]) -> FetchResult:
+    """Run the async nodriver engine in the synchronous worker process."""
+
+    try:
+        import nodriver as uc
+    except Exception as exc:
+        raise EngineUnavailableError(
+            "未安装 nodriver；请先评估 AGPL-3.0，再安装 requirements-nodriver.txt。"
+        ) from exc
+    return uc.loop().run_until_complete(fetch_with_nodriver_async(config))
 
 
 def fetch_with_scrapling_cli(config: dict[str, Any], worker_dir: Path) -> FetchResult:
@@ -1324,6 +1613,8 @@ def run_engine(
         return fetch_with_scrapling(config)
     if engine == "cloak-cdp":
         return fetch_with_cloak_cdp(config)
+    if engine == "nodriver":
+        return fetch_with_nodriver(config)
     if engine == "scrapling-cli":
         return fetch_with_scrapling_cli(config, worker_dir)
     raise FetchError(f"未知引擎: {engine}")
@@ -1472,6 +1763,10 @@ class EngineSpec:
     requires: tuple[str, ...]
     probe: Callable[[], EngineAvailability]
     in_auto: bool = True
+    # auto 的尝试顺序与能力层号分开: nodriver 能力上仍是渲染层，但作为控制面
+    # 备用应排在其他引擎之后。未填写时按 level * 10 兼容旧定义。
+    order: int = 0
+    auto_requires_headful: bool = False
 
 
 def curl_cffi_available() -> bool:
@@ -1556,13 +1851,30 @@ def playwright_api_name() -> str | None:
     return None
 
 
-def probe_playwright() -> EngineAvailability:
-    """Report the plain rendering engine, which deliberately has no solver."""
+def resolve_playwright_api(requested: str = DEFAULT_PLAYWRIGHT_API) -> str | None:
+    """Resolve the layer-1 API, honouring an explicit Playwright/Patchright choice."""
 
-    name = playwright_api_name()
-    if name is None:
+    if requested not in PLAYWRIGHT_API_CHOICES:
+        raise ValueError(
+            f"未知 playwright_api: {requested} (可选: {', '.join(PLAYWRIGHT_API_CHOICES)})"
+        )
+    if requested == "auto":
+        return playwright_api_name()
+    return requested if importlib.util.find_spec(requested) is not None else None
+
+
+def probe_playwright() -> EngineAvailability:
+    """Report the rendering engine and the API that ``auto`` would resolve to."""
+
+    if playwright_api_name() is None:
         return EngineAvailability(False, "未安装 playwright/patchright", ("playwright", "patchright"))
-    return EngineAvailability(True, f"{name} 已安装(仅渲染，不求解挑战)")
+    installed = [
+        name for name in ("patchright", "playwright") if importlib.util.find_spec(name) is not None
+    ]
+    versions = package_versions()
+    detail = ", ".join(f"{name} {versions.get(name, '?')}" for name in installed)
+    resolved = resolve_playwright_api()
+    return EngineAvailability(True, f"{detail}；auto 解析为 {resolved}(仅渲染，不求解挑战)")
 
 
 def probe_scrapling() -> EngineAvailability:
@@ -1586,6 +1898,19 @@ def probe_cloak_cdp() -> EngineAvailability:
     if importlib.util.find_spec("cloakbrowser") is None:
         return EngineAvailability(False, "未安装 cloakbrowser", ("cloakbrowser",))
     return EngineAvailability(True, "cloakbrowser + StealthyFetcher 就绪")
+
+
+def probe_nodriver() -> EngineAvailability:
+    """Report the optional direct-CDP engine and its system-Chrome requirement."""
+
+    if importlib.util.find_spec("nodriver") is None:
+        return EngineAvailability(
+            False,
+            "未安装 nodriver(可选，AGPL-3.0；直接 CDP，不下载浏览器)",
+            ("nodriver",),
+        )
+    detail = "nodriver 已安装(直接 CDP，复用系统 Chrome；建议 --headful)"
+    return EngineAvailability(True, detail)
 
 
 def probe_scrapling_cli() -> EngineAvailability:
@@ -1619,6 +1944,15 @@ ENGINES: dict[str, EngineSpec] = {
             probe_cloak_cdp,
         ),
         EngineSpec(
+            "nodriver",
+            1,
+            frozenset({CAP_HTTP, CAP_RENDER, CAP_DIRECT_CDP}),
+            ("nodriver",),
+            probe_nodriver,
+            order=40,
+            auto_requires_headful=True,
+        ),
+        EngineSpec(
             "scrapling-cli",
             3,
             frozenset({CAP_RENDER, CAP_SOLVE}),
@@ -1629,7 +1963,15 @@ ENGINES: dict[str, EngineSpec] = {
     )
 }
 
-ENGINE_CHOICES = ("auto", "static", "playwright", "scrapling", "cloak-cdp", "scrapling-cli")
+ENGINE_CHOICES = (
+    "auto",
+    "static",
+    "playwright",
+    "scrapling",
+    "cloak-cdp",
+    "nodriver",
+    "scrapling-cli",
+)
 WORKER_ENGINE_CHOICES = tuple(name for name in ENGINE_CHOICES if name != "auto")
 
 _AVAILABILITY_CACHE: dict[str, EngineAvailability] = {}
@@ -1670,20 +2012,27 @@ def engine_capabilities(selected: str) -> frozenset[str]:
     return frozenset(capabilities)
 
 
-def engine_order(selected: str) -> list[str]:
-    """List engines to try: explicit selection stays strict, ``auto`` upgrades by level."""
+def engine_order(selected: str, *, headful: bool = False) -> list[str]:
+    """List engines to try: explicit selection stays strict, ``auto`` upgrades by order."""
 
     if selected != "auto":
         return [selected]
-    return [name for name in available_engines() if ENGINES[name].in_auto]
+    return [
+        name
+        for name in available_engines()
+        if ENGINES[name].in_auto
+        and (headful or not ENGINES[name].auto_requires_headful)
+    ]
 
 
 def available_engines() -> tuple[str, ...]:
-    """List installed engines from the lowest capability level up."""
+    """List installed engines from the lowest capability order up."""
 
     return tuple(
         spec.name
-        for spec in sorted(ENGINES.values(), key=lambda item: (item.level, item.name))
+        for spec in sorted(
+            ENGINES.values(), key=lambda item: (item.order or item.level * 10, item.name)
+        )
         if engine_availability(spec.name).ok
     )
 
@@ -1757,6 +2106,23 @@ def validate_options(options: FetchOptions) -> None:
         raise ValueError(
             f"未知 wait_until: {options.wait_until} (可选: {', '.join(WAIT_UNTIL_CHOICES)})"
         )
+    if options.playwright_api not in PLAYWRIGHT_API_CHOICES:
+        raise ValueError(
+            f"未知 playwright_api: {options.playwright_api} "
+            f"(可选: {', '.join(PLAYWRIGHT_API_CHOICES)})"
+        )
+    if options.playwright_api != DEFAULT_PLAYWRIGHT_API:
+        if options.engine in {"auto", "playwright"}:
+            if resolve_playwright_api(options.playwright_api) is None:
+                raise ValueError(
+                    f"未安装 {options.playwright_api}；请先安装该包，"
+                    "或把 --playwright-api 改回 auto。"
+                )
+        elif options.engine != "static":
+            logging.warning(
+                "--playwright-api 只作用于层 1(playwright/auto)；%s 忽略该参数。",
+                options.engine,
+            )
     validate_impersonate(options.impersonate)
     validate_identity_headers(options.user_agent, options.referer)
     if options.impersonate and options.engine not in {"auto", "static"}:
@@ -1790,6 +2156,26 @@ def validate_options(options: FetchOptions) -> None:
         ]
         if skipped:
             logging.warning("static 引擎忽略浏览器专属参数: %s", ", ".join(skipped))
+    if options.engine == "nodriver":
+        ignored = [
+            flag
+            for flag, enabled in (
+                ("--real-chrome", options.real_chrome),
+                ("--geoip", options.geoip),
+                ("--humanize", options.humanize),
+                ("--hide-canvas", options.hide_canvas),
+                ("--network-idle", options.network_idle),
+            )
+            if enabled
+        ]
+        if ignored:
+            logging.warning("nodriver 忽略不支持的参数: %s", ", ".join(ignored))
+        if options.referer is not None:
+            logging.warning("nodriver 不支持 --referer/--no-referer；已忽略该参数。")
+        if options.wait_until == "networkidle":
+            logging.warning("nodriver 不支持 networkidle；按 load 等待，避免额外启用 Network 域。")
+        if not options.headful:
+            logging.warning("nodriver 无头模式通常明显弱于有头；反检测场景建议加 --headful。")
     if options.retries not in range(1, 4):
         raise ValueError("retries 必须在 1 到 3 之间。")
     if options.retry_delay < 0:
@@ -1832,6 +2218,7 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "retries": options.retries,
         "retry_delay": options.retry_delay,
         "headful": options.headful,
+        "playwright_api": options.playwright_api,
         "wait_selector": options.wait_selector,
         "wait_until": options.wait_until,
         "post_wait_ms": options.post_wait_ms,
@@ -1889,11 +2276,13 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
         options.wall_timeout_ms or options.timeout_ms + options.challenge_wait_ms + 90_000
     )
     attempts: list[FetchAttempt] = []
-    order = engine_order(options.engine)
+    order = engine_order(options.engine, headful=options.headful)
     skipped = (
         [
             name
-            for name, spec in sorted(ENGINES.items(), key=lambda item: item[1].level)
+            for name, spec in sorted(
+                ENGINES.items(), key=lambda item: (item[1].order or item[1].level * 10, item[0])
+            )
             if spec.in_auto and name not in order
         ]
         if options.engine == "auto"
@@ -1902,17 +2291,31 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
     if options.headful:
         log_manual_verification_hint(options.challenge_wait_ms, headful=True)
     if skipped:
+        def skipped_reason(name: str) -> str:
+            spec = ENGINES[name]
+            availability = engine_availability(name)
+            if spec.auto_requires_headful and not options.headful and availability.ok:
+                return "需 --headful 才加入 auto"
+            return availability.reason()
+
         logging.info(
             "缺件或未启用，已跳过: %s",
-            ", ".join(f"{name}({engine_availability(name).reason()})" for name in skipped),
+            ", ".join(f"{name}({skipped_reason(name)})" for name in skipped),
         )
-        if any(engine_availability(name).ok is False for name in skipped):
+        if any(
+            engine_availability(name).ok is False
+            for name in skipped
+            if not (ENGINES[name].auto_requires_headful and not options.headful)
+        ):
             logging.info(
                 "依赖可能装在别的 Python 环境: 请改用该环境的解释器运行本脚本，"
                 "或用 check_environment.py --list-envs 查看哪个环境具备所需层。"
             )
     if not order:
         for name in skipped:
+            spec = ENGINES[name]
+            if spec.auto_requires_headful and not options.headful:
+                continue
             availability = engine_availability(name)
             attempts.append(
                 FetchAttempt(
@@ -1923,6 +2326,24 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
                     error=f"引擎不可用: {availability.reason()}",
                 )
             )
+        if not attempts:
+            for name in skipped:
+                spec = ENGINES[name]
+                if spec.auto_requires_headful and not options.headful:
+                    availability = engine_availability(name)
+                    attempts.append(
+                        FetchAttempt(
+                            engine=name,
+                            ok=False,
+                            elapsed_sec=0.0,
+                            kind=KIND_UNAVAILABLE,
+                            error=(
+                                f"{name} 仅在 --headful 时加入 auto"
+                                if availability.ok
+                                else f"引擎不可用: {availability.reason()}"
+                            ),
+                        )
+                    )
         raise FetchFailed(url, tuple(attempts))
 
     for engine in order:
@@ -2040,7 +2461,10 @@ def save_page(options: FetchOptions, out: str | Path) -> FetchOutcome:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="按能力分层抓取页面并保存渲染后 HTML(static → playwright → scrapling → cloak-cdp)。"
+        description=(
+            "按能力分层抓取页面并保存渲染后 HTML"
+            "(static → playwright → scrapling → cloak-cdp；nodriver 为显式/有头后备)。"
+        )
     )
     parser.add_argument("--url", help="目标 HTTP(S) URL。")
     parser.add_argument("--out", default="page.html", help="成功页面的输出路径。")
@@ -2057,8 +2481,18 @@ def main(argv: list[str] | None = None) -> int:
         choices=ENGINE_CHOICES,
         default="auto",
         help=(
-            "auto 按可用层从低到高尝试:static → playwright → scrapling → cloak-cdp；"
+            "auto 按可用引擎顺序尝试: static → playwright → scrapling → cloak-cdp；"
+            "nodriver 仅在 --headful 时加入 auto，或显式 --engine nodriver。"
             "显式指定某个引擎时缺件会直接失败。"
+        ),
+    )
+    parser.add_argument(
+        "--playwright-api",
+        choices=PLAYWRIGHT_API_CHOICES,
+        default=DEFAULT_PLAYWRIGHT_API,
+        help=(
+            "层 1 使用哪个 API: auto(Patchright 优先) | playwright | patchright。"
+            "仅影响层 1/auto 中的 playwright 引擎；Scrapling/Cloak 内部固定为 Patchright。"
         ),
     )
     parser.add_argument(
@@ -2194,6 +2628,7 @@ def main(argv: list[str] | None = None) -> int:
         retries=args.retries,
         retry_delay=args.retry_delay,
         headful=args.headful,
+        playwright_api=args.playwright_api,
         wait_selector=args.wait_selector,
         wait_until=args.wait_until,
         expected_texts=tuple(args.expect_text),

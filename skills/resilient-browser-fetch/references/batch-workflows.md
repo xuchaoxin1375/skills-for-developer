@@ -1,14 +1,15 @@
 # 批量、并发与 Sitemap
 
-> 适用范围：本文件第 1 节的三条会话路径按依赖分层选择——层 0 静态页用 `static_session.StaticBatchSession`（受限并发 HTTP，零依赖）；需要渲染但不需要挑战求解、或本机只有层 1 时用 `browser_session.BrowserBatchSession`（单 browser/context 多 tab，只要 playwright/patchright）；需要挑战求解的诊断/会话用 `site_session.SiteSessionManager`（层 2+，带 challenge 监视与重验证屏障）。三者的预热、同源与验证语义一致，命中挑战都抛 `PageRejectedError`（`SiteSessionManager` 例外：它会暂停并发并重验证），由调用方决定升档。
+> 适用范围：本文件第 1 节的三条会话路径按依赖分层选择——层 0 静态页用 `static_session.StaticBatchSession`（受限并发 HTTP，零依赖）；需要渲染但不需要挑战求解、或本机只有层 1 时用 `browser_session.BrowserBatchSession`（单 browser/context 多 tab，只要 playwright/patchright）；需要挑战求解的诊断/会话用 `site_session.SiteSessionManager`（层 2+，带 challenge 监视与重验证屏障）。三者的预热、同源与验证语义一致，命中挑战都抛 `PageRejectedError`（`SiteSessionManager` 例外：它会暂停并发并重验证），由调用方决定升档。层 2/3 的控制面仍是 Patchright；目标专门卡驱动时，批量会话不会因换到 CloakBrowser 而改变控制面。
 
 ## 选哪条会话路径
 
 | 条件 | 路径 | 依赖 |
 | --- | --- | --- |
 | 页面静态可取（层 0 就够） | `StaticBatchSession` | 无 |
-| 页面需渲染，且本机只有 playwright/patchright | `BrowserBatchSession` | 层 1 |
+| 页面需渲染，且本机只有 playwright/patchright | `BrowserBatchSession` | 层 1（可用 `playwright_api` 固定驱动） |
 | 页面有挑战/指纹拦截，或需要人工验证 + 求解接力 | `SiteSessionManager` | 层 2（+ 层 3 可选） |
+| 怀疑 Patchright 控制面被识别，想试直接 CDP | 不套批量会话：单页 `--engine nodriver --headful` | 可选 nodriver + 系统 Chrome |
 
 先按"首页是否能在层 0 拿到正文"判定：`static_session` 预热失败或正文过短（SPA 空壳）时改 `browser_session`；`browser_session` 预热/子页抛 `PageRejectedError` 且 `result.block_reasons` 非空时才是挑战页，这时才升到层 2。
 
@@ -52,6 +53,7 @@ async def fetch_rendered(home_url: str, urls: list[str], proxy: str) -> list[str
         timeout_ms=60_000,
         wall_timeout_ms=90_000,
         post_wait_ms=1_500,          # 给客户端渲染留时间
+        playwright_api="auto",       # auto | playwright | patchright
         expected_home_texts=("已知业务关键词",),
     )
     async with BrowserBatchSession(options) as site:
@@ -61,13 +63,14 @@ async def fetch_rendered(home_url: str, urls: list[str], proxy: str) -> list[str
 ```
 
 - 挑战页不求解：命中时抛 `PageRejectedError` 并把 `block_reasons` 带在结果里，据此决定升到层 2 或改用人工验证。
+- `playwright_api` 只控制本会话的层 1；装层 2 会带入 Patchright，做驱动 A/B 时显式指定。结果 `notes` 会记录 `control_plane`、`browser_channel`、`headless`。
 - 人工验证：`headless=False` + `challenge_wait_ms=300000` 时，每页在预算内等验证标记消失再取源码（无头模式下该参数会被拒绝，因为没有人工可介入）。批量下建议只在首页预热阶段开有头。
 - 想复用登录/验证态跨进程时给 `profile_dir`（目录由调用方管理，不会被自动删除）；不给自己用一次性 context。
 - 截图（排查用）设 `screenshot_dir`，文件名由 `request_slug()` 从 URL 生成。
 
 ## Scrapling 会话模式
 
-使用 `site_session.SiteSessionManager` 维持一个 `AsyncStealthySession`、一个浏览器上下文和受限数量的 tab。管理器提供 single-flight 预热、同源检查、挑战页检测、结构化内容验证、五分钟硬超时和重验证屏障。
+使用 `site_session.SiteSessionManager` 维持一个 `AsyncStealthySession`、一个浏览器上下文和受限数量的 tab。管理器提供 single-flight 预热、同源检查、挑战页检测、结构化内容验证、五分钟硬超时和重验证屏障。该路径的控制面仍是 Scrapling 内部的 Patchright；如果层 2 和层 3 都以同一挑战签名失败，先按 [检测层与引擎选择](detection-layers.md) 判断控制面/出口，而不是继续给批量会话加 tab。
 
 ```mermaid
 stateDiagram-v2

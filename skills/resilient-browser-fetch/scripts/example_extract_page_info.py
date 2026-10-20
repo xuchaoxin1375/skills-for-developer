@@ -9,8 +9,10 @@ import os
 from html.parser import HTMLParser
 
 from resilient_fetch import (
+    DEFAULT_PLAYWRIGHT_API,
     DEFAULT_TIMEOUT_MS,
     ENGINE_CHOICES,
+    PLAYWRIGHT_API_CHOICES,
     FetchFailed,
     FetchOptions,
     ProxyUnavailableError,
@@ -64,6 +66,7 @@ def fetch_page_info(
     proxy: str | None = None,
     discover_proxy: bool = False,
     engine: str = "auto",
+    playwright_api: str = DEFAULT_PLAYWRIGHT_API,
     timeout_ms: int = DEFAULT_TIMEOUT_MS,
     wall_timeout_ms: int | None = None,
     preview_chars: int = 500,
@@ -76,6 +79,7 @@ def fetch_page_info(
             proxy=proxy,
             discover_proxy=discover_proxy,
             engine=engine,
+            playwright_api=playwright_api,
             timeout_ms=timeout_ms,
             wall_timeout_ms=wall_timeout_ms,
         )
@@ -101,6 +105,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--proxy", default=os.getenv("SCRAPE_PROXY"))
     parser.add_argument("--discover-proxy", action="store_true")
     parser.add_argument("--engine", choices=ENGINE_CHOICES, default="auto")
+    parser.add_argument(
+        "--playwright-api",
+        choices=PLAYWRIGHT_API_CHOICES,
+        default=DEFAULT_PLAYWRIGHT_API,
+        help="层 1 使用 auto/playwright/patchright；默认 auto (Patchright 优先)。",
+    )
     parser.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS)
     parser.add_argument("--wall-timeout-ms", type=int)
     parser.add_argument("--preview-chars", type=int, default=500)
@@ -112,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             proxy=args.proxy,
             discover_proxy=args.discover_proxy,
             engine=args.engine,
+            playwright_api=args.playwright_api,
             timeout_ms=args.timeout_ms,
             wall_timeout_ms=args.wall_timeout_ms,
             preview_chars=args.preview_chars,

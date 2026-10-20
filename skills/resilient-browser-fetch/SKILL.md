@@ -1,14 +1,14 @@
 ---
 name: resilient-browser-fetch
 description: >
-  按能力分层的稳健网页采集：层 0 标准库 HTTP、层 1 playwright/patchright 渲染、层 2 Scrapling 的 Cloudflare 挑战处理、层 3 可选 CloakBrowser CDP 底座；
-  auto 只升档到已安装的引擎，缺件降级而不是整体失败，遇到 404/410 等资源级状态停止升档。
-  用于抓取经 network-access 确认为挑战页的站点、Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间人工验证、拦截页识别、同站会话复用，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
+  按能力与检测层分层的稳健网页采集：层 0 标准库 HTTP、层 1 Playwright/Patchright 渲染、层 2 Scrapling 的 Cloudflare 挑战处理、层 3 可选 CloakBrowser 指纹底座，另有 nodriver 直接 CDP 的有头备用；
+  auto 只升能力档、不保证隐蔽性，缺件降级而不是整体失败，遇到 404/410 等资源级状态停止升档。
+  用于抓取经 network-access 确认为挑战页的站点、Managed JavaScript Challenge、交互式或 Invisible Turnstile、长时间人工验证、拦截页识别、同站会话复用、控制面/指纹/IP 分层判断，以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
 ---
 
 # 稳健浏览器采集
 
-仅采集用户有权访问的公开或获授权页面。遵守目标服务条款、robots/速率限制和适用法律；不要自动执行登录、下单、账户创建、凭据测试或其他改变外部状态的操作。Cloudflare 通过与否受出口 IP、指纹、地区一致性和站点策略共同影响，不承诺通用通过率。
+仅采集用户有权访问的公开或获授权页面。遵守目标服务条款、robots/速率限制和适用法律；不要自动执行登录、下单、账户创建、凭据测试或其他改变外部状态的操作。Cloudflare 通过与否受出口 IP、控制面/驱动痕迹、指纹、地区一致性和站点策略共同影响，不承诺通用通过率。层号表示能力档位，不是隐蔽性排名；控制面、指纹和 IP 的判断见 [检测层与引擎选择](references/detection-layers.md)。
 
 ## 入口与读取顺序
 
@@ -19,6 +19,7 @@ description: >
 | 抓单个页面、诊断未知站点 | CLI `scripts/resilient_fetch.py`（默认 `--engine auto`） | 本文件"工作流"与"引擎分层与选择" |
 | 只要标题/状态码/字节数，或供其他语言调用 | `scripts/example_extract_page_info.py`（stdout JSON） | 本文件"示例脚本" |
 | 页面多于一个、需要预热/复用会话/sitemap | 三条批量会话按依赖选 | [references/batch-workflows.md](references/batch-workflows.md) |
+| 层 2/3 都卡同一挑战，怀疑控制面/指纹/IP | 先做检测层判断，再选引擎 | [references/detection-layers.md](references/detection-layers.md) |
 | 在 Python 进程内取页或存盘 | `resilient_fetch` 的 `FetchOptions`/`fetch_page`/`save_page` | [references/module-api.md](references/module-api.md) |
 | 已保存的 HTML 要离线可看 | `scripts/archive_page.py` | 本文件"示例脚本" |
 | 安装到 Agent、换机器或换系统 | [references/installation.md](references/installation.md) | 该文件，再读 [references/platforms.md](references/platforms.md) |
@@ -43,10 +44,11 @@ flowchart TD
 
 - 存档要的是渲染后的完整 DOM，层 0 给不出，从最低层起跑属于纯浪费；取数才按 `auto` 从 static 起步。
 - 钉住某层会失去升档兜底，代价与适用条件见“引擎分层与选择”。
+- 层 2 和层 3 以同一挑战签名失败时，别默认“再加一层”；先按 [检测层与引擎选择](references/detection-layers.md) 判断是控制面、指纹还是出口/IP 问题，再决定换出口或显式试 nodriver。
 
 前置：先确认已走 `network-access` 排除选路问题；普通超时/直连失败不直接启动浏览器，仅当正文为挑战/拦截特征时才用本 skill，选路结论同一任务内复用。该站已有观测记录或本次已确认挑战特征时，不必再发裸请求复现 403，直接按上图取存档或升档（判定位置见 `network-access` 的“抓取前先查同站观测”）。
 
-1. 如果需要将本 Skill 安装到 Codex、Claude Code、Cursor 或 Gemini CLI，先读取 [references/installation.md](references/installation.md)。依赖按引擎分层安装，**只装当前任务需要的层**：层 0（`static`）零第三方依赖，层 1 装 `playwright`+浏览器，层 2 装 `requirements-stealth.txt` 并运行 `scrapling install`，层 3 再装 `requirements-cloak.txt` 并运行 `python -m cloakbrowser install`。随后根据当前系统读取 [references/platforms.md](references/platforms.md)，选定独立 Python 3.10+ 环境；国内安装先配置下载路线，`scrapling install` 的系统依赖步骤与页面代理分开处理。环境可以由 Conda、`venv` 或 `uv venv` 管理；Linux 是默认部署目标。先运行 `uv --version`；可用时优先执行 `uv pip install --python <目标环境解释器> ...`，不可用时回退到该环境的 `python -m pip`，不要混用两个安装器修改同一环境。安装新层会改动本机环境（下载量、浏览器二进制、系统依赖），属于需要用户同意的操作：先说明缺哪层、装什么、大概多大、用什么命令，得到同意再装；不得以“本机没装该层”为由跳过，也不得因此默认改用第三方服务。
+1. 如果需要将本 Skill 安装到 Codex、Claude Code、Cursor 或 Gemini CLI，先读取 [references/installation.md](references/installation.md)。依赖按引擎分层安装，**只装当前任务需要的层**：层 0（`static`）零第三方依赖，层 1 装 `playwright`+浏览器，层 2 装 `requirements-stealth.txt` 并运行 `scrapling install`，层 3 再装 `requirements-cloak.txt` 并运行 `python -m cloakbrowser install`。直接 CDP 备用（可选）再装 `requirements-nodriver.txt`，复用系统 Chrome，不需要 `playwright install`；其许可为 AGPL-3.0，商用或 SaaS 先评估。装层 2 会带入 Patchright，层 1 的默认 API 也会随之改变；做原版 Playwright/Patchright A/B 时用 `--playwright-api` 固定。层 2 的 `scrapling install` 实际调用 Playwright 的安装器，而运行时用 Patchright；装完在同一环境补跑 `python -m patchright install chromium`，并用两边的 `install --dry-run chromium` 核对 revision，避免 `Executable doesn't exist`。随后根据当前系统读取 [references/platforms.md](references/platforms.md)，选定独立 Python 3.10+ 环境；国内安装先配置下载路线，`scrapling install` 的系统依赖步骤与页面代理分开处理。环境可以由 Conda、`venv` 或 `uv venv` 管理；Linux 是默认部署目标。先运行 `uv --version`；可用时优先执行 `uv pip install --python <目标环境解释器> ...`，不可用时回退到该环境的 `python -m pip`，不要混用两个安装器修改同一环境。安装新层会改动本机环境（下载量、浏览器二进制、系统依赖），属于需要用户同意的操作：先说明缺哪层、装什么、大概多大、用什么命令，得到同意再装；不得以“本机没装该层”为由跳过，也不得因此默认改用第三方服务。
 2. 运行只读环境诊断：
 
    ```bash
@@ -63,7 +65,7 @@ flowchart TD
 
    明确需要本地代理但未设置 `SCRAPE_PROXY` 时，可在抓取命令中添加 `--discover-proxy`，按本机登记文件中的候选依次探测。它只取**第一个**能建立 TCP 连接的候选，不验证协议与出口；命中挑战或 403 时不要据此认定站点不可达，先用 `network-access` 的 `probe_local_proxies.py` 取 `usable[]`，再对每个可用入口各发一次目标请求。端口开放只代表存在候选服务，换出口的结论要写进报告。
 
-3. 取正文时先使用 `auto`；存档要完整 DOM 时按上面的入口图直接钉层。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
+3. 取正文时先使用 `auto`；存档要完整 DOM 时按上面的入口图直接钉层。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。直接 CDP 的 `nodriver` 排在最后，且只在 `--headful` 时加入 `auto`；无头 `auto` 不会尝试它。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
 
    ```bash
    python <skill-dir>/scripts/resilient_fetch.py \
@@ -72,8 +74,8 @@ flowchart TD
      --expect-text 'Product name'
    ```
 
-4. 高对抗站点在无头失败后，先用 `--headful` 重试——有头窗口通常比安装新层更省，指纹敏感的站点再配合 `--real-chrome` 换真实浏览器（属指纹需要，不要求目标点名系统 Chrome）；层 2/3 可加 `--humanize`。Linux 服务器先配置 Xvfb。**层 1（playwright）现在也支持有头人工验证**：配合 `--challenge-wait-ms 300000`，脚本会打开可见窗口并在预算内轮询页面，等你手动过完验证再继续（此前层 1 会直接保存挑战页）。有头模式会先打印操作指引；无头模式若撞上挑战，日志会提示改用 `--headful` 或层 2/3。代理地区未知时不要硬编码语言和时区；已知地区时同时设置 `--locale` 与 `--timezone`，或安装 `cloakbrowser[geoip]` 后使用 `--geoip`。
-5. 自动求解返回后仍停在挑战页时，使用 `--challenge-wait-ms 300000 --profile-dir <专用目录>`。有头模式允许用户在这段时间人工完成一次验证，后续运行复用 cookie/localStorage。脚本在该根目录下分别使用 `scrapling/` 与 `cloak/`，避免两种浏览器共享同一 profile。
+4. 高对抗站点在无头失败后，先用 `--headful` 重试——有头窗口通常比安装新层更省，指纹敏感的站点再配合 `--real-chrome` 换真实浏览器（属指纹需要，不要求目标点名系统 Chrome）；层 2/3 可加 `--humanize`。Linux 服务器先配置 Xvfb。**层 1（playwright）现在也支持有头人工验证**：配合 `--challenge-wait-ms 300000`，脚本会打开可见窗口并在预算内轮询页面，等你手动过完验证再继续（此前层 1 会直接保存挑战页）。有头模式会先打印操作指引；无头模式若撞上挑战，日志会提示改用 `--headful` 或层 2/3。如果层 2/3 都卡在同一挑战、且怀疑目标专门识别 Patchright 控制面，可显式试 `--engine nodriver --headful`：它用系统 Chrome 直接 CDP，不求解挑战、不伪造指纹，只作为控制面备用；无头 nodriver 通常明显更弱，不建议用于反检测。代理地区未知时不要硬编码语言和时区；已知地区时同时设置 `--locale` 与 `--timezone`，或安装 `cloakbrowser[geoip]` 后使用 `--geoip`。
+5. 自动求解返回后仍停在挑战页时，使用 `--challenge-wait-ms 300000 --profile-dir <专用目录>`。有头模式允许用户在这段时间人工完成一次验证，后续运行复用 cookie/localStorage。脚本在该根目录下分别使用 `scrapling/`、`cloak/` 与 `nodriver/`，避免不同浏览器共享同一 profile。
 6. 默认使用状态码、挑战特征、正文大小和最终 origin 做宽松检查。只有用户要求严格验证或目标已知会返回软错误页时，才增加 `--wait-selector`、`--expect-text`、固定路径或业务字段断言；不要把易变商品文案默认写成成功条件。状态码本身不足以判定拦截：HTTP 403 且正文没有拦截特征、长度达标、期望文本全部命中时，按可用内容接受并在 `notes` 记 `http_status:403:accepted_by_content`（日志会告警）；这类正文可能尚未水合，需要完整客户端渲染时显式指定 `--engine scrapling` 等更高层。其余 4xx/5xx 仍按失败处理。
 7. 检查 `<输出>.meta.json` 的最终 URL、状态码、引擎、耗时、版本、哈希、`notes` 和尝试记录；失败时按 `<输出>.attempts.json` 里的 `kind` 处置：
 
@@ -86,7 +88,7 @@ flowchart TD
    | 达到 `--wall-timeout-ms` 仍无结论 | 硬上限用尽 | 提高 `--timeout-ms` 与 `--wall-timeout-ms`（如 300000/600000），或先排除出口问题 |
    | `<输出>.<引擎>.blocked.html` | 被拒收的正文 | 与预期文本和结构比对，判断是拦截页还是校验条件过严 |
 
-   汇报结果时用表格汇总：本次实际出口（直连，还是哪个代理/登记名；必要时用外部 IP 检测页核对）、每个引擎的模式与结果（引擎、有无头、状态码、耗时）、最终文件与大小、以及 `notes` 里的软状态码等注记；不要只报模式与引擎名。
+   汇报结果时用表格汇总：本次实际出口（直连，还是哪个代理/登记名；必要时用外部 IP 检测页核对）、每个引擎的模式与结果（引擎、有无头、状态码、耗时）、最终文件与大小，以及 `notes` 里的软状态码、`control_plane`、`playwright_api`（Playwright 系引擎）、`browser_channel` 和 `headless` 等注记；不要只报模式与引擎名。浏览器引擎的 `notes` 用于区分“同层但控制面/API 不同”，例如层 2/3 的 `control_plane:patchright` 与 nodriver 的 `control_plane:direct-cdp`。
 
 修改 Python 脚本后，使用相同的安装器安装 `requirements-dev.txt`，并在技能目录运行以下质量门禁；三条命令必须全部以退出码 `0` 完成：
 
@@ -164,11 +166,14 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 | 层 | engine | 能力 | 依赖 | 不做什么 |
 | --- | --- | --- | --- | --- |
 | 0 | `static` | 直连 HTTP 取正文、状态码、重定向链；可选 TLS/HTTP2 客户端伪装 | 无（stdlib）；推荐 `curl_cffi`（socks 代理、`--impersonate`） | 不执行 JS，不求解挑战 |
-| 1 | `playwright` | 无头/有头渲染、等待与交互 | `playwright` 或 `patchright` + 浏览器二进制 | 不求解挑战，指纹弱于层 2 |
+| 1 | `playwright` | 无头/有头渲染、等待与交互；可用 `--playwright-api` 选择 Playwright/Patchright | `playwright` 或 `patchright` + 浏览器二进制 | 不求解挑战，指纹弱于层 2 |
+| 1/备用 | `nodriver` | 系统 Chrome 上直接 CDP 渲染；有头时作为控制面备用 | `requirements-nodriver.txt` + 系统 Chrome；AGPL-3.0 | 不求解挑战、不伪造指纹；无头明显更弱；auto 仅 `--headful` 且排最后 |
 | 2 | `scrapling` | 反检测渲染 + Cloudflare/Turnstile 求解 | `requirements-stealth.txt` + `scrapling install` | — |
 | 3 | `cloak-cdp` | 层 2 的指纹底座变体 | 层 2 + `requirements-cloak.txt` + `python -m cloakbrowser install` | CloakBrowser 本身不是 CAPTCHA 求解器 |
 
-- `auto`：默认。按上表从低到高、只对已安装的引擎升档；缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。指定 `--engine <层>` 时缺件直接失败，便于排障。
+- **层号是能力档位，不是隐蔽性排名。** 层 2/3 的控制面仍是 Patchright；层 3 只是把引擎/指纹底座换成 CloakBrowser。目标专门卡 Playwright/Patchright 时，继续在层 2/3 之间切换可能毫无变化，此时先读 [检测层与引擎选择](references/detection-layers.md)，再考虑换出口或显式试 nodriver。
+- `auto`：默认。按上表从低到高、只对已安装的引擎升档；缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。`nodriver` 只有加 `--headful` 时才进入 `auto`，且排在层 3 之后；无头 `auto` 不会尝试它。指定 `--engine <层>` 时缺件直接失败，便于排障。
+- `--playwright-api {auto,playwright,patchright}` 只控制层 1 使用哪个驱动：`auto` 仍优先 Patchright。安装层 2（`scrapling[fetchers]`）会带入 Patchright，因此层 1 的实际 API 可能从原版 Playwright 静默切换为 Patchright；做 A/B、复现历史结果或确认“是不是驱动被识别”时必须显式指定。层 2/3 内部固定使用 Patchright，该参数不会改变它们。
 - 已知某 origin 需要更高层时（例如该站长期由 Managed Challenge 拦截），直接用 `--engine <层>` 钉住：显式指定即**只用该层**（不再自动升档，缺件或失败直接报错），省掉每次重跑已经证伪的低层；代价是没有升档兜底。
 - 先信任低层：静态页在层 0 就是毫秒级，不要为了"稳"直接开层 2。命中挑战特征或空页才升档。
 - 层 0 被 TLS/客户端指纹检查挡住时（同一 URL 对 Python 栈直接 403、连接重置或只回空壳），先装推荐的 `curl_cffi` 再加 `--impersonate chrome124` 重试；它只改 TLS/HTTP2 指纹（可过部分站点的客户端检查），**不解 JS 挑战**，挑战仍需层 2。目标写具体版本（`chrome124`/`chrome136`/`safari184` 等）而不是 `chrome` 这类滚动别名，别名指向的 Chrome 版本会随 curl_cffi 升级漂移、不便复现；未装 `curl_cffi` 或目标非法时该参数直接报错，不会静默退回 stdlib 指纹。浏览器层自带指纹，传了会告警忽略。
@@ -180,30 +185,32 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 | 0 `static` | 固定 `Windows Chrome/124` 串 | 无 |
 | 0 `static --impersonate` | 跟随目标版本（如 `chrome136` 的 macOS Chrome/136）；只有显式 `--user-agent` 才覆盖 | 无 |
 | 1 `playwright` | 浏览器真实 UA；无头时带 `HeadlessChrome` 标记 | 无 |
+| 1 `nodriver` | 系统 Chrome 真实 UA；无头时仍可能带 `HeadlessChrome` 标记 | 无 |
 | 2/3 `scrapling` / `cloak-cdp` | Scrapling 生成的真实浏览器 UA | `https://www.google.com/`（Scrapling 的 `google_search` 默认开启） |
 
-`--referer` 管 HTTP 头、`--impersonate` 管 TLS/HTTP2 指纹，两者独立；层 2/3 用 `--no-referer` 会关掉 Google referer，用 `--referer` 会覆盖它。批量会话同名可用（`StaticSessionOptions.user_agent`/`referer`、`BrowserSessionOptions.user_agent`/`referer`、`SiteSessionOptions.useragent`/`referer`）。
+`--referer` 管 HTTP 头、`--impersonate` 管 TLS/HTTP2 指纹，两者独立；层 2/3 用 `--no-referer` 会关掉 Google referer，用 `--referer` 会覆盖它；nodriver 不支持这两个参数，会告警忽略。批量会话同名可用（`StaticSessionOptions.user_agent`/`referer`、`BrowserSessionOptions.user_agent`/`referer`、`SiteSessionOptions.useragent`/`referer`）。
 - 层 0 对客户端渲染站可能只拿到 JS 空壳（正文由脚本注入），默认宽松校验不会拦它。已知目标是 SPA/客户端渲染时，直接指定 `--engine playwright`，或给层 0 加 `--expect-text`/`--wait-selector` 让空壳被判失败后自动升档。
-- `scrapling`：挑战求解主力，使用 `StealthyFetcher.fetch(..., solve_cloudflare=True)`，负责识别、点击、等待与内容返回。
-- `cloak-cdp`：由 CloakBrowser 启动带代理的 Chromium，再把本机 `ws://` CDP 地址交给 `StealthyFetcher.async_fetch`；它需要层 2 的依赖，不是层 2 的替代品。
+- `scrapling`：挑战求解主力，使用 `StealthyFetcher.fetch(..., solve_cloudflare=True)`，负责识别、点击、等待与内容返回；Scrapling 0.5 的控制面是 Patchright，不是“完全去驱动”。
+- `cloak-cdp`：由 CloakBrowser 启动带代理的 Chromium，再把本机 `ws://` CDP 地址交给 `StealthyFetcher.async_fetch`；控制面仍由 Patchright 的 `connect_over_cdp` 建立，CloakBrowser 提供的是引擎/指纹底座。它需要层 2 的依赖，不是层 2 的替代品。
+- `nodriver`：显式选择或 `--headful` 时作为最后后备；复用系统 Chrome，直接 CDP，不求解挑战、不伪造指纹。无头模式通常明显更弱；不支持 `--humanize`/`--geoip`/`--hide-canvas`/`--network-idle`/`--referer`/`--no-referer`，这些参数会告警忽略；不启用 Network 域，结果 `status` 为 `None`，需要状态码时改用 Playwright/Scrapling 或另做 HTTP 对照。许可为 AGPL-3.0。
 - `scrapling-cli`：只用于复现安装、PATH 或参数差异，不参与 `auto`，也不适合作为默认生产入口。
 
-`--headful` 对层 1/2/3 都可用（弹出真实窗口，供首次人工验证）；层 0 不接受 `--headful`。`--humanize`、`--geoip`、`--hide-canvas` 只对层 2/3 生效，层 0 会告警忽略。
+`--headful` 对层 1/2/3 和 nodriver 都可用（弹出真实窗口，供首次人工验证）；层 0 不接受 `--headful`。`--humanize`、`--geoip`、`--hide-canvas` 只对层 2/3 生效，层 0 与 nodriver 会告警忽略。
 
-有头人工验证（层 1 与层 2/3 都适用）：`--headful --challenge-wait-ms 300000` 会打开可见窗口，在预算内每秒检查一次页面，挑战标记消失即继续（层 1 在验证通过后才执行 `--wait-selector`/截图/取源码，因此选择器不会先在挑战页上超时）。运行时会打印操作指引与进度（首次即提示，之后每 15 秒一条"仍在等待验证"），预算用尽则按当前页面继续并在日志里说明。`--challenge-wait-ms 0` 时不会等待，有头模式会提示建议设为 300000。
+有头人工验证（层 1、层 2/3 与 nodriver 都适用）：`--headful --challenge-wait-ms 300000` 会打开可见窗口，在预算内每秒检查一次页面，挑战标记消失即继续（层 1 与 nodriver 在验证通过后才执行 `--wait-selector`/截图/取源码，因此选择器不会先在挑战页上超时）。运行时会打印操作指引与进度（首次即提示，之后每 15 秒一条"仍在等待验证"），预算用尽则按当前页面继续并在日志里说明。`--challenge-wait-ms 0` 时不会等待，有头模式会提示建议设为 300000。
 
 默认挑战操作超时为 300000 ms。不要把它降到 60000 ms 以下；验证可能经历多轮跳转。日志中的 `Cloudflare page didn't disappear after 10s` 和 `captcha is still present, solving again` 表示 Scrapling 正在同一页面继续求解，不是终态失败；`No Cloudflare challenge found` 表示页面本来就是正常内容，也不是失败。不要据此中止进程。仅在返回内容仍为挑战页、引擎抛错或达到 `--wall-timeout-ms` 后判失败。需要给内部求解更多轮次时提高硬超时，例如 `--timeout-ms 300000 --wall-timeout-ms 600000`。`--retries` 只控制导航或代理错误重试，与 Cloudflare 内部求解轮次无关。
 
-不要默认启用 `--network-idle`，因为分析、广告和长连接会使它永远不空闲。不要在挑战阶段禁用图片、样式或其他资源。仅在指纹或站点兼容性需要时使用 `--real-chrome`（典型是无头被拦后配 `--headful` 复测）；其余情况使用该层自己安装的浏览器。不要让多个进程并发使用同一 `--profile-dir`（脚本按层分子目录 `playwright/`、`scrapling/`、`cloak/`）。
+不要默认启用 `--network-idle`，因为分析、广告和长连接会使它永远不空闲。不要在挑战阶段禁用图片、样式或其他资源。仅在指纹或站点兼容性需要时使用 `--real-chrome`（典型是无头被拦后配 `--headful` 复测）；其余情况使用该层自己安装的浏览器；nodriver 总是使用系统 Chrome，`--real-chrome` 对它无效。不要让多个进程并发使用同一 `--profile-dir`（脚本按层分子目录 `playwright/`、`scrapling/`、`cloak/`、`nodriver/`）。
 
-页面"加载完成"的判定决定取源码与关闭窗口的时机，用 `--wait-until` 显式指定（层 1/2/3；层 0 无浏览器，会告警忽略）。有头人工验证、`--wait-selector`、`--post-wait-ms` 都在取源码之前依次执行。
+页面"加载完成"的判定决定取源码与关闭窗口的时机，用 `--wait-until` 显式指定（层 1/2/3 与 nodriver；层 0 无浏览器，会告警忽略）。有头人工验证、`--wait-selector`、`--post-wait-ms` 都在取源码之前依次执行。nodriver 通过轮询 `document.readyState` 实现 `commit`/`domcontentloaded`/`load`；`networkidle` 会告警并按 `load` 处理，避免额外启用 Network 域。
 
 | 选项 | 判定条件 | 适用与注意 |
 | --- | --- | --- |
 | `--wait-until commit` | 收到响应即取 | 只要服务端首屏字节；层 2/3 近似为不等页面脚本执行 |
 | `--wait-until domcontentloaded` | DOM 解析完成 | 最快拿到 SSR 正文；WAF 站点更容易抓到挑战中间页 |
 | `--wait-until load` | load 事件（默认，含图片等子资源） | 与历史行为一致 |
-| `--wait-until networkidle` | 网络空闲（约 500ms 无连接） | 长连接/轮询页可能永不空闲；`--network-idle` 是同一等待的遗留写法 |
+| `--wait-until networkidle` | 网络空闲（约 500ms 无连接） | 长连接/轮询页可能永不空闲；`--network-idle` 是同一等待的遗留写法；nodriver 不支持，按 `load` 处理 |
 | `--wait-selector <sel>` | 等到该选择器可见 | SPA 指定内容出现的最可靠判据，可与任一等待条件叠加 |
 | `--post-wait-ms <ms>` | 取源码前再静置 | 兜底给客户端渲染留时间（默认 1000） |
 
@@ -220,7 +227,7 @@ flowchart TD
     C ---|该层缺件| U[缺件层: 记 kind=unavailable 并跳过]
     C --> D[隔离子进程 + wall_timeout_ms 硬上限]
     D --> E[在所选层内取正文]
-    E --> W["取源码前(层 1/2/3 依次): wait_until 加载判定, 挑战与人工验证等待, wait-selector, post-wait-ms"]
+    E --> W["取源码前(层 1/2/3 或 nodriver): wait_until 加载判定, 挑战与人工验证等待, wait-selector, post-wait-ms"]
     W --> V{内容校验: 状态码, 挑战特征, 最小字节, 期望文本, 软 403 接受}
     V -->|通过| S[save_page: 原子写 HTML 与 .meta.json]
     V -->|"404/410 且无挑战特征"| X["资源级结论: 停止升档"]

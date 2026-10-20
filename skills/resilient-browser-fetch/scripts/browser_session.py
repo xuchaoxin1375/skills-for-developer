@@ -35,6 +35,8 @@ from typing import Any
 from urllib.parse import urlparse, urlsplit
 
 from resilient_fetch import (
+    DEFAULT_PLAYWRIGHT_API,
+    PLAYWRIGHT_API_CHOICES,
     EngineUnavailableError,
     FetchError,
     FetchResult,
@@ -43,8 +45,8 @@ from resilient_fetch import (
     discover_local_proxy,
     extract_title,
     package_versions,
-    playwright_api_name,
     redact_proxy,
+    resolve_playwright_api,
     validate_identity_headers,
     validation_reasons,
     wait_for_manual_verification_async,
@@ -97,6 +99,7 @@ class BrowserSessionOptions:
     user_agent: str | None = None
     referer: str | None = None
     headless: bool = True
+    playwright_api: str = DEFAULT_PLAYWRIGHT_API
     challenge_wait_ms: int = 0
     network_idle: bool = False
     real_chrome: bool = False
@@ -128,6 +131,18 @@ class BrowserSessionOptions:
             raise ValueError("challenge_wait_ms 需要 headless=False 才能人工过验证，无头模式下无意义。")
         if self.post_wait_ms < 0:
             raise ValueError("post_wait_ms 不得为负数。")
+        if self.playwright_api not in PLAYWRIGHT_API_CHOICES:
+            raise ValueError(
+                f"未知 playwright_api: {self.playwright_api} "
+                f"(可选: {', '.join(PLAYWRIGHT_API_CHOICES)})"
+            )
+        if (
+            self.playwright_api != DEFAULT_PLAYWRIGHT_API
+            and resolve_playwright_api(self.playwright_api) is None
+        ):
+            raise ValueError(
+                f"未安装 {self.playwright_api}；请先安装该包，或把 playwright_api 改回 auto。"
+            )
         validate_identity_headers(self.user_agent, self.referer)
 
 
@@ -385,6 +400,16 @@ class BrowserBatchSession:
     def _result(
         self, request: SiteRequest, page_html: str, status: int | None, page: Any, started: float
     ) -> FetchResult:
+        api = (
+            resolve_playwright_api(self.options.playwright_api)
+            or self.options.playwright_api
+        )
+        if self.options.executable_path:
+            channel = "custom-chromium"
+        elif self.options.real_chrome:
+            channel = "system-chrome"
+        else:
+            channel = "chromium"
         return FetchResult(
             engine="playwright",
             url=request.url,
@@ -395,6 +420,12 @@ class BrowserBatchSession:
             title=extract_title(page_html),
             block_reasons=block_reasons(page_html),
             versions=package_versions(),
+            notes=[
+                f"control_plane:{api}",
+                f"playwright_api:{api}",
+                f"browser_channel:{channel}",
+                f"headless:{str(self.options.headless).lower()}",
+            ],
         )
 
     async def _maybe_screenshot(self, page: Any, url: str) -> None:
@@ -419,7 +450,11 @@ class BrowserBatchSession:
 
         if self._context is not None:
             return self._context
-        factory = load_async_playwright()
+        factory = (
+            load_async_playwright()
+            if self.options.playwright_api == DEFAULT_PLAYWRIGHT_API
+            else load_async_playwright(self.options.playwright_api)
+        )
         self._playwright = await factory().start()
         launch_kwargs: dict[str, Any] = {"headless": self.options.headless}
         if self.options.executable_path:
@@ -510,14 +545,15 @@ class BrowserBatchSession:
         return FetchError(f"页面渲染失败 {url}: {message}")
 
 
-def load_async_playwright() -> Any:
-    """Return the async playwright factory from the preferred installed package."""
+def load_async_playwright(api: str = DEFAULT_PLAYWRIGHT_API) -> Any:
+    """Return the async Playwright factory for the requested API."""
 
-    name = playwright_api_name()
+    name = resolve_playwright_api(api)
     if name is None:
+        requested = f"{api} " if api != DEFAULT_PLAYWRIGHT_API else ""
         raise EngineUnavailableError(
-            "未安装 playwright/patchright；请安装后运行 `playwright install chromium`，"
-            "或用 real_chrome/executable_path 指向系统浏览器。"
+            f"未安装 {requested}playwright/patchright；请安装后运行 "
+            "`playwright install chromium`，或用 real_chrome/executable_path 指向系统浏览器。"
         )
     module = importlib.import_module(f"{name}.async_api")
     factory = getattr(module, "async_playwright", None)

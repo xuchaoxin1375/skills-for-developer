@@ -15,6 +15,7 @@ def test_save_example_builds_module_options() -> None:
         proxy=None,
         discover_proxy=True,
         engine="auto",
+        playwright_api="patchright",
         timeout_ms=300_000,
         wall_timeout_ms=600_000,
         headful=False,
@@ -26,6 +27,7 @@ def test_save_example_builds_module_options() -> None:
     assert options.discover_proxy
     assert options.expected_texts == ("Example",)
     assert options.wall_timeout_ms == 600_000
+    assert options.playwright_api == "patchright"
 
 
 def test_extract_visible_text_ignores_scripts_and_styles() -> None:

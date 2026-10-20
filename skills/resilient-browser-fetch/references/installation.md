@@ -150,8 +150,29 @@ Gemini 的默认发现位置是：
 | --- | --- | --- |
 | 0 | 静态 HTTP（默认可用） | 无需安装；**推荐**装 `curl_cffi`（socks 代理，以及 `--impersonate` 的 TLS/HTTP2 伪装） |
 | 1 | 无头/有头渲染 | `playwright`（或 `patchright`）+ `playwright install chromium` |
+| 1/备用 | 直接 CDP（系统 Chrome） | `requirements-nodriver.txt`；需系统 Chrome；无需 `playwright install`；AGPL-3.0 |
 | 2 | 挑战求解 | `requirements-stealth.txt` + `scrapling install` |
 | 3 | 指纹底座 | `requirements-cloak.txt` + `python -m cloakbrowser install` |
+
+层号表示能力档位，不是隐蔽性排名。层 2 的 `scrapling[fetchers]` 会安装 Patchright；层 1 默认也优先 Patchright，所以装层 2 后层 1 的实际驱动可能变化。要固定或对照，使用 `--playwright-api playwright|patchright`（只影响层 1）。层 2/3 的控制面仍是 Patchright，层 3 只替换指纹底座；详细矩阵见 [检测层与引擎选择](detection-layers.md)。
+
+### 浏览器 revision 与 install 命令
+
+`playwright install`、`patchright install`、`scrapling install` 不是同一层的命令：
+
+- `playwright install` 与 `patchright install` 各自用自己 driver 的 `browsers.json` 决定 revision，装进同一个 cache（Windows 默认 `%LOCALAPPDATA%\ms-playwright`）；不同 revision 并存，不互相覆盖。
+- `scrapling install` 只是对当前解释器的 `playwright install chromium`、`playwright install-deps chromium` 的封装，并写安装标记；它不会调用 `patchright install`。
+- Scrapling 0.5 的层 2 控制面是 Patchright；使用 Patchright 的路径（层 2/3，或层 1 显式 `--playwright-api patchright`）需要 Patchright 的 revision。如果 Playwright 与 Patchright 的 revision 不一致，安装命令成功但启动会报 `Executable doesn't exist ... chromium-xxxx`。
+
+因此装层 2 时，除 `scrapling install` 外再补一次目标环境的 Patchright 安装，并对比两边的 revision：
+
+```bash
+<目标环境解释器> -m patchright install chromium
+<目标环境解释器> -m playwright install --dry-run chromium
+<目标环境解释器> -m patchright install --dry-run chromium
+```
+
+对比输出的 `Install location` 是否为同一个 `chromium-xxxx`；不一致就补跑 Patchright 的安装。两边都只装 `chromium`，不带参数会额外拉 Firefox/WebKit，而 Patchright 只支持 Chromium 系。`scrapling install --force` 只绕过安装标记，不会把 `--force` 传给 Playwright；要修复已存在的浏览器，用 `-m playwright install --force chromium` 或 `-m patchright install --force chromium`。不要设 `PLAYWRIGHT_BROWSERS_PATH=0`（两个包会各装各的）；也不要把 `playwright uninstall --all` 当作只清理一个包，共享 revision 会被一起删。
 
 层 0 的 `curl_cffi` 是推荐项而非必需：不装也能用 stdlib 路径抓取，只是不能走 socks 代理，也没有 `--impersonate`。装了以后用 `--impersonate chrome124`（或 `chrome136`、`safari184` 等具体目标）就能以浏览器同族的 TLS/HTTP2 指纹出网，可过部分站点的客户端指纹检查；它不解 JS 挑战，挑战仍要层 2。目标写具体版本而不是 `chrome` 这类滚动别名（别名指向的版本随 curl_cffi 升级漂移，不便复现与对照），可用 `check_environment.py` 或 `curl_cffi.requests.BrowserType` 查询。经代理的 TLS 握手偶有瞬时失败，脚本按 `retries` 重试。`requests`/`httpx` 不改变 TLS 指纹，本 Skill 不作为依赖。
 
@@ -192,7 +213,7 @@ python <skill-dir>/scripts/check_environment.py --list-envs                 # �
 python <skill-dir>/scripts/check_environment.py --list-envs --require-stealth  # 缺层则退出码 1
 ```
 
-输出会列出每个候选解释器的管理方式（`conda:<env>`、`conda:base`、`venv`、`venv(uv)`、`system`）、Python 版本、**可运行的层**、已装包，并按能力排序给出建议命令，例如：
+输出会列出每个候选解释器的管理方式（`conda:<env>`、`conda:base`、`venv`、`venv(uv)`、`system`）、Python 版本、**可运行的层**、已装包，并按能力排序给出建议命令。安装了 nodriver 时引擎行会多出 `nodriver`；它仍只在 `--headful` 的 `auto` 中启用。例如：
 
 ```text
 [OK] conda:scrapling    %USERPROFILE%\.conda\envs\scrapling\python.exe  (来源: conda-envs)
@@ -214,16 +235,28 @@ uv pip install --python <目标环境解释器> -r "$SKILL_DIR/requirements-cloa
 <目标环境解释器> -m cloakbrowser install
 ```
 
-需要在 CI 或安装校验中把某层标为必需时，用 `--require-playwright`、`--require-stealth`、`--require-cloak`；默认只有 Python 版本是必需的，缺层只报 WARN，退出码仍为 0。
+只有需要直接 CDP 备用（nodriver）时才安装；它复用系统 Chrome，不下载浏览器：
+
+```bash
+uv pip install --python <目标环境解释器> -r "$SKILL_DIR/requirements-nodriver.txt"
+<目标环境解释器> -X utf8 "$SKILL_DIR/scripts/check_environment.py" --require-nodriver
+```
+
+- 需要系统 Chrome/Chromium；`check_environment.py` 的 `system-chrome` 与 `nodriver-chrome` 会检查。
+- 显式路线用 `--engine nodriver`；加入 `auto` 必须同时加 `--headful`，且它排在层 3 之后。无头 nodriver 通常明显更弱，不建议用于反检测。
+- 许可为 AGPL-3.0；商用或 SaaS 使用前先评估，不要把它当作无条件默认依赖。
+- 不支持挑战求解，也不伪造指纹；目标卡 Patchright 控制面时才作为备用，不能替代层 2 的求解能力。
+
+需要在 CI 或安装校验中把某层标为必需时，用 `--require-playwright`、`--require-stealth`、`--require-cloak`、`--require-nodriver`；默认只有 Python 版本是必需的，缺层只报 WARN，退出码仍为 0。
 
 开发或修改本 Skill 时，额外安装 `requirements-dev.txt`，并运行 Ruff、Pyright 和 pytest；仅使用 Skill 时不需要开发依赖。
 
 ## 验证与更新
 
-安装后验证三层：
+安装后验证各层：
 
 1. Agent 能发现 `SKILL.md`。
-2. 目标 Python 环境能运行 `check_environment.py` 完成只读诊断，并确认输出末尾的"可用引擎"行符合预期层级；该脚本不证明浏览器已启动。
-3. 实际抓一个受控页面并按层断言：层 0 用静态页、层 1 用客户端渲染页、层 2/3 用挑战页，再核对 `.meta.json` 的 `engine` 与 `.attempts.json` 的 `kind`。
+2. 目标 Python 环境能运行 `check_environment.py` 完成只读诊断，并确认输出末尾的"可用引擎"行符合预期层级；该脚本不证明浏览器已启动。装 nodriver 时再确认 `nodriver` 与 `nodriver-chrome` 两项。
+3. 实际抓一个受控页面并按层断言：层 0 用静态页、层 1 用客户端渲染页、层 2/3 用挑战页、nodriver 用有头模式，再核对 `.meta.json` 的 `engine`、`notes` 与 `.attempts.json` 的 `kind`。
 
 更新源码时，链接安装会自动看到变化；复制安装需要重新复制 Skill 目录。更新依赖或浏览器版本后，重新运行环境诊断和最小 smoke test。不要把真实 profile 当作源码同步目录，也不要在多个浏览器进程之间共享同一个持久 profile。

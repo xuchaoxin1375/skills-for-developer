@@ -6,14 +6,14 @@
 
 ## 模块定位
 
-`resilient_fetch` 不是新的 Cloudflare 求解器。实际挑战识别与交互仍由 Scrapling 完成，CloakBrowser 只提供可选的 Chromium 指纹底座。本模块的意义是把容易遗漏且跨项目重复出现的可靠性措施组合成一个明确契约，并按能力分层调度引擎：层 0 `static`（标准库 HTTP）、层 1 `playwright`、层 2 `scrapling`、层 3 `cloak-cdp`，层 1 以下的引擎没有任何第三方依赖。
+`resilient_fetch` 不是新的 Cloudflare 求解器。实际挑战识别与交互仍由 Scrapling 完成，CloakBrowser 只提供可选的 Chromium 指纹底座。本模块的意义是把容易遗漏且跨项目重复出现的可靠性措施组合成一个明确契约，并按能力分层调度引擎：层 0 `static`（标准库 HTTP）、层 1 `playwright`（Playwright 或 Patchright）、层 2 `scrapling`、层 3 `cloak-cdp`，另有可选的直接 CDP 引擎 `nodriver`（系统 Chrome，有头后备）。层 0 没有任何第三方依赖。层号是能力档位，不代表隐蔽性；控制面/指纹/IP 的矩阵见 [检测层与引擎选择](detection-layers.md)。
 
 | 能力 | 直接调用 Scrapling | `resilient_fetch` |
 | --- | --- | --- |
 | Cloudflare 求解算法 | Scrapling 原生实现 | 仍使用 Scrapling，不声称更强 |
 | 浏览器生命周期 | 调用者管理 | 每个引擎在隔离子进程中运行，并有硬超时和进程树回收 |
 | 引擎可用性 | 调用者自行判断 | 注册表 + 进程内探测；`auto` 只升档到已安装的引擎 |
-| 失败回退 | 调用者编排 | `static → playwright → scrapling → cloak-cdp` 按层升档 |
+| 失败回退 | 调用者编排 | `static → playwright → scrapling → cloak-cdp` 按层升档；`nodriver` 仅在显式选择或 `--headful` 的 `auto` 中作为最后后备 |
 | 代理安全 | 调用者处理 | 代理预检、本地端口发现、默认禁止静默直连、凭据遮蔽 |
 | 成功判断 | 通常由调用者判断 | 同时检查 HTTP 状态、挑战特征、最小字节数和业务文本 |
 | 结果模型 | Scrapling `Response` | 统一为 `FetchResult`、`FetchAttempt`（含 `kind` 失败分类）和 `FetchOutcome` |
@@ -52,12 +52,14 @@ flowchart TD
 
 关键边界：
 
+- 上图未展开可选的 nodriver：它只在显式 `engine="nodriver"`，或 `engine="auto"` 且 `headful=True` 时作为最后后备；不启用 Network 域，`status` 为 `None`。
 - worker 隔离防止浏览器启动、挑战循环或关闭阶段拖死调用进程。
 - `wall_timeout_ms` 是调用者可预测的硬上限，不等同于 Scrapling 的页面操作超时。
 - 回退引擎返回 HTTP `200` 也必须经过内容验证，避免把挑战页当成业务页面。
 - 状态码不单独判拦截：403 且正文无拦截特征、长度达标、调用方期望文本命中时按可用内容接受，并在 `result.notes` 记 `http_status:403:accepted_by_content`；其余 4xx/5xx 仍失败。
 - `auto` 在 404/410 且正文无挑战特征时停止升档：资源级结论不会因换引擎而改变，调用方应核对 URL、权限或站点可见性。
-- `wait_until` 决定取源码与关闭窗口的时机（层 1/2/3）：`commit` / `domcontentloaded` / `load`(默认) / `networkidle`；层 2/3 把前两者映射为 Scrapling 的 `load_dom=False`。
+- `wait_until` 决定取源码与关闭窗口的时机（层 1/2/3 与 nodriver）：`commit` / `domcontentloaded` / `load`(默认) / `networkidle`；层 2/3 把前两者映射为 Scrapling 的 `load_dom=False`，nodriver 通过轮询 `document.readyState` 实现，`networkidle` 会告警并按 `load` 处理。
+- `playwright_api` 只控制层 1：`auto` 优先 Patchright，也可显式指定 `playwright` / `patchright`。装层 2 会带入 Patchright，做 A/B 或复现时要固定；层 2/3 内部固定使用 Patchright。浏览器结果的 `notes` 会记录 `control_plane`、`browser_channel`、`headless`；Playwright 系引擎另有 `playwright_api`，用于区分“同层但驱动/渠道不同”。
 - `impersonate` 只作用于层 0：非空时改用 curl_cffi 以浏览器同族的 TLS/HTTP2 指纹出网（需安装 curl_cffi，否则构造 `FetchOptions` 即报错），结果里记 `notes: impersonate:<目标>`；浏览器层自带指纹，传了会告警忽略。
 - `user_agent` / `referer` 控制身份头：`user_agent` 覆盖各层默认 UA（层 0 只有显式给出时才覆盖 impersonate 目标的 UA，避免 TLS/UA 版本矛盾）；`referer` 为 `None` 时保留各层默认（层 2/3 默认是 Scrapling 带来的 `https://www.google.com/`），空串表示显式不发，非空必须是完整 http(s) URL。含换行的 UA 或非法 URL 在构造 `FetchOptions` 时即报错。
 - `fetch_page()` 不写业务文件；`save_page()` 才拥有文件副作用。
@@ -73,6 +75,7 @@ options = FetchOptions(
     timeout_ms=300_000,
     wall_timeout_ms=600_000,
     wait_until="load",          # commit | domcontentloaded | load | networkidle
+    playwright_api="auto",      # 仅层 1：auto | playwright | patchright
     user_agent=None,            # None=各层默认；层 0 显式设置时才覆盖 impersonate 的 UA
     referer=None,               # None=各层默认；""=显式不发(层 2/3 会关掉 Google referer)
     expected_texts=("Example Domain",),
@@ -93,7 +96,7 @@ print([attempt.as_metadata() for attempt in outcome.attempts])
 
 `fetch_page()` 返回 `FetchOutcome`，不会写 HTML、元数据或诊断文件：
 
-- `outcome.result`：`FetchResult`，包含 `html`、`title`、`status`、`final_url`、`engine`、耗时、版本和 `notes`（不影响判定的注记，如按内容接受的 403）。
+- `outcome.result`：`FetchResult`，包含 `html`、`title`、`status`、`final_url`、`engine`、耗时、版本和 `notes`（不影响判定的注记，如按内容接受的 403，以及浏览器引擎的 `control_plane` / `playwright_api` / `browser_channel` / `headless`）。
 - `outcome.attempts`：每个被尝试（或被缺件跳过）的引擎的 `FetchAttempt`；被拒绝页面保存在 `rejected_html`，`kind` 给出 `unavailable` / `blocked` / `blocked_or_empty` / `runtime_error` / `ok` 分类。
 - `outcome.proxy`：最终使用的代理，可能因显式允许直连而为 `None`。
 
@@ -131,7 +134,7 @@ outcome = save_page(
 
 ## 生命周期边界
 
-`fetch_page()` 为单页可靠性使用隔离子进程，并可能按顺序启动 Scrapling 与 CloakBrowser。它适合单次调用、作业队列中的独立任务和故障隔离，不适合在连续批量任务中对很多 URL 直接并发调用，否则会创建多个浏览器并重复验证。同一站点的主目标、对照页、接口端点和状态探针也属于连续任务，应复用同一会话，不要为每个探针调用一次 `fetch_page()`。
+`fetch_page()` 为单页可靠性使用隔离子进程，并可能按顺序启动 Scrapling、CloakBrowser 或 nodriver。它适合单次调用、作业队列中的独立任务和故障隔离，不适合在连续批量任务中对很多 URL 直接并发调用，否则会创建多个浏览器并重复验证。同一站点的主目标、对照页、接口端点和状态探针也属于连续任务，应复用同一会话，不要为每个探针调用一次 `fetch_page()`。
 
 连续批量或 sitemap 任务按依赖选会话：[batch-workflows.md](batch-workflows.md) 里的 `StaticBatchSession`（层 0 静态页，零依赖）、`BrowserBatchSession`（层 1 渲染，只要 playwright/patchright）或 `SiteSessionManager`（层 2+，带挑战求解与重验证）：先首页预热，再复用同一会话做受限并发。
 
@@ -182,6 +185,7 @@ options = BrowserSessionOptions(
     timeout_ms=60_000,
     wall_timeout_ms=90_000,
     post_wait_ms=1_500,        # 客户端渲染内容出现前的额外等待
+    playwright_api="auto",     # auto | playwright | patchright；仅本会话的层 1
     user_agent=None,           # 覆盖浏览器真实 UA(默认无头会带 HeadlessChrome 标记)
     referer=None,              # 设置时作为每页导航的 Referer
 )
@@ -197,7 +201,31 @@ async with BrowserBatchSession(options) as site:
 - 有真实 DOM，所以 `expected_selector` / `wait_selector` 可用（层 0 的 `StaticBatchSession` 只能用 `expected_texts`）；`wait_selector` 缺失即抛 `missing_wait_selector:<sel>`；
 - `headless=False` + `challenge_wait_ms=300000` 等人工过验证（无头模式下传该参数会直接报错，因为没人能介入）；批量场景建议只在预热阶段开有头；
 - `profile_dir` 可选，用于跨进程复用登录/验证态（目录由调用方管理，不自动清理）；不设则用一次性 context；
+- `playwright_api` 控制本会话使用 Playwright 还是 Patchright；结果 `notes` 记录实际的 `control_plane`、`browser_channel` 和 `headless`；
 - 每页独立 tab、失败重试由 `retries`/`retry_delay` 控制，`wall_timeout_ms` 是单页硬超时（超时抛 `PageTimeoutError`）。
+
+`nodriver` 不提供批量会话封装。它每次调用都会启动/关闭一个系统 Chrome，适合单页控制面备用；不要为批量任务直接并发调用它，也不要把它误当成 `SiteSessionManager` 的层 2 求解器。
+
+## 直接 CDP 单页（nodriver，可选）
+
+只有在明确需要绕开 Patchright 控制面、且接受系统 Chrome 有头模式时才使用 nodriver。它不求解挑战、不伪造指纹，许可为 AGPL-3.0：
+
+```python
+from resilient_fetch import FetchOptions, fetch_page
+
+outcome = fetch_page(
+    FetchOptions(
+        url="https://example.com/",
+        engine="nodriver",       # 显式选择；auto 仅在 headful=True 时加入
+        headful=True,
+        timeout_ms=300_000,
+        wall_timeout_ms=600_000,
+    )
+)
+print(outcome.result.notes)      # control_plane:direct-cdp / browser_channel:system-chrome
+```
+
+`FetchOptions(engine="nodriver")` 会忽略 `humanize`、`geoip`、`hide_canvas`、`network_idle`、`referer` 并告警；`networkidle` 等待也会退化为 `load`。它不启用 Network 域，所以 `result.status` 为 `None`；需要状态码判定时改用 Playwright/Scrapling，或另做一次有界 HTTP 对照。无头 nodriver 通常明显更弱，不建议作为反检测默认路线。
 
 ## 长期站点会话（层 2+）
 
