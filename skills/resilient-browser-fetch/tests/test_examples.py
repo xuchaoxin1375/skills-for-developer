@@ -19,6 +19,8 @@ def test_save_example_builds_module_options() -> None:
         wall_timeout_ms=600_000,
         headful=False,
         expect_text=["Example"],
+        save_cookies=None,
+        save_snapshot=None,
     )
     options = save_example.build_fetch_options(args)
     assert options.discover_proxy

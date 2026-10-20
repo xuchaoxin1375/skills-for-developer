@@ -35,7 +35,7 @@ import sys
 import tempfile
 import time
 import zlib
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -44,6 +44,10 @@ from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 DEFAULT_TIMEOUT_MS = 300_000
+WALL_TIMEOUT_HELP = (
+    "每个引擎的硬超时；默认 timeout + challenge wait + 90000，"
+    "显式传入时不得小于 timeout 与 challenge wait 之和。"
+)
 MIN_SOLVER_TIMEOUT_MS = 60_000
 CHALLENGE_POLL_INTERVAL_SEC = 1.0
 CHALLENGE_LOG_EVERY_SEC = 15.0
@@ -188,6 +192,8 @@ class FetchOptions:
     network_idle: bool = False
     impersonate: str | None = None
     screenshot: str | Path | None = None
+    save_cookies: str | Path | None = None
+    save_snapshot: str | Path | None = None
     allow_direct: bool = False
 
 
@@ -501,6 +507,121 @@ def atomic_write_text(path: Path, content: str) -> None:
     os.replace(temporary, path)
 
 
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "wb", delete=False, dir=str(path.parent), suffix=".tmp"
+    ) as handle:
+        handle.write(payload)
+        temporary = handle.name
+    os.replace(temporary, path)
+
+
+def write_cookie_jar(
+    path: Path, cookies: Iterable[Mapping[str, Any]], user_agent: str | None = None
+) -> int:
+    """Write browser cookies as a Netscape jar that a later HTTP client can reuse."""
+    lines = [
+        "# Netscape HTTP Cookie File",
+        "# 由 resilient-browser-fetch 导出，可能含登录会话 cookie；用完请删除。",
+    ]
+    if user_agent:
+        lines.append(f"# User-Agent: {user_agent}")
+    written = 0
+    for cookie in cookies:
+        name = str(cookie.get("name") or "")
+        domain = str(cookie.get("domain") or "")
+        if not name or not domain:
+            continue
+        expires = cookie.get("expires")
+        expiry = (
+            int(expires) if isinstance(expires, (int, float)) and expires and expires > 0 else 0
+        )
+        prefix = "#HttpOnly_" if cookie.get("httpOnly") else ""
+        lines.append(
+            "\t".join(
+                [
+                    f"{prefix}{domain}",
+                    "TRUE" if domain.startswith(".") else "FALSE",
+                    str(cookie.get("path") or "/"),
+                    "TRUE" if cookie.get("secure") else "FALSE",
+                    str(expiry),
+                    name,
+                    str(cookie.get("value") or ""),
+                ]
+            )
+        )
+        written += 1
+    atomic_write_text(path, "\n".join(lines) + "\n")
+    return written
+
+
+def response_user_agent(response: Any) -> str | None:
+    """Read the User-Agent the engine actually sent, when the response exposes it."""
+    headers = getattr(response, "request_headers", None)
+    if not isinstance(headers, Mapping):
+        return None
+    for key, value in headers.items():
+        if str(key).lower() == "user-agent":
+            return str(value)
+    return None
+
+
+def export_cookies(
+    config: dict[str, Any], cookies: Any, user_agent: str | None = None
+) -> None:
+    """Write the browser cookie jar when the caller asked for it."""
+    target = config.get("save_cookies")
+    if not target:
+        return
+    entries = [dict(item) for item in (cookies or ()) if isinstance(item, Mapping)]
+    if not entries:
+        logging.warning("未导出 cookie: 该引擎没有返回 cookie。")
+        return
+    path = Path(str(target))
+    written = write_cookie_jar(path, entries, user_agent=user_agent)
+    logging.info("已导出 %d 个 cookie 到 %s (含会话 cookie)", written, path)
+
+
+def result_from_response(
+    engine: str, config: dict[str, Any], response: Any, started: float
+) -> FetchResult:
+    """Normalize one engine response and export cookies when requested."""
+    result = response_to_result(engine, config["url"], response, started)
+    export_cookies(config, getattr(response, "cookies", None), response_user_agent(response))
+    return result
+
+
+def capture_page_snapshot(page: Any, target: Path) -> int:
+    """Capture the live page with its loaded resources as an MHTML snapshot."""
+    session = page.context.new_cdp_session(page)
+    try:
+        data = session.send("Page.captureSnapshot", {"format": "mhtml"})
+    finally:
+        session.detach()
+    text = str((data or {}).get("data") or "")
+    if not text:
+        raise FetchError("Page.captureSnapshot 返回空快照。")
+    payload = text.encode("utf-8")
+    atomic_write_bytes(target, payload)
+    return len(payload)
+
+
+async def capture_page_snapshot_async(page: Any, target: Path) -> int:
+    """Capture an MHTML snapshot from an async Playwright page."""
+    session = await page.context.new_cdp_session(page)
+    try:
+        data = await session.send("Page.captureSnapshot", {"format": "mhtml"})
+    finally:
+        await session.detach()
+    text = str((data or {}).get("data") or "")
+    if not text:
+        raise FetchError("Page.captureSnapshot 返回空快照。")
+    payload = text.encode("utf-8")
+    atomic_write_bytes(target, payload)
+    return len(payload)
+
+
 def package_versions() -> dict[str, str]:
     versions: dict[str, str] = {}
     for package in ("scrapling", "cloakbrowser", "playwright", "patchright", "curl_cffi"):
@@ -722,6 +843,8 @@ def static_request(
 def fetch_with_static(config: dict[str, Any]) -> FetchResult:
     """Fetch the page over HTTP only; never launches a browser."""
 
+    if config.get("save_snapshot") or config.get("save_cookies"):
+        logging.warning("层 0 没有浏览器，--save-snapshot 与 --save-cookies 不产生文件。")
     proxy = config.get("proxy")
     scheme = urlparse(proxy).scheme.lower() if proxy else ""
     started = time.perf_counter()
@@ -879,6 +1002,17 @@ def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str
             page_html = page.content()
             final_url = page.url
             status = response.status if response is not None else None
+            if config.get("save_cookies"):
+                browser_ua = page.evaluate("navigator.userAgent")
+                export_cookies(
+                    config,
+                    context.cookies(),
+                    str(browser_ua) if browser_ua else None,
+                )
+            if config.get("save_snapshot"):
+                snapshot_target = Path(str(config["save_snapshot"]))
+                written = capture_page_snapshot(page, snapshot_target)
+                logging.info("已保存页面快照 %s (%d 字节)", snapshot_target, written)
         finally:
             try:
                 context.close()
@@ -960,9 +1094,10 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
         kwargs["wait"] = config["post_wait_ms"]
 
     screenshot = config.get("screenshot")
+    snapshot = config.get("save_snapshot")
     challenge_wait_ms = config.get("challenge_wait_ms", 0)
     headful = bool(config.get("headful"))
-    if screenshot or challenge_wait_ms:
+    if screenshot or challenge_wait_ms or snapshot:
         if cdp_url:
 
             async def after_solver_async(page: Any) -> None:
@@ -974,6 +1109,9 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
                 )
                 if screenshot:
                     await page.screenshot(path=screenshot, full_page=True)
+                if snapshot:
+                    written = await capture_page_snapshot_async(page, Path(str(snapshot)))
+                    logging.info("已保存页面快照 %s (%d 字节)", snapshot, written)
 
             kwargs["page_action"] = after_solver_async
         else:
@@ -987,6 +1125,9 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
                 )
                 if screenshot:
                     page.screenshot(path=screenshot, full_page=True)
+                if snapshot:
+                    written = capture_page_snapshot(page, Path(str(snapshot)))
+                    logging.info("已保存页面快照 %s (%d 字节)", snapshot, written)
 
             kwargs["page_action"] = after_solver_sync
 
@@ -1025,7 +1166,7 @@ def fetch_with_scrapling(config: dict[str, Any]) -> FetchResult:
     started = time.perf_counter()
     logging.info("使用 Scrapling Python API，代理=%s", redact_proxy(config.get("proxy")))
     response = StealthyFetcher.fetch(config["url"], **scrapling_kwargs(config))
-    return response_to_result("scrapling", config["url"], response, started)
+    return result_from_response("scrapling", config, response, started)
 
 
 def free_local_port() -> int:
@@ -1093,7 +1234,7 @@ async def fetch_with_cloak_cdp_async(config: dict[str, Any]) -> FetchResult:
         response = await StealthyFetcher.async_fetch(
             config["url"], **scrapling_kwargs(config, cdp_url=websocket)
         )
-        return response_to_result("cloak-cdp", config["url"], response, started)
+        return result_from_response("cloak-cdp", config, response, started)
     finally:
         try:
             await asyncio.wait_for(browser.close(), timeout=15)
@@ -1714,6 +1855,12 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "screenshot": str(Path(options.screenshot).expanduser().resolve())
         if options.screenshot
         else None,
+        "save_cookies": str(Path(options.save_cookies).expanduser().resolve())
+        if options.save_cookies
+        else None,
+        "save_snapshot": str(Path(options.save_snapshot).expanduser().resolve())
+        if options.save_snapshot
+        else None,
     }
 
 
@@ -1923,7 +2070,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--wall-timeout-ms",
         type=int,
-        help="每个引擎的硬超时；默认 timeout + challenge wait + 90000。",
+        help=WALL_TIMEOUT_HELP,
     )
     parser.add_argument(
         "--retries",
@@ -2010,6 +2157,14 @@ def main(argv: list[str] | None = None) -> int:
         help="显式不发送 Referer；层 2/3 会同时关掉 Scrapling 默认的 Google referer。",
     )
     parser.add_argument("--screenshot", help="验证完成后保存全页截图。")
+    parser.add_argument(
+        "--save-cookies",
+        help="保存浏览器 cookie (Netscape 格式，可能含会话 cookie) 供后续 HTTP 复用。",
+    )
+    parser.add_argument(
+        "--save-snapshot",
+        help="保存 MHTML 快照 (页面与已加载资源)，供受保护站点的离线内联使用。",
+    )
     parser.add_argument("--allow-direct", action="store_true", help="代理不可达时允许直连。")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
@@ -2058,6 +2213,8 @@ def main(argv: list[str] | None = None) -> int:
         network_idle=args.network_idle,
         impersonate=args.impersonate,
         screenshot=args.screenshot,
+        save_cookies=args.save_cookies,
+        save_snapshot=args.save_snapshot,
         allow_direct=args.allow_direct,
     )
     try:

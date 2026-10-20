@@ -9,6 +9,7 @@ import os
 from resilient_fetch import (
     DEFAULT_TIMEOUT_MS,
     ENGINE_CHOICES,
+    WALL_TIMEOUT_HELP,
     FetchFailed,
     FetchOptions,
     ProxyUnavailableError,
@@ -29,6 +30,8 @@ def build_fetch_options(args: argparse.Namespace) -> FetchOptions:
         wall_timeout_ms=args.wall_timeout_ms,
         headful=args.headful,
         expected_texts=tuple(args.expect_text),
+        save_cookies=args.save_cookies,
+        save_snapshot=args.save_snapshot,
     )
 
 
@@ -42,13 +45,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--discover-proxy", action="store_true")
     parser.add_argument("--engine", choices=ENGINE_CHOICES, default="auto")
     parser.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS)
-    parser.add_argument("--wall-timeout-ms", type=int)
+    parser.add_argument("--wall-timeout-ms", type=int, help=WALL_TIMEOUT_HELP)
     parser.add_argument("--headful", action="store_true")
     parser.add_argument("--expect-text", action="append", default=[])
+    parser.add_argument(
+        "--save-cookies",
+        help="保存浏览器 cookie (Netscape 格式，可能含会话 cookie) 供后续 HTTP 复用。",
+    )
+    parser.add_argument(
+        "--save-snapshot",
+        help="保存 MHTML 快照 (页面与已加载资源)，供受保护站点的离线内联使用。",
+    )
     args = parser.parse_args(argv)
     setup_logging(False)
     try:
         save_page(build_fetch_options(args), args.out)
+    except ValueError as exc:
+        parser.error(str(exc))
     except ProxyUnavailableError as exc:
         logging.error("%s", exc)
         return 2

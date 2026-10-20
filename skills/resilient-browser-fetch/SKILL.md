@@ -20,12 +20,31 @@ description: >
 | 只要标题/状态码/字节数，或供其他语言调用 | `scripts/example_extract_page_info.py`（stdout JSON） | 本文件"示例脚本" |
 | 页面多于一个、需要预热/复用会话/sitemap | 三条批量会话按依赖选 | [references/batch-workflows.md](references/batch-workflows.md) |
 | 在 Python 进程内取页或存盘 | `resilient_fetch` 的 `FetchOptions`/`fetch_page`/`save_page` | [references/module-api.md](references/module-api.md) |
+| 已保存的 HTML 要离线可看 | `scripts/inline_page.py` | 本文件"示例脚本" |
 | 安装到 Agent、换机器或换系统 | [references/installation.md](references/installation.md) | 该文件，再读 [references/platforms.md](references/platforms.md) |
 | 修改 `scripts/` 或 `tests/` | 直接改脚本，无封装入口 | 本文件"工作流"末段的质量门禁 |
 
 ## 工作流
 
-前置：先确认已走 `network-access` 双路探测排除选路问题；普通超时/直连失败不直接启动浏览器，仅当探测显示网络可达但正文为挑战/拦截特征时才用本 skill，选路结论同一任务内复用。
+先按要的结果选起点，再进下面的单次抓取流水线：
+
+```mermaid
+flowchart TD
+    A["任务: 拿到一个页面"] --> B{"要的结果"}
+    B -->|"存档: 离线可看 / 完整 DOM / 取证"| C{"该站已知挑战?"}
+    B -->|"正文或字段: 摘要, 取数"| D["auto: static 优先, 命中挑战再升档"]
+    C -->|"是: 有同站观测"| E["钉 --engine scrapling + save_page"]
+    C -->|"否或未知"| F["钉 --engine playwright + save_page"]
+    F -->|"撞挑战"| E
+    E --> G["校验: 标题, 正文节点, 字节, 再读 meta"]
+    F --> G
+    D --> G
+```
+
+- 存档要的是渲染后的完整 DOM，层 0 给不出，从最低层起跑属于纯浪费；取数才按 `auto` 从 static 起步。
+- 钉住某层会失去升档兜底，代价与适用条件见“引擎分层与选择”。
+
+前置：先确认已走 `network-access` 排除选路问题；普通超时/直连失败不直接启动浏览器，仅当正文为挑战/拦截特征时才用本 skill，选路结论同一任务内复用。该站已有观测记录或本次已确认挑战特征时，不必再发裸请求复现 403，直接按上图取存档或升档（判定位置见 `network-access` 的“抓取前先查同站观测”）。
 
 1. 如果需要将本 Skill 安装到 Codex、Claude Code、Cursor 或 Gemini CLI，先读取 [references/installation.md](references/installation.md)。依赖按引擎分层安装，**只装当前任务需要的层**：层 0（`static`）零第三方依赖，层 1 装 `playwright`+浏览器，层 2 装 `requirements-stealth.txt` 并运行 `scrapling install`，层 3 再装 `requirements-cloak.txt` 并运行 `python -m cloakbrowser install`。随后根据当前系统读取 [references/platforms.md](references/platforms.md)，选定独立 Python 3.10+ 环境；国内安装先配置下载路线，`scrapling install` 的系统依赖步骤与页面代理分开处理。环境可以由 Conda、`venv` 或 `uv venv` 管理；Linux 是默认部署目标。先运行 `uv --version`；可用时优先执行 `uv pip install --python <目标环境解释器> ...`，不可用时回退到该环境的 `python -m pip`，不要混用两个安装器修改同一环境。安装新层会改动本机环境（下载量、浏览器二进制、系统依赖），属于需要用户同意的操作：先说明缺哪层、装什么、大概多大、用什么命令，得到同意再装；不得以“本机没装该层”为由跳过，也不得因此默认改用第三方服务。
 2. 运行只读环境诊断：
@@ -44,7 +63,7 @@ description: >
 
    明确需要本地代理但未设置 `SCRAPE_PROXY` 时，可在抓取命令中添加 `--discover-proxy`，按本机登记文件中的候选依次探测。它只取**第一个**能建立 TCP 连接的候选，不验证协议与出口；命中挑战或 403 时不要据此认定站点不可达，先用 `network-access` 的 `probe_local_proxies.py` 取 `usable[]`，再对每个可用入口各发一次目标请求。端口开放只代表存在候选服务，换出口的结论要写进报告。
 
-3. 先使用 `auto`。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
+3. 取正文时先使用 `auto`；存档要完整 DOM 时按上面的入口图直接钉层。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
 
    ```bash
    python <skill-dir>/scripts/resilient_fetch.py \
@@ -79,11 +98,12 @@ python -m pytest
 
 ## 示例脚本
 
-保存网页渲染后源码及 `.meta.json`：
+保存网页渲染后源码及 `.meta.json`；要离线存档时同时导出 MHTML 快照：
 
 ```bash
 python <skill-dir>/scripts/example_save_page.py 'https://example.com/' \
-  --out './example.html' --discover-proxy --expect-text 'Example Domain'
+  --out './example.html' --discover-proxy --expect-text 'Example Domain' \
+  --save-snapshot './example.mhtml'
 ```
 
 获取网页并以 JSON 打印标题、状态码、最终 URL、引擎、字节数和正文预览：
@@ -92,6 +112,21 @@ python <skill-dir>/scripts/example_save_page.py 'https://example.com/' \
 python <skill-dir>/scripts/example_extract_page_info.py 'https://example.com/' \
   --discover-proxy --preview-chars 500
 ```
+
+存档要能离线双击打开时，接着内联外链资源；挑战站的样式与图片从快照取，不再发请求：
+
+```bash
+python <skill-dir>/scripts/inline_page.py './page.html' --mhtml './page.mhtml' \
+  -o './page.offline.html' --proxy 'http://127.0.0.1:<port>'
+```
+
+- 快照由浏览器会话内的 CDP 抓取，含登录态与挑战清除后的资源；`--mhtml` 命中时不走网络，缺失的资源才回退 HTTP。层 0 没有浏览器，快照与 cookie 都不产生文件。
+- 默认从同名 `page.html.meta.json` 的 `final_url` 解析相对地址，也可用 `--base-url` 指定；输入必须是 UTF-8。
+- 外链样式换成 `<style>`，图片与字体转 base64 data URI；单资产与总量上限默认 2 MiB / 30 MiB，超限或抓取失败的条目保留原 URL，并在日志与 `--json` 里给出原因。
+- 上限按去重后的资产字节计；同一图片被多处引用时 data URI 会重复写入，成品体积可明显大于该值。
+- `srcset` 会被清空而保留 `src`：data URI 含逗号，srcset 按逗号切分候选，带 data URI 的 srcset 会被解析错。`<script src>` 不内联，依赖脚本渲染的页面离线打开仍可能缺内容。
+
+`--save-cookies` 导出 Netscape 格式 cookie 给 `--cookies` 用，适合只校验 cookie 的站点。挑战站的 clearance 不能跨 HTTP 栈复用：实测把 `cf_clearance` 交给 urllib、以及用 `curl_cffi` 做 TLS 伪装，同一 URL 仍返回 403，这类资源只能走快照。cookie 文件含会话凭据，不放仓库、用完删除。
 
 任意语言可把信息示例作为子进程执行并只解析 stdout 的 JSON；抓取日志写入 stderr。Python 程序也可将 `<skill-dir>/scripts` 加入模块搜索路径，再从 `example_extract_page_info.py` 导入 `fetch_page_info()` 直接取得字典。
 
