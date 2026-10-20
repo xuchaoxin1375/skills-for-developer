@@ -84,7 +84,11 @@ def main(argv: list[str] | None = None) -> int:
         help="接入后等待渲染完成的上限",
     )
     parser.add_argument("--timeout-ms", type=int, default=90_000, help="等待页面上限")
-    parser.add_argument("--proxy", help="代理 URL，例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:10808")
+    parser.add_argument(
+        "--proxy",
+        help="代理 URL，例如 http://127.0.0.1:<port> 或 socks5://127.0.0.1:<port>；"
+        "也可设置 SCRAPE_PROXY 环境变量。",
+    )
     parser.add_argument("--allow-direct", action="store_true", help="允许直连(未给代理时)")
     args = parser.parse_args(argv)
 
