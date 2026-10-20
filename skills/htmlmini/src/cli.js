@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
-import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, RENDER_ENGINE_CHOICES, runExtract } from './extract.js';
+import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, RENDER_ENGINE_CHOICES, runExtractDetailed } from './extract.js';
 import { fmtBytes, fmtMs, log, setLogLevel } from './log.js';
 import { VERSION, VERSION_LINE } from './version.js';
 
@@ -111,8 +111,13 @@ OPTIONS
                    pipeline, which can add extra blank lines)
   --quiet          only errors on stderr (progress is hidden)
   --verbose        extra detail on stderr ([read]/[extract] internals, timings, sizes)
-                   Progress goes to stderr as "htmlmini: [read|parse|extract|format|write] ...",
-                   so stdout keeps the payload only. Env: HTMLMINI_LOG=quiet|info|debug.
+                   Progress goes to stderr as "<time> htmlmini: [read|parse|extract|format|write] ...",
+                   where <time> is local YYYY-MM-DD HH:mm:ss,SSS (Python-logging style; set
+                   HTMLMINI_LOG_TIME=0 to drop it). Env: HTMLMINI_LOG=quiet|info|debug.
+  --no-source-marks
+                   do not bracket the payload with "<<< htmlmini:source begin/end ... >>>"
+                   lines that record url/status/render/fetched-at (env HTMLMINI_SOURCE_MARKS=0).
+                   json mode never wraps: it carries source/fetchStatus/fetchedAt fields instead.
   -h, --help       show this help
   -V, --version    print version (date-time based, YYYY.MM.DD.HHmm) and exit
 
@@ -184,6 +189,8 @@ let pruneEmpty = false;
 let textMax = 150;
 let allowEmpty = false;
 let logLevelOverride = null;
+// 来源哨兵行：默认开，`--no-source-marks` 或 HTMLMINI_SOURCE_MARKS=0 关闭（管道/后处理不想要时）。
+let sourceMarks = process.env.HTMLMINI_SOURCE_MARKS !== '0';
 
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -243,6 +250,10 @@ for (let i = 0; i < argv.length; i++) {
     }
   } else if (a === '--allow-empty') {
     allowEmpty = true;
+  } else if (a === '--no-source-marks' || a === '--no-marks') {
+    sourceMarks = false;
+  } else if (a === '--source-marks') {
+    sourceMarks = true;
   } else if (a === '--quiet') {
     logLevelOverride = 'quiet';
   } else if (a === '--verbose') {
@@ -327,9 +338,24 @@ if (source === '-' && process.stdin.isTTY) {
   process.exit(2);
 }
 
+/**
+ * 用起止哨兵行包住载荷，标出来源、状态码、抓取方式与时刻；正文本身一字不改。
+ * 选 ASCII 单行标记而不是 HTML 注释：text/ui/skeleton 模式下也读得懂，且便于 grep 与剥离。
+ */
+function markSource(out, info) {
+  const status = Number.isFinite(info.status) ? String(info.status) : info.rendered ? 'unknown' : 'n/a';
+  const via = info.rendered ? 'browser' : 'static';
+  const body = out.replace(/\n+$/, '');
+  const begin = `<<< htmlmini:source begin url=${info.source} status=${status} render=${via} fetched=${info.fetchedAt} >>>`;
+  const end = `<<< htmlmini:source end url=${info.source} >>>`;
+  return body ? `${begin}\n${body}\n${end}` : `${begin}\n${end}`;
+}
+
 try {
   const startedAt = Date.now();
-  const out = await runExtract(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(saveHtml === undefined ? {} : { saveHtml }) });
+  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(saveHtml === undefined ? {} : { saveHtml }) });
+  // JSON 模式不包哨兵行（否则不再可解析），来源由 JSON 里的 source/fetchStatus/fetchedAt 字段承载。
+  const out = mode === 'json' || !sourceMarks ? raw : markSource(raw, info);
   const total = `total ${fmtMs(Date.now() - startedAt)}`;
   if (output) {
     // 与 stdout 分支同口径：结果已以换行结尾时不再补，避免落盘文件尾部多出空行。

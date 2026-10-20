@@ -51,7 +51,7 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 
 1. MCP（已配置时）：`htmlmini_extract_file(path)` / `htmlmini_extract_url(url)` / `htmlmini_extract_html(html_content)`，可选 `mode`、`extractor`。旧拼写 `htmmini_*` 是兼容别名。
 2. CLI：`htmlmini <文件|URL|stdin> [--mode <模式>]`。选项、默认值与完整清单以 `htmlmini --help` / `--list-modes` / `--list-extractors` 为准。
-   - 进度日志走 stderr，stdout 只放提取结果；要安静用 `--quiet`，排查用 `--verbose`。
+   - 进度日志走 stderr，行首带方括号本地时间戳（`[YYYY-MM-DD HH:mm:ss,SSS]`，同 Python logging），故相邻行可直接相减看阶段耗时；`[read]` 行带抓取状态码（`status=…`）。stdout 只放载荷与一对来源哨兵行，不要时加 `--no-source-marks`。要安静用 `--quiet`，排查用 `--verbose`。
    - 落盘用 `-o <文件>`；不要用 PowerShell 管道接 `Set-Content` 收载荷。
    - CLI 不在 PATH：用 `node <本 skill 目录>/src/cli.js <同样参数>`。
    - 报 `ERR_MODULE_NOT_FOUND`：依赖未装。在 skill 目录运行 `corepack pnpm install --frozen-lockfile` 后重跑，不改换工具。

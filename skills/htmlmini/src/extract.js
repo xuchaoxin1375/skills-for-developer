@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { parseHTML } from 'linkedom';
 import { Defuddle } from 'defuddle/node';
 import { ProxyAgent } from 'undici';
-import { fmtBytes, fmtMs, log } from './log.js';
+import { fmtBytes, fmtMs, log, timestamp } from './log.js';
 import { VERSION } from './version.js';
 
 const execFileAsync = promisify(execFile);
@@ -312,9 +312,9 @@ export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS, proxy }
       throw err;
     }
     const contentType = res.headers.get('content-type');
-    return { html: decodeHtml(Buffer.from(await res.arrayBuffer())), source, contentType };
+    return { html: decodeHtml(Buffer.from(await res.arrayBuffer())), source, contentType, status: res.status };
   }
-  return { html: decodeHtml(await readFile(source)), source, contentType: guessContentTypeFromPath(source) };
+  return { html: decodeHtml(await readFile(source)), source, contentType: guessContentTypeFromPath(source), status: null };
 }
 
 // ---- 按需浏览器渲染（显式 opt-in：--render / render:true）----
@@ -618,9 +618,10 @@ function chromeExtraArgs() {
   return (process.env[CHROME_EXTRA_ARGS_ENV] ?? '').split(/\s+/).filter(Boolean);
 }
 
-export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin, chromeSource = 'explicit' } = {}) {
+export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin, chromeSource = 'explicit', info = null } = {}) {
   const bin = chromeBin ?? findChromeBin();
   if (!bin) throw new Error('no system Chrome/Chromium found; set HTMLMINI_CHROME_BIN to its path to use chrome rendering');
+  if (info) Object.assign(info, { engine: 'chrome-dump', status: null });
   const proxyUrl = resolveProxy(url, { proxy });
   const args = [...chromeExtraArgs(), '--headless=new', '--disable-gpu', '--no-sandbox', '--hide-scrollbars', '--virtual-time-budget=15000'];
   if (proxyUrl) {
@@ -687,7 +688,7 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   return html;
 }
 
-export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, pythonBin, renderEngine } = {}) {
+export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, pythonBin, renderEngine, info = null } = {}) {
   const { script, engines, solver, python } = await renderCapability(pythonBin);
   const canSavePage =
     Boolean(script) && (engines === null || engines.some((name) => BROWSER_ENGINES.includes(name)));
@@ -719,23 +720,23 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
 
   // 有求解引擎、需要开窗、本机没有 Chrome，或显式钉了引擎时，save_page 更合适；层 1 与 Chrome 同能力时优先零依赖通路。
   if (canSavePage && (pinned || solver || headful || !found)) {
-    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine });
+    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, info });
   }
   if (found) {
     try {
-      return await runChromeDump(url, { proxy, timeoutMs: Math.min(renderTimeoutMs, 120_000), chromeBin: found.bin, chromeSource: found.source });
+      return await runChromeDump(url, { proxy, timeoutMs: Math.min(renderTimeoutMs, 120_000), chromeBin: found.bin, chromeSource: found.source, info });
     } catch (chromeErr) {
       if (!canSavePage) throw chromeErr;
       // 零依赖通路崩了（进程退出码异常、超时等）时，同能力的 save_page 值得再试一次。
       log.info('render', `chrome 通路失败，改用 save_page 重试: ${chromeErr.message}`);
       try {
-        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine });
+        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, info });
       } catch (saveErr) {
         throw new Error(`${chromeErr.message}; save_page 回退也失败: ${saveErr.message}`);
       }
     }
   }
-  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine });
+  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, info });
   const alternative = await findCapablePython(['playwright']).catch(() => null);
   if (headful) {
     throw new Error(
@@ -848,7 +849,7 @@ export async function savePageUsable(pythonBin) {
 }
 
 
-async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine }) {
+async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, info = null }) {
   const interpreter = python ?? (await findPython({ pythonBin }));
   const proxyUrl = resolveProxy(url, { proxy });
   const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
@@ -924,6 +925,9 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
     });
   });
     const html = decodeHtml(await readFile(out));
+    // save_page 把最终 URL、状态码与引擎写在 <out>.meta.json；渲染通路的真实状态码只在这里，
+    // 读完正文立刻取（finally 里会清理临时产物）。
+    if (info) Object.assign(info, await readRenderMeta(out));
     if (!html.trim()) throw new Error(`browser render returned empty page for ${url}`);
     return html;
   } finally {
@@ -931,6 +935,23 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
     // .<engine>.blocked.html）；basename 唯一，按前缀全清，不留残留。
     // finally 包住 spawn（失败早抛也清），读文件在 finally 之前（先读后删）。
     await cleanupRenderArtifacts(out);
+  }
+}
+
+/**
+ * 读 save_page 写在正文旁的 `<out>.meta.json`：渲染通路的真实状态码与引擎只有这里知道。
+ * 缺失或损坏时返回空对象——渲染结果本身仍可用，不该因为元数据缺失而失败。
+ */
+async function readRenderMeta(out) {
+  try {
+    const meta = JSON.parse(await readFile(`${out}.meta.json`, 'utf8'));
+    const info = {};
+    if (Number.isFinite(meta?.status)) info.status = meta.status;
+    if (meta?.engine) info.engine = String(meta.engine);
+    if (Array.isArray(meta?.notes) && meta.notes.length) info.notes = meta.notes.map(String);
+    return info;
+  } catch {
+    return {};
   }
 }
 
@@ -965,9 +986,15 @@ export async function readWithRender(
   // 抓取前先报：网络与浏览器渲染都是长等待，不能静默；[proxy: …] 说明实际路由与来源。
   // 放在这一层而不是 runExtract，CLI 与 MCP（handleSource 直接调本函数）才都有进度。
   if (remote) log.info('read', `fetching ${source} [proxy: ${describeProxy(source, proxy)}]`);
+  // 渲染通路的状态码只有 save_page 的 meta 里有，零依赖 chrome dump-dom 拿不到，故用采集器回传。
+  const info = {};
   const done = (r) => {
-    log.info('read', `${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${r.rendered ? ' via browser render' : ''}`);
-    log.debug('read', `source=${r.source ?? source} contentType=${r.contentType ?? 'unknown'}${remote ? ` render=${render === 'always' ? 'always' : render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
+    const status = Number.isFinite(r.status) ? r.status : Number.isFinite(info.status) ? info.status : null;
+    r.status = status;
+    r.engine = info.engine ?? null;
+    const statusNote = Number.isFinite(status) ? ` status=${status}` : r.rendered ? ' status=unknown' : '';
+    log.info('read', `${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${statusNote}${r.rendered ? ' via browser render' : ''}`);
+    log.debug('read', `source=${r.source ?? source} status=${Number.isFinite(status) ? status : 'unknown'} contentType=${r.contentType ?? 'unknown'}${r.engine ? ` engine=${r.engine}` : ''}${remote ? ` render=${render === 'always' ? 'always' : render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
     return r;
   };
   // 渲染通路拿到的仍是挑战空壳时，别把"水合没做"当成原因：零依赖 Chrome 只渲染、不求解。
@@ -981,8 +1008,10 @@ export async function readWithRender(
   };
   // 渲染一次并做挑战判定；bin 为空表示沿用默认解释器（PATH 的 python/python3）。
   const renderHtml = async (bin) => {
+    for (const k of Object.keys(info)) delete info[k];
     const html = await renderViaBrowser(source, {
       proxy,
+      info,
       ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
       ...(headful ? { headful: true } : {}),
       ...(chromeBin == null ? {} : { chromeBin }),
@@ -2067,7 +2096,16 @@ export function renderResult(res, mode) {
   }
 }
 
-export async function runExtract(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin, renderEngine, saveHtml } = {}) {
+export async function runExtract(source, mode = 'markdown', options = {}) {
+  const { output } = await runExtractDetailed(source, mode, options);
+  return output;
+}
+
+/**
+ * 与 runExtract 相同，但把来源信息（URL、状态码、是否渲染、抓取时刻）一起返回，
+ * 供调用方做来源标记或 JSON 字段；CLI 用它生成起止行。
+ */
+export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin, renderEngine, saveHtml } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -2076,6 +2114,9 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
   let sibling = null;
   let contentType = null;
   let rendered = false;
+  let fetchStatus = null;
+  let engine = null;
+  let fetchedAt = null;
   if (forceContent != null) {
     html = forceContent;
     src = 'content';
@@ -2099,6 +2140,8 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     src = r.source;
     contentType = r.contentType ?? guessContentTypeFromPath(src);
     rendered = r.rendered === true;
+    fetchStatus = Number.isFinite(r.status) ? r.status : null;
+    engine = r.engine ?? null;
     if (saveHtml) {
       // 落盘放在校验之前：即使随后被判挑战页/空壳而报错，抓到的原文仍可复用与诊断。
       const saved = await saveSourceHtml(html, { source: src, outPath: saveHtml, rendered, contentType });
@@ -2115,9 +2158,20 @@ export async function runExtract(source, mode = 'markdown', { forceContent, extr
     : sibling && /^https?:/i.test(sibling.url)
       ? sibling.url
       : 'file:///' + (src === 'stdin' || src === 'content' ? src : src.replaceAll('\\', '/'));
+  // 取到内容之后再记时刻：哨兵行的 fetched 表示"这份载荷什么时候拿到的"，不是命令启动时间。
+  fetchedAt = timestamp();
   const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, fetchCss: rendered || Boolean(sibling && /^https?:/i.test(sibling.url)), ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
   assertUsableResult(res, html.length, { allowEmpty, mode });
   log.debug('extract', `mode=${mode} requested=${res.requested} used=${res.used} reduction=${res.stats.reductionPct}% title="${res.title ?? ''}"`);
   if (sibling) res.meta = sibling.meta;
-  return renderResult(res, mode);
+  const info = { source: url, status: fetchStatus, rendered, engine, fetchedAt, mode };
+  if (mode === 'json') {
+    // JSON 模式下哨兵行会破坏可解析性，来源改由字段承载（与文本模式的起止行等价）。
+    res.source = url;
+    res.fetchStatus = fetchStatus;
+    res.rendered = rendered;
+    res.fetchedAt = fetchedAt;
+    if (engine) res.engine = engine;
+  }
+  return { output: renderResult(res, mode), info };
 }

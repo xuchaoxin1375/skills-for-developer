@@ -8,6 +8,8 @@
  * - 初始级别取环境变量 HTMLMINI_LOG，CLI 的 --quiet/--verbose 可覆盖（MCP 侧只认环境变量）。
  *
  * 阶段标签沿用既有 `htmlmini: [render] …` 约定：read / parse / extract / format / write / render。
+ * 每行行首带方括号包住的本地时间戳（`[YYYY-MM-DD HH:mm:ss,SSS]`，与 Python logging 的 asctime 同形），
+ * 便于对照网络/渲染耗时与多行日志排序；`HTMLMINI_LOG_TIME=0` 可关掉以兼容按行首匹配的旧脚本。
  */
 
 const LEVELS = { quiet: 0, info: 1, debug: 2 };
@@ -32,8 +34,31 @@ export function logLevel() {
 
 const enabled = (n) => level >= LEVELS[n];
 
+// 与 Python logging 的 asctime 同形：本地时间 `[2026-10-20 16:21:40,123]`。
+// 时间戳按写入时刻取，不用进程启动时间——日志的用途就是量各阶段相隔多久。
+const withTime = process.env.HTMLMINI_LOG_TIME !== '0';
+
+const pad = (n, width = 2) => String(n).padStart(width, '0');
+
+export function timestamp(d = new Date()) {
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())},` +
+    `${pad(d.getMilliseconds(), 3)}`
+  );
+}
+
 function emit(tag, msg) {
-  process.stderr.write(`htmlmini:${tag ? ` [${tag}]` : ''} ${msg}\n`);
+  const head = `htmlmini:${tag ? ` [${tag}]` : ''}`;
+  // 子进程转发的多行输出逐行加时间戳，避免只有首行带时间、后续行排序困难。
+  const lines = String(msg).replace(/\n+$/, '').split('\n');
+  const body = lines
+    .map((line, i) => {
+      const text = `${i === 0 ? `${head} ${line}` : line}`;
+      return withTime ? `[${timestamp()}] ${text}` : text;
+    })
+    .join('\n');
+  process.stderr.write(`${body}\n`);
 }
 
 export const log = {

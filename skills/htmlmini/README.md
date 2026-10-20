@@ -80,17 +80,33 @@ node scripts/stamp-version.mjs 2026.10.19.1805   # 或显式指定
 
 ## 日志与进度
 
-进度一律走 **stderr**（stdout 只放载荷，`| htmlmini - -t` 这类管道不会被污染），阶段标签沿用 `htmlmini: [阶段] …`：
+进度一律走 **stderr**（stdout 只放载荷与一对来源哨兵行，日志不会污染 `| htmlmini - -t` 这类管道；要纯净载荷加 `--no-source-marks`），每行行首是方括号包住的本地时间戳（`[YYYY-MM-DD HH:mm:ss,SSS]`，与 Python `logging` 的 `asctime` 同形），后面接阶段标签 `htmlmini: [阶段] …`：
 
 ```console
 $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot.clean.html
-htmlmini: [read] fetching https://github.com/features/copilot [proxy: http://127.0.0.1:7890 (HTTPS_PROXY)]
-htmlmini: [read] https://github.com/features/copilot 855.2 KB in 1.21s
-htmlmini: [parse] dom 55ms
-htmlmini: [extract] used=sanitize attrs=semantic format=pretty 103.5 KB in 25ms
-htmlmini: [format] pretty 200.0 KB in 41ms
-htmlmini: [write] copilot.clean.html 200.3 KB (total 2.24s)
+[2026-10-20 16:22:45,120] htmlmini: [read] fetching https://github.com/features/copilot [proxy: http://127.0.0.1:7890 (HTTPS_PROXY)]
+[2026-10-20 16:22:46,331] htmlmini: [read] https://github.com/features/copilot 855.2 KB in 1.21s status=200
+[2026-10-20 16:22:46,386] htmlmini: [parse] dom 55ms
+[2026-10-20 16:22:46,411] htmlmini: [extract] used=sanitize attrs=semantic format=pretty 103.5 KB in 25ms
+[2026-10-20 16:22:46,452] htmlmini: [format] pretty 200.0 KB in 41ms
+[2026-10-20 16:22:46,495] htmlmini: [write] copilot.clean.html 200.3 KB (total 2.24s)
 ```
+
+`[read]` 汇总行带 `status=<码>`（静态抓取与 save_page 渲染取真实状态码；零依赖 chrome dump-dom 拿不到状态码，显示 `status=unknown via browser render`）。时间戳按写入时刻取，所以相邻两行之差就是该阶段耗时；`--render` 时转发自渲染子进程的多行输出也逐行带时间。要还原成没有时间戳的旧格式（例如按行首 `htmlmini:` 匹配的脚本），设 `HTMLMINI_LOG_TIME=0`。
+
+### 来源哨兵行
+
+文本模式（markdown/text/html/ui/skeleton 等）的载荷默认被一对哨兵行包住，标出 URL、状态码、抓取方式与抓取时刻；正文一字不改，只是外围加边界：
+
+```text
+<<< htmlmini:source begin url=https://example.com/app status=200 render=static fetched=2026-10-20 16:22:45,120 >>>
+…提取结果…
+<<< htmlmini:source end url=https://example.com/app >>>
+```
+
+- 落盘（`-o`）与 stdout 同口径；`--no-source-marks`（或 `HTMLMINI_SOURCE_MARKS=0`）关闭。
+- `--json` 不掺哨兵行，来源改由 `source`、`fetchStatus`、`rendered`、`fetchedAt` 字段承载，`JSON.parse` 仍直接可用。
+- 本地文件/stdin 没有 HTTP 状态，记 `status=n/a`；MCP 工具返回结构化结果，不加哨兵行。
 
 `[proxy: …]` 说明这次抓取的实际路由与**来源**，排查"代理到底生效没"先看它：
 
@@ -110,7 +126,7 @@ htmlmini: [write] copilot.clean.html 200.3 KB (total 2.24s)
 | `info`（默认） | — | 上述阶段级进度：每段耗时与体积 |
 | `debug` | `--verbose` | 追加细节：source/contentType/proxy/render、引擎链结果、`reduction%`、标题 |
 
-级别也可用环境变量 `HTMLMINI_LOG=quiet|info|debug` 预设，CLI 开关覆盖环境变量；MCP 侧只认环境变量。慢的阶段（网络抓取、`--render` 回退、`pretty` 重排）都会先报开始再报耗时，所以长时间等待不会静默。
+级别也可用环境变量 `HTMLMINI_LOG=quiet|info|debug` 预设，CLI 开关覆盖环境变量；MCP 侧只认环境变量。时间戳用 `HTMLMINI_LOG_TIME=0` 关闭。慢的阶段（网络抓取、`--render` 回退、`pretty` 重排）都会先报开始再报耗时，所以长时间等待不会静默。
 
 ## 与 resilient-browser-fetch 的流水线
 

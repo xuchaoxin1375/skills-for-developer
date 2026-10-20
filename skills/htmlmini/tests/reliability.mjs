@@ -47,6 +47,12 @@ const ok = (cond, msg) => {
   console.log(`ok ${n} - ${msg}`);
 };
 
+/** 剥掉 CLI 加在载荷外的来源哨兵行，便于比对正文本身。 */
+const stripMarks = (s) =>
+  String(s)
+    .replace(/^<<< htmlmini:source begin [^\n]*\n/, '')
+    .replace(/\n<<< htmlmini:source end [^\n]*\n?$/, '');
+
 // ---- 1. decodeHtml：BOM / GBK / 非法字节 ----
 {
   const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('<p>hi</p>')]);
@@ -213,7 +219,8 @@ async function cli(args, { input, env } = {}) {
   const s = await cli(['-', '--title'], {
     input: '<html><head><title>管道标题</title></head><body><p>x</p></body></html>',
   });
-  ok(s.code === 0 && s.stdout.trim() === '管道标题', 'stdin 管道正常');
+  ok(s.code === 0 && stripMarks(s.stdout).trim() === '管道标题', 'stdin 管道正常');
+  ok(s.stdout.startsWith('<<< htmlmini:source begin ') && s.stdout.includes('<<< htmlmini:source end '), 'stdout 用起止哨兵行包住载荷');
 
   const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-cli-'));
   try {
@@ -252,6 +259,32 @@ async function cli(args, { input, env } = {}) {
     const v = await cli([page, '--mode', 'html', '--verbose']);
     ok(v.stderr.includes('source=') && v.stderr.includes('reduction='), '--verbose 追加细节行');
 
+    // 状态码与来源哨兵：状态码进 [read] 行；文本模式用起止行包住载荷，JSON 用字段承载。
+    const live = await cli([`${base}/article`]);
+    ok(live.code === 0 && /\[read\] .*status=200/.test(live.stderr), '抓取状态码写进 [read] 行');
+    const beginLine = live.stdout.split('\n')[0];
+    ok(
+      beginLine.startsWith('<<< htmlmini:source begin ') &&
+        beginLine.includes(`url=${base}/article`) &&
+        beginLine.includes('status=200') &&
+        beginLine.includes('render=static') &&
+        /fetched=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}/.test(beginLine),
+      '开头哨兵行写明 url/状态码/抓取方式/时刻',
+    );
+    ok(live.stdout.includes(`<<< htmlmini:source end url=${base}/article >>>`), '结尾哨兵行收口');
+    ok(stripMarks(live.stdout).includes('本地文章'), '哨兵行之外正文原样保留');
+    const bare = await cli([`${base}/article`, '--no-source-marks']);
+    ok(bare.code === 0 && !bare.stdout.includes('htmlmini:source'), '--no-source-marks 关闭哨兵行');
+    const envOff = await cli([`${base}/article`], { env: { HTMLMINI_SOURCE_MARKS: '0' } });
+    ok(envOff.code === 0 && !envOff.stdout.includes('htmlmini:source'), 'HTMLMINI_SOURCE_MARKS=0 关闭哨兵行');
+    const asJson = await cli([`${base}/article`, '--json']);
+    const parsed = JSON.parse(asJson.stdout);
+    ok(!asJson.stdout.includes('htmlmini:source'), '--json 不掺哨兵行');
+    ok(
+      parsed.source === `${base}/article` && parsed.fetchStatus === 200 && typeof parsed.fetchedAt === 'string',
+      '--json 用 source/fetchStatus/fetchedAt 字段承担来源，仍是合法 JSON',
+    );
+
     // 代理来源必须写进 [read] 行：只设环境变量时旧日志谎报 proxy=none。
     // 抓 127.0.0.1:9（discard，必被拒）保证秒失败，只断言 stderr 文本，不看退出码。
     const dead = 'http://127.0.0.1:9/x';
@@ -281,10 +314,10 @@ async function cli(args, { input, env } = {}) {
     ok(meta.url === `${base}/article` && meta.rendered === false, 'meta 记下源 URL 与静态抓取');
     ok(withSave.stderr.includes('[write]') && withSave.stderr.includes('static fetch'), '日志写明落盘与来源');
 
-    // 关键回归：复用文件必须与直抓等价（URL 基准与 fetchCss 都要跟过来）。
+    // 关键回归：复用文件必须与直抓等价（URL 基准与 fetchCss 都要跟过来）；来源哨兵行不比。
     const directMd = await readFile(directPath, 'utf8');
     const reuse = await cli([savedHtml, '-m']);
-    ok(reuse.code === 0 && reuse.stdout === directMd, '复用文件与直抓结果一致');
+    ok(reuse.code === 0 && stripMarks(reuse.stdout) === stripMarks(directMd), '复用文件与直抓结果一致');
 
     const local = path.join(dir, 'local.html');
     await writeFile(local, '<html><head><title>本地</title></head><body><p>x</p></body></html>');
@@ -549,7 +582,7 @@ async function cli(args, { input, env } = {}) {
     ok(cw.code === 1 && /via proxy/.test(cw.stderr), 'CLI --proxy 生效，失效时指引到代理');
     process.env.HTTP_PROXY = 'http://127.0.0.1:1/';
     const cn = await cli([`${base}/article`, '--title', '--noproxy']);
-    ok(cn.code === 0 && cn.stdout.trim() === '本地页', 'CLI --noproxy 越过失效环境代理');
+    ok(cn.code === 0 && stripMarks(cn.stdout).trim() === '本地页', 'CLI --noproxy 越过失效环境代理');
   } finally {
     for (const k of Object.keys(savedEnv)) {
       if (savedEnv[k] === undefined) delete process.env[k];
@@ -670,7 +703,7 @@ open(out, 'w', encoding='utf-8').write(
 
         process.env.HTMLMINI_RENDER_SCRIPT = stub;
         const cr = await cli([`${base}/always502`, '--title', '--render', '--render-timeout-ms', '30000']);
-        ok(cr.code === 0 && cr.stdout.trim() === '渲染页', 'CLI --render 回退成功');
+        ok(cr.code === 0 && stripMarks(cr.stdout).trim() === '渲染页', 'CLI --render 回退成功');
         ok(cr.stderr.includes('htmlmini: [render]'), '渲染日志透传到 stderr 供参考');
 
         const hf = await runExtract(`${base}/always502`, 'title', { render: true, headful: true, renderTimeoutMs: 30000 });
@@ -1020,7 +1053,7 @@ open(out, 'w', encoding='utf-8').write(
 
       process.env.HTMLMINI_CHROME_EXTRA_ARGS = fakeChrome;
       const cexp = await cli([`${base}/always502`, '--title', '--render', '--chrome-bin', process.execPath]);
-      ok(cexp.code === 0 && cexp.stdout.trim() === 'Chrome页', 'CLI --chrome-bin 显式指定生效');
+      ok(cexp.code === 0 && stripMarks(cexp.stdout).trim() === 'Chrome页', 'CLI --chrome-bin 显式指定生效');
       delete process.env.HTMLMINI_CHROME_EXTRA_ARGS;
 
       process.env.HTMLMINI_RENDER_SCRIPT = stub;
