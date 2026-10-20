@@ -205,13 +205,123 @@ def test_owned_browser_process_terminates_only_what_it_started() -> None:
     owned.close()  # 幂等: 重复回收不应报错
 
 
-def test_akamai_bot_page_is_detected_as_blocked() -> None:
+def test_akamai_challenge_page_is_detected_as_blocked() -> None:
     html = (
         "<html><head><title></title></head><body>"
         "<div>Powered and protected by</div><script>var chlgeId='';</script>"
         "</body></html>"
     )
-    assert "akamai_bot_page" in engine_subject.block_reasons(html)
+    assert "akamai_challenge" in engine_subject.block_reasons(html)
+
+
+def test_challenge_page_is_a_pending_state_not_a_refusal() -> None:
+    interstitial = (
+        '<html><head><title></title></head><body>'
+        '<div id="sec-if-cpt-container"><div class="behavioral-content">'
+        "<p>Powered and protected by</p></div></div></body></html>"
+    )
+    assert subject.classify_page_state("", interstitial) == subject.STATE_CHALLENGE
+    assert subject.classify_page_state("Just a moment...", "<html>x</html>") == (
+        subject.STATE_CHALLENGE
+    )
+    assert subject.classify_page_state("Access Denied", "<html>x</html>") == (
+        subject.STATE_BLOCKED
+    )
+    assert subject.classify_page_state("商品标题", "<html>正文</html>") == (
+        subject.STATE_CONTENT
+    )
+
+
+def test_browser_network_error_page_is_not_content() -> None:
+    html = (
+        "<html><head><title>example.com</title></head>"
+        "<body>ERR_NAME_NOT_RESOLVED</body></html>"
+    )
+    assert "browser_error_page" in engine_subject.block_reasons(html)
+
+
+def test_pick_rendered_page_matches_the_requested_tab() -> None:
+    class Tab:
+        def __init__(self, url: str) -> None:
+            self.url = url
+
+    wanted = Tab("https://example.com/product")
+    other = Tab("https://other.example/")
+    assert (
+        subject.pick_rendered_page([other, wanted], "https://example.com/product") is wanted
+    )
+    # 重定向换了路径但同源, 仍然算命中
+    redirected = Tab("https://example.com/new-path")
+    assert (
+        subject.pick_rendered_page([other, redirected], "https://example.com/product")
+        is redirected
+    )
+    # 多个标签都对不上时宁可读不到, 也不要读错页面
+    assert (
+        subject.pick_rendered_page(
+            [other, Tab("https://third.example/")], "https://example.com/p"
+        )
+        is None
+    )
+    assert subject.pick_rendered_page([other], "https://example.com/p") is other
+
+
+def test_wait_for_page_ready_stops_at_a_refused_title() -> None:
+    payload = [{"type": "page", "url": "https://example.com/p", "title": "Access Denied"}]
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        signal = subject.wait_for_page_ready(
+            port, target_url="https://example.com/p", min_settle_ms=0, max_wait_ms=30_000
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert signal.state == subject.STATE_BLOCKED
+    assert signal.ready is False
+    assert signal.waited_ms < 5_000, "标题已表明被拒时不该继续等满预算"
+
+
+def test_wait_for_rendered_page_waits_until_the_dom_stops_growing() -> None:
+    class FakePage:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def evaluate(self, script: str) -> dict:
+            self.calls += 1
+            if self.calls < 3:
+                size = 1000 * self.calls
+                ready = "loading"
+            else:
+                size = 3000
+                ready = "complete"
+            return {
+                "html": "<html><body>" + ("x" * size) + "</body></html>",
+                "title": "商品标题",
+                "ready": ready,
+            }
+
+    page = FakePage()
+    render = subject.wait_for_rendered_page(page, budget_ms=5000, poll_ms=0.01)
+    assert render.state == subject.STATE_CONTENT
+    assert render.ready_state == "complete"
+    assert page.calls >= 3, "DOM 还在增长时不该读取"
+    assert render.html.count("x") == 3000
 
 
 def test_chrome_late_engine_is_registered_but_not_in_auto() -> None:

@@ -151,7 +151,7 @@ Gemini 的默认发现位置是：
 | 0 | 静态 HTTP（默认可用） | 无需安装；**推荐**装 `curl_cffi`（socks 代理，以及 `--impersonate` 的 TLS/HTTP2 伪装） |
 | 1 | 无头/有头渲染 | `playwright`（或 `patchright`）+ `playwright install chromium` |
 | 1/备用 | 直接 CDP（系统 Chrome） | `requirements-nodriver.txt`；需系统 Chrome；无需 `playwright install`；AGPL-3.0 |
-| 1/备用 | 晚接入（先加载后接入） | 复用层 1 的 `playwright`/`patchright`（只需它的 CDP 连接能力）+ 系统 Chrome/Chromium/Edge；**不需要** `playwright install chromium` |
+| 1/备用 | 晚接入（先让挑战跑完再接入） | 复用层 1 的 `playwright`/`patchright`（只需它的 CDP 连接能力）+ 系统 Chrome/Chromium/Edge；**不需要** `playwright install chromium` |
 | 2 | 挑战求解 | `requirements-stealth.txt` + `scrapling install` |
 | 3 | 指纹底座 | `requirements-cloak.txt` + `python -m cloakbrowser install` |
 
@@ -253,7 +253,7 @@ uv pip install --python <目标环境解释器> -r "$SKILL_DIR/requirements-nodr
 - 系统装有 Chrome/Chromium/Edge（`check_environment.py` 的 `system-chrome` 会检查）；用 `--executable-path` 可显式指定路径。
 - 有可用的显示环境：Windows/macOS 直接可用，Linux 需 `DISPLAY` 或 Xvfb。
 
-用法是显式 `--engine chrome-late`（不进 `auto`），并用 `--settle-ms` 调整"页面自然加载、期间不接调试器"的静默窗口。引擎自带的浏览器由它负责回收。
+用法是显式 `--engine chrome-late`（不进 `auto`），并用 `--settle-ms` 调整"最小静默窗口"、`--render-timeout-ms` 调整"接入后等渲染稳定的上限"。引擎自带的浏览器由它负责回收。
 
 需要在 CI 或安装校验中把某层标为必需时，用 `--require-playwright`、`--require-stealth`、`--require-cloak`、`--require-nodriver`；默认只有 Python 版本是必需的，缺层只报 WARN，退出码仍为 0。
 

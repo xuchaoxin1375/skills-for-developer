@@ -52,14 +52,19 @@ from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 from chrome_late import (
+    DEFAULT_RENDER_TIMEOUT_MS,
     DEFAULT_SETTLE_MS,
+    STATE_BLOCKED,
     ChromeLateError,
     OwnedBrowserProcess,
+    RenderSignal,
     build_launch_args,
     find_system_browser,
+    pick_rendered_page,
     proxy_server_value,
     sweep_stale_profiles,
     wait_for_page_ready,
+    wait_for_rendered_page,
 )
 
 DEFAULT_TIMEOUT_MS = 300_000
@@ -87,6 +92,17 @@ SOFT_ERROR_PHRASES = (
     "an error occurred while processing your request",
     "something went wrong on our end",
     "we're sorry, something went wrong",
+)
+# 浏览器自己的网络错误页: 说明请求根本没送达站点, 不能当成"页面内容为空"。
+BROWSER_ERROR_MARKERS = (
+    "err_name_not_resolved",
+    "err_connection_refused",
+    "err_connection_reset",
+    "err_internet_disconnected",
+    "err_address_unreachable",
+    "err_tunnel_connection_failed",
+    "this site can't be reached",
+    "无法访问此网站",
 )
 # 部分站点(WAF)对可疑请求回 403，却仍下发完整正文；这类响应正文侧没有任何拦截信号。
 # 只有调用方显式断言过正文、且正文达到正常页面量级时才按可用内容接受，
@@ -120,7 +136,7 @@ CAP_RENDER = "render"
 CAP_SOLVE = "solve-challenge"
 CAP_CDP = "cdp"
 CAP_DIRECT_CDP = "direct-cdp"
-# 晚接入: 不是更高的能力档位，而是改变调试器接入时机的那一维
+# 晚接入: 不是更高的能力档位，而是改变挑战窗口内是否暴露痕迹的那一维
 CAP_LATE_CDP = "late-cdp"
 
 # 尝试结果分类:调用方据此区分"该装依赖"与"该换路线"。
@@ -219,6 +235,7 @@ class FetchOptions:
     post_wait_ms: int = 1000
     challenge_wait_ms: int = 0
     settle_ms: int = DEFAULT_SETTLE_MS
+    render_timeout_ms: int = DEFAULT_RENDER_TIMEOUT_MS
     min_bytes: int = 300
     locale: str | None = None
     timezone: str | None = None
@@ -325,11 +342,17 @@ class FetchFailed(FetchError):
             reasons = " ".join(attempt.reasons)
             if any(
                 marker in reasons
-                for marker in ("site_error_shell", "akamai_bot_page", "access denied", "empty")
+                for marker in (
+                    "site_error_shell",
+                    "akamai_challenge",
+                    "akamai_bot_page",
+                    "access denied",
+                    "empty",
+                )
             ):
                 return (
                     "；若同一页面在普通浏览器里能正常打开，可试 --engine chrome-late"
-                    "(晚接入: 先让页面自然加载, 再接入调试器读取已渲染 DOM)"
+                    "(晚接入: 先让站点的挑战跑完, 再接入调试器读取已渲染 DOM)"
                 )
         return ""
 
@@ -454,12 +477,16 @@ def block_reasons(page_html: str) -> list[str]:
         reasons.append("cloudflare_challenge_markers")
     if "challenges.cloudflare.com" in sample and "noindex,nofollow" in sample:
         reasons.append("cloudflare_interstitial")
-    # Akamai Bot Manager 的拦截页: 正文只有一小段脚本, 标题为空, 靠固定文案识别
-    if "powered and protected by" in sample:
-        reasons.append("akamai_bot_page")
+    # Akamai Bot Manager 的挑战页: 正文是行为挑战容器或 "Powered and protected by"。
+    # 这类页面表示"站点还没放行"而不是"已拒绝"——挑战跑完会自己重载正文, 别当成终局。
+    if "powered and protected by" in sample or "sec-if-cpt-container" in sample:
+        reasons.append("akamai_challenge")
     # 站点自己吐的错误外壳: HTTP 200 + 站点框架 + 一句通用错误文案
     if any(phrase in sample for phrase in SOFT_ERROR_PHRASES):
         reasons.append("site_error_shell")
+    # 浏览器自身的网络错误页: 压根没拿到站点响应, 更谈不上内容。
+    if any(marker in sample for marker in BROWSER_ERROR_MARKERS):
+        reasons.append("browser_error_page")
     return sorted(set(reasons))
 
 
@@ -1609,6 +1636,8 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
     port = free_local_port()
     profile_dir = Path(tempfile.mkdtemp(prefix="chrome-late-"))
     browser = None
+    launched_at = time.perf_counter()
+    render: RenderSignal | None = None
     try:
         stale = sweep_stale_profiles()
         if stale:
@@ -1621,7 +1650,7 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
             proxy=proxy,
         )
         logging.info(
-            "启动系统浏览器并等待页面自然加载(不接调试器)，之后晚接入读取: %s", executable
+            "启动系统浏览器并等待站点挑战跑完(不接调试器)，之后晚接入读取: %s", executable
         )
         browser = OwnedBrowserProcess.launch(args)
         signal_info = wait_for_page_ready(
@@ -1630,7 +1659,11 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
             min_settle_ms=int(config.get("settle_ms") or DEFAULT_SETTLE_MS),
             max_wait_ms=int(config["timeout_ms"]),
         )
-        if not signal_info.ready:
+        if signal_info.state == STATE_BLOCKED:
+            logging.info(
+                "页面标题已表明请求被拒(%s)，提前结束等待。", signal_info.title
+            )
+        elif not signal_info.ready:
             logging.info(
                 "等待到可用标题(等 %d ms)，仍按晚接入读取已渲染内容。", signal_info.waited_ms
             )
@@ -1641,9 +1674,20 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
                 pages = [page for context in connected.contexts for page in context.pages]
                 if not pages:
                     raise FetchError("chrome-late: 晚接入后没有可用页面。")
-                page = pages[0]
-                html = page.evaluate("() => document.documentElement.outerHTML")
-                title = page.title()
+                page = pick_rendered_page(pages, url)
+                if page is None:
+                    opened = ", ".join(str(item.url) for item in pages[:5])
+                    raise FetchError(
+                        f"chrome-late: 晚接入后找不到目标页面(已打开的标签: {opened})。"
+                    )
+                render = wait_for_rendered_page(
+                    page,
+                    budget_ms=int(
+                        config.get("render_timeout_ms") or DEFAULT_RENDER_TIMEOUT_MS
+                    ),
+                )
+                html = render.html
+                title = render.title
                 final_url = page.url
                 if config.get("screenshot"):
                     page.screenshot(path=config["screenshot"], full_page=False)
@@ -1673,6 +1717,11 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
             "headless:false",
             f"settle_ms:{int(config.get('settle_ms') or DEFAULT_SETTLE_MS)}",
             f"ready:{str(signal_info.ready).lower()}",
+            f"pre_attach_state:{signal_info.state}",
+            f"final_state:{render.state if render else 'unknown'}",
+            f"ready_state:{render.ready_state if render else ''}",
+            f"attach_delay_ms:{int((time.perf_counter() - launched_at) * 1000)}",
+            f"render_wait_ms:{render.waited_ms if render else 0}",
         ]
     )
     return result
@@ -2393,6 +2442,7 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "post_wait_ms": options.post_wait_ms,
         "challenge_wait_ms": options.challenge_wait_ms,
         "settle_ms": options.settle_ms,
+        "render_timeout_ms": options.render_timeout_ms,
         "locale": options.locale,
         "timezone": options.timezone,
         "user_agent": options.user_agent,
@@ -2714,9 +2764,18 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=DEFAULT_SETTLE_MS,
         help=(
-            "chrome-late 的最小静默窗口:这段时间内不接调试器，页面渲染完才接入。"
-            "默认 5000;实测 3000 起已可放行，5000 时内容更完整，"
-            "站点采集窗口更长时调大。"
+            "chrome-late 的最小静默窗口:这段时间内不接调试器。"
+            "默认 5000;真正的就绪信号是标题变成真实标题"
+            "(挑战页通常没有标题, 标题出现即说明挑战跑完、正文已就位)。"
+        ),
+    )
+    parser.add_argument(
+        "--render-timeout-ms",
+        type=int,
+        default=DEFAULT_RENDER_TIMEOUT_MS,
+        help=(
+            "chrome-late 接入后等待渲染完成的上限:等 document.readyState "
+            "变成 complete 且 DOM 体积不再增长再读正文。默认 15000。"
         ),
     )
     parser.add_argument("--min-bytes", type=int, default=300)
@@ -2816,6 +2875,7 @@ def main(argv: list[str] | None = None) -> int:
         post_wait_ms=args.post_wait_ms,
         challenge_wait_ms=args.challenge_wait_ms,
         settle_ms=args.settle_ms,
+        render_timeout_ms=args.render_timeout_ms,
         min_bytes=args.min_bytes,
         locale=args.locale,
         timezone=args.timezone,

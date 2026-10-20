@@ -53,7 +53,7 @@ flowchart TD
 关键边界：
 
 - 上图未展开可选的 nodriver：它只在显式 `engine="nodriver"`，或 `engine="auto"` 且 `headful=True` 时作为最后后备；不启用 Network 域，`status` 为 `None`。
-- `chrome-late` 同样不在自动阶梯里：它在显式 `engine="chrome-late"` 时运行，自行拉起系统浏览器、等一个静默窗口后再接入读取，回收责任见 SKILL.md 的“资源回收”。`settle_ms`（默认 12000）决定这个静默窗口的长度。
+- `chrome-late` 同样不在自动阶梯里：它在显式 `engine="chrome-late"` 时运行，自行拉起系统浏览器、等站点的挑战跑完后接入读取，回收责任见 SKILL.md 的“资源回收”。`settle_ms`（默认 5000）是最小静默窗口，`render_timeout_ms`（默认 15000）是接入后等渲染稳定的上限。
 - worker 隔离防止浏览器启动、挑战循环或关闭阶段拖死调用进程。
 - `wall_timeout_ms` 是调用者可预测的硬上限，不等同于 Scrapling 的页面操作超时。
 - 回退引擎返回 HTTP `200` 也必须经过内容验证，避免把挑战页当成业务页面。
@@ -230,7 +230,7 @@ print(outcome.result.notes)      # control_plane:direct-cdp / browser_channel:sy
 
 ## 晚接入单页（chrome-late，可选）
 
-适用于“普通浏览器能打开、而前面每个引擎都被拦”的站点：先让页面自然加载，再接入调试器读已渲染 DOM。
+适用于"普通浏览器能打开、而前面每个引擎都被拦"的站点：先让站点的挑战流程跑完，再接入调试器读已渲染 DOM。
 
 ```python
 from resilient_fetch import FetchOptions, fetch_page
@@ -239,18 +239,23 @@ outcome = fetch_page(
     FetchOptions(
         url="https://example.com/",
         engine="chrome-late",     # 显式选择；不进 auto
-        settle_ms=12_000,         # 静默窗口:这段时间不接调试器
+        settle_ms=5_000,          # 最小静默窗口:这段时间不接调试器
+        render_timeout_ms=15_000, # 接入后等 DOM 渲染稳定的上限
         timeout_ms=120_000,
         wall_timeout_ms=240_000,
         expected_texts=("Example Domain",),
     )
 )
-print(outcome.result.notes)      # control_plane:late-cdp-attach / browser_channel:system-chrome
+print(outcome.result.notes)
+# control_plane:late-cdp-attach / browser_channel:system-chrome(chrome.exe)
+# pre_attach_state:content / final_state:content / attach_delay_ms:21480 / render_wait_ms:8320
 ```
+
+`notes` 里的四个复盘字段含义：`pre_attach_state` 是接入前页面状态（`content` / `challenge` / `blocked` / `empty`），`final_state` 是读取时的状态，`attach_delay_ms` 是从启动浏览器到接入调试器的间隔，`render_wait_ms` 是接入后等渲染稳定的耗时。`challenge` 表示站点还在挑战、没放行；`blocked` 表示已被拒绝（标题 `Access Denied` 一类）。
 
 约束：固定有头运行（Linux 需 DISPLAY 或 Xvfb）；不支持带凭据的代理；读到的是已渲染完的页面，懒加载与折叠区不会展开；`status` 为 `None`。引擎自带的浏览器由引擎负责回收（所有权、进程树与临时 profile 清理见 SKILL.md 的“资源回收”），调用方只需在失败时核对残留。
 
-同站多页用 `scripts/example_late_batch.py`（一次启动开多个标签、各自自然加载、最后统一接入读取），而不是逐页 `fetch_page`：逐页调用要付 N 次启动与 N 次静默窗口。
+同站多页用 `scripts/example_late_batch.py`（一次启动开多个标签、各自自然加载、最后统一接入读取），而不是逐页 `fetch_page`：逐页调用要付 N 次启动与 N 次静默窗口。该脚本按**请求的 URL** 落盘（不是按浏览器最终 URL），重定向不会产出空文件；每页在 `batch.json` 里标 `state`（`content` / `challenge` / `blocked` / `missing`）。
 
 ## 长期站点会话（层 2+）
 

@@ -1,7 +1,11 @@
-"""示例: 一次浏览器启动、多个标签页、各自自然加载后统一晚接入读取。
+"""示例: 一次浏览器启动、多个标签页、各自跑完挑战后统一晚接入读取。
 
-适合"同站多页、每页都要渲染"的场景: 普通做法是每页一次启动与静默等待，
+适合"同站多页、每页都要渲染"的场景: 普通做法是每页一次启动与静默等待,
 这里只付一次启动与一次静默窗口的代价。
+
+每个标签页各自经历站点的挑战流程, 标题变成真实标题即挑战已过; 最后统一
+接入, 等 DOM 渲染稳定后逐页读取落盘。每页在 batch.json 里标 state:
+content(真正文) / challenge(挑战未完成) / blocked(被拒) / missing(没找到标签)。
 
 用法: 
 
@@ -30,10 +34,13 @@ from chrome_late import (
     DEFAULT_SETTLE_MS,
     OwnedBrowserProcess,
     build_launch_args,
+    classify_page_state,
     find_system_browser,
+    pick_rendered_page,
     proxy_server_value,
     sweep_stale_profiles,
     wait_for_pages_ready,
+    wait_for_rendered_page,
 )
 
 
@@ -54,13 +61,13 @@ BLOCK_TITLE_HINTS = (
 
 
 def looks_blocked(title: str, html: str) -> bool:
-    """Tell an interstitial or block page apart from real content."""
+    """Tell a refused page apart from real content.
 
-    lowered = title.lower()
-    if any(hint in lowered for hint in BLOCK_TITLE_HINTS):
-        return True
-    sample = html[:200_000].lower()
-    return "powered and protected by" in sample or "there was an error processing your request" in sample
+    A challenge page is not refused: the browser may still solve it and reload
+    the real document, so it must not be reported as a finished result.
+    """
+
+    return classify_page_state(title, html) == "blocked"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,6 +77,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--url", action="append", required=True, help="目标 URL，可重复")
     parser.add_argument("--out-dir", required=True, help="落盘目录")
     parser.add_argument("--settle-ms", type=int, default=DEFAULT_SETTLE_MS, help="最小静默窗口")
+    parser.add_argument(
+        "--render-timeout-ms",
+        type=int,
+        default=15_000,
+        help="接入后等待渲染完成的上限",
+    )
     parser.add_argument("--timeout-ms", type=int, default=90_000, help="等待页面上限")
     parser.add_argument("--proxy", help="代理 URL，例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:10808")
     parser.add_argument("--allow-direct", action="store_true", help="允许直连(未给代理时)")
@@ -119,11 +132,12 @@ def main(argv: list[str] | None = None) -> int:
             min_settle_ms=args.settle_ms,
             max_wait_ms=args.timeout_ms,
         )
-        pages = _read_pages(port, urls)
+        pages = _read_pages(port, urls, render_timeout_ms=args.render_timeout_ms)
         for index, url in enumerate(urls, start=1):
-            title, html = pages.get(url, ("", ""))
+            title, html, state, waited_ms = pages.get(url, ("", "", "missing", 0))
             signal = signals.get(url)
-            blocked = looks_blocked(title, html)
+            blocked = state == "blocked"
+            challenge = state == "challenge"
             name = f"{index:02d}-{slugify(title, 'page')}.html"
             target = out_dir / name
             target.write_text(html, encoding="utf-8")
@@ -135,13 +149,22 @@ def main(argv: list[str] | None = None) -> int:
                     "bytes": len(html.encode("utf-8")),
                     "ready": bool(signal.ready) if signal else False,
                     "waited_ms": signal.waited_ms if signal else 0,
+                    "state": state,
                     "blocked": blocked,
+                    "challenge": challenge,
+                    "render_wait_ms": waited_ms,
                 }
             )
-            mark = " [被拦截/错误外壳]" if blocked else ""
+            mark = ""
+            if blocked:
+                mark = " [被拒绝]"
+            elif challenge:
+                mark = " [挑战未完成, 站点还没放行]"
+            elif state == "missing":
+                mark = " [没找到对应标签页]"
             print(
                 f"{url} -> {name} ({len(html.encode('utf-8'))} B, "
-                f"ready={summary[-1]['ready']}){mark}"
+                f"ready={summary[-1]['ready']}, state={state}){mark}"
             )
     finally:
         if browser is not None:
@@ -163,25 +186,30 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _read_pages(port: int, urls: list[str]) -> dict[str, tuple[str, str]]:
-    """Attach once and read every tab's rendered DOM."""
+def _read_pages(
+    port: int, urls: list[str], *, render_timeout_ms: int = 15_000
+) -> dict[str, tuple[str, str, str, int]]:
+    """Attach once and read every tab's rendered DOM.
+
+    Results are keyed by the requested URL, not by the URL the browser ended
+    up on: a redirect must not turn a successful page into an empty file.
+    """
 
     from resilient_fetch import load_playwright_factory
 
     factory = load_playwright_factory("auto")
-    result: dict[str, tuple[str, str]] = {}
+    result: dict[str, tuple[str, str, str, int]] = {}
     with factory() as driver:
         browser = driver.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
         try:
-            for context in browser.contexts:
-                for page in context.pages:
-                    url = page.url
-                    try:
-                        title = page.title()
-                        html = page.evaluate("() => document.documentElement.outerHTML")
-                    except Exception:  # 单个标签失败不影响其他标签
-                        continue
-                    result[url] = (title, html)
+            pages = [page for context in browser.contexts for page in context.pages]
+            for url in urls:
+                page = pick_rendered_page(pages, url)
+                if page is None:
+                    result[url] = ("", "", "missing", 0)
+                    continue
+                render = wait_for_rendered_page(page, budget_ms=render_timeout_ms)
+                result[url] = (render.title, render.html, render.state, render.waited_ms)
         finally:
             browser.close()
     return result

@@ -1,15 +1,18 @@
-"""晚接入引擎的实现: 先让页面自然加载，再接入调试器读取已渲染 DOM。
+"""晚接入引擎的实现: 先让站点的挑战流程跑完，再接入调试器读取已渲染 DOM。
 
-为什么需要它: 部分站点(如 Akamai Bot Manager 防护的电商站)会在页面加载早期采集
-环境与驱动会话。这个窗口里接入的调试器会被计入并判定为自动化；等页面自然渲染完
-再接入，同一个浏览器、同一个出口就能正常读取。
+为什么需要它: 不少 WAF(如 Akamai Bot Manager 防护的电商站)会在第一个文档请求
+时先下发挑战页, 挑战在页面加载早期(约 0-10 秒)采集环境与驱动会话。这个窗口里
+暴露了自动化痕迹就判失败, 落到 Access Denied; 没暴露就自己重载正文。所以要做的
+不是"晚一点接入"本身, 而是**别在挑战决策窗口里出现**。
 
-工程约束: 
+工程约束:
 
 - 只启动**自己**的浏览器进程，并在任何退出路径(成功、异常、超时)上回收它；
   回收按进程所有权执行，不按进程名批量结束别人的浏览器。
 - 用自己的临时 profile，用完删除；不复制、不读取用户的个人 profile。
 - 就绪判定只读 DevTools 的 HTTP 端点(不建立调试会话)，避免过早接入。
+- 读正文前区分四种页面状态: 正文 / 挑战进行中 / 已被拒绝 / 空。
+  把"挑战进行中"当"被拒绝"会丢掉本来能拿到的正文。
 """
 
 from __future__ import annotations
@@ -24,15 +27,59 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, build_opener
 
 DEFAULT_SETTLE_MS = 5_000
 READY_POLL_INTERVAL_SEC = 0.4
+RENDER_POLL_INTERVAL_SEC = 0.8
+DEFAULT_RENDER_TIMEOUT_MS = 15_000
+# DOM 体积相对变化小于这个比例才算"渲染稳定"
+RENDER_STABLE_RATIO = 0.02
 DEVTOOLS_HOST = "127.0.0.1"
 PROFILE_DIR_PREFIX = "chrome-late-"
 # 超过这个年龄的 profile 目录视为上一轮被强杀留下的遗留;一轮正常采集只需十几秒,
 # 留出足够余量避免误删仍在使用的目录。
 STALE_PROFILE_AGE_SEC = 600
+
+# 页面状态: 正文 / 挑战进行中 / 已被拒绝 / 空
+STATE_CONTENT = "content"
+STATE_CHALLENGE = "challenge"
+STATE_BLOCKED = "blocked"
+STATE_EMPTY = "empty"
+
+# 挑战页的共同特征。多数 WAF 挑战页没有 <title>, 但也有站点会写 "Just a moment...";
+# 命中任一特征只说明"站点还没放行", 不等于"被拒绝"。
+CHALLENGE_MARKERS = (
+    "sec-if-cpt-container",
+    "behavioral-content",
+    "sec-bc-tile-container",
+    "powered and protected by",
+    "/cdn-cgi/challenge-platform",
+    "cf-chl-",
+    "checking your browser",
+    "enable javascript and cookies to continue",
+)
+# 标题里出现这些词, 说明服务端已经明确拒绝, 再等也不会变好。
+BLOCKED_TITLE_HINTS = (
+    "access denied",
+    "error 1020",
+    "error 1015",
+    "reference #",
+    "forbidden",
+    "unusual traffic",
+    "site can't be reached",
+    "无法访问",
+)
+# 标题里出现这些词, 说明挑战还在跑, 继续等。
+PENDING_TITLE_HINTS = (
+    "just a moment",
+    "attention required",
+    "checking your browser",
+    "one more step",
+    "verifying you are human",
+    "please wait",
+)
 
 
 class ChromeLateError(RuntimeError):
@@ -139,6 +186,40 @@ def looks_like_url_text(text: str | None) -> bool:
     return "." in head and " " not in head
 
 
+def classify_page_state(title: str, html: str) -> str:
+    """Tell real content, a running challenge, a block page, and an empty page apart.
+
+    A challenge page is not a block: the browser may still solve it and reload the
+    real document. Treating "challenge" as "blocked" throws away pages that were
+    one wait away from success.
+    """
+
+    lowered_title = (title or "").strip().lower()
+    if any(hint in lowered_title for hint in BLOCKED_TITLE_HINTS):
+        return STATE_BLOCKED
+    sample = (html or "")[:300_000].lower()
+    if any(marker in sample for marker in CHALLENGE_MARKERS):
+        return STATE_CHALLENGE
+    if any(hint in lowered_title for hint in PENDING_TITLE_HINTS):
+        return STATE_CHALLENGE
+    if not sample.strip():
+        return STATE_EMPTY
+    return STATE_CONTENT
+
+
+def title_state(title: str) -> str:
+    """Classify a tab from its title alone, before any debugger attaches."""
+
+    lowered = (title or "").strip().lower()
+    if any(hint in lowered for hint in BLOCKED_TITLE_HINTS):
+        return STATE_BLOCKED
+    if any(hint in lowered for hint in PENDING_TITLE_HINTS):
+        return STATE_CHALLENGE
+    if looks_like_url_text(title):
+        return STATE_EMPTY
+    return STATE_CONTENT
+
+
 def read_page_targets(port: int, timeout_sec: float = 5.0) -> list[dict[str, Any]]:
     """Read tab metadata from the DevTools HTTP endpoint.
 
@@ -166,6 +247,35 @@ def pick_page_target(targets: list[dict[str, Any]], target_url: str) -> dict[str
     return http_pages[0]
 
 
+def pick_rendered_page(pages: list[Any], target_url: str) -> Any | None:
+    """Choose the open tab that belongs to the requested URL.
+
+    Reading the wrong tab is worse than reading nothing, so when several tabs
+    are open and none of them matches, this returns None instead of guessing.
+    A redirect changes the URL, so a same-host tab still counts as a match.
+    """
+
+    candidates = [
+        page
+        for page in pages
+        if str(getattr(page, "url", "")).startswith(("http://", "https://"))
+    ]
+    if not candidates:
+        return None
+    for page in candidates:
+        if str(page.url).startswith(target_url):
+            return page
+    host = urlsplit(target_url).netloc
+    same_host = [
+        page for page in candidates if urlsplit(str(page.url)).netloc == host
+    ]
+    if len(same_host) == 1:
+        return same_host[0]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 @dataclass(frozen=True)
 class ReadySignal:
     """Describe how the page looked when the engine decided to attach."""
@@ -173,6 +283,7 @@ class ReadySignal:
     ready: bool
     title: str
     waited_ms: int
+    state: str = STATE_CONTENT
 
 
 def wait_for_page_ready(
@@ -182,12 +293,19 @@ def wait_for_page_ready(
     min_settle_ms: int = DEFAULT_SETTLE_MS,
     max_wait_ms: int = 60_000,
 ) -> ReadySignal:
-    """Wait until the page has a real title, without attaching a debugger."""
+    """Wait until the page has a real title, without attaching a debugger.
+
+    A WAF challenge page usually has no title, so "the title is a real title" is
+    also the signal that the challenge finished and the real document replaced
+    it. A title that says the request was refused ends the wait immediately
+    instead of burning the whole budget.
+    """
 
     started = time.monotonic()
     deadline = started + max_wait_ms / 1000
     settle_at = started + min_settle_ms / 1000
     title = ""
+    state = STATE_EMPTY
     while time.monotonic() < deadline:
         try:
             targets = read_page_targets(port)
@@ -197,10 +315,89 @@ def wait_for_page_ready(
         target = pick_page_target(targets, target_url)
         if target is not None:
             title = str(target.get("title") or "")
-            if not looks_like_url_text(title) and time.monotonic() >= settle_at:
-                return ReadySignal(True, title, int((time.monotonic() - started) * 1000))
+            state = title_state(title)
+            if state == STATE_BLOCKED:
+                return ReadySignal(
+                    False, title, int((time.monotonic() - started) * 1000), STATE_BLOCKED
+                )
+            if state == STATE_CONTENT and time.monotonic() >= settle_at:
+                return ReadySignal(
+                    True, title, int((time.monotonic() - started) * 1000), STATE_CONTENT
+                )
         time.sleep(READY_POLL_INTERVAL_SEC)
-    return ReadySignal(False, title, int((time.monotonic() - started) * 1000))
+    return ReadySignal(
+        False, title, int((time.monotonic() - started) * 1000), state or STATE_EMPTY
+    )
+
+
+@dataclass(frozen=True)
+class RenderSignal:
+    """Hold the rendered document and how the page looked when it was read."""
+
+    html: str
+    title: str
+    state: str
+    waited_ms: int
+    ready_state: str = ""
+
+
+def wait_for_rendered_page(
+    page: Any,
+    *,
+    budget_ms: int = DEFAULT_RENDER_TIMEOUT_MS,
+    poll_ms: float = RENDER_POLL_INTERVAL_SEC,
+) -> RenderSignal:
+    """Read the DOM once the page has actually finished rendering.
+
+    The tab title appears when the head is parsed, long before the body is
+    built, so reading at that moment returns a half-rendered page. Wait until
+    the DOM stops growing before reading; document.readyState has to reach
+    "interactive" or better, because a page that keeps a long-lived connection
+    open never reaches "complete" and would otherwise burn the whole budget.
+    A challenge that is still running is waited out too: it reloads the
+    document when it succeeds.
+    """
+
+    started = time.monotonic()
+    deadline = started + budget_ms / 1000
+    previous_size = 0
+    stable_samples = 0
+    html = ""
+    title = ""
+    ready_state = ""
+    state = STATE_EMPTY
+    while True:
+        try:
+            snapshot = page.evaluate(
+                "() => ({html: document.documentElement.outerHTML,"
+                " title: document.title, ready: document.readyState})"
+            )
+            html = str(snapshot.get("html") or "")
+            title = str(snapshot.get("title") or "")
+            ready_state = str(snapshot.get("ready") or "")
+        except Exception:
+            # The document may be replaced while the challenge reloads it.
+            html, title, ready_state = "", "", ""
+        state = classify_page_state(title, html)
+        if state == STATE_BLOCKED:
+            break
+        size = len(html)
+        if state == STATE_CONTENT and ready_state in ("interactive", "complete"):
+            if previous_size and abs(size - previous_size) <= max(
+                2048, int(previous_size * RENDER_STABLE_RATIO)
+            ):
+                stable_samples += 1
+                if stable_samples >= 2:
+                    break
+            else:
+                stable_samples = 0
+        previous_size = size
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(poll_ms)
+    return RenderSignal(
+        html, title, state, int((time.monotonic() - started) * 1000), ready_state
+    )
 
 
 def terminate_owned_tree(process: subprocess.Popen[str]) -> None:
