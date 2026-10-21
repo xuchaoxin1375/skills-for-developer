@@ -1,143 +1,167 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
-import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, RENDER_ENGINE_CHOICES, runExtractDetailed } from './extract.js';
+import { ATTR_POLICIES, ATTR_POLICY_DESCRIPTIONS, EXTRACTORS, EXTRACTOR_DESCRIPTIONS, FORMAT_POLICIES, FORMAT_POLICY_DESCRIPTIONS, MODES, MODE_DESCRIPTIONS, RENDER_ENGINE_CHOICES, RENDER_ENGINE_DESCRIPTIONS, runExtractDetailed } from './extract.js';
 import { fmtBytes, fmtMs, log, setLogLevel } from './log.js';
 import { VERSION, VERSION_LINE } from './version.js';
 
-const HELP = `htmlmini ${VERSION} - strip CSS/JS from HTML, keep the core as Markdown (token-efficient for LLMs)
+/** 取值清单统一从这里生成：帮助文本、--list-* 输出与实现共用一份，避免互相脱节。 */
+const modeList = () => MODES.map((m) => `  ${m.padEnd(12)}${MODE_DESCRIPTIONS[m] ?? ''}`).join('\n');
+const engineList = () => RENDER_ENGINE_CHOICES.map((e) => `  ${e.padEnd(12)}${RENDER_ENGINE_DESCRIPTIONS[e] ?? ''}`).join('\n');
+const attrList = () => ATTR_POLICIES.map((a) => `  ${a.padEnd(12)}${ATTR_POLICY_DESCRIPTIONS[a] ?? ''}`).join('\n');
+const formatList = () => FORMAT_POLICIES.map((f) => `  ${f.padEnd(12)}${FORMAT_POLICY_DESCRIPTIONS[f] ?? ''}`).join('\n');
+/** 环境变量清单：帮助文本与 --list-env 共用一份。 */
+const ENV_HELP = [
+  'HTMLMINI_PYTHON             save_page/Trafilatura 用的解释器（等价 --python-bin）',
+  'HTMLMINI_CHROME_BIN         零依赖 Chrome 的可执行文件路径',
+  'HTMLMINI_CHROME_EXTRA_ARGS  追加给 Chrome 的启动参数（空格分隔）',
+  'HTMLMINI_RENDER_SCRIPT      自备 save_page 脚本路径（自建渲染器/测试用）',
+  'HTMLMINI_RENDER_ENGINES     限定可用的渲染引擎集合',
+  'HTMLMINI_ENV_SCAN=0         关闭"渲染失败后扫描更强解释器重试"这一步',
+  'HTMLMINI_ENV_SCAN_SCRIPT    自备环境扫描脚本路径',
+  'HTMLMINI_PROXY_REGISTRY     代理登记文件路径（默认 ~/.config/proxy-resources.json；'
+    + '只读不改，仅用于在报错里提示可用代理）',
+  'HTMLMINI_LOG=quiet|info|debug 日志级别',
+  'HTMLMINI_LOG_TIME=0         去掉日志行首时间戳',
+  'HTMLMINI_SOURCE_MARKS=0     不输出来源哨兵行',
+];
 
-USAGE
-  htmlmini [source] [options]
+const HELP = `htmlmini ${VERSION} - 剥掉 CSS/JS 与样板，只留核心正文（Markdown/JSON，省 token）
 
-SOURCE
-  <file>          local HTML file (a "<file>.meta.json" next to it is auto-used for the page URL,
-                  e.g. pages saved by resilient-browser-fetch save_page)
-  <http(s) url>   fetch a URL (uses Defuddle + schema.org metadata)
-  -               read HTML from stdin (default)
+用法 (USAGE)
+  htmlmini [来源] [选项]
 
-OPTIONS
-  -m, --markdown   output Markdown                (default; article pages use Defuddle,
-                                                   UI pages auto-fallback to component inventory)
-  -j, --json       output JSON {title, used, requested, version, content, stats{reductionPct}, meta?}
-  -s, --skeleton   outline only: headings, tables, code-block languages
-  -u, --ui         force UI-component inventory (labels/buttons/selects/tables)
-  -t, --text       plain text (no markup)
-  -T, --title      print only the page title
-  --mode <name>    same as the flags above; explicit form for agents/scripts.
-                   "html" returns the cleaned HTML itself: full DOM structure and text
-                   order kept, scripts/styles/templates/icons and comments dropped,
-                   appearance attributes stripped by --attrs (higher token cost than
-                   markdown/ui, but nothing is truncated)
-  --attrs <policy> attribute policy for --mode html (default semantic):
-                   semantic = keep href/src/alt/colspan/rowspan/table+form state (recommended)
-                   none     = strip every attribute (smallest; loses link targets)
-                   all      = keep all attributes, only drop scripts/styles
-  --format <policy> layout policy for --mode html (default compact):
-                   compact  = drop source indentation and blank lines; a single space is
-                              kept between inline elements (smallest, nothing reordered)
-                   pretty   = re-indent for readability (uses the js-beautify dependency)
-                   raw      = leave the original source whitespace as-is
-  --compact        shorthand for --format compact
-  --pretty         shorthand for --format pretty
-  --prune-empty    with --mode html: also drop containers left empty after cleaning
-                   (empty div/span/nav/header ...); table/form/pre structure is kept
-  --text-max <n>   with --mode ui / --extractor ui: max characters for one text entry
-                   (default 150). Longer paragraphs are dropped from the inventory and
-                   the output says how many. 0 = no limit (keeps full long paragraphs).
-  --allow-empty    keep the result even when it looks like a client-rendered app shell
-                   (extracted text < 200 chars from >= 5 KB HTML). Default: such pages
-                   error with a hint to use --render=always.
-  --proxy <url>    proxy override for URL fetch: http(s) URL, or "direct" to
-                   bypass env proxy (default follows HTTP_PROXY/HTTPS_PROXY/NO_PROXY)
-  --noproxy        force direct connection, ignoring env proxy
-  --render[=mode]   fall back to browser rendering. Default (no value / "auto"):
-                   only on static 403/5xx. Chain: save_page (needs a layer >= 1
-                   engine: playwright/patchright, scrapling, or cloak-cdp) ->
-                   system Chrome headless dump-dom (zero-dep) -> friendly error.
-                   "always": render even when the static fetch returns 200.
-                   Use it for client-rendered pages whose HTML is 200 but whose
-                   body only exists after hydration.
-                   404/timeout/network errors still throw without rendering
-  --render-always  shorthand for --render=always
-  --headful        show the browser window during fallback rendering
-                   (implies --render; needs a layer >= 1 save_page engine,
-                   for first-time manual verification)
-  --render-timeout-ms <ms>
-                   timeout for the fallback browser render (default 300000;
-                   chrome dump-dom is capped at 120000)
-  --chrome-bin <path>
-                   explicit Chrome/Chromium binary for the zero-dep chrome
-                   fallback (default auto-detects: PATH, common paths,
-                   Playwright browser cache; or HTMLMINI_CHROME_BIN)
-  --python-bin <path>
-                   explicit Python interpreter for --render (save_page) and the
-                   optional Trafilatura pass. Default: "python"/"python3" on PATH,
-                   which is often NOT the environment that has playwright or
-                   scrapling installed; env: HTMLMINI_PYTHON. Use "auto" to scan
-                   this machine (conda/venv/uv/PATH) and pick an interpreter that
-                   has a layer >= 1 engine.
-                   Without an explicit value, a failed render (challenge shell,
-                   missing engine, engine error) is retried once with the strongest
-                   interpreter the scan finds (layer >= 2 preferred, i.e. a
-                   challenge solver); the log names both interpreters.
-                   Disable scanning with HTMLMINI_ENV_SCAN=0.
-  --save-html <path>
-                   write the HTML that was actually used for extraction (static
-                   fetch, or the rendered page with --render) to this file, plus a
-                   sibling "<path>.meta.json" with the page URL. Reuse that file for
-                   later views / other modes instead of re-fetching or re-rendering;
-                   URL input only. Content is raw (not the cleaned "html" mode
-                   output), and it is written before content validation, so the raw
-                   HTML survives a challenge-shell or empty-page error.
-  --render-engine <name>
-                   pin the save_page engine instead of auto-upgrading:
-                   auto (default) | playwright | scrapling | cloak-cdp. An explicit
-                   layer runs that engine only (a missing layer fails instead of
-                   falling back) and forces the save_page pathway. Use it on an
-                   origin you already know needs layer 2, to skip the attempts that
-                   are known to be rejected.
-  --extractor <name>
-                   extraction engine: auto (default) | defuddle | trafilatura | semantic | ui | passthrough
-                   auto chain: non-HTML passthrough -> Defuddle -> Trafilatura (only if "pip install trafilatura"
-                   is present, silently skipped otherwise) -> semantic -> ui inventory.
-                   Non-HTML (markdown/plain/JSON) is passed through untouched in any mode.
-                   Forcing an engine returns its raw result (no silent switching).
-  --list-modes       print available modes
-  --list-extractors  print available extractors
-  --completion <shell>
-                   print a completion script: bash | powershell
-  -o, --output <f> write to file instead of stdout (file ends with exactly one
-                   newline; prefer this over capturing stdout through a shell
-                   pipeline, which can add extra blank lines)
-  --quiet          only errors on stderr (progress is hidden)
-  --verbose        extra detail on stderr ([read]/[extract] internals, timings, sizes)
-                   Progress goes to stderr as "<time> htmlmini: [read|parse|extract|format|write] ...",
-                   where <time> is local YYYY-MM-DD HH:mm:ss,SSS (Python-logging style; set
-                   HTMLMINI_LOG_TIME=0 to drop it). Env: HTMLMINI_LOG=quiet|info|debug.
-  --no-source-marks
-                   do not bracket the payload with "<<< htmlmini:source begin/end ... >>>"
-                   lines that record url/status/render/fetched-at (env HTMLMINI_SOURCE_MARKS=0).
-                   json mode never wraps: it carries source/fetchStatus/fetchedAt fields instead.
-  -h, --help       show this help
-  -V, --version    print version (date-time based, YYYY.MM.DD.HHmm) and exit
+来源 (SOURCE)
+  <文件>            本地 HTML 文件。旁边的 "<文件>.meta.json" 会自动被用来还原页面 URL
+                    （例如 resilient-browser-fetch save_page 落盘的文件）
+  <http(s) 地址>    抓取 URL 并提取正文（Defuddle + schema.org 元数据）
+  -                 从 stdin 读 HTML（默认）
 
-EXAMPLES
-  htmlmini --version                       # -> htmlmini <YYYY.MM.DD.HHmm>
-  htmlmini page.html                       # -> markdown to stdout
-  htmlmini page.html --json                # -> metadata + extractor + savings %
-  htmlmini 报表面板.html -u                 # -> force UI inventory
-  htmlmini page.html --mode html           # -> cleaned HTML (structure kept, scripts/styles/attrs gone)
-  htmlmini page.html --mode html --attrs none
-  htmlmini page.html --mode html --pretty  # -> re-indented cleaned HTML
-  htmlmini page.html --mode html --prune-empty --attrs none   # -> smallest structural skeleton
-  htmlmini page.html -u --text-max 0       # UI inventory without the per-entry length cap
-  htmlmini "https://example.com/spa" --render=always   # render even though static returns 200
-  htmlmini dashboard.html --mode json --extractor ui
-  htmlmini "https://example.com/a" -s      # -> outline of remote page
-  cat page.html | htmlmini - --text        # -> plain text
-  # pipeline with resilient-browser-fetch (rendered HTML + sibling .meta.json):
-  python scripts/example_save_page.py "https://example.com/app" --out app.html
+输出模式 (--mode，或对应短选项)
+${modeList()}
+
+渲染引擎 (--render-engine，仅 --render 时有意义)
+${engineList()}
+
+选项 (OPTIONS)
+  取值型
+    --mode <名称>              输出模式，见上表；显式写法，适合脚本与 agent
+    --extractor <名称>         抽取引擎：auto | defuddle | trafilatura | semantic | ui | sanitize | passthrough
+    --attrs <策略>             仅 --mode html：属性策略 none | semantic | all（默认 semantic）
+    --format <策略>            仅 --mode html：排版策略 raw | compact | pretty（默认 compact）
+    --text-max <n>             仅 --mode ui / --extractor ui：单条文本的字符上限（默认 150，0 = 不限）
+    --render[=auto|always]     浏览器渲染回退。auto（默认）只在静态 403/5xx 时回退；
+                               always 则静态 200 也渲染。渲染链：save_page（需层 >= 1 引擎）
+                               → 系统 Chrome 无头 dump-dom（零依赖）→ 友好报错
+    --render-engine <名称>     钉住 save_page 的引擎（见上表）。显式即严格：只跑这一层，
+                               缺件直接报错、不再自动升档
+    --render-timeout-ms <毫秒>  渲染超时上限（默认 300000；chrome dump-dom 上限 120000）
+    --chrome-bin <路径>        零依赖 Chrome 直渲用的浏览器可执行文件（默认自动探测）
+    --python-bin <路径>        save_page 与 Trafilatura 用的解释器；"auto" = 扫描本机挑一个
+                               装了引擎的（conda/venv/uv/PATH）
+    --proxy <地址>             抓取代理：http(s) 地址，或 direct 表示绕过环境代理
+                               （默认跟随 HTTP_PROXY/HTTPS_PROXY/NO_PROXY）
+    --save-html <文件>         把实际用于抽取的 HTML 落盘到这个文件，并写一份兄弟
+                               "<文件>.meta.json"（含页面 URL）。之后换模式读这份文件即可，
+                               不用再抓一次或再渲染一次。仅 URL 输入有效；内容是原始 HTML
+                               （不是 --mode html 的清理结果），且在校验之前写盘，
+                               所以挑战空壳/空页报错时原文也留得下来
+    --output <文件>            结果写文件而不是 stdout（文件末尾恰好一个换行；
+                               比 shell 管道更稳，管道可能多出空行）
+    --completion <shell>       打印补全脚本：bash | powershell
+    （以上取值型选项都接受 --opt=value 写法）
+  开关型
+    -m, --markdown             输出 Markdown（默认）
+    -j, --json                 输出 JSON：title / used / requested / version / content / stats / meta
+    -s, --skeleton             只出大纲：标题层级、表格、代码块语言
+    -u, --ui                   强制界面组件清单（标签/按钮/输入/表格）
+    -t, --text                 纯文本，不带标记
+    -T, --title                只打印页面标题
+    --render-always            等价 --render=always
+    --headful                  渲染时弹出真实浏览器窗口（只影响"要不要开窗"，
+                               不改变"什么时候渲染"；需 save_page 通路，用于首次人工验证）
+    --compact / --pretty       --format compact / pretty 的简写
+    --prune-empty              仅 --mode html：顺带删掉清理后变空的容器
+                               （空 div/span/nav/header…；table/form/pre 结构保留）
+    --allow-empty              保留"像客户端渲染壳"的结果（正文 < 200 字符且 HTML >= 5 KB）。
+                               默认报错并提示改用 --render=always
+    --noproxy                  强制直连，忽略环境代理
+    --quiet                    只输出错误（进度日志静音）
+    --verbose                  额外细节：解析/抽取内部信息、耗时、体积
+    --no-source-marks          不输出 "<<< htmlmini:source begin/end ... >>>" 来源哨兵行（别名 --no-marks）
+    --source-marks             强制输出来源哨兵行（默认开）
+    --list-modes               列出输出模式与说明
+    --list-extractors          列出抽取引擎与说明
+    --list-render-engines      列出渲染引擎与说明
+    --list-env                 列出环境变量与说明
+    -h, --help                 显示本帮助
+    -V, --version              打印版本号（日期时间式 YYYY.MM.DD.HHmm）
+
+  --attrs 取值
+${attrList()}
+  --format 取值
+${formatList()}
+
+环境变量 (ENVIRONMENT)
+${ENV_HELP.map((line) => `  ${line}`).join('\n')}
+  （--list-env 单独打印这份清单）
+
+退出码 (EXIT CODES)
+  0  成功
+  1  抓取或抽取失败（原因写在 stderr）
+  2  参数错误
+
+示例 (EXAMPLES)
+  # 1) 本地文件 → Markdown（默认模式）
+  htmlmini page.html
+
+  # 2) 看元数据、实际用了哪个抽取器、省了多少 token
+  htmlmini page.html --json
+
+  # 3) 界面/仪表盘：强制组件清单，长段落不截断
+  htmlmini dashboard.html --mode ui --text-max 0
+
+  # 4) 要结构而不是摘要：清理后的 HTML，保留 DOM 顺序
+  htmlmini page.html --mode html --attrs semantic
+  htmlmini page.html --mode html --attrs none --prune-empty    # 最小结构骨架
+
+  # 5) 远程 SPA：静态 200 但正文要水合 → 强制渲染
+  htmlmini "https://example.com/spa" --render=always
+
+  # 6) 走代理抓（国内网络，或站点只放行特定出口；端口按本机登记的代理填）
+  htmlmini "https://example.com/item" --proxy http://127.0.0.1:<port>
+
+  # 7) 挑战站点：普通浏览器能开、自动化全被拦 → 钉晚接入引擎
+  htmlmini "https://example.com/item" --render=always --render-engine chrome-late --proxy http://127.0.0.1:<port>
+
+  # 8) 渲染一次、多个视图复用同一份快照（不再联网）
+  htmlmini "https://example.com/app" --render=always --save-html app.html
+  htmlmini app.html --mode ui
+  htmlmini app.html --mode json
+
+  # 9) 管道与输出控制
+  cat page.html | htmlmini - --text
+  htmlmini page.html --output out.md --no-source-marks --quiet
+
+  # 10) 与 resilient-browser-fetch 配合（渲染产物 + 兄弟 .meta.json 会被自动利用）
+  python ../resilient-browser-fetch/scripts/resilient_fetch.py --url "https://example.com/app" --out app.html --engine chrome-late
   htmlmini app.html --json
+
+常见症状与对策 (TROUBLESHOOTING)
+  403（静态抓取）             → 加 --render（只在 403/5xx 时回退渲染）。
+                               仍被拒说明站点按出口封禁，见下一条。
+  "Access Denied" 拒绝页      → 站点直接拒绝了这次请求，不是"内容少"。换出口/代理，或改用
+                               --render-engine chrome-late；别把它当正文交出去。
+  正文只有几十字、像应用壳     → 加 --render=always 让页面水合；确实没内容再加 --allow-empty 保留。
+  渲染后仍是挑战页            → 换求解引擎：--python-bin auto（scrapling/cloak-cdp），
+                               或 --render-engine chrome-late（先让挑战跑完再接入）。
+  渲染超时                    → 调大 --render-timeout-ms；客户端渲染的站点常要 30~60 s。
+  提取结果太多/太少           → 换 --mode 或 --extractor；用 --json 的 used 确认实际引擎。
+  中文乱码                    → 输出是 UTF-8；用 --output 写文件，避免 shell 管道二次转码。
+
+MCP 工具 (MCP)
+  htmlmini_extract_file(path) / htmlmini_extract_url(url) / htmlmini_extract_html(html_content)
+  参数名是 snake_case（proxy / render / render_engine / save_html / render_timeout_ms…），
+  语义与上面同名选项一致；render 取 false | true | "always"。
 `;
 
 const MODE_FLAGS = {
@@ -201,10 +225,17 @@ for (let i = 0; i < argv.length; i++) {
     process.stdout.write(`${VERSION_LINE}\n`);
     process.exit(0);
   } else if (a === '--list-modes') {
-    process.stdout.write(`${MODES.join('\n')}\n`);
+    // 名字 + 一句说明：只给名字的话，调用方还得回头查文档才知道该选哪个
+    process.stdout.write(`${modeList()}\n`);
     process.exit(0);
   } else if (a === '--list-extractors') {
-    process.stdout.write(`${EXTRACTORS.join('\n')}\n`);
+    process.stdout.write(`${EXTRACTORS.map((e) => `  ${e.padEnd(13)}${EXTRACTOR_DESCRIPTIONS[e] ?? ''}`).join('\n')}\n`);
+    process.exit(0);
+  } else if (a === '--list-render-engines') {
+    process.stdout.write(`${engineList()}\n`);
+    process.exit(0);
+  } else if (a === '--list-env') {
+    process.stdout.write(`${ENV_HELP.map((line) => `  ${line}`).join('\n')}\n`);
     process.exit(0);
   } else if (a === '-o' || a === '--output') {
     output = argv[++i];

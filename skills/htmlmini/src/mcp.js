@@ -11,19 +11,19 @@ const extractorEnum = z.enum(EXTRACTORS);
 const attrsEnum = z.enum(ATTR_POLICIES);
 const formatEnum = z.enum(FORMAT_POLICIES);
 const extractorDesc =
-  'Extraction engine. Default: auto (non-HTML passthrough -> Defuddle -> Trafilatura if installed, silently skipped otherwise -> semantic -> UI inventory). Non-HTML input is passed through untouched; force one to get its raw result without silent switching.';
+  '抽取引擎。默认 auto：非 HTML 原样透传 → Defuddle → Trafilatura（装了才用，否则静默跳过）→ semantic → ui 清单。非 HTML 输入原样透传；显式指定某引擎即返回它的原始结果，不再静默换引擎。';
 const modeDesc =
-  'Output style. Default: markdown. "html" returns cleaned HTML: full DOM structure and text order kept, scripts/styles/templates/icons/comments dropped. Higher token cost than markdown or the UI inventory, but nothing is truncated — use it when structure (tables, form state, nesting) matters.';
+  '输出样式。默认 markdown。"html" 返回清理后的 HTML：保留完整 DOM 结构与文字顺序，去掉脚本/样式/模板/图标/注释；比 markdown 或界面清单更费 token，但不截断——需要结构（表格、表单状态、嵌套）时用它。';
 const attrsDesc =
-  'Attribute policy, only meaningful for mode "html". semantic (default): keep href/src/alt/title/colspan/rowspan/scope and table/form state; drop class/style/id/data-*/aria-*. none: strip every attribute (smallest, but loses link targets and merged cells). all: keep every attribute, only drop scripts/styles.';
+  '属性策略，仅对 mode "html" 有效。semantic（默认）：保留 href/src/alt/title/colspan/rowspan/scope 与表格/表单状态，去掉 class/style/id/data-*/aria-*。none：清空全部属性（最小，但丢链接目标与合并单元格）。all：保留全部属性，只去掉脚本与样式。';
 const formatDesc =
-  'Layout policy, only meaningful for mode "html". compact (default): drop source indentation and blank lines, keeping a single space between inline elements (smallest; nothing is reordered). pretty: re-indent for readability. raw: keep the original source whitespace.';
+  '排版策略，仅对 mode "html" 有效。compact（默认）：压掉源码缩进与空行，行内元素间留一个空格（最小，不重排）。pretty：重新缩进便于人读。raw：保留源码原始空白。';
 const pruneEmptyDesc =
-  'Only meaningful for mode "html". Drop containers left empty after cleaning (empty div/span/nav/header ...), which is often most of the bytes; table/form/pre structure is kept. Default false: empty wrappers are preserved.';
+  '仅对 mode "html" 有效。删掉清理后变空的容器（空 div/span/nav/header…），这些容器常占掉大部分字节；table/form/pre 结构会保留。默认 false：保留空壳容器。';
 const textMaxDesc =
-  'Only meaningful for mode "ui" (or extractor "ui"): max characters for a single text entry. Default 150. Longer paragraphs (product descriptions, FAQ bodies, terms) are dropped from the inventory and the output reports how many were skipped. Set 0 for no limit — use that when the UI inventory is the only view and long paragraphs matter.';
+  '仅对 mode "ui"（或 extractor "ui"）有效：单条文本的字符上限。默认 150；更长的段落（商品描述、FAQ 正文、条款）会从清单里剔除，输出里会报告剔除了多少条。设 0 表示不限制——当界面清单是唯一视图、长段落本身重要时用它。';
 const allowEmptyDesc =
-  'Keep the result even when it looks like a client-rendered app shell (extracted text under 200 chars from >= 5 KB HTML). Default false: such pages return an error telling you to use render:"always", because the static HTML has no body yet.';
+  '即使结果像"客户端渲染应用壳"（正文不足 200 字符而 HTML 不小于 5 KB）也保留。默认 false：这类页面报错并提示改用 render:"always"，因为静态 HTML 里还没有正文。';
 
 async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin, renderEngine, saveHtml }) {
   const { html, source, contentType, rendered } = await readWithRender(
@@ -62,11 +62,11 @@ const server = new McpServer({
 });
 
 const fileDesc =
-  'Extract the core content of a local HTML file, stripping CSS/JS/boilerplate. Works for static files, design mockups, and browser-rendered pages saved by resilient-browser-fetch (a "<file>.meta.json" next to the HTML is auto-used for the page URL). Article pages use Defuddle; dashboards/UI design pages automatically fall back to a UI-component inventory (headings, landmarks, fields, buttons, tables). Use mode "json" when you need metadata + which extractor was used + token-savings stats.';
+  '提取本地 HTML 文件的核心内容，剥掉 CSS/JS/样板。适用于静态文件、设计稿，以及 resilient-browser-fetch 渲染后落盘的页面（HTML 旁边的 "<file>.meta.json" 会自动被用来还原页面 URL）。文章页用 Defuddle；仪表盘/界面设计页自动回退为组件清单（标题、地标、字段、按钮、表格）。要元数据 + 实际用的抽取器 + 省下的 token 比例时用 mode "json"。';
 const urlDesc =
-  'Fetch a URL then extract its core content as Markdown, stripping CSS/JS/ads/nav (built on Defuddle + schema.org metadata). Static fetch only by default: follows HTTP(S)_PROXY env (NO_PROXY exempt) unless "proxy" overrides; retries once with browser headers on 403/5xx and names challenge signs in the error. Set "render" to fall back to browser rendering (resilient-browser-fetch save_page, same proxy) on static 403/5xx — needs a layer >= 1 engine (playwright/patchright, scrapling, or cloak-cdp) installed. For JS-heavy pages you can also render first yourself, then feed the saved HTML to htmlmini_extract_file. Use "skeleton" for huge pages or "json" when you need metadata + token-savings stats.';
+  '抓取 URL 并提取核心正文为 Markdown，剥掉 CSS/JS/广告/导航（基于 Defuddle + schema.org 元数据）。默认只做静态抓取：跟随 HTTP(S)_PROXY 环境变量（NO_PROXY 豁免），除非用 "proxy" 覆盖；遇到 403/5xx 会用浏览器头重试一次并在错误里点名挑战特征。把 "render" 设为 true 可在静态 403/5xx 时回退浏览器渲染（走 resilient-browser-fetch 的 save_page，沿用同一代理），需要本机装有层 >= 1 引擎（playwright/patchright、scrapling、cloak-cdp、chrome-late、nodriver）。JS 很重的页面也可以自己先渲染、再把落盘的 HTML 交给 htmlmini_extract_file。超大页面用 "skeleton"；要元数据 + 省下的 token 比例用 "json"。';
 const htmlDesc =
-  'Clean raw HTML given as a string (e.g. page source a harness already fetched): returns only the core content as Markdown so the model can summarize it without burning tokens on CSS/JS.';
+  '清理作为字符串给出的原始 HTML（例如测试框架已经抓到的页面源码）：只返回核心正文 Markdown，让模型能总结而不必为 CSS/JS 烧 token。';
 
 const shapeFile = {
   path: z.string().describe('Absolute path to a local .html file'),
@@ -90,35 +90,35 @@ const shapeUrl = {
   proxy: z
     .string()
     .optional()
-    .describe('Proxy override for this fetch: http(s) URL, or "direct" to bypass env proxy. Omit to follow HTTP_PROXY/HTTPS_PROXY/NO_PROXY env.'),
+    .describe('这次抓取的代理覆盖：http(s) 地址，或 "direct" 表示绕过环境代理。省略则跟随 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量。'),
   render: z
     .union([z.boolean(), z.literal('always')])
     .optional()
-    .describe('Browser rendering. false (default): static fetch only. true: on static 403/5xx, fall back to browser rendering via resilient-browser-fetch save_page (same proxy as this fetch), then extract. "always": render even when the static fetch returns 200 — use it for client-rendered pages whose HTML is 200 but whose body only exists after hydration. Needs an installed engine at layer >= 1 (playwright/patchright, scrapling, or cloak-cdp); bounded by its own timeout.'),
+    .describe('浏览器渲染。false（默认）：只做静态抓取。true：静态 403/5xx 时回退浏览器渲染（走 resilient-browser-fetch 的 save_page，沿用本次抓取的同一代理）再抽取。"always"：静态 200 也渲染——用于 HTML 是 200 但正文要等水合才出现的客户端渲染页面。需要本机装有层 >= 1 引擎（playwright/patchright、scrapling、cloak-cdp、chrome-late、nodriver）；受 render_timeout_ms 约束。'),
   render_timeout_ms: z
     .number()
     .optional()
-    .describe('Timeout in ms for the fallback browser render (default 300000). Only used when render is true.'),
+    .describe('浏览器渲染的超时毫秒数（默认 300000）。仅在 render 开启时生效。'),
   headful: z
     .boolean()
     .optional()
-    .describe('Show the browser window during the fallback render (default headless). Useful for first-time manual verification; logs still stream to stderr.'),
+    .describe('渲染时弹出浏览器窗口（默认无头）。用于首次人工验证；日志仍会输出到 stderr。注意它只决定"要不要开窗"，不改变"什么时候渲染"。'),
   chrome_bin: z
     .string()
     .optional()
-    .describe('Explicit Chrome/Chromium binary for the zero-dep chrome fallback (overrides auto-detection: PATH, common paths, Playwright cache).'),
+    .describe('零依赖 Chrome 直渲用的浏览器可执行文件（覆盖自动探测：PATH、常见路径、Playwright 缓存）。'),
   python_bin: z
     .string()
     .optional()
-    .describe('Explicit Python interpreter for the render fallback and the optional Trafilatura pass. Default is "python"/"python3" on PATH, which is often not the environment that has playwright/scrapling installed; also read from HTMLMINI_PYTHON. Use "auto" to scan this machine (conda/venv/uv/PATH) and pick an interpreter that has a layer >= 1 engine. When no explicit value is given, a failed render is retried once with the strongest interpreter the scan finds (layer >= 2, i.e. a challenge solver, preferred).'),
+    .describe('渲染回退与可选 Trafilatura 用的 Python 解释器。默认是 PATH 上的 "python"/"python3"，它往往不是装了 playwright/scrapling 的那个环境；也读 HTMLMINI_PYTHON。用 "auto" 可扫描本机（conda/venv/uv/PATH）并挑一个装了层 >= 1 引擎的解释器。不显式指定时，渲染失败会再用扫描到的最强解释器（优先层 >= 2，即带挑战求解的）重试一次。'),
   save_html: z
     .string()
     .optional()
-    .describe('Absolute path: write the HTML actually used for extraction (static fetch, or the rendered page when render is on) plus a sibling "<path>.meta.json" holding the page URL. Reuse that file with htmlmini_extract_file for other modes instead of re-fetching or re-rendering. Raw HTML (not the cleaned "html" mode output), written before content validation so it survives a challenge-shell error. URL input only.'),
+    .describe('绝对路径：把实际用于抽取的 HTML（静态抓取结果，或开渲染时的渲染结果）写到这个文件，并写一份兄弟 "<path>.meta.json" 记录页面 URL。之后换模式读这份文件即可，不必再抓一次或再渲染一次。内容是原始 HTML（不是 "html" 模式的清理结果），在校验之前写盘，所以挑战空壳报错时原文也留得下来。仅 URL 输入有效。'),
   render_engine: z
     .enum(RENDER_ENGINE_CHOICES)
     .optional()
-    .describe('Pin the save_page engine instead of letting it auto-upgrade: "auto" (default) tries every installed layer from the lowest; an explicit layer (playwright | scrapling | cloak-cdp) runs that engine only — a missing layer fails instead of falling back. Use it on an origin you already know needs layer 2, to skip the attempts that are known to be rejected.'),
+    .describe('钉住 save_page 的引擎，不再自动升档："auto"（默认）从最低层逐个尝试已安装的层；显式指定（playwright | scrapling | cloak-cdp | chrome-late | nodriver）只跑该引擎——缺件直接报错而不回退。用在已知需要更高层的站点上，可省掉注定被拒的尝试。挑战站点选 "chrome-late"：它先让站点的挑战跑完再接入读取已渲染 DOM。'),
 };
 const shapeHtml = {
   html_content: z.string().describe('Raw HTML source code string'),

@@ -73,6 +73,22 @@ if (!urlProps.format || !urlProps.prune_empty) throw new Error('extract_url miss
 if (!urlProps.allow_empty) throw new Error('extract_url missing allow_empty param');
 console.log('ok - extract_url 含 proxy/render/headful/chrome_bin/attrs/format/prune_empty/allow_empty 参数');
 
+// 内嵌帮助（工具描述）必须与实现一致：新增引擎或取值后别漏改描述。
+// 历史上工具描述里的引擎清单落后于代码，调用方因此选不到新引擎。
+const engineEnum = (urlProps.render_engine && urlProps.render_engine.enum) || [];
+console.log(`render_engine enum: ${engineEnum.join(', ')}`);
+for (const eng of ['auto', 'playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver']) {
+  if (!engineEnum.includes(eng)) throw new Error(`render_engine enum missing ${eng}`);
+}
+const urlToolText = JSON.stringify(urlTool);
+for (const eng of ['playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver']) {
+  if (!urlToolText.includes(eng)) throw new Error(`extract_url 描述未提到引擎 ${eng}`);
+}
+if (!urlToolText.includes('chrome-late') || !/晚接入|挑战/.test(urlToolText)) {
+  throw new Error('extract_url 描述未说明 chrome-late 的晚接入用途');
+}
+console.log('ok - 工具描述与引擎清单一致（含 chrome-late 晚接入说明）');
+
 const MESSY = `<!doctype html><html><head><title>清洗</title><style>a{color:red}</style><script>var x=1;</script></head><body>
 <table class="c"><tr><td colspan="2">A</td></tr></table></body></html>`;
 const cleaned = await rpc('tools/call', {

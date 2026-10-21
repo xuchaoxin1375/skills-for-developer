@@ -57,7 +57,7 @@ pnpm install --frozen-lockfile
 
 ## CLI 用法
 
-选项与示例以 CLI 自带帮助为准：`htmlmini --help`（清单用 `--list-modes` / `--list-extractors`）。
+选项与示例以 CLI 自带帮助为准：`htmlmini --help`（含用法、输出模式、渲染引擎、取值型/开关型选项、环境变量、退出码、10 组示例、常见症状与对策）。清单类查询：`--list-modes` / `--list-extractors` / `--list-render-engines` / `--list-env`，每个都带一句说明。
 代理路由、日志级别与各阶段体积的读法见下节；按页面类型或症状取命令（产品页、面板、水合页、403、批量等）见 [references/usage-cases.md](references/usage-cases.md)。
 
 ### 版本号

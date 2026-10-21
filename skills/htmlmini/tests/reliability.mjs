@@ -214,6 +214,45 @@ async function cli(args, { input, env } = {}) {
 {
   const h = await cli(['--help']);
   ok(h.code === 0 && h.stdout.includes('USAGE'), '--help 退出 0');
+  // 内嵌帮助必须覆盖实现里真实存在的每个选项与每个取值。
+  // 历史上帮助文本与实现脱过节（新增引擎/抽取器后帮助没跟上），这里用源码反查兜住。
+  const cliSrc = await readFile(CLI, 'utf8');
+  const optionNames = [...new Set(
+    [...cliSrc.matchAll(/a === '(--[a-z-]+)'/g)].map((m) => m[1])
+      .concat([...cliSrc.matchAll(/a\.startsWith\('(--[a-z-]+)=?'/g)].map((m) => m[1])),
+  )];
+  const missingOptions = optionNames.filter((o) => !h.stdout.includes(o));
+  ok(missingOptions.length === 0, `帮助覆盖全部 ${optionNames.length} 个选项（缺 ${missingOptions.join(', ') || '无'}）`);
+  const shortFlags = [...new Set([...cliSrc.matchAll(/'(-[a-zA-Z])':\s*'/g)].map((m) => m[1]))];
+  const missingShort = shortFlags.filter((o) => !h.stdout.includes(o));
+  ok(missingShort.length === 0, `帮助覆盖全部短选项（缺 ${missingShort.join(', ') || '无'}）`);
+  const valueSets = {
+    mode: ['markdown', 'skeleton', 'text', 'json', 'title', 'ui', 'html'],
+    extractor: ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'sanitize', 'passthrough'],
+    'render-engine': ['auto', 'playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'],
+  };
+  for (const [opt, values] of Object.entries(valueSets)) {
+    const missing = values.filter((val) => !h.stdout.includes(val));
+    ok(missing.length === 0, `帮助列出 --${opt} 的全部取值（缺 ${missing.join(', ') || '无'}）`);
+  }
+  ok(h.stdout.includes('EXAMPLES') && h.stdout.includes('TROUBLESHOOTING'), '帮助带示例与常见症状两节');
+  ok(h.stdout.includes('EXIT CODES') && h.stdout.includes('ENVIRONMENT'), '帮助带退出码与环境变量两节');
+  // 补全脚本是独立文件（无法从 JS 常量派生），只能靠断言防漂移。
+  for (const file of ['htmlmini.bash', 'htmlmini.ps1']) {
+    const comp = await readFile(path.join(ROOT, 'completions', file), 'utf8');
+    const missing = valueSets['render-engine'].filter((val) => !comp.includes(val));
+    ok(missing.length === 0, `${file} 补全含全部渲染引擎（缺 ${missing.join(', ') || '无'}）`);
+    const missingModes = valueSets.mode.filter((val) => !comp.includes(val));
+    ok(missingModes.length === 0, `${file} 补全含全部输出模式（缺 ${missingModes.join(', ') || '无'}）`);
+  }
+  const lm = await cli(['--list-modes']);
+  ok(lm.code === 0 && valueSets.mode.every((v) => lm.stdout.includes(v)) && lm.stdout.includes('正文 Markdown'), '--list-modes 给出模式与说明');
+  const le = await cli(['--list-extractors']);
+  ok(le.code === 0 && valueSets.extractor.every((v) => le.stdout.includes(v)), '--list-extractors 给出全部抽取引擎');
+  const lre = await cli(['--list-render-engines']);
+  ok(lre.code === 0 && valueSets['render-engine'].every((v) => lre.stdout.includes(v)), '--list-render-engines 给出全部渲染引擎');
+  const lenv = await cli(['--list-env']);
+  ok(lenv.code === 0 && lenv.stdout.includes('HTMLMINI_PYTHON') && lenv.stdout.includes('HTMLMINI_PROXY_REGISTRY'), '--list-env 给出环境变量清单');
   const v = await cli(['--version']);
   ok(v.code === 0 && /^htmlmini \d{4}\.\d{2}\.\d{2}\.\d{4}\n$/.test(v.stdout), `--version 输出日期时间版本（实得 ${v.stdout.trim()}）`);
   const vShort = await cli(['-V']);

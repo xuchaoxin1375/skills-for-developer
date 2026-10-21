@@ -21,6 +21,48 @@ export const ATTR_POLICIES = ['none', 'semantic', 'all'];
 /** html 模式的排版策略：raw 原样（保留源码缩进空白） | compact（默认）压掉缩进噪声 | pretty 重新缩进。 */
 export const FORMAT_POLICIES = ['raw', 'compact', 'pretty'];
 
+/**
+ * 取值清单的一句话说明：CLI 帮助、MCP 参数说明、--list-* 输出共用同一份，
+ * 避免"帮助里写的取值"与"代码里允许的取值"各说各话（历史上就这么漂移过一次）。
+ * 新增取值时只改这里，文档与补全脚本的漂移由 tests/reliability.mjs 断言兜住。
+ */
+export const MODE_DESCRIPTIONS = {
+  markdown: '正文 Markdown（默认）：文章页走 Defuddle，界面页自动回退为组件清单',
+  skeleton: '只出大纲：标题层级、表格、代码块语言',
+  text: '纯文本，不带任何标记',
+  json: 'JSON：title / used / requested / version / content / stats{reductionPct} / meta?',
+  title: '只打印页面标题',
+  ui: '界面组件清单：标签、按钮、输入框、表格',
+  html: '清理后的 HTML：保留完整 DOM 结构与文字顺序，去掉脚本/样式/模板/图标/注释',
+};
+export const EXTRACTOR_DESCRIPTIONS = {
+  auto: '自动选择（默认）：非 HTML 原样透传 → Defuddle → Trafilatura（装了才用，否则静默跳过）→ semantic → ui 清单',
+  defuddle: '正文抽取（文章页首选）',
+  trafilatura: '正文抽取（备选，需 pip install trafilatura）',
+  semantic: '按语义标签抽正文',
+  ui: '界面组件清单',
+  sanitize: '只做清理（去脚本/样式/事件属性），不抽正文；--mode html 就是它',
+  passthrough: '原样透传，不做任何处理',
+};
+export const ATTR_POLICY_DESCRIPTIONS = {
+  none: '清空全部属性（最小，但丢链接目标与合并单元格）',
+  semantic: '保留 href/src/alt/title/colspan/rowspan/scope 与表格/表单状态（默认，推荐）',
+  all: '保留全部属性，只去掉脚本与样式',
+};
+export const FORMAT_POLICY_DESCRIPTIONS = {
+  raw: '保留源码缩进空白',
+  compact: '压掉缩进与空行，行内元素间留一个空格（默认，最小）',
+  pretty: '重新缩进，便于人读（需要 js-beautify 依赖）',
+};
+export const RENDER_ENGINE_DESCRIPTIONS = {
+  auto: '逐层升档（默认）：静态 → playwright → scrapling/cloak-cdp',
+  playwright: '层 1：Playwright/Patchright 驱动，只渲染不求解',
+  scrapling: '层 2：Patchright + 挑战求解',
+  'cloak-cdp': '层 2：CloakBrowser 直连 CDP，带挑战求解',
+  'chrome-late': '晚接入：先让站点的挑战跑完，再接入读已渲染 DOM（挑战站点专用）',
+  nodriver: '层 1 备用：系统 Chrome 直接 CDP，不伪造指纹',
+};
+
 export const DEFAULT_UA =
   `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15 htmlmini/${VERSION}`;
 

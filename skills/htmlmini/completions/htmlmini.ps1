@@ -9,7 +9,8 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
   $flags = @('--markdown', '--json', '--skeleton', '--ui', '--text', '--title',
     '--mode', '--extractor', '--attrs', '--format', '--compact', '--pretty', '--prune-empty', '--text-max', '--allow-empty',
     '--proxy', '--noproxy', '--render', '--render-always', '--headful', '--render-timeout-ms',
-    '--chrome-bin', '--python-bin', '--save-html', '--output', '--quiet', '--verbose', '--list-modes', '--list-extractors',
+    '--chrome-bin', '--python-bin', '--save-html', '--output', '--quiet', '--verbose', '--no-source-marks',
+    '--list-modes', '--list-extractors', '--list-render-engines', '--list-env',
     '--render-engine',
     '--completion', '--help', '--version', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-h', '-V')
   $tokens = $commandAst.ToString() -split '\s+'
@@ -20,7 +21,7 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
     '--attrs' { $attrs; break }
     '--format' { $formats; break }
     '--render' { @('auto', 'always'); break }
-    '--render-engine' { @('auto', 'playwright', 'scrapling', 'cloak-cdp'); break }
+    '--render-engine' { @('auto', 'playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'); break }
     '--completion' { @('bash', 'powershell'); break }
     default { $null }
   }
