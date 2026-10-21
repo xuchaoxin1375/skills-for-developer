@@ -37,7 +37,7 @@ HTML 快照里的图片、字体和外部样式表/脚本仍指向原站；内�
 
 | 任务 | 入口 | 该读 |
 | --- | --- | --- |
-| 抓单个页面、诊断未知站点 | CLI `scripts/resilient_fetch.py`（默认 `--engine auto`） | 本文件"工作流"与"引擎分层与选择" |
+| 抓单个页面、诊断未知站点 | CLI `scripts/resilient_fetch.py`（默认 `--engine auto`；`--help` 给短版、`--help full` 给完整选项表） | 本文件"工作流"与"引擎分层与选择" |
 | 保存 HTML 快照、图片等保留原 URL | CLI `--out` 或 `save_page` | 本文件"先定交付物"与"示例脚本"；细节见 [HTML 快照与序列化](references/html-snapshot.md) |
 | 只要标题/状态码/字节数，或供其他语言调用 | `scripts/example_extract_page_info.py`（stdout JSON） | 本文件"示例脚本" |
 | 页面多于一个、需要预热/复用会话/sitemap | 三条批量会话按依赖选 | [references/batch-workflows.md](references/batch-workflows.md) |

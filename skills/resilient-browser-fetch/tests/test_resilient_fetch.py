@@ -9,6 +9,25 @@ import pytest
 import resilient_fetch as subject
 
 
+def test_help_has_a_brief_default_and_a_full_version(capsys: pytest.CaptureFixture[str]) -> None:
+    """长帮助要配短版: 默认给短版, --help full 给完整选项表。"""
+
+    assert subject.main(["--help"]) == 0
+    brief = capsys.readouterr().out
+    assert subject.main(["--help", "full"]) == 0
+    full = capsys.readouterr().out
+    assert subject.main(["-h"]) == 0
+    assert capsys.readouterr().out == brief
+
+    assert len(brief.splitlines()) < len(full.splitlines())
+    # 短版要指明完整版入口, 完整版要含取值清单与示例
+    assert "--help full" in brief
+    assert "常用组合" in full
+    # 短版提到的每个引擎都必须在完整版的取值表里
+    for engine in subject.ENGINE_CHOICES:
+        assert engine in full
+
+
 def make_result(**overrides: Any) -> subject.FetchResult:
     values: dict[str, Any] = {
         "engine": "scrapling",

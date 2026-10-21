@@ -2735,12 +2735,51 @@ CLI_EPILOG = """\
 退出码: 0 成功; 1 抓取失败(原因与诊断文件路径见 stderr)
 """
 
+CLI_BRIEF = """\
+按能力分层抓取页面并保存渲染后 HTML。
+
+用法:
+  python scripts/resilient_fetch.py --url "<URL>" --out page.html [选项]
+
+引擎阶梯: static -> playwright -> scrapling -> cloak-cdp
+  chrome-late  晚接入: 先让站点的挑战跑完再接入读已渲染 DOM, 只能显式指定
+  nodriver     层 1 备用: 系统 Chrome 直接 CDP, 仅 --headful 时可用
+
+常用选项:
+  --url <地址>            目标 URL(必填)
+  --out <文件>            输出路径(默认 page.html)
+  --engine <名称>         钉住引擎: auto | static | playwright | scrapling | cloak-cdp
+                           | nodriver | chrome-late | scrapling-cli
+  --proxy <地址>          代理; 也可 --discover-proxy 按本机登记逐个探测
+  --expect-text <文本>    断言正文含该文本(可重复); 抓具体资源时务必给
+  --render-timeout-ms <毫秒>  chrome-late 接入后等渲染稳定的上限(默认 15000)
+  --settle-ms <毫秒>      chrome-late 的最小静默窗口(默认 5000)
+  --headful               弹出浏览器窗口(需 nodriver 或人工验证)
+  --verbose               详细日志
+
+完整选项表、取值说明与更多组合:
+  python scripts/resilient_fetch.py --help full
+
+退出码: 0 成功; 1 抓取失败(原因与诊断文件路径见 stderr)
+"""
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=CLI_DESCRIPTION,
         epilog=CLI_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
+    )
+    # 默认给短版(一屏看完), "--help full" 给完整选项表。
+    parser.add_argument(
+        "-h",
+        "--help",
+        nargs="?",
+        const="brief",
+        choices=("brief", "full"),
+        metavar="{brief,full}",
+        help="显示帮助: 默认短版(用法与常用选项), --help full 给完整选项表。",
     )
     parser.add_argument("--url", help="目标 HTTP(S) URL。")
     parser.add_argument("--out", default="page.html", help="成功页面的输出路径。")
@@ -2914,6 +2953,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--worker-config", help=argparse.SUPPRESS)
     parser.add_argument("--worker-dir", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.help:
+        if args.help == "full":
+            parser.print_help()
+        else:
+            print(CLI_BRIEF, end="")
+        return 0
     setup_logging(args.verbose)
 
     if args.worker_engine:
