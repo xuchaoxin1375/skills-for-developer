@@ -26,6 +26,36 @@
 - `PYTHONIOENCODING=utf-8` 或 `python -X utf8` 可控制相应的 Python 编码行为，不能修复 PowerShell 已误读的文件或自行改变其输出字节。
 - Unicode 文本向不支持该字符的输出端写入时可能抛 `UnicodeEncodeError`；在工具链无法统一编码时按本文最小复现用 ASCII JSON 保真回退。替换错误字符只用于诊断摘要，不作为正确读取的证据。
 
+### 子进程 stdout 经重定向被二次编码（不是源文件坏）
+
+2026-10-21，本机 pwsh 7.5.4 实测：某 Node CLI（帮助文本为中文）执行 `node cli.js --help > out.txt` 后，`out.txt` 用 UTF-8 解码得到 `鍓ュ帀 CSS/JS`（原文"剥掉 CSS/JS"的 UTF-8 字节被按 GBK 解读后又写成 UTF-8），用 GBK/cp936 解码反而抛 `UnicodeDecodeError`；同一命令改走字节通道落盘，文件内容完全正确。
+
+| 通道 | 落盘字节 | 按 UTF-8 读取 |
+|---|---|---|
+| `node cli.js --help > out.txt` | UTF-8(GBK 误读(UTF-8(原文))) | 双重错位 |
+| `execFileSync(..., {encoding:'buffer'})` 直接写 Buffer | 原始 UTF-8 字节 | 正确 |
+
+要点：
+
+- 重定向按**控制台代码页**解读子进程字节流。本机 `chcp` 为 936，而 `.NET` 的 `[System.Text.Encoding]::Default.CodePage` 与 `[Console]::OutputEncoding.CodePage` 都报 65001——**两者不一致时用 `chcp` 判断**，不要用 .NET 属性推断重定向行为。
+- 落到文件里的仍是**合法 UTF-8**，只是内容双重错位；因此"文件能按 UTF-8 打开"不能证明内容没被改写。
+- 判定顺序：先按字节通道复核（Python `subprocess.run(..., capture_output=True).stdout` 直接写文件；Node `execFileSync(..., {encoding:'buffer'})` 写 Buffer），再判断乱码发生在生产方还是捕获层。
+- 误判代价：这类现象很容易被当成"CLI 源码里的模板字符串或文件编码坏了"，进而去改源文件。**先证明乱码发生在哪一层再动手**；生产方是 UTF-8 就不必改它。
+
+复现（探针放被忽略的工作目录，输出用 ASCII JSON 判读，避免显示层干扰）：
+
+```powershell
+chcp                                  # 936：重定向按这个代码页解读子进程输出
+[Console]::OutputEncoding.CodePage    # 65001：与 chcp 不一致，不能用它判断重定向行为
+
+node cli.js --help > out-redirect.txt
+node -e "const {execFileSync}=require('child_process');const fs=require('fs');fs.writeFileSync('out-bytes.txt',execFileSync(process.execPath,['cli.js','--help'],{encoding:'buffer'}))"
+
+python -c "import json,pathlib;print(json.dumps({p:pathlib.Path(p).read_bytes().decode('utf-8','replace')[:40] for p in ['out-redirect.txt','out-bytes.txt']},ensure_ascii=True))"
+```
+
+预期：两个文件都能按 UTF-8 解码，但 `out-redirect.txt` 的内容是双重错位字形，`out-bytes.txt` 是原文。
+
 ### 最小复现与修复
 
 以下在 PowerShell 中执行，Python 创建 UTF-8 无 BOM 样本；样本正文用转义生成，避免命令本身的中文传参干扰结果。过程产物放被忽略的 `.workspaces/`。

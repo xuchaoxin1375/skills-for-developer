@@ -40,6 +40,7 @@ description: >
 2. **Windows 下用户触发的子进程默认无窗口**。构建、解压这类点一下跑几分钟的命令，不许闪控制台窗口（Node 用 `windowsHide`，Python 用 `STARTUPINFO(dwFlags|=STARTF_USESHOWWINDOW)`，C# 用 `CreateNoWindow`）。
 3. **命令输出按系统编码双解码**。中文 Windows 的控制台默认输出系统编码（如 GBK），按 UTF-8 硬解必出乱码：按字节攒、按行切分（不断多字节字符），每行先 UTF-8 严格解码，失败回落系统编码后再用。
 4. **日志入库前剥离 ANSI 控制序列**。构建工具爱发着色码（SGR/CSI/OSC），展示与落盘都要干净文本；剥完变空行的直接丢弃，不存空白噪音。
+5. **自研 CLI 按 UTF-8 写字节，但别指望 shell 转码**。`cmd > file` 会按控制台代码页重新解读子进程输出，落盘文件仍是合法 UTF-8、内容却已错位（详见 [powershell-pitfalls 的编码排障](../../powershell-pitfalls/references/encoding-read.md#子进程-stdout-经重定向被二次编码不是源文件坏)）。要把输出当**数据**传（落盘、逐字节比对、喂给另一个程序），就自己写字节：Node 写 `Buffer`、Python 写 `bytes`，不经 shell 文本层。给人读的中文输出优先提供文件参数（如 `--output`）而不是让人从控制台拷。
 
 ## 按语言读取细则
 

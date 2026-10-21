@@ -33,6 +33,8 @@ description: >
 python -c "from pathlib import Path; import json; print(json.dumps(Path('docs/example.md').read_text(encoding='utf-8'), ensure_ascii=True))"
 ```
 
+- **子进程输出经重定向会被二次编码**：`cmd > file` 会按**控制台代码页**解读子进程的字节流再写出，文件仍是合法 UTF-8，内容却已双重错位（形如 `鍓ュ帀`）。`.NET` 的 `[Console]::OutputEncoding` 与 `chcp` 可能不一致（本机 pwsh 7.5.4：前者报 65001、后者 936），**判断重定向是否保真看 `chcp`，不看 .NET 属性**。遇到"行号对、中文乱码"先怀疑这一层：同一命令按字节捕获（Python 读 `bytes`、Node `execFileSync(..., {encoding:'buffer'})`）复核；确认是捕获层就换字节通道或 ASCII JSON，**不要据此去改源文件编码**。
+
 - ASCII JSON 按 JSON 还原，不用模型逐字复写。用户要求原文展示时，由程序还原并经可靠工具输出；转义文本或被截断的片段不算完整原文。
 - 编码设置与读取放在同次调用；`[Console]::OutputEncoding` 控制相关输出，`$OutputEncoding` 控制向原生程序管道输入文本，均不替代文件解码或保证宿主转码。禁止把 `errors="replace"` 的有损文本当完整内容审查或修改文件。
 - 直接输出非 ASCII 前，**每次新的 shell 调用**都要同次先设输出编码再读文件；`-Encoding` 只管文件解码，文件读对了、缺前两行照样乱码。模板三行整体复制，不要只摘最后一行：
