@@ -15,7 +15,13 @@ description: >
   免双路探测（抓取本身即核验，成功时不预读长文档）；无可用登记时直连按总耗时上限
   （含首字节等待）熔断后切代理，结论同一任务复用；确认抓取工具的实际出口。
   需代理先读 `~/.config/proxy-resources.json`，无可用代理直接问用户，不盲试端口、不静默放弃。
-- **PowerShell**：带逻辑的片段一律用 PowerShell，运行前先加载 `powershell-pitfalls`。任何可能输出非 ASCII 的调用（含读文件、`Get-ChildItem` 枚举、`Select-String` 结果）同次先设输出编码再输出；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；退出码 0 或纯英文输出不能证明读取正确。**多段 CLI 串成管道或重定向时**同样要先设编码（`[Console]::OutputEncoding` 与 `$OutputEncoding`，`chcp` 单独不够），且优先改成"文件接力"或字节闸门——每一跳都要过 PowerShell 的文本解码，漏设一次整条链失真。
+- **PowerShell**：带逻辑的片段一律用 PowerShell，运行前先加载 `powershell-pitfalls`。任何可能输出非 ASCII 的调用（含读文件、`Get-ChildItem` 枚举、`Select-String` 结果）同次先设输出编码再输出；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；退出码 0 或纯英文输出不能证明读取正确。**多段 CLI 串成管道或重定向时**同样要先设编码，且优先改成"文件接力"或字节闸门——每一跳都要过 PowerShell 的文本解码，漏设一次整条链失真；`| Out-File` / `>` 是已知会双重错位的一跳，别拿它当中转。非 ASCII 安全前缀（幂等，贴片段最前）：
+
+  ```powershell
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  $OutputEncoding = [System.Text.Encoding]::UTF8
+  $env:PYTHONUTF8 = "1"
+  ```
 - **脚本（非 PowerShell）**：默认 UTF-8。Python 一律 `-X utf8`（父子多层时父进程先设
   `PYTHONUTF8=1`）、读写显式 `encoding="utf-8"`；新脚本文件 UTF-8 无 BOM、换行 LF。
   细节见 `scripting-best-practices`。
