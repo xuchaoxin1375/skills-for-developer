@@ -413,3 +413,106 @@ def test_worker_config_carries_settle_window() -> None:
     options = engine_subject.FetchOptions(url="https://example.com/", settle_ms=9000)
     config = engine_subject.build_worker_config(options, None)
     assert config["settle_ms"] == 9000
+
+
+def test_worker_config_carries_browser_brand() -> None:
+    options = engine_subject.FetchOptions(url="https://example.com/", browser_brand="edge")
+    config = engine_subject.build_worker_config(options, None)
+    assert config["browser_brand"] == "edge"
+
+
+def test_resolve_browser_brand_reads_argument_then_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(subject.BROWSER_BRAND_ENV, "edge")
+    assert subject.resolve_browser_brand("chrome") == "chrome"
+    assert subject.resolve_browser_brand(None) == "edge"
+    assert subject.resolve_browser_brand("MICROSOFT-EDGE") == "edge"
+    # 拼错的值退回 auto，而不是让一次抓取直接失败
+    assert subject.resolve_browser_brand("safari") == "auto"
+
+
+def test_find_system_browser_honors_brand_preference(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    chrome = tmp_path / "chrome.exe"
+    edge = tmp_path / "msedge.exe"
+    chrome.write_bytes(b"stub")
+    edge.write_bytes(b"stub")
+    monkeypatch.setattr(
+        subject,
+        "browser_candidates_by_brand",
+        lambda: {"chrome": [chrome], "edge": [edge], "chromium": []},
+    )
+
+    assert subject.find_system_browser() == str(chrome)
+    assert subject.find_system_browser(brand="edge") == str(edge)
+    # 找不到首选品牌时退到其他品牌，不因为偏好落空
+    monkeypatch.setattr(
+        subject,
+        "browser_candidates_by_brand",
+        lambda: {"chrome": [], "edge": [edge], "chromium": []},
+    )
+    assert subject.find_system_browser(brand="chrome") == str(edge)
+
+
+def test_browser_brand_labels_name_the_real_client() -> None:
+    assert engine_subject.browser_brand_of("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe") == "edge"
+    assert engine_subject.browser_brand_of("C:/Program Files/Google/Chrome/Application/chrome.exe") == "chrome"
+    assert engine_subject.browser_brand_of("C:/tools/chromium.exe") == "chromium"
+    assert engine_subject.system_browser_channel("C:/x/msedge.exe") == "system-edge"
+    assert engine_subject.system_browser_channel(None) == "system-chrome"
+
+
+def test_browser_brand_maps_to_each_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """品牌偏好要落到每个引擎的浏览器选择上, 不只是 chrome-late。"""
+
+    edge = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+    monkeypatch.setattr(engine_subject, "find_system_browser", lambda brand=None: edge)
+
+    assert engine_subject.browser_executable_for_config({"browser_brand": "edge"}) == edge
+    assert (
+        engine_subject.browser_executable_for_config({"executable_path": "C:/x/chrome.exe"})
+        == "C:/x/chrome.exe"
+    )
+    # 没给偏好就不动, 各引擎保留自己的默认
+    assert engine_subject.browser_executable_for_config({}) is None
+
+    playwright_kwargs = engine_subject.playwright_launch_kwargs(
+        {"headful": True, "proxy": None, "browser_brand": "edge", "real_chrome": False}
+    )
+    assert playwright_kwargs["channel"] == "msedge"
+
+    chrome_kwargs = engine_subject.playwright_launch_kwargs(
+        {"headful": True, "proxy": None, "browser_brand": "chrome", "real_chrome": False}
+    )
+    assert chrome_kwargs["channel"] == "chrome"
+
+    default_kwargs = engine_subject.playwright_launch_kwargs(
+        {"headful": True, "proxy": None, "real_chrome": True}
+    )
+    assert default_kwargs["channel"] == "chrome"
+
+    nodriver_kwargs = engine_subject.nodriver_launch_kwargs(
+        {"headful": True, "user_agent": None, "locale": None, "browser_brand": "edge", "profile_dir": None}
+    )
+    assert nodriver_kwargs["browser_executable_path"] == edge
+
+
+def test_edge_block_summary_points_at_a_client_brand_swap() -> None:
+    failure = engine_subject.FetchFailed(
+        "https://example.com/",
+        (
+            engine_subject.FetchAttempt(
+                engine="chrome-late",
+                ok=False,
+                elapsed_sec=1.0,
+                status=403,
+                reasons=("akamai_edge_block", "hint:access denied"),
+                kind=engine_subject.KIND_BLOCKED,
+            ),
+        ),
+    )
+    summary = failure.describe()
+    assert "--browser-brand edge" in summary
+    assert "Edge" in summary

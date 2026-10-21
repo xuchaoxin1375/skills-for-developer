@@ -51,6 +51,8 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 
 - **想要更强的采集能力，不要给 htmlmini 加渲染选项**——去改 `resilient-browser-fetch` 的引擎阶梯，htmlmini 会自动继承。
 - `--render-engine` 可钉住 `resilient-browser-fetch` 的渲染层：`auto` / `playwright` / `scrapling` / `cloak-cdp` / `chrome-late` / `nodriver`。挑战站点（普通浏览器能开、自动化全被拦）用 `--render-engine chrome-late`：它先让站点的挑战跑完再接入读取，见[案例 13](references/usage-cases.md#13-自动化全被拦但普通浏览器能打开)。
+- **`--chrome-bin <浏览器路径>` / `--browser-brand <品牌>` 对渲染通路同样生效**（零依赖直渲与 `save_page`/`chrome-late` 都用它们）。晚接入引擎默认拉起 **Chrome**，而 WAF 可能按**客户端品牌**判负：实测同一出口、同一协议、同一 profile 下，Chrome 被 Akamai 边缘拒（403 `Access Denied`），Edge 放行；此时 `--browser-brand edge`（不用自己写路径）即可换成 Edge 通过，或 `--chrome-bin "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` 精确指定。
+- **`--cdp-url <地址>` 接管你已经开着的浏览器**（如 `--remote-debugging-port` 启动的 Chrome/Edge），复用它自己的 profile、cookie 与放行凭据，只读它里已渲染的 DOM，**不会关闭它**。适用场景：同一台机器、同一个出口，你的浏览器能打开而任何自建浏览器都被拒——决定放行的是客户端身份与网络路径（profile、clearance、VPN、代理规则），不是 IP 信誉时，渲染由 `resilient-browser-fetch` 的 `cdp-attach` 引擎执行（同一代理、同一解释器）。浏览器里没有目标页时它会报错并提示先手动打开，不会替你乱点。
 - **有头窗口可以开**：`--render --headful`（或 MCP 的 `headful:true`）会走 `save_page` 通路并弹出真实浏览器窗口，供首次人工验证；零依赖 Chrome 通路不能开窗。`--headful` 只是"要不要开窗"，**渲染触发条件仍由 `--render` / `--render=always` 决定**：静态 200 的页面要用 `--render=always` 才会强制渲染（`--render` 只在 403/5xx 时回退）。参数顺序无影响：`--render=always --headful` 与 `--headful --render=always` 等价。
 - 渲染预算由 `--render-timeout-ms` 控制，并会同步透传给引擎的渲染等待上限（最多 60s），避免客户端渲染的站点在半渲染状态被读走。
 
@@ -60,6 +62,7 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 
 1. MCP（已配置时）：`htmlmini_extract_file(path)` / `htmlmini_extract_url(url)` / `htmlmini_extract_html(html_content)`，可选 `mode`、`extractor`。旧拼写 `htmmini_*` 是兼容别名。
 2. CLI：`htmlmini <文件|URL|stdin> [--mode <模式>]`。选项、默认值、示例与常见症状以 `htmlmini --help full` 为准（`--help` 给一屏看完的短版）；取值清单用 `--list-modes` / `--list-extractors` / `--list-render-engines` / `--list-env`（各带一句说明）。
+   - **长选项是主名，短选项给高频开关**：`-p/--proxy`、`-r/--render[=auto|always]`、`-e/--render-engine`、`-b/--browser-brand`、`-o/--output`，加上模式的 `-m/-j/-s/-u/-t/-T`。写脚本时用长选项（可读），手敲时用短选项；两者等价。
    - 进度日志走 stderr，行首带方括号本地时间戳（`[YYYY-MM-DD HH:mm:ss,SSS]`，同 Python logging），故相邻行可直接相减看阶段耗时；`[read]` 行把 `status=…` 放在最前并着色（2xx 绿 / 4xx 红 / 未知暗色），chrome dump-dom 无状态码时显示 `status=unknown` 并给出取码办法。stdout 只放载荷与一对来源哨兵行，不要时加 `--no-source-marks`。要安静用 `--quiet`，排查用 `--verbose`。
    - 落盘用 `-o <文件>`；不要用 PowerShell 管道接 `Set-Content` 收载荷。
    - CLI 不在 PATH：用 `node <本 skill 目录>/src/cli.js <同样参数>`。
@@ -74,7 +77,7 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 - **403/5xx/挑战页**：先加 `--render`，静态失败才回退浏览器；静态 200 但仍被挑战或需要求解时，走 `resilient-browser-fetch` 的 save_page 落盘后再提取。渲染后仍是挑战空壳时 htmlmini 会直接点名挑战特征并按[案例 6](references/usage-cases.md#6-静态-4035xx-或挑战特征)继续，不会让你反复 `--render=always`。本地引擎与有头浏览器都不行、或页面需要你的登录态时，用自己浏览器导出 HTML 再提取；第三方 reader 与归档辅助路线（含免费额度与边界）见 [references/aux-readers.md](references/aux-readers.md)，使用前需用户同意。404/超时/断网直接报错。
 - **两个渲染通路都失败、或日志里解释器不像是装了引擎的那个**：只要没显式指定 `--python-bin`，htmlmini 已会自动扫描本机解释器并换更强的那个重试一次（层 2/3 优先，日志 `[render]` 打印两次用的解释器）。仍失败时才手动收窄：`--python-bin auto` 固定为扫描结果，或用 `<resilient-browser-fetch>/scripts/check_environment.py --list-envs` 找出带 scrapling/cloak-cdp 的那个环境再指名路径；不要因为默认 `python` 缺引擎就下"页面取不到"的结论。需要整机资源全景时先跑 [resource-inventory](../resource-inventory/SKILL.md)。
 - **正文是错误壳而不是正文**（“There was an error processing your request.”、“Powered and protected by”）：这是软错误页或挑战页，别当正文用也别反复换渲染模式；按[案例 13](references/usage-cases.md#13-自动化全被拦但普通浏览器能打开)转 `resilient-browser-fetch` 的晚接入引擎（`--engine chrome-late`，或 `--render-engine chrome-late`），先让站点的挑战跑完再接入读取。
-- **页面是 WAF 的拒绝页**（标题 `Access Denied` / `Forbidden` / `Error 1020`，正文只有一句话）：这是站点**直接拒绝**了这次请求，不是"内容少"，也不是"挑战还没跑完"。htmlmini 会报错并区分处置：拒绝页换出口或换晚接入引擎，挑战页换求解引擎。参见[案例 15](references/usage-cases.md#15-waf-直接拒绝的商城页拒绝页不是正文出口才是变量)。
+- **页面是 WAF 的拒绝页**（标题 `Access Denied` / `Forbidden` / `Error 1020`，正文只有一句话）：这是站点**直接拒绝**了这次请求，不是"内容少"，也不是"挑战还没跑完"。htmlmini 会报错并区分处置：拒绝页换出口或换晚接入引擎，挑战页换求解引擎。拒绝页也可能只认**客户端品牌**（同出口 Chrome 被拒、Edge 放行），这时加 `--chrome-bin <Edge 路径>` 换客户端。参见[案例 15](references/usage-cases.md#15-waf-直接拒绝的商城页拒绝页不是正文出口才是变量)。
 - **渲染出来是站点自己的错误态**（“Unable to connect to the Internet”、“Something isn't right and an error has occurred”）：这是应用没拿到数据，不是"页面没内容"。多半是出口不通（应用的数据接口在另一个地域）或应用仍在加载；先确认代理/出口，再看 `[render]` 日志里引擎的等待时长，不要把这段文字当正文交出去。
 - **价格/计量与页面观感不符**：优先用 JSON-LD、`itemprop` 或接口 JSON 核对；CSS 生成内容的限制见[案例 2](references/usage-cases.md#2-营销--产品--定价页)。
 - **SPA 渲染后仍缺字段或只有展示值**：查页面自己的后端接口（[案例 11](references/usage-cases.md#11-后端接口--xhr-数据源)），用返回 JSON 核对；不猜路径、不读整份 JS。

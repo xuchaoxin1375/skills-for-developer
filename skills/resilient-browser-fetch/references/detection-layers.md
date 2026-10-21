@@ -62,6 +62,23 @@
 - 代价：会话所有权与释放按用户与工具的约定来，不能按进程名批量清理；有人在场的操作节奏不可控，不适合无人值守批处理。
 - 账号本身被风控、频率超限导致的拒绝属于业务风控，与反自动化无关，换引擎无解。
 
+**本 skill 的落地方式：`cdp-attach` 引擎**（`--cdp-url`，层 1/备用，不进 auto）。用户用 `--remote-debugging-port` 启动浏览器，自己把目标页打开并等它放行，我们再接管读取：
+
+```bash
+# 1) 浏览器开着调试端口（用你平时那个 profile，保留你的 cookie / VPN / 代理规则）
+msedge --remote-debugging-port=9222
+# 2) 你在这个浏览器里打开目标页，确认正文已经出来
+# 3) 接管读取（只连接、只读、然后断开；不关闭浏览器、不导航）
+python scripts/resilient_fetch.py --url "<目标 URL>" --cdp-url http://127.0.0.1:9222 --out page.html
+```
+
+要点：
+
+- **只读已放行的标签页**：接管到的浏览器里没有目标页时直接报错并提示先手动打开，不猜、不乱点；确实要让它去导航才加 `--cdp-navigate`（导航期间调试会话在挑战窗口里，Akamai 一类站点可能因此判负）。
+- **不拥有那个浏览器**：只断开连接，不关闭进程、不删 profile、不导航；`notes` 里记 `browser_owned:false` 与 `control_plane:cdp-attach`，复盘时能区分"我们自建的浏览器"与"用户的会话"。
+- **它不解决挑战，只复用结果**：挑战是你在真实浏览器里过的，我们只是把已经渲染好的 DOM 取出来。所以它排在所有自建引擎之后用——自建引擎能过就别动用用户的会话。
+- **htmlmini 也能走这条路**：`htmlmini "<URL>" --cdp-url http://127.0.0.1:9222 --render=always --mode markdown`；渲染由 `resilient-browser-fetch` 的 `cdp-attach` 执行（同一代理、同一解释器），htmlmini 只做提取。
+
 ## nodriver 的边界
 
 nodriver 是可选备用，不是层 2 的替代品：
@@ -126,6 +143,40 @@ nodriver 是可选备用，不是层 2 的替代品：
 
 配套命令与产物核对见 [module-api.md](module-api.md) 与 `SKILL.md` 的“工作流”第六步；本案例只解释“为什么结论要靠复测，而不是靠一次成功”。
 
+### Akamai：挑战页与边缘封禁要分开判
+
+Akamai 不是 Cloudflare，`solve_cloudflare` 对它无效。本 skill 的 `--solve-akamai`（层 1/2/3 与 `chrome-late` 可选）只处理**挑战页**，不处理**边缘封禁**；两者页面上很像，处置却相反。
+
+| 页面形态 | 特征 | 含义 | 处置 |
+| --- | --- | --- | --- |
+| SEC-CPT interstitial | `sec-if-cpt-container` / `sec-bc-tile-container` / `/_sec/cp_challenge/`；iframe 上带 `challenge="<base64 json>"` 与 `data-duration=N` | 站点还没放行，挑战会自己重载正文 | 等；页面自己没解题时本地解 PoW（见下） |
+| SBSD 挑战 | 小页面里加载 `/.well-known/sbsd/...` 或带 `?v=<uuid>&t=<n>` 的脚本 | 同上，脚本会提交并重载 | 等；带 `t=` 的是主动挑战，不带 `t=` 只是传感器 |
+| 边缘封禁 | 403 + `Access Denied` + `Reference #18.…` + `errors.edgesuite.net`；或站点自己的 403 页但 `Server` 是 Akamai | **第一个请求就被拒，没有挑战窗口** | 换出口；换引擎、换指纹、加求解器都无效 |
+| 正常页 | 页面里也可能带 `/.well-known/sbsd` 传感器脚本 | 不是挑战 | 不要按挑战处理（见下面的假阳性） |
+
+**本地能算的那部分**：SEC-CPT 的 crypto/adaptive 挑战是 SHA-256 工作量证明——找 `count` 个答案使 `sha256(sec + timestamp + nonce + difficulty + answer)` 能被 `difficulty` 整除（每答对一个难度加一），`sec` 取自 `sec_cpt` cookie 的第一个 `~` 字段，答完从页面内 POST 到 `/_sec/verify?provider=…`，`sec_cpt` cookie 出现 `~3~` 即放行。服务端还要求至少等满 `data-duration` 秒才收答案，提交太早会被拒。behavioral 型挑战要采集行为数据，本 skill 不伪造，只能等页面自己跑完。
+
+**判读顺序**：先看有没有挑战特征（没有就与 Akamai 无关）→ 再分清“被拒绝”与“还没放行”（标题 `Access Denied` / 正文有 `Reference #` / 硬 403 = 被拒）→ 最后看是不是出口问题。`notes` 里 `akamai:edge_block` 表示边缘封禁（换出口），`akamai:unsolved` 表示挑战没解开（可能是挑战窗口里暴露了痕迹，也可能是出口信誉），`akamai:no_challenge` 表示页面本来就是好的。
+
+**一个必须避开的假阳性**：正常页面也会加载 SBSD 传感器脚本（`/.well-known/sbsd/16ab20?v=<uuid>`，**没有** `t=` 参数）。2026-10-21 实测 hilton 的 offers 页（99 KB，3847 字可见文本）就是这种：它带着传感器脚本却是正常页面。判定 SBSD 挑战必须同时满足“页面很小（≤ 50 KB）”与“脚本带 `t=` 或路径是 `/.well-known/sbsd`”，否则会把好页面当成挑战页拒掉。已按此修掉过一次误判。
+
+**2026-10-21 实测（出口 23.239.105.146 / 162.251.162.205，Patchright 有头与 chrome-late 各跑）**：
+
+| 目标 | 结果 | 判读 |
+| --- | --- | --- |
+| hilton.com 首页 | chrome-late 拿到 154 KB（标题 `Hilton Page Reference Code`） | 站点自己的 403 页，Akamai 代发；换出口才有意义 |
+| hilton.com offers 详情页 | chrome-late 99 KB / playwright 201 KB，均 200 | 正常页（带被动 SBSD 传感器），求解器判定 `akamai:no_challenge` |
+| hilton.com/en/hotels/ | 404 + SBSD 脚本 | 资源级结论（404），不是挑战 |
+| kohls.com、marriott.com | 403 + `Reference #18.…` | 边缘封禁 → 记 `akamai_edge_block`，换出口 |
+| bedbathandbeyond.com 首页 | 200，1.39 MB | 正常页 |
+| bedbathandbeyond.com 商品页 | chrome-late 403；playwright 200 但是 115 KB 软错误壳 | 挑战窗口被边缘拦下；与旧案例一致 |
+
+**顺带一条操作提醒**：hilton 的 offers 页带一长串 `cid=` 查询参数，资源很重，`--wait-until load` 时 `Page.goto` 会等满 120 s 超时（**不是被拦**，是 `load` 事件始终不触发）。改 `--wait-until domcontentloaded` 后同一页面 12.5 s 拿到 200 与 101 KB 正文。看到 `Page.goto: Timeout … waiting until "load"` 先换等待条件，别误判成检测失败。
+
+**这台机器上没拿到真实 SEC-CPT 挑战页**：两个出口在上述站点上都只出现“正常页 / 边缘封禁 / 软错误壳”三种形态，没有下发 `sec-if-cpt` + `challenge=` 的 interstitial。因此 PoW 求解器目前只有**本地仿真端到端**证据（`tests/test_akamai.py` 起了本地服务器模拟“挑战页 → `/_sec/verify` 校验 → 发 `sec_cpt` 放行”全流程，同步与异步两条路径都跑通）。**不要把它当成“线上已验证能过 Akamai”**。
+
+**顺带修掉的一个真 bug**：整机走代理的环境常设 `HTTP_PROXY` / `HTTPS_PROXY`，Playwright 的 `connect_over_cdp` 会用这些变量去请求 `127.0.0.1` 的调试端口，于是本地请求被送去代理，chrome-late 直接报 “This does not look like a DevTools server”。现在 chrome-late 连接前会临时给 `NO_PROXY` 补上 `127.0.0.1,localhost`，退出时还原。
+
 ### 实战判读：H&M 商品页（出口级拒绝，压根没有挑战窗口）
 
 2026-10-21 实测 `www2.hm.com` 商品页（Akamai Bot Manager）。结论只有一句：**晚接入解决“挑战窗口”，不解决“出口级封禁”**。
@@ -143,6 +194,33 @@ nodriver 是可选备用，不是层 2 的替代品：
 2. **“用户浏览器能打开”也要拆成两个变量**：人手工的浏览器能开，可能同时满足了"出口合格"和"客户端可信"。本例里用户浏览器走系统代理（海外出口），所以**只有代理这一项是真正的差异**；照抄"用户的浏览器能开"而忽略出口，是最常见的误判。
 3. **WAF 的拒绝页不是正文**。它标题是 `Access Denied`、正文只有一句话、体积几百字节；采集层若把它当正文交出去，就是**假成功**（一次实测里 htmlmini 交出了 13 个词的拒绝页）。判据按标题认（`Access Denied` / `Forbidden` / `Error 1020`），并与"挑战页"分开处置：拒绝页提示换出口或换晚接入引擎，挑战页提示等或换求解引擎。
 4. 同属 Akamai，**姿态可以完全不同**：bedbathandbeyond 会先下发挑战页（挑战窗口存在，晚接入有效），H&M 在被封的出口上直接拒（挑战窗口不存在，晚接入无效）。**不要把上一站的结论套到下一站**，每次都按"有没有挑战特征 → 有没有被拒 → 出口行不行"重新判。
+
+**2026-10-21 补充实测：换到 10808 出口后，H&M 两条路都变终局，而且"浏览器能开"的差异不在 IP**——
+
+| 目标 | 路线 | 结果 | 判读 |
+| --- | --- | --- | --- |
+| `productpage.1367517001.html` | 静态（curl_cffi chrome124，直连 / 10808 / 7897 三个出口） | 全部 `403`，565 B，`Access Denied` | 边缘封禁，三个出口都不行 |
+| 同上 | `chrome-late`（10808） | `akamai_edge_block` | 边缘封禁，没有挑战窗口可等 |
+| 同上 | 同一 profile 连跑 3 次、带 / 不带调试端口 | 全部 `Access Denied` | **不是调试端口、也不是 profile 温度**的问题 |
+| `/en_us` 首页 | `chrome-late`（10808）与纯 Chrome（不带端口） | `200` 但正文是 H&M 自己的 **"Down for maintenance"** 占位页（18.8 KB / 220 字） | 站点把我们当机器人，**用维护页软挡**，不是挑战 |
+
+关键差异在**客户端身份 + 网络路径**，不在 IP：用户用的是 Edge，而 Edge 的 **Secure Network(Edge VPN) 开关是打开的**（`Preferences → secure_network.setting=1`），同时 Windows 系统代理 `ProxyEnable=0`、Clash 的 TUN 也是关的——**浏览器那条路的出口与我们强制指定的 10808 根本不是同一个**，再加上 Edge 带着长期 cookie 与扩展。**"同一个 IP"这个前提在浏览器那条路上不成立**，照着它去换代理是白忙；这时唯一有胜算的路线是"复用真实浏览器会话"（下一节），而不是继续换引擎、换指纹、换出口。
+
+**2026-10-21 再补充：把出口固定成同一个之后，判决还会按浏览器品牌变**——上表"出口不是同一个"的干扰被控掉后，仍有一层差异：
+
+| 客户端 | 出口 | 结果 |
+| --- | --- | --- |
+| Chrome（`chrome-late` 默认拉起的就是它） | 10808 | `Access Denied`（`Reference #18.…`，`akamai_edge_block`） |
+| Edge（同一套启动参数、同一份全新 profile） | 10808 | ✅ 正常页（1.94 MB DOM，2474 可见字符） |
+| Chrome | 7897 / 直连 | ✅ 正常页 |
+
+这次是**受控对照**：只换浏览器可执行文件，出口（10808 → `23.239.105.146`，AS53850 GorillaServers 机房 IP）、协议（`http://` 与 `socks5://` 出口 IP 相同）、profile（全新）、启动参数都不变。三条结论：
+
+1. **边缘封禁可能按客户端品牌判**：上一段推测"浏览器那条路的出口根本不是同一个"，今天证明**同一出口也会因品牌不同而判决不同**。所以"换出口"不是唯一解，"换客户端"也要试。
+2. **协议不是变量**：10808 同时接受 `http://` 与 `socks5://`，两种协议出口相同、判决相同；换代理写法救不了 Chrome 客户端。
+3. **profile/cookie 也不是变量**：用 7897 预热过的 profile 再走 10808 依然被拒（Akamai 的 `akavpau` 绑 IP，换出口即失效）。
+
+因此 `chrome-late` 的默认浏览器（总是 Chrome）会**继承 Chrome 的判决**：用户自己的 Edge 在同一出口能开，晚接入引擎却一直失败。加 `--browser-brand edge`（或 `--executable-path <Edge 路径>`、或环境变量 `RESILIENT_BROWSER=edge`）即可换客户端；`notes` 里的 `browser_channel` 现在如实写 `system-edge(msedge.exe)`，不再是笼统的 `system-chrome`。
 
 ### 排查路径：一次只改一个变量
 

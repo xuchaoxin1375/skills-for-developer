@@ -16,6 +16,7 @@ from types import TracebackType
 from typing import Any, cast
 from urllib.parse import urlsplit
 
+from akamai import solve_akamai_page_async
 from resilient_fetch import (
     FetchResult,
     ProxyUnavailableError,
@@ -138,6 +139,7 @@ class SiteSessionOptions:
     real_chrome: bool = False
     hide_canvas: bool = False
     executable_path: str | Path | None = None
+    solve_akamai: bool = False
 
     def __post_init__(self) -> None:
         """Validate settings that protect the shared browser lifecycle."""
@@ -408,6 +410,16 @@ class SiteSessionManager:
             monitor_task = asyncio.create_task(
                 self._monitor_challenge(page, request.url, stop_event=monitor_stop)
             )
+            if self.options.solve_akamai:
+                # 挑战页先让页面自己跑, 不行再本地解 SEC-CPT 的工作量证明。
+                solved = await solve_akamai_page_async(
+                    page,
+                    target_url=request.url,
+                    timeout_ms=self.options.timeout_ms,
+                )
+                logging.info("Akamai 求解: %s(%s)", solved.outcome, solved.detail or "-")
+                for step in solved.steps:
+                    logging.debug("Akamai 步骤: %s", step)
 
         kwargs: dict[str, Any] = {
             "solve_cloudflare": solve_cloudflare,

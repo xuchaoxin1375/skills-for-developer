@@ -43,7 +43,8 @@ import sys
 import tempfile
 import time
 import zlib
-from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -51,6 +52,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
+from akamai import (
+    AkamaiSignal,
+    detect_akamai,
+    solve_akamai_page,
+)
 from chrome_late import (
     DEFAULT_RENDER_TIMEOUT_MS,
     DEFAULT_SETTLE_MS,
@@ -63,6 +69,7 @@ from chrome_late import (
     find_system_browser,
     pick_rendered_page,
     proxy_server_value,
+    resolve_browser_brand,
     soft_error_phrase,
     sweep_stale_profiles,
     wait_for_page_ready,
@@ -106,6 +113,8 @@ BROWSER_ERROR_MARKERS = (
 # 以免把 404/401/429/5xx，或品牌化的小体积拦截页当成正文。
 SOFT_STATUS_CODES = frozenset({403})
 SOFT_STATUS_MIN_BYTES = 20_000
+# Akamai 求解器开启时，至少要留出"挑战自己跑完 + 本地兜底"的时间。
+MIN_AKAMAI_TIMEOUT_MS = 60_000
 # 服务端明确声明资源不存在时，换更高层引擎只会重复请求同一不可用资源，
 # 不能把 404/410 当挑战页升档；挑战特征命中时仍按拦截页处理。
 TERMINAL_STATUS_CODES = frozenset({404, 410})
@@ -245,12 +254,16 @@ class FetchOptions:
     real_chrome: bool = False
     profile_dir: str | Path | None = None
     executable_path: str | Path | None = None
+    browser_brand: str | None = None
     network_idle: bool = False
     impersonate: str | None = None
     screenshot: str | Path | None = None
     save_cookies: str | Path | None = None
     save_snapshot: str | Path | None = None
     allow_direct: bool = False
+    solve_akamai: bool = False
+    cdp_url: str | None = None
+    cdp_navigate: bool = False
 
 
 @dataclass
@@ -333,8 +346,34 @@ class FetchFailed(FetchError):
                 "或用 check_environment.py --list-envs 查看哪个环境具备所需层"
             )
         if self.attempts and len(self.blocked_engines) == len(self.attempts):
-            return "所有已尝试引擎都返回挑战页或空内容；请升档、换代理或改用有头人工验证" + self.late_attach_hint()
-        return f"所有引擎均无法获取有效页面(尝试 {len(self.attempts)} 个)" + self.late_attach_hint()
+            return (
+                "所有已尝试引擎都返回挑战页或空内容；请升档、换代理或改用有头人工验证"
+                + self.late_attach_hint()
+                + self.browser_brand_hint()
+            )
+        return (
+            f"所有引擎均无法获取有效页面(尝试 {len(self.attempts)} 个)"
+            + self.late_attach_hint()
+            + self.browser_brand_hint()
+        )
+
+    def browser_brand_hint(self) -> str:
+        """Point at a client-brand swap when the edge refused the request outright.
+
+        An edge block has no challenge window, so neither a solver nor a
+        different engine helps. It can still be brand-specific: the same exit
+        and the same protocol were refused for Chrome and allowed for Edge.
+        """
+
+        for attempt in self.attempts:
+            if "akamai_edge_block" in " ".join(attempt.reasons):
+                return (
+                    "；边缘封禁没有挑战窗口，换引擎与换指纹都无效，"
+                    "但它可能按客户端品牌判负(实测同一出口 Chrome 被拒、Edge 放行):"
+                    "可试 --engine chrome-late --browser-brand edge "
+                    "或 --executable-path <Edge 路径>，确实无效再换出口"
+                )
+        return ""
 
     def late_attach_hint(self) -> str:
         """Suggest the late-attach route when the failure looks like a WAF block."""
@@ -466,7 +505,7 @@ def is_sitemap_url(url: str) -> bool:
     return "sitemap" in urlparse(url).path.lower()
 
 
-def block_reasons(page_html: str) -> list[str]:
+def block_reasons(page_html: str, status: int | None = None) -> list[str]:
     """Detect challenge and block pages without rejecting normal Cloudflare assets."""
 
     sample = page_html[:500_000].lower()
@@ -478,10 +517,16 @@ def block_reasons(page_html: str) -> list[str]:
         reasons.append("cloudflare_challenge_markers")
     if "challenges.cloudflare.com" in sample and "noindex,nofollow" in sample:
         reasons.append("cloudflare_interstitial")
-    # Akamai Bot Manager 的挑战页: 正文是行为挑战容器或 "Powered and protected by"。
-    # 这类页面表示"站点还没放行"而不是"已拒绝"——挑战跑完会自己重载正文, 别当成终局。
-    if "powered and protected by" in sample or "sec-if-cpt-container" in sample:
+    # Akamai Bot Manager 有两类页面, 处置方式相反:
+    # - 挑战页(SEC-CPT 容器 / SBSD 脚本 / "Powered and protected by"): 站点还没放行,
+    #   挑战跑完会自己重载正文, 别当成终局;
+    # - 边缘封禁(403 "Access Denied" + "Reference #18.…"): 第一个请求就被拒, 没有挑战窗口,
+    #   换引擎与换指纹都无效, 只能换出口。
+    akamai: AkamaiSignal = detect_akamai(page_html, status=status)
+    if akamai.kind in ("sec_cpt", "sbsd"):
         reasons.append("akamai_challenge")
+    elif akamai.kind == "edge_block":
+        reasons.append("akamai_edge_block")
     # 站点自己吐的错误外壳: HTTP 200 + 站点框架 + 一句错误文案。
     # 判定要求"可见文字很少"且"抱怨出现在正文开头", 排障文章提到同样说法不算。
     if soft_error_phrase(page_html):
@@ -778,15 +823,16 @@ def string_attr(obj: Any, *names: str) -> str | None:
 
 def response_to_result(engine: str, url: str, response: Any, started: float) -> FetchResult:
     page_html = extract_html(response)
+    status = integer_attr(response, "status", "status_code")
     return FetchResult(
         engine=engine,
         url=url,
         final_url=string_attr(response, "url"),
-        status=integer_attr(response, "status", "status_code"),
+        status=status,
         html=page_html,
         elapsed_sec=round(time.perf_counter() - started, 3),
         title=extract_title(page_html),
-        block_reasons=block_reasons(page_html),
+        block_reasons=block_reasons(page_html, status),
         versions=package_versions(),
     )
 
@@ -902,7 +948,7 @@ def fetch_with_static_curl_cffi(config: dict[str, Any], started: float) -> Fetch
             html=page_html,
             elapsed_sec=round(time.perf_counter() - started, 3),
             title=extract_title(page_html),
-            block_reasons=block_reasons(page_html),
+            block_reasons=block_reasons(page_html, int(response.status_code)),
             notes=[f"impersonate:{target}"],
             versions=package_versions(),
         )
@@ -991,7 +1037,7 @@ def fetch_with_static(config: dict[str, Any]) -> FetchResult:
             html=page_html,
             elapsed_sec=round(time.perf_counter() - started, 3),
             title=extract_title(page_html),
-            block_reasons=block_reasons(page_html),
+            block_reasons=block_reasons(page_html, status),
             versions=package_versions(),
         )
     raise FetchError(f"static 抓取失败({config['retries']} 次尝试): {last_error}")
@@ -1036,13 +1082,21 @@ def playwright_launch_kwargs(config: dict[str, Any]) -> dict[str, Any]:
         kwargs["proxy"] = entry
     if config.get("executable_path"):
         kwargs["executable_path"] = config["executable_path"]
-    elif config.get("real_chrome"):
-        kwargs["channel"] = "chrome"
+    else:
+        # 品牌偏好用 Playwright 的 channel 表达(它自己解析安装位置);
+        # --real-chrome 是"用系统 Chrome"的快捷方式, 显式品牌优先于它。
+        brand = resolve_browser_brand(config.get("browser_brand"))
+        if brand == "edge":
+            kwargs["channel"] = "msedge"
+        elif brand == "chrome":
+            kwargs["channel"] = "chrome"
+        elif config.get("real_chrome"):
+            kwargs["channel"] = "chrome"
     return kwargs
 
 
-def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str]:
-    """Open the URL in a plain browser context and return (html, status, final_url)."""
+def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str, list[str]]:
+    """Open the URL in a plain browser context and return (html, status, final_url, notes)."""
 
     api = str(config.get("playwright_api") or DEFAULT_PLAYWRIGHT_API)
     factory = load_playwright_factory() if api == DEFAULT_PLAYWRIGHT_API else load_playwright_factory(api)
@@ -1062,6 +1116,7 @@ def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str
 
     with factory() as playwright:
         browser = None
+        notes: list[str] = []
         if profile_dir:
             profile_dir.mkdir(parents=True, exist_ok=True)
             context = playwright.chromium.launch_persistent_context(
@@ -1079,6 +1134,23 @@ def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str
             response = page.goto(config["url"], **goto_kwargs)
             if config.get("network_idle") and wait_until != "networkidle":
                 page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            # Akamai 求解(可选): 先让挑战页自己跑, 不行再本地解 SEC-CPT 的工作量证明。
+            # 放在 wait-selector/取源码之前, 否则会在挑战页上把选择器等超时。
+            if config.get("solve_akamai"):
+                solved = solve_akamai_page(
+                    page,
+                    target_url=config["url"],
+                    timeout_ms=timeout_ms,
+                    status=response.status if response is not None else None,
+                    headers=dict(response.headers) if response is not None else None,
+                )
+                notes.append(f"akamai:{solved.outcome}")
+                if solved.detail:
+                    notes.append(f"akamai_detail:{solved.detail}")
+                for step in solved.steps:
+                    notes.append(f"akamai_step:{step}")
+                if solved.outcome == "solved":
+                    page.wait_for_timeout(CHALLENGE_SETTLE_MS)
             # 层 1 没有求解器，但有人: 有头模式先给人时间过验证，再等选择器/截图/取源码，
             # 否则 --wait-selector 会先在挑战页上超时，人工验证永远等不到。
             manual_wait_ms = int(config.get("challenge_wait_ms") or 0)
@@ -1120,14 +1192,61 @@ def render_with_playwright(config: dict[str, Any]) -> tuple[str, int | None, str
             finally:
                 if browser is not None:
                     browser.close()
-    return page_html, status, final_url
+    return page_html, status, final_url, notes
+
+
+def browser_brand_of(executable: str | Path | None) -> str:
+    """Name the browser family behind an executable path.
+
+    The brand matters to WAFs: an edge rule can refuse one client brand from
+    one exit and let another through, so the notes must not call Edge "Chrome".
+    """
+
+    if not executable:
+        return "unknown"
+    name = Path(str(executable)).name.lower()
+    if "edge" in name:
+        return "edge"
+    if "chromium" in name:
+        return "chromium"
+    if "chrome" in name:
+        return "chrome"
+    return "other"
+
+
+def system_browser_channel(
+    executable: str | Path | None, default: str = "system-chrome"
+) -> str:
+    """Label the system browser an engine actually launched."""
+
+    if not executable:
+        return default
+    return f"system-{browser_brand_of(executable)}"
+
+
+def browser_executable_for_config(config: dict[str, Any]) -> str | None:
+    """Resolve the browser binary an engine should launch.
+
+    An explicit path wins. Otherwise a brand preference is resolved against the
+    installed browsers. ``None`` means "no preference": each engine then keeps
+    its own default instead of being silently switched to Chrome.
+    """
+
+    explicit = config.get("executable_path")
+    if explicit:
+        return str(explicit)
+    brand = resolve_browser_brand(config.get("browser_brand"))
+    if brand == "auto":
+        return None
+    return find_system_browser(brand=brand)
 
 
 def browser_channel_for_config(config: dict[str, Any], default: str = "chromium") -> str:
     """Describe which browser binary a Playwright-based engine is likely to launch."""
 
-    if config.get("executable_path"):
-        return "custom-chromium"
+    executable = config.get("executable_path")
+    if executable:
+        return f"custom-{browser_brand_of(executable)}"
     if config.get("real_chrome"):
         return "system-chrome"
     return default
@@ -1160,7 +1279,7 @@ def fetch_with_playwright(config: dict[str, Any]) -> FetchResult:
 
     started = time.perf_counter()
     try:
-        page_html, status, final_url = render_with_playwright(config)
+        page_html, status, final_url, notes = render_with_playwright(config)
     except (EngineUnavailableError, FetchError):
         raise
     except Exception as exc:
@@ -1182,6 +1301,7 @@ def fetch_with_playwright(config: dict[str, Any]) -> FetchResult:
         block_reasons=block_reasons(page_html),
         versions=package_versions(),
     )
+    result.notes.extend(notes)
     api = (
         resolve_playwright_api(str(config.get("playwright_api") or DEFAULT_PLAYWRIGHT_API))
         or str(config.get("playwright_api") or DEFAULT_PLAYWRIGHT_API)
@@ -1242,10 +1362,31 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
     snapshot = config.get("save_snapshot")
     challenge_wait_ms = config.get("challenge_wait_ms", 0)
     headful = bool(config.get("headful"))
-    if screenshot or challenge_wait_ms or snapshot:
+    solve_akamai = bool(config.get("solve_akamai"))
+    if screenshot or challenge_wait_ms or snapshot or solve_akamai:
+        # 与调用方共享同一个列表: page_action 跑完之后, 求解结果才能回填到 notes。
+        akamai_notes: list[str] = config.setdefault("akamai_notes", [])
+
+        def record_akamai(solved: Any) -> None:
+            akamai_notes.append(f"akamai:{solved.outcome}")
+            if solved.detail:
+                akamai_notes.append(f"akamai_detail:{solved.detail}")
+            for step in solved.steps:
+                akamai_notes.append(f"akamai_step:{step}")
+            logging.info(
+                "Akamai 求解: %s(%s)%s",
+                solved.outcome,
+                solved.detail or "-",
+                f" 步骤: {', '.join(solved.steps)}" if solved.steps else "",
+            )
+
         if cdp_url:
 
             async def after_solver_async(page: Any) -> None:
+                if solve_akamai:
+                    logging.warning(
+                        "cdp_url 走的是 Scrapling 异步路径, Akamai 求解器只支持同步页面, 本次不求解。"
+                    )
                 await wait_for_manual_verification_async(
                     lambda: page.content(),
                     challenge_wait_ms,
@@ -1262,6 +1403,14 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
         else:
 
             def after_solver_sync(page: Any) -> None:
+                if solve_akamai:
+                    record_akamai(
+                        solve_akamai_page(
+                            page,
+                            target_url=config["url"],
+                            timeout_ms=int(config.get("timeout_ms") or DEFAULT_TIMEOUT_MS),
+                        )
+                    )
                 wait_for_manual_verification(
                     lambda: page.content(),
                     challenge_wait_ms,
@@ -1292,10 +1441,13 @@ def scrapling_kwargs(config: dict[str, Any], *, cdp_url: str | None = None) -> d
         ("proxy", "proxy"),
         ("locale", "locale"),
         ("timezone", "timezone_id"),
-        ("executable_path", "executable_path"),
     ):
         if config.get(source):
             kwargs[target] = config[source]
+    # 显式路径优先; 其次按品牌偏好解析出已安装的浏览器(没给偏好就不动, 保留本层默认)。
+    brand_executable = browser_executable_for_config(config)
+    if brand_executable:
+        kwargs["executable_path"] = brand_executable
     if config.get("profile_dir"):
         kwargs["user_data_dir"] = str(Path(config["profile_dir"]) / "scrapling")
     return kwargs
@@ -1312,6 +1464,9 @@ def fetch_with_scrapling(config: dict[str, Any]) -> FetchResult:
     logging.info("使用 Scrapling Python API，代理=%s", redact_proxy(config.get("proxy")))
     response = StealthyFetcher.fetch(config["url"], **scrapling_kwargs(config))
     result = result_from_response("scrapling", config, response, started)
+    for note in config.get("akamai_notes", []):
+        if note not in result.notes:
+            result.notes.append(note)
     # Scrapling 0.5 的 StealthyFetcher 内部使用 Patchright；升级到 0.6+ 时重新核对。
     append_identity_notes(
         result,
@@ -1422,8 +1577,9 @@ def nodriver_launch_kwargs(config: dict[str, Any]) -> dict[str, Any]:
         "headless": not bool(config.get("headful")),
         "browser_args": browser_args or None,
     }
-    if config.get("executable_path"):
-        kwargs["browser_executable_path"] = str(config["executable_path"])
+    brand_executable = browser_executable_for_config(config)
+    if brand_executable:
+        kwargs["browser_executable_path"] = brand_executable
     if config.get("profile_dir"):
         kwargs["user_data_dir"] = str(Path(str(config["profile_dir"])) / "nodriver")
     return kwargs
@@ -1580,7 +1736,7 @@ async def fetch_with_nodriver_async(config: dict[str, Any]) -> FetchResult:
         append_identity_notes(
             result,
             control_plane="direct-cdp",
-            browser_channel="system-chrome",
+            browser_channel=system_browser_channel(browser_executable_for_config(config)),
             headful=bool(config.get("headful")),
         )
         if config.get("save_cookies"):
@@ -1611,6 +1767,147 @@ def fetch_with_nodriver(config: dict[str, Any]) -> FetchResult:
     return uc.loop().run_until_complete(fetch_with_nodriver_async(config))
 
 
+@contextmanager
+def local_cdp_env() -> Iterator[None]:
+    """让连本地调试端口的请求绕过全局代理。
+
+    整机走代理的环境常设 ``HTTP_PROXY`` / ``HTTPS_PROXY``。Playwright 的
+    ``connect_over_cdp`` 会用这些变量去请求 ``127.0.0.1`` 上的调试端口, 于是本地
+    请求被送去代理, 拿到 400 “This does not look like a DevTools server”。
+    这里临时给 ``NO_PROXY`` 补上本地地址, 退出时还原。
+    """
+
+    keys = ("NO_PROXY", "no_proxy")
+    saved = {key: os.environ.get(key) for key in keys}
+    local = "127.0.0.1,localhost"
+    for key in keys:
+        current = os.environ.get(key, "")
+        os.environ[key] = f"{current},{local}" if current else local
+    try:
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _navigation_status(page: Any) -> int | None:
+    """Read the HTTP status of the tab's main document from the navigation timing.
+
+    An attached tab was loaded by the browser itself, so there is no response
+    object to ask; the navigation entry keeps the status code.
+    """
+
+    try:
+        value = page.evaluate(
+            "() => performance.getEntriesByType('navigation')[0]?.responseStatus ?? null"
+        )
+    except Exception:
+        return None
+    return int(value) if isinstance(value, int) and value > 0 else None
+
+
+def fetch_with_cdp_attach(config: dict[str, Any]) -> FetchResult:
+    """Attach to a browser the user already started and read a rendered page.
+
+    Why this route exists: some sites only let *that* browser through — its
+    profile, its cookies, its clearance and its network path (VPN, proxy rules)
+    are part of the allow decision. A self-launched browser starts with none of
+    them, so it gets refused while the user's own window works.
+
+    The browser is **not ours**: we attach, read, and disconnect. We never close
+    it, never navigate it unless the caller asked for it, and never touch its
+    profile directory.
+    """
+
+    cdp_url = str(config.get("cdp_url") or "").strip()
+    if not cdp_url:
+        raise FetchError(
+            "cdp-attach 需要 --cdp-url；请用带 --remote-debugging-port 启动浏览器后传入它的地址。"
+        )
+    url = str(config["url"])
+    started = time.perf_counter()
+    api = str(config.get("playwright_api") or DEFAULT_PLAYWRIGHT_API)
+    factory = load_playwright_factory(api if api != DEFAULT_PLAYWRIGHT_API else "playwright")
+    notes: list[str] = [f"cdp_endpoint:{cdp_url}"]
+    render: RenderSignal | None = None
+    html = ""
+    title: str | None = None
+    final_url = url
+    with local_cdp_env(), factory() as driver:
+        connected = driver.chromium.connect_over_cdp(cdp_url)
+        try:
+            pages = [page for context in connected.contexts for page in context.pages]
+            logging.info("接管浏览器 %s: 可见标签 %d 个", cdp_url, len(pages))
+            page = pick_rendered_page(pages, url)
+            if page is None:
+                if not config.get("cdp_navigate"):
+                    opened = ", ".join(str(item.url)[:80] for item in pages[:5])
+                    raise FetchError(
+                        "cdp-attach: 接管到的浏览器里没有目标页标签"
+                        f"(已打开: {opened or '无'})。"
+                        "请先在那个浏览器里打开目标 URL(让站点自己放行),"
+                        "或加 --cdp-navigate 让它去导航——注意导航会在挑战窗口里带上调试会话。"
+                    )
+                candidates = [
+                    item
+                    for item in pages
+                    if str(getattr(item, "url", "")).startswith(("http://", "https://"))
+                ]
+                if not candidates:
+                    raise FetchError("cdp-attach: 接管到的浏览器里没有可导航的标签页。")
+                page = candidates[0]
+                logging.info("cdp-attach: 用 --cdp-navigate 导航 %s -> %s", page.url, url)
+                page.goto(url, wait_until="domcontentloaded", timeout=int(config["timeout_ms"]))
+            notes.append(f"attached_tab:{str(page.url)[:200]}")
+            status = _navigation_status(page)
+            render = wait_for_rendered_page(
+                page,
+                budget_ms=int(config.get("render_timeout_ms") or DEFAULT_RENDER_TIMEOUT_MS),
+                expect_texts=tuple(config.get("expect_texts") or ()),
+                min_wait_ms=int(config.get("render_min_ms") or 0),
+            )
+            html = render.html
+            title = render.title
+            final_url = str(page.url)
+            if config.get("screenshot"):
+                page.screenshot(path=config["screenshot"], full_page=False)
+            if config.get("save_cookies"):
+                cookies = [cookie for context in connected.contexts for cookie in context.cookies()]
+                write_cookie_jar(config["save_cookies"], cookies)
+        finally:
+            # 只断开连接, 不关用户的浏览器: 它不是我们启动的。
+            try:
+                connected.close()
+            except Exception:
+                pass
+    reasons = list(block_reasons(html))
+    if render is not None and render.state == STATE_ERROR:
+        reasons.append("site_error_shell")
+    result = FetchResult(
+        engine="cdp-attach",
+        url=url,
+        final_url=final_url,
+        status=status,
+        html=html,
+        elapsed_sec=round(time.perf_counter() - started, 3),
+        title=title,
+        block_reasons=reasons,
+        versions=package_versions(),
+    )
+    append_identity_notes(
+        result,
+        control_plane="cdp-attach",
+        browser_channel="user-session",
+        headful=True,
+    )
+    result.notes.extend(notes)
+    result.notes.append("browser_owned:false")
+    return result
+
+
 def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
     """Load the page first, then attach once and read the rendered DOM.
 
@@ -1620,11 +1917,14 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
 
     started = time.perf_counter()
     url = config["url"]
-    executable = find_system_browser(config.get("executable_path"))
+    brand = resolve_browser_brand(config.get("browser_brand"))
+    executable = find_system_browser(
+        config.get("executable_path"), brand=config.get("browser_brand")
+    )
     if not executable:
         raise EngineUnavailableError(
             "chrome-late 不可用:未找到系统 Chrome/Chromium/Edge；"
-            "请安装浏览器或用 --executable-path 指定路径。"
+            "请安装浏览器、用 --executable-path 指定路径，或用 --browser-brand 换品牌。"
         )
     if os.name != "nt" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
         raise EngineUnavailableError(
@@ -1638,6 +1938,7 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
     port = free_local_port()
     profile_dir = Path(tempfile.mkdtemp(prefix="chrome-late-"))
     browser = None
+    akamai_notes: list[str] = []
     launched_at = time.perf_counter()
     render: RenderSignal | None = None
     try:
@@ -1652,7 +1953,9 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
             proxy=proxy,
         )
         logging.info(
-            "启动系统浏览器并等待站点挑战跑完(不接调试器)，之后晚接入读取: %s", executable
+            "启动系统浏览器并等待站点挑战跑完(不接调试器)，之后晚接入读取: %s (brand=%s)",
+            executable,
+            brand,
         )
         browser = OwnedBrowserProcess.launch(args)
         signal_info = wait_for_page_ready(
@@ -1670,7 +1973,7 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
                 "等待到可用标题(等 %d ms)，仍按晚接入读取已渲染内容。", signal_info.waited_ms
             )
         factory = load_playwright_factory(config["playwright_api"])
-        with factory() as driver:
+        with local_cdp_env(), factory() as driver:
             connected = driver.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
             try:
                 pages = [page for context in connected.contexts for page in context.pages]
@@ -1681,6 +1984,22 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
                     opened = ", ".join(str(item.url) for item in pages[:5])
                     raise FetchError(
                         f"chrome-late: 晚接入后找不到目标页面(已打开的标签: {opened})。"
+                    )
+                # 晚接入之后页面仍是挑战页时, 才有"本地解 PoW"这条路可走:
+                # 挑战窗口已经过去, 这时再提交答案不会暴露更多痕迹。
+                if config.get("solve_akamai"):
+                    solved = solve_akamai_page(
+                        page,
+                        target_url=url,
+                        timeout_ms=int(config.get("timeout_ms") or DEFAULT_TIMEOUT_MS),
+                    )
+                    akamai_notes.append(f"akamai:{solved.outcome}")
+                    if solved.detail:
+                        akamai_notes.append(f"akamai_detail:{solved.detail}")
+                    for step in solved.steps:
+                        akamai_notes.append(f"akamai_step:{step}")
+                    logging.info(
+                        "Akamai 求解: %s(%s)", solved.outcome, solved.detail or "-"
                     )
                 render = wait_for_rendered_page(
                     page,
@@ -1721,7 +2040,7 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
     result.notes.extend(
         [
             "control_plane:late-cdp-attach",
-            f"browser_channel:system-chrome({Path(executable).name})",
+            f"browser_channel:{system_browser_channel(executable)}({Path(executable).name})",
             "headless:false",
             f"settle_ms:{int(config.get('settle_ms') or DEFAULT_SETTLE_MS)}",
             f"ready:{str(signal_info.ready).lower()}",
@@ -1734,6 +2053,7 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
             f"render_wait_ms:{render.waited_ms if render else 0}",
         ]
     )
+    result.notes.extend(akamai_notes)
     return result
 
 
@@ -1819,6 +2139,8 @@ def run_engine(
         return fetch_with_nodriver(config)
     if engine == "chrome-late":
         return fetch_with_chrome_late(config)
+    if engine == "cdp-attach":
+        return fetch_with_cdp_attach(config)
     if engine == "scrapling-cli":
         return fetch_with_scrapling_cli(config, worker_dir)
     raise FetchError(f"未知引擎: {engine}")
@@ -2081,6 +2403,20 @@ def probe_playwright() -> EngineAvailability:
     return EngineAvailability(True, f"{detail}；auto 解析为 {resolved}(仅渲染，不求解挑战)")
 
 
+def probe_cdp_attach() -> EngineAvailability:
+    """Report the attach engine, which drives a browser the user already started."""
+
+    if playwright_api_name() is None:
+        return EngineAvailability(False, "未安装 playwright/patchright", ("playwright", "patchright"))
+    versions = package_versions()
+    detail = ", ".join(
+        f"{name} {versions.get(name, '?')}"
+        for name in ("patchright", "playwright")
+        if importlib.util.find_spec(name) is not None
+    )
+    return EngineAvailability(True, f"{detail}；可接管已开着的浏览器(需 --cdp-url)")
+
+
 def probe_scrapling() -> EngineAvailability:
     """Report the anti-detect engine that solves Cloudflare/Turnstile challenges."""
 
@@ -2187,6 +2523,14 @@ ENGINES: dict[str, EngineSpec] = {
             probe_chrome_late,
             in_auto=False,
         ),
+        EngineSpec(
+            "cdp-attach",
+            1,
+            frozenset({CAP_HTTP, CAP_RENDER, CAP_CDP}),
+            ("playwright|patchright",),
+            probe_cdp_attach,
+            in_auto=False,
+        ),
     )
 }
 
@@ -2198,6 +2542,7 @@ ENGINE_CHOICES = (
     "cloak-cdp",
     "nodriver",
     "chrome-late",
+    "cdp-attach",
     "scrapling-cli",
 )
 WORKER_ENGINE_CHOICES = tuple(name for name in ENGINE_CHOICES if name != "auto")
@@ -2358,7 +2703,9 @@ def validate_options(options: FetchOptions) -> None:
             "--impersonate 只作用于层 0(static)；%s 由浏览器自己完成 TLS 指纹，已忽略该参数。",
             options.engine,
         )
-    capabilities = engine_capabilities(options.engine)
+    capabilities = engine_capabilities(
+        "cdp-attach" if options.cdp_url else options.engine
+    )
     if CAP_SOLVE in capabilities:
         if options.timeout_ms < MIN_SOLVER_TIMEOUT_MS:
             raise ValueError(
@@ -2366,6 +2713,28 @@ def validate_options(options: FetchOptions) -> None:
             )
     elif options.timeout_ms < 1_000:
         raise ValueError("timeout_ms 至少为 1000。")
+    if options.solve_akamai:
+        if options.engine in {"static", "nodriver", "scrapling-cli"}:
+            logging.warning(
+                "--solve-akamai 只在层 1/2/3(playwright/scrapling/cloak-cdp)与 chrome-late 生效; %s 不支持。",
+                options.engine,
+            )
+        if options.timeout_ms < MIN_AKAMAI_TIMEOUT_MS:
+            raise ValueError(
+                f"启用 Akamai 求解时 timeout_ms 不得低于 {MIN_AKAMAI_TIMEOUT_MS}"
+                "(挑战页自身要等满最短时长, 之后才轮到本地兜底)。"
+            )
+    if options.cdp_url:
+        if options.engine not in {"auto", "cdp-attach"}:
+            raise ValueError(
+                f"--cdp-url 与 --engine {options.engine} 冲突；"
+                "接管已开着的浏览器时用 --engine cdp-attach 或 --engine auto。"
+            )
+        if options.cdp_navigate:
+            logging.warning(
+                "--cdp-navigate 会让接管的浏览器在挑战窗口里带着调试会话去导航，"
+                "Akamai 一类站点可能因此判负；默认只读取你已经打开的标签。"
+            )
     if options.engine == "static":
         if options.headful:
             raise ValueError("static 引擎不启动浏览器，--headful 无意义；请改用 playwright 及以上层。")
@@ -2470,6 +2839,7 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "executable_path": str(Path(options.executable_path).expanduser().resolve())
         if options.executable_path
         else None,
+        "browser_brand": options.browser_brand,
         "network_idle": options.network_idle,
         "screenshot": str(Path(options.screenshot).expanduser().resolve())
         if options.screenshot
@@ -2480,6 +2850,9 @@ def build_worker_config(options: FetchOptions, proxy: str | None) -> dict[str, A
         "save_snapshot": str(Path(options.save_snapshot).expanduser().resolve())
         if options.save_snapshot
         else None,
+        "solve_akamai": options.solve_akamai,
+        "cdp_url": options.cdp_url,
+        "cdp_navigate": options.cdp_navigate,
     }
 
 
@@ -2508,7 +2881,13 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
         options.wall_timeout_ms or options.timeout_ms + options.challenge_wait_ms + 90_000
     )
     attempts: list[FetchAttempt] = []
-    order = engine_order(options.engine, headful=options.headful)
+    # 给了 --cdp-url 就只走接管路线: 自建浏览器拿不到用户会话里的放行凭据。
+    selected_engine = "cdp-attach" if options.cdp_url else options.engine
+    order = (
+        ["cdp-attach"]
+        if options.cdp_url
+        else engine_order(selected_engine, headful=options.headful)
+    )
     skipped = (
         [
             name
@@ -2517,7 +2896,7 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
             )
             if spec.in_auto and name not in order
         ]
-        if options.engine == "auto"
+        if selected_engine == "auto"
         else []
     )
     if options.headful:
@@ -2782,9 +3161,14 @@ def main(argv: list[str] | None = None) -> int:
         help="显示帮助: 默认短版(用法与常用选项), --help full 给完整选项表。",
     )
     parser.add_argument("--url", help="目标 HTTP(S) URL。")
-    parser.add_argument("--out", default="page.html", help="成功页面的输出路径。")
     parser.add_argument(
-        "--proxy", default=os.getenv("SCRAPE_PROXY"), help="代理 URL；也可设置 SCRAPE_PROXY。"
+        "-o", "--out", default="page.html", help="成功页面的输出路径。"
+    )
+    parser.add_argument(
+        "-p",
+        "--proxy",
+        default=os.getenv("SCRAPE_PROXY"),
+        help="代理 URL；也可设置 SCRAPE_PROXY。",
     )
     parser.add_argument(
         "--discover-proxy",
@@ -2792,6 +3176,7 @@ def main(argv: list[str] | None = None) -> int:
         help="未指定代理时按本机登记文件 (~/.config/proxy-resources.json) 中的候选依次探测。",
     )
     parser.add_argument(
+        "-e",
         "--engine",
         choices=ENGINE_CHOICES,
         default="auto",
@@ -2903,6 +3288,17 @@ def main(argv: list[str] | None = None) -> int:
         "--executable-path", help="自定义 Chromium/Chrome 绝对路径(层 1/2 可用)。"
     )
     parser.add_argument(
+        "-b",
+        "--browser-brand",
+        choices=("auto", "chrome", "edge", "chromium"),
+        help=(
+            "系统浏览器品牌偏好(chrome-late 的浏览器发现、层 1 的 channel、层 2 与 nodriver 的可执行文件):"
+            "auto(默认,Chrome→Edge→Chromium)、chrome、edge、chromium。"
+            "边缘封禁可能按客户端品牌判负(实测同一出口 Chrome 被拒、Edge 放行),"
+            "被边缘封时可试 --browser-brand edge;也可用环境变量 RESILIENT_BROWSER。"
+        ),
+    )
+    parser.add_argument(
         "--network-idle", action="store_true", help="等待 networkidle；长连接页面可能不适用。"
     )
     parser.add_argument(
@@ -2942,6 +3338,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--save-snapshot",
         help="保存 MHTML 快照 (页面与已加载资源)，供受保护站点的离线内联使用。",
+    )
+    parser.add_argument(
+        "--cdp-url",
+        help=(
+            "接管已开着的浏览器(如 --remote-debugging-port 启动的 Chrome/Edge),"
+            "复用它自己的 profile、cookie 与放行凭据;只读取已渲染的 DOM,不会关闭它。"
+            "给了这个参数就只用 cdp-attach 引擎。"
+        ),
+    )
+    parser.add_argument(
+        "--cdp-navigate",
+        action="store_true",
+        help=(
+            "接管的浏览器里没有目标页时,让它导航到目标 URL。"
+            "注意:导航期间调试会话在挑战窗口里,Akamai 一类站点可能因此判负,默认不导航。"
+        ),
+    )
+    parser.add_argument(
+        "--solve-akamai",
+        action="store_true",
+        help=(
+            "启用 Akamai Bot Manager 求解(层 1/2/3 与 chrome-late): 挑战页先让页面自己跑, "
+            "不行则本地解 SEC-CPT 的 SHA-256 工作量证明并从页面内提交。"
+            "只处理挑战页; 边缘封禁(403 Access Denied / Reference #)与出口级封禁无解, 只能换出口。"
+        ),
     )
     parser.add_argument("--allow-direct", action="store_true", help="代理不可达时允许直连。")
     parser.add_argument("--verbose", action="store_true")
@@ -2998,12 +3419,16 @@ def main(argv: list[str] | None = None) -> int:
         real_chrome=args.real_chrome,
         profile_dir=args.profile_dir,
         executable_path=args.executable_path,
+        browser_brand=args.browser_brand,
         network_idle=args.network_idle,
         impersonate=args.impersonate,
         screenshot=args.screenshot,
         save_cookies=args.save_cookies,
         save_snapshot=args.save_snapshot,
         allow_direct=args.allow_direct,
+        solve_akamai=args.solve_akamai,
+        cdp_url=args.cdp_url,
+        cdp_navigate=args.cdp_navigate,
     )
     try:
         save_page(options, args.out)

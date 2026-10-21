@@ -1,7 +1,7 @@
 import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join, resolve as resolvePath } from 'node:path';
+import { basename, dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
@@ -735,7 +735,7 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   return html;
 }
 
-export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, pythonBin, renderEngine, info = null } = {}) {
+export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, info = null } = {}) {
   const { script, engines, solver, python } = await renderCapability(pythonBin);
   const canSavePage =
     Boolean(script) && (engines === null || engines.some((name) => BROWSER_ENGINES.includes(name)));
@@ -752,9 +752,10 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
 
   // Chrome 无头 dump-dom 不支持开窗，--headful 只走 save_page 通路。
   let found = null;
+  // 浏览器路径两条通路都要用, 先验存在性: 传下去之前不校验, 报错会晚到子进程里。
+  if (chromeBin && !existsSync(chromeBin)) throw new Error(`chrome binary not found: ${chromeBin} (--chrome-bin)`);
   if (!headful) {
     if (chromeBin) {
-      if (!existsSync(chromeBin)) throw new Error(`chrome binary not found: ${chromeBin} (--chrome-bin)`);
       found = { bin: chromeBin, source: 'explicit' };
     } else {
       try {
@@ -765,9 +766,10 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
     }
   }
 
-  // 有求解引擎、需要开窗、本机没有 Chrome，或显式钉了引擎时，save_page 更合适；层 1 与 Chrome 同能力时优先零依赖通路。
-  if (canSavePage && (pinned || solver || headful || !found)) {
-    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, info });
+  // 有求解引擎、需要开窗、本机没有 Chrome、显式钉了引擎，或要接管用户已开着的浏览器时，save_page 更合适；
+  // 层 1 与 Chrome 同能力时优先零依赖通路。接管路线没有零依赖版本(必须走 CDP), 所以 cdpUrl 强制走 save_page。
+  if (canSavePage && (pinned || solver || headful || !found || cdpUrl)) {
+    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info });
   }
   if (found) {
     try {
@@ -777,13 +779,13 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
       // 零依赖通路崩了（进程退出码异常、超时等）时，同能力的 save_page 值得再试一次。
       log.info('render', `chrome 通路失败，改用 save_page 重试: ${chromeErr.message}`);
       try {
-        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, info });
+        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info });
       } catch (saveErr) {
         throw new Error(`${chromeErr.message}; save_page 回退也失败: ${saveErr.message}`);
       }
     }
   }
-  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, info });
+  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info });
   const alternative = await findCapablePython(['playwright']).catch(() => null);
   if (headful) {
     throw new Error(
@@ -897,23 +899,69 @@ export async function savePageUsable(pythonBin) {
 }
 
 
-async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, info = null }) {
-  const interpreter = python ?? (await findPython({ pythonBin }));
-  const proxyUrl = resolveProxy(url, { proxy });
-  const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
+/**
+ * 构造 save_page(resilient-browser-fetch) 的子进程参数。
+ *
+ * 单独抽出来是为了能直接断言参数：浏览器路径必须真的传下去。
+ * 早先 --chrome-bin 只喂给零依赖的 chrome dump-dom 通路，走 save_page
+ * (chrome-late 等) 时被静默丢掉，WAF 按客户端品牌判负时会一路踩空。
+ */
+export function savePageArgs({
+  script,
+  url,
+  out,
+  engine = 'auto',
+  renderTimeoutMs,
+  proxyUrl = null,
+  cdpUrl = null,
+  headful = false,
+  chromeBin = null,
+  browserBrand = null,
+}) {
   // -X utf8 + PYTHONUTF8：子进程日志强制 UTF-8 输出，本侧按 UTF-8 增量解码、
   // 逐行透传（Windows 控制台查看侧按 powershell-pitfalls 的 UTF-8 模板设置）。
   // --engine 透传：显式指定时 save_page 只用该层（不再自动升档），已知站点可省掉注定失败的升档。
-  const args = ['-X', 'utf8', script, url, '--out', out, '--engine', renderEngine ?? 'auto', '--timeout-ms', String(renderTimeoutMs)];
+  const args = ['-X', 'utf8', script, url, '--out', out, '--engine', engine, '--timeout-ms', String(renderTimeoutMs)];
   // 渲染预算同时透传给引擎: 客户端渲染的应用常在静态壳上停很久, chrome-late 这类
   // "接入后等渲染稳定"的引擎要拿到同样的上限, 否则会在半渲染状态下被读走。
   // 上限取 60s: 够 SPA 水合, 又不至于把外层预算全耗在等一个永不稳定的 DOM 上。
   args.push('--render-timeout-ms', String(Math.min(renderTimeoutMs, 60_000)));
   if (proxyUrl) args.push('--proxy', proxyUrl);
   else args.push('--discover-proxy');
+  // 接管用户已开着的浏览器: 复用它的 profile/cookie/放行凭据, 只读已渲染的 DOM。
+  if (cdpUrl) args.push('--cdp-url', cdpUrl);
   if (headful) args.push('--headful');
+  // 浏览器路径: 晚接入引擎默认挑 Chrome, 但 WAF 可能按客户端品牌判负
+  // (实测同一出口 Chrome 被拒、Edge 放行), 显式指定必须传下去。
+  if (chromeBin) args.push('--executable-path', chromeBin);
+  // 品牌偏好: 让渲染脚本按品牌去找已安装的浏览器(不用自己写路径)。
+  if (browserBrand) args.push('--browser-brand', browserBrand);
+  return args;
+}
+
+async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info = null }) {
+  const interpreter = python ?? (await findPython({ pythonBin }));
+  const proxyUrl = resolveProxy(url, { proxy });
+  const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
+  const args = savePageArgs({
+    script,
+    url,
+    out,
+    engine: renderEngine ?? 'auto',
+    renderTimeoutMs,
+    proxyUrl,
+    cdpUrl,
+    headful,
+    chromeBin,
+    browserBrand,
+  });
   const proxyNote = describeProxy(url, proxy);
-  log.info('render', `engine=save-page${headful ? ' headful' : ''} [python: ${interpreter}] [proxy: ${proxyNote === 'none' ? 'none, render script discovers its own' : proxyNote}]`);
+  const browserNote = chromeBin
+    ? ` [browser: ${basename(chromeBin)}]`
+    : browserBrand
+      ? ` [browser: ${browserBrand}]`
+      : '';
+  log.info('render', `engine=save-page${headful ? ' headful' : ''} [python: ${interpreter}] [proxy: ${proxyNote === 'none' ? 'none, render script discovers its own' : proxyNote}]${browserNote}`);
   const tail = [];
   let tailSize = 0;
   const TAIL_CAP = 256 * 1024;
@@ -1031,7 +1079,7 @@ export function isRenderableError(e) {
 
 export async function readWithRender(
   source,
-  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin, renderEngine, allowEmpty = false } = {},
+  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, allowEmpty = false } = {},
 ) {
   const remote = /^https?:\/\//i.test(source ?? '');
   const tRead = Date.now();
@@ -1103,8 +1151,10 @@ export async function readWithRender(
       ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
       ...(headful ? { headful: true } : {}),
       ...(chromeBin == null ? {} : { chromeBin }),
+      ...(browserBrand == null ? {} : { browserBrand }),
       ...(bin == null ? {} : { pythonBin: bin }),
       ...(renderEngine == null ? {} : { renderEngine }),
+      ...(cdpUrl == null ? {} : { cdpUrl }),
     });
     return guardRendered({ html, source, contentType: 'text/html', rendered: true });
   };
@@ -2196,7 +2246,7 @@ export async function runExtract(source, mode = 'markdown', options = {}) {
  * 与 runExtract 相同，但把来源信息（URL、状态码、是否渲染、抓取时刻）一起返回，
  * 供调用方做来源标记或 JSON 字段；CLI 用它生成起止行。
  */
-export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, pythonBin, renderEngine, saveHtml } = {}) {
+export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -2222,8 +2272,10 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
         ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
         ...(headful ? { headful: true } : {}),
         ...(chromeBin == null ? {} : { chromeBin }),
+        ...(browserBrand == null ? {} : { browserBrand }),
         ...(pythonBin == null ? {} : { pythonBin }),
         ...(renderEngine == null ? {} : { renderEngine }),
+        ...(cdpUrl == null ? {} : { cdpUrl }),
         allowEmpty,
       },
     );

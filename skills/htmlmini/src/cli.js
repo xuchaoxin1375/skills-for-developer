@@ -44,8 +44,13 @@ ${modeList()}
   --mode <名称>              输出模式，见上表
   --extractor <名称>         抽取引擎：auto | defuddle | trafilatura | semantic | ui | sanitize | passthrough
   --render[=auto|always]     浏览器渲染回退：auto 只在静态 403/5xx 时回退；always 静态 200 也渲染
+  -r, --render[=auto|always]  同上（短选项；-r always 表示总是渲染）
   --render-engine <名称>     钉住渲染引擎：auto | playwright | scrapling | cloak-cdp | chrome-late | nodriver
+  -e, --render-engine <名称> 同上（短选项）
+  -b, --browser-brand <品牌> 渲染用浏览器品牌：auto | chrome | edge | chromium（默认 auto）
+  --cdp-url <地址>           接管你已开着的浏览器（复用它的 cookie/放行凭据），只读已渲染 DOM
   --proxy <地址>             抓取代理：http(s) 地址，或 direct 绕过环境代理
+  -p, --proxy <地址>         同上（短选项）
   --save-html <文件>         落盘实际使用的 HTML（配兄弟 .meta.json），便于换模式复用
   --output <文件>            结果写文件而不是 stdout
   --allow-empty              保留"像应用壳"的结果（默认报错并提示 --render=always）
@@ -92,14 +97,29 @@ ${engineList()}
     --render[=auto|always]     浏览器渲染回退。auto（默认）只在静态 403/5xx 时回退；
                                always 则静态 200 也渲染。渲染链：save_page（需层 >= 1 引擎）
                                → 系统 Chrome 无头 dump-dom（零依赖）→ 友好报错
+    -r, --render[=auto|always] 同上（短选项；-r always 表示总是渲染）
     --render-engine <名称>     钉住 save_page 的引擎（见上表）。显式即严格：只跑这一层，
                                缺件直接报错、不再自动升档
+    -e, --render-engine <名称> 同上（短选项）
+    --cdp-url <地址>           接管你已开着的浏览器（如 --remote-debugging-port 启动的
+                               Chrome/Edge），复用它自己的 profile/cookie/放行凭据，只读已
+                               渲染的 DOM，不会关闭它。给了它就走 save_page 的接管路线
     --render-timeout-ms <毫秒>  渲染超时上限（默认 300000；chrome dump-dom 上限 120000）
-    --chrome-bin <路径>        零依赖 Chrome 直渲用的浏览器可执行文件（默认自动探测）
+    --chrome-bin <路径>        渲染用的浏览器可执行文件（默认自动探测）。零依赖 Chrome 直渲
+                               与 save_page 渲染（chrome-late 等）都用它；显式指定时
+                               晚接入引擎会拉起这个浏览器，而不是默认的 Chrome——
+                               WAF 可能按客户端品牌判负（实测同一出口 Chrome 被拒、
+                               Edge 放行），此时指定 Edge 路径即可放行
+    --browser-brand <品牌>     渲染用浏览器品牌偏好：auto（默认，Chrome→Edge→Chromium）|
+                               chrome | edge | chromium。不用自己写路径，渲染脚本按品牌
+                               找已安装的浏览器；边缘封禁按客户端品牌判时用它换品牌
+                               （与 --chrome-bin 同时给时，路径优先）
+    -b, --browser-brand <品牌> 同上（短选项）
     --python-bin <路径>        save_page 与 Trafilatura 用的解释器；"auto" = 扫描本机挑一个
                                装了引擎的（conda/venv/uv/PATH）
     --proxy <地址>             抓取代理：http(s) 地址，或 direct 表示绕过环境代理
                                （默认跟随 HTTP_PROXY/HTTPS_PROXY/NO_PROXY）
+    -p, --proxy <地址>         同上（短选项）
     --save-html <文件>         把实际用于抽取的 HTML 落盘到这个文件，并写一份兄弟
                                "<文件>.meta.json"（含页面 URL）。之后换模式读这份文件即可，
                                不用再抓一次或再渲染一次。仅 URL 输入有效；内容是原始 HTML
@@ -107,6 +127,7 @@ ${engineList()}
                                所以挑战空壳/空页报错时原文也留得下来
     --output <文件>            结果写文件而不是 stdout（文件末尾恰好一个换行；
                                比 shell 管道更稳，管道可能多出空行）
+    -o, --output <文件>        同上（短选项）
     --completion <shell>       打印补全脚本：bash | powershell
     （以上取值型选项都接受 --opt=value 写法）
   开关型
@@ -191,6 +212,8 @@ ${ENV_HELP.map((line) => `  ${line}`).join('\n')}
                                仍被拒说明站点按出口封禁，见下一条。
   "Access Denied" 拒绝页      → 站点直接拒绝了这次请求，不是"内容少"。换出口/代理，或改用
                                --render-engine chrome-late；别把它当正文交出去。
+                               同一出口 Chrome 被拒而 Edge 放行时，用
+                               --chrome-bin "<Edge 路径>" 换客户端品牌。
   正文只有几十字、像应用壳     → 加 --render=always 让页面水合；确实没内容再加 --allow-empty 保留。
   渲染后仍是挑战页            → 换求解引擎：--python-bin auto（scrapling/cloak-cdp），
                                或 --render-engine chrome-late（先让挑战跑完再接入）。
@@ -237,6 +260,21 @@ async function printCompletion(shell) {
 }
 
 const argv = process.argv.slice(2);
+/** 浏览器品牌取值：与 resilient-browser-fetch 的 --browser-brand 保持一致。 */
+const BROWSER_BRANDS = ['auto', 'chrome', 'edge', 'chromium'];
+/**
+ * 短选项 → 长选项。长选项是主名（可读、写在文档与补全里），短选项是高频开关的
+ * 便利层：条件允许就同时给，冲突或含义会歧义时宁可不加。
+ * 这里只做一次规范化，后面参数解析只认长选项。
+ */
+const SHORT_ALIASES = {
+  '-p': '--proxy',
+  '-b': '--browser-brand',
+  '-e': '--render-engine',
+  '-r': '--render',
+};
+/** `-r` 的可选取值：给就带上，不给就是"仅 403/5xx 时回退渲染"。 */
+const RENDER_VALUES = new Set(['auto', 'always']);
 let source = '-';
 let mode = 'markdown';
 let extractor = 'auto';
@@ -246,9 +284,11 @@ let render = false;
 let renderTimeoutMs;
 let headful = false;
 let chromeBin;
+let browserBrand;
 let pythonBin;
 let saveHtml;
 let renderEngine;
+let cdpUrl;
 let attrs = 'semantic';
 let format = 'compact';
 let pruneEmpty = false;
@@ -259,7 +299,18 @@ let logLevelOverride = null;
 let sourceMarks = process.env.HTMLMINI_SOURCE_MARKS !== '0';
 
 for (let i = 0; i < argv.length; i++) {
-  const a = argv[i];
+  let a = argv[i];
+  // 短选项先归一成长选项（-r 允许带可选值：-r always）。
+  if (SHORT_ALIASES[a]) {
+    const long = SHORT_ALIASES[a];
+    if (long === '--render' && RENDER_VALUES.has(argv[i + 1])) {
+      argv[i] = `${long}=${argv[i + 1]}`;
+      argv.splice(i + 1, 1);
+    } else {
+      argv[i] = long;
+    }
+    a = argv[i];
+  }
   if (a === '-h' || a === '--help' || a.startsWith('--help=')) {
     // 默认短版（一屏看完），"--help full" 给完整版。
     // 完整版入口要显眼：短版末尾就写着它。
@@ -293,7 +344,7 @@ for (let i = 0; i < argv.length; i++) {
       log.error('--output needs a file argument');
       process.exit(2);
     }
-  } else if (a === '--mode' || a === '--extractor' || a === '--attrs' || a === '--format' || a === '--completion' || a === '--proxy' || a === '--chrome-bin' || a === '--python-bin' || a === '--save-html' || a === '--render-engine') {
+  } else if (a === '--mode' || a === '--extractor' || a === '--attrs' || a === '--format' || a === '--completion' || a === '--proxy' || a === '--chrome-bin' || a === '--browser-brand' || a === '--python-bin' || a === '--save-html' || a === '--render-engine' || a === '--cdp-url') {
     const v = argv[++i];
     if (!v) {
       log.error(`${a} needs a value`);
@@ -305,9 +356,17 @@ for (let i = 0; i < argv.length; i++) {
     else if (a === '--format') format = v;
     else if (a === '--proxy') proxy = v;
     else if (a === '--chrome-bin') chromeBin = v;
+    else if (a === '--browser-brand') {
+      if (!BROWSER_BRANDS.includes(v)) {
+        log.error(`--browser-brand needs one of ${BROWSER_BRANDS.join(' | ')} (got "${v}")`);
+        process.exit(2);
+      }
+      browserBrand = v;
+    }
     else if (a === '--python-bin') pythonBin = v;
     else if (a === '--save-html') saveHtml = v;
     else if (a === '--render-engine') renderEngine = v;
+    else if (a === '--cdp-url') cdpUrl = v;
     else await printCompletion(v);
   } else if (a === '--compact') {
     format = 'compact';
@@ -363,7 +422,7 @@ for (let i = 0; i < argv.length; i++) {
       log.error(`--render-timeout-ms needs a positive number of ms (got "${v ?? ''}")`);
       process.exit(2);
     }
-  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--attrs=') || a.startsWith('--format=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--python-bin=') || a.startsWith('--save-html=') || a.startsWith('--render-engine=') || a.startsWith('--render-timeout-ms=')) {
+  } else if (a.startsWith('--mode=') || a.startsWith('--extractor=') || a.startsWith('--attrs=') || a.startsWith('--format=') || a.startsWith('--output=') || a.startsWith('--completion=') || a.startsWith('--proxy=') || a.startsWith('--chrome-bin=') || a.startsWith('--browser-brand=') || a.startsWith('--python-bin=') || a.startsWith('--save-html=') || a.startsWith('--render-engine=') || a.startsWith('--render-timeout-ms=') || a.startsWith('--cdp-url=')) {
     const [k, v] = splitEq(a);
     if (k === '--mode') mode = v;
     else if (k === '--extractor') extractor = v;
@@ -372,9 +431,17 @@ for (let i = 0; i < argv.length; i++) {
     else if (k === '--output') output = v;
     else if (k === '--proxy') proxy = v;
     else if (k === '--chrome-bin') chromeBin = v;
+    else if (k === '--browser-brand') {
+      if (!BROWSER_BRANDS.includes(v)) {
+        log.error(`--browser-brand needs one of ${BROWSER_BRANDS.join(' | ')} (got "${v}")`);
+        process.exit(2);
+      }
+      browserBrand = v;
+    }
     else if (k === '--python-bin') pythonBin = v;
     else if (k === '--save-html') saveHtml = v;
     else if (k === '--render-engine') renderEngine = v;
+    else if (k === '--cdp-url') cdpUrl = v;
     else if (k === '--render-timeout-ms') {
       renderTimeoutMs = Number(v);
       if (!Number.isFinite(renderTimeoutMs) || renderTimeoutMs <= 0) {
@@ -435,7 +502,7 @@ function markSource(out, info) {
 
 try {
   const startedAt = Date.now();
-  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(saveHtml === undefined ? {} : { saveHtml }) });
+  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }) });
   // JSON 模式不包哨兵行（否则不再可解析），来源由 JSON 里的 source/fetchStatus/fetchedAt 字段承载。
   const out = mode === 'json' || !sourceMarks ? raw : markSource(raw, info);
   const total = `total ${fmtMs(Date.now() - startedAt)}`;

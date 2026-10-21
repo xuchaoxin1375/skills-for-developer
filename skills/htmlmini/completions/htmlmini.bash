@@ -15,9 +15,10 @@ _htmlmini() {
     --extractor) COMPREPLY=( $(compgen -W "$extractors" -- "$cur") ); return 0 ;;
     --attrs) COMPREPLY=( $(compgen -W "$attrs" -- "$cur") ); return 0 ;;
     --format) COMPREPLY=( $(compgen -W "$formats" -- "$cur") ); return 0 ;;
-    --proxy) COMPREPLY=( $(compgen -W "direct" -- "$cur") ); return 0 ;;
-    --render) COMPREPLY=( $(compgen -W "auto always" -- "$cur") ); return 0 ;;
-    --render-engine) COMPREPLY=( $(compgen -W "auto playwright scrapling cloak-cdp chrome-late nodriver" -- "$cur") ); return 0 ;;
+    --proxy|-p) COMPREPLY=( $(compgen -W "direct" -- "$cur") ); return 0 ;;
+    --render|-r) COMPREPLY=( $(compgen -W "auto always" -- "$cur") ); return 0 ;;
+    --render-engine|-e) COMPREPLY=( $(compgen -W "auto playwright scrapling cloak-cdp chrome-late nodriver" -- "$cur") ); return 0 ;;
+    --browser-brand|-b) COMPREPLY=( $(compgen -W "auto chrome edge chromium" -- "$cur") ); return 0 ;;
     --completion) COMPREPLY=( $(compgen -W "bash powershell" -- "$cur") ); return 0 ;;
     --chrome-bin) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
     --python-bin) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
@@ -25,7 +26,7 @@ _htmlmini() {
     -o|--output) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
   esac
   if [[ "$cur" == -* ]]; then
-    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --text-max --allow-empty --proxy --noproxy --render --render-always --headful --render-timeout-ms --render-engine --chrome-bin --python-bin --save-html --output --quiet --verbose --no-source-marks --list-modes --list-extractors --list-render-engines --list-env --completion --help --version -m -j -s -u -t -T -o -h -V" -- "$cur") )
+    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --text-max --allow-empty --proxy --noproxy --render --render-always --headful --render-timeout-ms --render-engine --browser-brand --chrome-bin --python-bin --save-html --output --quiet --verbose --no-source-marks --list-modes --list-extractors --list-render-engines --list-env --completion --help --version -m -j -s -u -t -T -o -p -r -e -b -h -V" -- "$cur") )
   else
     COMPREPLY=( $(compgen -f -- "$cur") )
   fi

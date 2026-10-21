@@ -112,53 +112,112 @@ class ChromeLateError(RuntimeError):
     """Indicate that the late-attach engine cannot run in this environment."""
 
 
-def find_system_browser(explicit: str | None = None) -> str | None:
-    """Locate a local Chrome/Chromium/Edge binary, preferring the explicit path."""
+BROWSER_BRAND_ENV = "RESILIENT_BROWSER"
+# 边缘封禁可能按**客户端品牌**判负: 实测同一出口、同一协议、同一 profile 下,
+# Chrome 被 Akamai 边缘拒(403 Access Denied)，Edge 放行。因此浏览器发现必须
+# 能换品牌，而不是永远只用 Chrome。
+BROWSER_BRAND_ALIASES = {
+    "": "auto",
+    "auto": "auto",
+    "any": "auto",
+    "chrome": "chrome",
+    "google-chrome": "chrome",
+    "googlechrome": "chrome",
+    "edge": "edge",
+    "msedge": "edge",
+    "microsoft-edge": "edge",
+    "microsoftedge": "edge",
+    "chromium": "chromium",
+}
+
+
+def default_browser_brand_order() -> tuple[str, ...]:
+    """Order to try browser brands when no preference is given."""
+
+    if os.name == "nt":
+        return ("chrome", "edge", "chromium")
+    return ("chrome", "chromium", "edge")
+
+
+def resolve_browser_brand(preferred: str | None = None) -> str:
+    """Resolve the wanted browser brand from an argument or the environment.
+
+    Values: auto (default), chrome, edge, chromium. Unknown values fall back to
+    auto instead of failing: a typo must not silently block a fetch.
+    """
+
+    raw = (preferred or os.environ.get(BROWSER_BRAND_ENV) or "auto").strip().lower()
+    return BROWSER_BRAND_ALIASES.get(raw, "auto")
+
+
+def browser_candidates_by_brand() -> dict[str, list[Path]]:
+    """List the known install locations of every supported browser brand."""
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    program_files = os.environ.get("PROGRAMFILES")
+    program_files_x86 = os.environ.get("PROGRAMFILES(X86)")
+    user_profile = os.environ.get("USERPROFILE")
+    chrome: list[Path] = []
+    edge: list[Path] = []
+    chromium: list[Path] = []
+    if os.name == "nt":
+        if local_app_data:
+            chrome.append(Path(local_app_data) / "Google/Chrome/Application/chrome.exe")
+            edge.append(Path(local_app_data) / "Microsoft/Edge/Application/msedge.exe")
+        if program_files:
+            chrome.append(Path(program_files) / "Google/Chrome/Application/chrome.exe")
+            edge.append(Path(program_files) / "Microsoft/Edge/Application/msedge.exe")
+        if program_files_x86:
+            chrome.append(Path(program_files_x86) / "Google/Chrome/Application/chrome.exe")
+            edge.append(Path(program_files_x86) / "Microsoft/Edge/Application/msedge.exe")
+        if user_profile:
+            for app in ("chrome", "chrome-portable"):
+                chrome.append(Path(user_profile) / f"scoop/apps/{app}/current/chrome.exe")
+            for app in ("chromium",):
+                chromium.append(Path(user_profile) / f"scoop/apps/{app}/current/chromium.exe")
+    elif os.name == "darwin":
+        chrome.append(Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"))
+        edge.append(Path("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"))
+        chromium.append(Path("/Applications/Chromium.app/Contents/MacOS/Chromium"))
+    else:
+        for name in ("google-chrome", "google-chrome-stable"):
+            found = shutil.which(name)
+            if found:
+                chrome.append(Path(found))
+        for name in ("chromium", "chromium-browser"):
+            found = shutil.which(name)
+            if found:
+                chromium.append(Path(found))
+        for name in ("microsoft-edge", "microsoft-edge-stable"):
+            found = shutil.which(name)
+            if found:
+                edge.append(Path(found))
+    return {"chrome": chrome, "edge": edge, "chromium": chromium}
+
+
+def find_system_browser(
+    explicit: str | None = None, brand: str | None = None
+) -> str | None:
+    """Locate a local Chrome/Chromium/Edge binary.
+
+    The explicit path wins. Otherwise the wanted brand is tried first (from the
+    argument, else $RESILIENT_BROWSER), then the remaining brands in platform
+    order: a WAF that blocks one client brand may let another through.
+    """
 
     if explicit:
         candidate = Path(explicit).expanduser()
         return str(candidate) if candidate.is_file() else None
 
-    candidates: list[Path] = []
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    program_files = os.environ.get("PROGRAMFILES")
-    program_files_x86 = os.environ.get("PROGRAMFILES(X86)")
-    user_profile = os.environ.get("USERPROFILE")
-    if os.name == "nt":
-        if local_app_data:
-            candidates += [
-                Path(local_app_data) / "Google/Chrome/Application/chrome.exe",
-                Path(local_app_data) / "Microsoft/Edge/Application/msedge.exe",
-            ]
-        if program_files:
-            candidates += [
-                Path(program_files) / "Google/Chrome/Application/chrome.exe",
-                Path(program_files) / "Microsoft/Edge/Application/msedge.exe",
-            ]
-        if program_files_x86:
-            candidates += [
-                Path(program_files_x86) / "Google/Chrome/Application/chrome.exe",
-                Path(program_files_x86) / "Microsoft/Edge/Application/msedge.exe",
-            ]
-        if user_profile:
-            for app in ("chrome", "chrome-portable", "chromium"):
-                candidates.append(Path(user_profile) / f"scoop/apps/{app}/current/chrome.exe")
-                candidates.append(Path(user_profile) / f"scoop/apps/{app}/current/chromium.exe")
-    elif os.name == "darwin":
-        candidates += [
-            Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-            Path("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
-            Path("/Applications/Chromium.app/Contents/MacOS/Chromium"),
-        ]
-    else:
-        for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"):
-            found = shutil.which(name)
-            if found:
-                candidates.append(Path(found))
-
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
+    preferred = resolve_browser_brand(brand)
+    candidates = browser_candidates_by_brand()
+    order = default_browser_brand_order()
+    if preferred != "auto":
+        order = (preferred, *[name for name in order if name != preferred])
+    for name in order:
+        for candidate in candidates.get(name, []):
+            if candidate.is_file():
+                return str(candidate)
     return None
 
 

@@ -158,6 +158,17 @@ htmlmini "https://example.com/app" --render --render-engine scrapling --python-b
 # 挑战站点：钉住晚接入引擎（先让站点的挑战跑完再接入读取）
 htmlmini "https://example.com/app" --render=always --render-engine chrome-late --proxy 'http://127.0.0.1:<port>'
 
+# 晚接入引擎默认拉起 Chrome，而 WAF 可能按客户端品牌判负（同出口 Chrome 被拒、Edge 放行）：
+# --browser-brand 让渲染脚本按品牌找已安装的浏览器；--chrome-bin 精确指定路径
+htmlmini "https://example.com/app" --render=always --render-engine chrome-late \
+  --proxy 'http://127.0.0.1:<port>' --browser-brand edge
+htmlmini "https://example.com/app" --render=always --render-engine chrome-late \
+  --proxy 'http://127.0.0.1:<port>' --chrome-bin 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+
+# 你的浏览器能开、自动化全被拦：接管你已开着的浏览器，复用它的 cookie / clearance（不关闭它）
+# 先用 --remote-debugging-port 启动浏览器，自己把目标页打开，再跑：
+htmlmini "https://example.com/app" --cdp-url http://127.0.0.1:9222 --render=always -m
+
 # 手工两步（渲染产物旁的 <name>.html.meta.json 会被自动利用）
 python ../resilient-browser-fetch/scripts/example_save_page.py "https://example.com/app" --out app.html --proxy 'http://127.0.0.1:<port>'
 htmlmini app.html --json

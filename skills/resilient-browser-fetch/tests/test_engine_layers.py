@@ -630,7 +630,7 @@ def test_playwright_headful_waits_for_manual_verification_before_selector(
     monkeypatch.setattr(subject, "CHALLENGE_POLL_INTERVAL_SEC", 0.0)
     screenshot = tmp_path / "shot.png"
 
-    html, status, _final = subject.render_with_playwright(
+    html, status, _final, _notes = subject.render_with_playwright(
         {
             "url": "https://example.com/app",
             "timeout_ms": 5_000,
@@ -657,7 +657,7 @@ def test_playwright_headless_does_not_wait_for_human(
     monkeypatch.setattr(subject, "playwright_api_name", lambda: "playwright")
     monkeypatch.setattr(subject, "load_playwright_factory", lambda: fake_playwright_factory(page))
 
-    html, _status, _final = subject.render_with_playwright(
+    html, _status, _final, _notes = subject.render_with_playwright(
         {
             "url": "https://example.com/app",
             "timeout_ms": 5_000,

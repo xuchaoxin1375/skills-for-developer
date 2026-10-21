@@ -184,3 +184,24 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - `htmlmini --render` 在默认解释器（只有层 1）下选零依赖 Chrome `dump-dom`，得到约 8 KB 挑战空壳，随后报"像客户端渲染壳、请用 `--render=always`"；加 `--python-bin auto` 选到带求解引擎的解释器后改走 save_page，约 18 秒取得正文。提示与真实原因不一致，重复 `--render=always` 不会改善。
 
 未验证：其他挑战站点的层通过率、`--headful` 表现、profile 复用对 clearance 的保持时长、Linux/macOS、跨日波动与该站速率限制。
+
+## 2026-10-21 同一出口按客户端品牌判决：Chrome 被拒、Edge 放行
+
+执行环境：国内 Windows；本机两套代理并存（Clash Verge 的 mihomo 混合端口 `<port-A>`、v2rayN 的 xray 端口 `<port-B>`），整机 `HTTP_PROXY`/`HTTPS_PROXY` 指向 `<port-B>`。目标为某 Akamai Bot Manager 保护的商城商品页。出口以 `api.ipify.org` / `ip-api.com` 回显确认。
+
+| 路线 | 出口 | 结果 |
+| --- | --- | --- |
+| `<port-B>` + `http://` | `23.239.105.146`（AS53850 GorillaServers，`hosting=true`） | HTTP 代理可用：CONNECT 隧道正常，`http://example.com` 返回 200 |
+| `<port-B>` + `socks5://` | 同上 | 同一出口，协议不同不影响出口归属 |
+| `<port-A>` | `162.251.162.205`（AS53767 iCastCenter） | 另一条独立上游 |
+| Chrome + `<port-B>` | 同上 | **403 `Access Denied` + `X-Reference-Error: 18.…`**（`Server: AkamaiGHost`） |
+| Edge + `<port-B>` | 同上 | ✅ 正常页 |
+| Chrome + `<port-A>` / 直连 | — | ✅ 正常页（直连出口 `120.33.226.133`，AS4134） |
+
+- **受控对照**：只换浏览器可执行文件，出口、协议（`http://` 与 `socks5://` 出口 IP 相同）、profile（全新）、启动参数全不变。结论：Akamai 的边缘判决会按**客户端品牌**分叉，`Chrome` 被拒而 `Edge` 放行。这与"换出口"是两条不同的路线——被这类边缘封禁卡住时，先问"是不是只挡了某个客户端"。
+- **协议与 profile 都不是变量**：`<port-B>` 同时接受 `http://` 与 `socks5://`，两种写法判决相同；用别的出口预热过的 profile 再走 `<port-B>` 仍被拒（Akamai 的 `akavpau` 绑 IP，换出口即失效）。
+- **curl 指纹会掩盖判据**：三条路线的 curl 请求都是 403，不能用 curl 的结果区分"哪条出口能过"；有头真实浏览器 + 同一出口才看得出品牌差异。
+- **工具侧的默认行为**：`resilient-browser-fetch` 的 `chrome-late` 默认拉起 Chrome，会继承 Chrome 的判决——用户自己的 Edge 在同一出口能开，晚接入引擎却一直失败。已加 `--browser-brand edge`（或 `--executable-path <Edge 路径>`、环境变量 `RESILIENT_BROWSER`）与 `htmlmini --chrome-bin` 透传。
+- **本机代理登记**：`~/.config/proxy-resources.json` 只登记了 `<port-A>`（已核验 HTTP 代理可用）。`<port-B>` 也在监听且两种协议都能用，但它的出口是机房 IP、撞 Akamai 边缘封禁，暂不作为默认条目。
+
+未验证：边缘判决随时间与频次的波动、是否只针对该站、Edge 的其他版本是否同样放行、机房 IP 段整体信誉、Linux/macOS 上的同品牌差异。

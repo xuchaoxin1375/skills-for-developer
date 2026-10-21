@@ -25,7 +25,7 @@ const textMaxDesc =
 const allowEmptyDesc =
   '即使结果像"客户端渲染应用壳"（正文不足 200 字符而 HTML 不小于 5 KB）也保留。默认 false：这类页面报错并提示改用 render:"always"，因为静态 HTML 里还没有正文。';
 
-async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, pythonBin, renderEngine, saveHtml }) {
+async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml }) {
   const { html, source, contentType, rendered } = await readWithRender(
     src,
     {
@@ -34,8 +34,10 @@ async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, t
       ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
       ...(headful ? { headful: true } : {}),
       ...(chromeBin == null ? {} : { chromeBin }),
+      ...(browserBrand == null ? {} : { browserBrand }),
       ...(pythonBin == null ? {} : { pythonBin }),
       ...(renderEngine == null ? {} : { renderEngine }),
+      ...(cdpUrl == null ? {} : { cdpUrl }),
       allowEmpty: allowEmpty === true,
     },
   );
@@ -106,7 +108,11 @@ const shapeUrl = {
   chrome_bin: z
     .string()
     .optional()
-    .describe('零依赖 Chrome 直渲用的浏览器可执行文件（覆盖自动探测：PATH、常见路径、Playwright 缓存）。'),
+    .describe('渲染用的浏览器可执行文件（覆盖自动探测：PATH、常见路径、Playwright 缓存）。零依赖直渲与 save_page 渲染（chrome-late 等）都用它；WAF 可能按客户端品牌判负（实测同一出口 Chrome 被拒、Edge 放行），此时指向 msedge.exe 即可换客户端。'),
+  browser_brand: z
+    .enum(['auto', 'chrome', 'edge', 'chromium'])
+    .optional()
+    .describe('渲染用浏览器品牌偏好（默认 auto：Chrome→Edge→Chromium）。不用自己写路径，渲染脚本按品牌找已安装的浏览器；边缘封禁按客户端品牌判时用它换品牌。与 chrome_bin 同时给时路径优先。'),
   python_bin: z
     .string()
     .optional()
@@ -119,6 +125,10 @@ const shapeUrl = {
     .enum(RENDER_ENGINE_CHOICES)
     .optional()
     .describe('钉住 save_page 的引擎，不再自动升档："auto"（默认）从最低层逐个尝试已安装的层；显式指定（playwright | scrapling | cloak-cdp | chrome-late | nodriver）只跑该引擎——缺件直接报错而不回退。用在已知需要更高层的站点上，可省掉注定被拒的尝试。挑战站点选 "chrome-late"：它先让站点的挑战跑完再接入读取已渲染 DOM。'),
+  cdp_url: z
+    .string()
+    .optional()
+    .describe('接管你已经开着的浏览器（如 --remote-debugging-port 启动的 Chrome/Edge），复用它自己的 profile、cookie 与放行凭据，只读它里已渲染的 DOM，不会关闭它。适用：同一台机器、同一个出口，你的浏览器能打开而任何自建浏览器都被拒——决定放行的是客户端身份与网络路径，不是 IP 信誉时用它。浏览器里没有目标页时会报错并提示先手动打开。'),
 };
 const shapeHtml = {
   html_content: z.string().describe('Raw HTML source code string'),
@@ -136,13 +146,13 @@ server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, e
   content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
-server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin, save_html, render_engine }) => ({
+server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, browser_brand, python_bin, save_html, render_engine, cdp_url }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
       format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
-      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin, saveHtml: save_html, renderEngine: render_engine,
+      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, browserBrand: browser_brand, pythonBin: python_bin, saveHtml: save_html, renderEngine: render_engine, cdpUrl: cdp_url,
     }),
   }],
 }));
@@ -156,13 +166,13 @@ server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async
   content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
-server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, python_bin }) => ({
+server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, browser_brand, python_bin, cdp_url }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
       format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
-      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, pythonBin: python_bin,
+      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, browserBrand: browser_brand, pythonBin: python_bin, cdpUrl: cdp_url,
     }),
   }],
 }));

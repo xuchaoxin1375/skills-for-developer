@@ -9,10 +9,10 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
   $flags = @('--markdown', '--json', '--skeleton', '--ui', '--text', '--title',
     '--mode', '--extractor', '--attrs', '--format', '--compact', '--pretty', '--prune-empty', '--text-max', '--allow-empty',
     '--proxy', '--noproxy', '--render', '--render-always', '--headful', '--render-timeout-ms',
-    '--chrome-bin', '--python-bin', '--save-html', '--output', '--quiet', '--verbose', '--no-source-marks',
+    '--chrome-bin', '--browser-brand', '--python-bin', '--save-html', '--output', '--quiet', '--verbose', '--no-source-marks',
     '--list-modes', '--list-extractors', '--list-render-engines', '--list-env',
     '--render-engine',
-    '--completion', '--help', '--version', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-h', '-V')
+    '--completion', '--help', '--version', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-p', '-r', '-e', '-b', '-h', '-V')
   $tokens = $commandAst.ToString() -split '\s+'
   $prev = if ($tokens.Count -ge 2) { $tokens[$tokens.Count - 2] } else { '' }
   $list = switch ($prev) {
@@ -21,7 +21,11 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
     '--attrs' { $attrs; break }
     '--format' { $formats; break }
     '--render' { @('auto', 'always'); break }
+    '-r' { @('auto', 'always'); break }
     '--render-engine' { @('auto', 'playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'); break }
+    '-e' { @('auto', 'playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'); break }
+    '--browser-brand' { @('auto', 'chrome', 'edge', 'chromium'); break }
+    '-b' { @('auto', 'chrome', 'edge', 'chromium'); break }
     '--completion' { @('bash', 'powershell'); break }
     default { $null }
   }

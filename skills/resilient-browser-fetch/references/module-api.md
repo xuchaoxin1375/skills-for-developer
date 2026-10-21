@@ -54,6 +54,7 @@ flowchart TD
 
 - 上图未展开可选的 nodriver：它只在显式 `engine="nodriver"`，或 `engine="auto"` 且 `headful=True` 时作为最后后备；不启用 Network 域，`status` 为 `None`。
 - `chrome-late` 同样不在自动阶梯里：它在显式 `engine="chrome-late"` 时运行，自行拉起系统浏览器、等站点的挑战跑完后接入读取，回收责任见 SKILL.md 的“资源回收”。`settle_ms`（默认 5000）是最小静默窗口，`render_timeout_ms`（默认 15000）是接入后等渲染稳定的上限。
+- `browser_brand`（默认 `None`）指定**系统浏览器品牌**：`auto`（默认，按平台顺序找 Chrome→Edge→Chromium）/`chrome`/`edge`/`chromium`，也可用环境变量 `RESILIENT_BROWSER` 设置。它落到每个引擎的浏览器选择上：`chrome-late` 用它做浏览器发现，层 1 映射成 Playwright 的 `channel`（`msedge`/`chrome`），层 2 与 `nodriver` 用它解析出的可执行文件；`executable_path` 优先级更高（给了路径就用路径）。边缘封禁可能按**客户端品牌**判负（实测同一出口、同一协议、同一 profile 下 Chrome 被拒、Edge 放行），这时换品牌比换出口更对症。`notes` 里的 `browser_channel` 如实写实际客户端（如 `system-edge(msedge.exe)`）。
 - worker 隔离防止浏览器启动、挑战循环或关闭阶段拖死调用进程。
 - `wall_timeout_ms` 是调用者可预测的硬上限，不等同于 Scrapling 的页面操作超时。
 - 回退引擎返回 HTTP `200` 也必须经过内容验证，避免把挑战页当成业务页面。
@@ -63,6 +64,8 @@ flowchart TD
 - `playwright_api` 只控制层 1：`auto` 优先 Patchright，也可显式指定 `playwright` / `patchright`。装层 2 会带入 Patchright，做 A/B 或复现时要固定；层 2/3 内部固定使用 Patchright。浏览器结果的 `notes` 会记录 `control_plane`、`browser_channel`、`headless`；Playwright 系引擎另有 `playwright_api`，用于区分“同层但驱动/渠道不同”。
 - `impersonate` 只作用于层 0：非空时改用 curl_cffi 以浏览器同族的 TLS/HTTP2 指纹出网（需安装 curl_cffi，否则构造 `FetchOptions` 即报错），结果里记 `notes: impersonate:<目标>`；浏览器层自带指纹，传了会告警忽略。
 - `user_agent` / `referer` 控制身份头：`user_agent` 覆盖各层默认 UA（层 0 只有显式给出时才覆盖 impersonate 目标的 UA，避免 TLS/UA 版本矛盾）；`referer` 为 `None` 时保留各层默认（层 2/3 默认是 Scrapling 带来的 `https://www.google.com/`），空串表示显式不发，非空必须是完整 http(s) URL。含换行的 UA 或非法 URL 在构造 `FetchOptions` 时即报错。
+- `solve_akamai`（默认 `False`）打开 Akamai Bot Manager 求解，只在层 1/2/3 与 `chrome-late` 生效，其它引擎会告警忽略。开启时 `timeout_ms` 不得低于 60000（挑战页自身要等满最短时长，之后才轮到本地兜底）。求解流程是“先让挑战页自己跑，跑不过再本地解 SEC-CPT 的 SHA-256 工作量证明并从页面内提交”，不需要外部 API 或密钥；结果写进 `result.notes`：`akamai:solved` / `akamai:unsolved` / `akamai:no_challenge` / `akamai:edge_block`，另有 `akamai_detail:` 与 `akamai_step:` 说明经过的步骤。**它只解挑战页**：Akamai 的边缘封禁（403 `Access Denied` / `Reference #18.…`）没有挑战窗口，求解器无解，只能换出口；behavioral 型挑战要采集行为数据，本 skill 不伪造。
+- `cdp_url`（默认 `None`）指定一个**已经开着调试端口的浏览器**，例如 `http://127.0.0.1:9222`。给了它就只走 `cdp-attach` 引擎：接管那个浏览器，读它里已经放行的目标标签页的 DOM，然后断开。**不关闭那个浏览器、不导航它、不碰它的 profile**（`notes` 记 `browser_owned:false`）。浏览器里没有目标页时直接报错并提示先手动打开；`cdp_navigate=True` 才让它去导航（导航期间调试会话在挑战窗口里，可能被 WAF 判负）。`--cdp-url` 与 `--engine <别的引擎>` 冲突会在校验期报错。
 - `fetch_page()` 不写业务文件；`save_page()` 才拥有文件副作用。
 
 ## 获取页面但不写文件
@@ -264,7 +267,7 @@ print(outcome.result.notes)
 
 `site_session` 的主要类型（层 2+：带挑战监视与重验证屏障，需要 scrapling）：
 
-- `SiteSessionOptions`：绑定首页、代理、profile、并发、超时和浏览器身份（`useragent`、`referer`；本会话默认关闭 Scrapling 的 `google_search`，所以 Referer 只有调用方这一个来源）。
+- `SiteSessionOptions`：绑定首页、代理、profile、并发、超时和浏览器身份（`useragent`、`referer`；本会话默认关闭 Scrapling 的 `google_search`，所以 Referer 只有调用方这一个来源）。`solve_akamai=True` 给批量会话也打开 Akamai 求解（异步路径，走同一套检测与本地 PoW 逻辑）。
 - `SiteRequest`：描述一个同源 URL。默认只使用状态码、挑战特征、最小正文大小和最终 origin 做基础检查；`expected_texts`、`expected_selector`、`wait_selector`、`case_sensitive=True` 和 `require_same_path=True` 都是调用者显式启用的严格条件。
 - `SiteSessionManager`：异步上下文管理器；提供 `warmup()`、`fetch()` 和 `fetch_many()`。
 - `ChallengeEvent`：挑战监视器通知；有头模式下调用者提醒用户操作同一个窗口。检测到挑战时会打印"最多等待 N 秒"，验证通过后打印"浏览器验证已通过(等待 X 秒)，继续会话"，让操作者知道窗口在等他而不是卡住了。

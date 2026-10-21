@@ -338,7 +338,7 @@ def test_fetch_with_playwright_records_api_and_channel(
     monkeypatch.setattr(
         subject,
         "render_with_playwright",
-        lambda _config: ("<html><title>OK</title><body>content</body></html>", 200, "https://example.com/"),
+        lambda _config: ("<html><title>OK</title><body>content</body></html>", 200, "https://example.com/", []),
     )
     monkeypatch.setattr(subject, "resolve_playwright_api", lambda _api: "patchright")
 

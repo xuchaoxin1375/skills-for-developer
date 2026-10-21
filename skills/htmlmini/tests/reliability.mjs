@@ -17,6 +17,7 @@ import {
   pickStrongerPython,
   pythonBinOverride,
   resetEnvScanCache,
+  savePageArgs,
   scanPythonEnvironments,
   hostBypassed,
   maskProxy,
@@ -247,6 +248,7 @@ async function cli(args, { input, env } = {}) {
     mode: ['markdown', 'skeleton', 'text', 'json', 'title', 'ui', 'html'],
     extractor: ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'sanitize', 'passthrough'],
     'render-engine': ['auto', 'playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'],
+    'browser-brand': ['auto', 'chrome', 'edge', 'chromium'],
   };
   for (const [opt, values] of Object.entries(valueSets)) {
     const missing = values.filter((val) => !hf.stdout.includes(val));
@@ -261,6 +263,8 @@ async function cli(args, { input, env } = {}) {
     ok(missing.length === 0, `${file} 补全含全部渲染引擎（缺 ${missing.join(', ') || '无'}）`);
     const missingModes = valueSets.mode.filter((val) => !comp.includes(val));
     ok(missingModes.length === 0, `${file} 补全含全部输出模式（缺 ${missingModes.join(', ') || '无'}）`);
+    const missingBrands = valueSets['browser-brand'].filter((val) => !comp.includes(val));
+    ok(missingBrands.length === 0, `${file} 补全含全部浏览器品牌（缺 ${missingBrands.join(', ') || '无'}）`);
   }
   const lm = await cli(['--list-modes']);
   ok(lm.code === 0 && valueSets.mode.every((v) => lm.stdout.includes(v)) && lm.stdout.includes('正文 Markdown'), '--list-modes 给出模式与说明');
@@ -402,7 +406,12 @@ async function cli(args, { input, env } = {}) {
 {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-registry-'));
   const saved = process.env.HTMLMINI_PROXY_REGISTRY;
+  // 本段要的是"没在用代理"那条提示文案；机器上若有全局 HTTP(S)_PROXY，
+  // CLI 会走代理并给出另一种文案，断言会与本机环境耦合而偶发失败。
+  const proxyEnv = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy'];
+  const savedProxyEnv = Object.fromEntries(proxyEnv.map((k) => [k, process.env[k]]));
   try {
+    for (const k of proxyEnv) delete process.env[k];
     const registry = path.join(dir, 'proxy-resources.json');
     await writeFile(
       registry,
@@ -425,6 +434,10 @@ async function cli(args, { input, env } = {}) {
   } finally {
     if (saved === undefined) delete process.env.HTMLMINI_PROXY_REGISTRY;
     else process.env.HTMLMINI_PROXY_REGISTRY = saved;
+    for (const [k, v] of Object.entries(savedProxyEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
     await rm(dir, { recursive: true, force: true });
   }
 }
@@ -1428,6 +1441,56 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+// 短选项：长选项是主名，短选项给高频开关（条件允许时同时给，不能冲突、不能歧义）。
+{
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-short-'));
+  try {
+    const page = path.join(dir, 'p.html');
+    await writeFile(page, '<html><head><title>短选项页</title></head><body><h1>短选项页</h1></body></html>');
+    const viaShort = await cli(['-b', 'edge', '-p', 'direct', '--title', page]);
+    ok(viaShort.code === 0 && viaShort.stdout.includes('短选项页'), '短选项 -b / -p 生效');
+    const badBrand = await cli(['-b', 'safari', '--title', page]);
+    ok(badBrand.code === 2 && /browser-brand/.test(badBrand.stderr), '短选项 -b 非法值退出 2');
+    const badEngine = await cli(['-e', 'nope', '--title', page]);
+    ok(badEngine.code === 2, '短选项 -e 非法引擎退出 2');
+    // -r 允许带可选值：-r always 表示总是渲染
+    const renderAlways = await cli(['-r', 'always', '--title', page]);
+    ok(renderAlways.code === 0, '短选项 -r always 生效');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// save_page 的浏览器路径必须真的传下去：WAF 可能按客户端品牌判负
+// （实测同一出口、同一协议 Chrome 被拒、Edge 放行）。早先 --chrome-bin
+// 只喂给零依赖的 chrome dump-dom 通路，走 save_page(chrome-late) 时被静默丢掉。
+{
+  const base = {
+    script: 'C:/skill/scripts/resilient_fetch.py',
+    url: 'https://example.com/item',
+    out: 'C:/tmp/out.html',
+    engine: 'chrome-late',
+    renderTimeoutMs: 300000,
+  };
+  const withBin = savePageArgs({
+    ...base,
+    chromeBin: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+  });
+  const idx = withBin.indexOf('--executable-path');
+  ok(idx >= 0 && withBin[idx + 1].includes('msedge.exe'), '浏览器路径透传到 save_page 的 --executable-path');
+
+  const withBrand = savePageArgs({ ...base, browserBrand: 'edge' });
+  const brandIdx = withBrand.indexOf('--browser-brand');
+  ok(brandIdx >= 0 && withBrand[brandIdx + 1] === 'edge', '浏览器品牌透传到 save_page 的 --browser-brand');
+
+  const withoutBin = savePageArgs(base);
+  ok(!withoutBin.includes('--executable-path'), '未指定浏览器时不传 --executable-path');
+  ok(!withoutBin.includes('--browser-brand'), '未指定品牌时不传 --browser-brand');
+  ok(withoutBin.includes('--discover-proxy'), '未指定代理时让渲染脚本自己发现代理');
+  ok(!withoutBin.includes('--headful'), '未开窗时不带 --headful');
+  ok(withBin[withBin.indexOf('--render-timeout-ms') + 1] === '60000', '渲染预算上限压到 60s');
 }
 
 await new Promise((resolve) => server.close(resolve));
