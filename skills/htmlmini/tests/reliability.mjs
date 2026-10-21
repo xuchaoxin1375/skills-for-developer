@@ -1125,6 +1125,9 @@ elif mode == 'short-mention':
     html = ('<!doctype html><html><head><title>联系表单</title></head><body><form><p>'
             '本站用 challenges.cloudflare.com 与 turnstile 做验证。'
             '</p></form></body></html>')
+elif mode == 'block':
+    html = ('<!doctype html><html><head><title>Access Denied</title></head><body>'
+            '<p>You do not have permission to access this resource.</p></body></html>')
 else:
     html = ('<!doctype html><html><head><title>挑战机制</title></head><body><article><h1>挑战机制</h1><p>'
             + '正文提到 challenges.cloudflare.com 与 turnstile 的机制。' * 30
@@ -1172,6 +1175,21 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
     process.env.STUB_BODY = 'short-mention';
     const shortMention = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
     ok(typeof shortMention === 'string' && shortMention.includes('验证'), '短页面提到挑战域名不被误判（判据是内部标识而非裸词）');
+
+    // 2b) WAF 拒绝页（标题 "Access Denied"）：不能当成正文交出去，也不能报成"挑战页"。
+    //     它是终局，下一步是换引擎/换出口，与"挑战还在跑"的下一步不同。
+    process.env.STUB_BODY = 'block';
+    let blockErr = null;
+    try {
+      await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
+    } catch (e) {
+      blockErr = e;
+    }
+    ok(blockErr && /block page/.test(blockErr.message), `WAF 拒绝页被判为拒绝页（实得 ${blockErr && blockErr.message.slice(0, 80)}）`);
+    ok(blockErr && /chrome-late/.test(blockErr.message), '拒绝页给出晚接入引擎的下一步');
+    ok(blockErr && !/looks like a challenge/.test(blockErr.message), '拒绝页不误报成挑战页');
+    const blockKept = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000, allowEmpty: true });
+    ok(typeof blockKept === 'string', '--allow-empty 仍可取回拒绝页 HTML 供排查');
 
     // 3) --render-engine 钉住时强制 save_page，不让零依赖 Chrome 顶掉选择。
     process.env.STUB_BODY = 'article';

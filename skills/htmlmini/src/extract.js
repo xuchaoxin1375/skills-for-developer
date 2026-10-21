@@ -192,6 +192,11 @@ export function bodyChallengeSignals(html) {
   if (/just a moment|attention required|checking your browser|verifying you are human|请稍候|正在验证/i.test(title)) {
     return [`challenge title "${title}"`];
   }
+  // WAF 直接拒绝的页面（Akamai 的 "Access Denied"）也是强判据：没有正常内容页用这种标题。
+  // 它和"挑战还在跑"不是一回事：挑战页再等就有机会，拒绝页是终局，处置方式不同。
+  if (/access denied|^forbidden$|^error 10(15|20)$|you have been blocked/i.test(title)) {
+    return [`block page title "${title}"`];
+  }
   // 其余判据只在正文极短时才认：避免把讲 Cloudflare / 嵌入 Turnstile 组件但确有内容的页面误判。
   const text = s
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -1022,9 +1027,29 @@ export async function readWithRender(
   const guardRendered = (r) => {
     const sigs = bodyChallengeSignals(r.html);
     if (!sigs.length || allowEmpty) return r;
+    // WAF 拒绝页与"挑战还在跑"处置不同：拒绝页是终局（再换渲染方式也没用），
+    // 挑战页再等就有机会。下一步提示也要分开写。
+    const blocked = sigs.filter((s) => s.startsWith('block page title'));
+    if (blocked.length) {
+      throw new Error(
+        `rendered page is the site's block page (${blocked.join(', ')}): the request was refused outright — don't keep switching render modes, the site rejected this one. Use --render-engine chrome-late (attach late: let the site's challenge finish before attaching) on the same proxy, or change the exit/proxy. Pass --allow-empty to keep the block HTML anyway.`,
+      );
+    }
     throw new Error(
       `rendered page still looks like a challenge (${sigs.join(', ')}): the rendering pathway does not solve challenges — add --python-bin auto (or set HTMLMINI_PYTHON=auto) so the save_page engine (scrapling/cloak-cdp) solves it, or fetch it with resilient-browser-fetch (--headful for manual verification). Pass --allow-empty to keep the challenge HTML anyway.`,
     );
+  };
+  // 静态 200 也可能是 WAF 拒绝页（标题 "Access Denied" 一类）。当正文交出去是假成功，
+  // 必须报错：标题判据足够强，正常内容页不会用这种标题。
+  const guardBlocked = (r) => {
+    const blocked = bodyChallengeSignals(r.html ?? '').filter((s) => s.startsWith('block page title'));
+    if (!blocked.length || allowEmpty) return r;
+    const err = new Error(
+      `this page is the site's block page (${blocked.join(', ')}), not content — the request was refused outright. Re-fetch from a different exit/proxy, or render it via resilient-browser-fetch --engine chrome-late (attach late) on the same proxy. Pass --allow-empty to keep the HTML anyway.`,
+    );
+    // 静态正文就是拒绝页时，值得再渲染一次：真实浏览器可能过得去（403/5xx 也是这个处置）。
+    err.blockPage = true;
+    throw err;
   };
   // 渲染一次并做挑战判定；bin 为空表示沿用默认解释器（PATH 的 python/python3）。
   const renderHtml = async (bin) => {
@@ -1073,12 +1098,13 @@ export async function readWithRender(
     return await renderWithEscalation();
   }
   if (!remote || !render) {
-    return done(await readSource(source, { timeoutMs, proxy }));
+    return done(guardBlocked(await readSource(source, { timeoutMs, proxy })));
   }
   try {
-    return done(await readSource(source, { timeoutMs, proxy }));
+    return done(guardBlocked(await readSource(source, { timeoutMs, proxy })));
   } catch (e) {
-    if (!isRenderableError(e)) throw e;
+    // 403/5xx，或静态 200 但正文就是拒绝页：都换渲染通路再试一次。
+    if (!isRenderableError(e) && !e?.blockPage) throw e;
     // 记下静态阶段的状态码：渲染后状态码未知时，日志能说明"静态 403 才转渲染"。
     if (Number.isFinite(e.statusCode)) info.staticStatus = e.statusCode;
     return await renderWithEscalation();

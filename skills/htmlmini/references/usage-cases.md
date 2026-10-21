@@ -205,6 +205,23 @@ flowchart TD
 - **别把应用壳当"页面没内容"**：应用壳是"还没水合"，继续等就有正文；htmlmini 对静态 200 + 短正文会直接报错提示 `--render=always`，此时用 `--render=always --render-engine chrome-late --proxy …`（或 `resilient-browser-fetch --engine chrome-late --expect-text '<产品名>'`）把水合等完。
 - 拿不准时先落盘再提取：`resilient-browser-fetch` 的 `--engine chrome-late --expect-text '<产品名>'` 拿到 HTML 快照与 `.meta.json`，再 `htmlmini page.html` 提字段；不要按 URL 反复重抓（应用错误态是间歇的，重抓也拿不到稳定的同一份）。
 
+## 15 WAF 直接拒绝的商城页：拒绝页不是正文，出口才是变量
+
+某快时尚品牌的商品页（Akamai Bot Manager）。静态抓 `403`；渲染后拿到的是标题 `Access Denied`、正文一句话的**拒绝页**。
+
+- **晚接入引擎在这类站上帮不上忙**：直连时 `chrome-late` 5.4 s 就返回 `Access Denied`（475 B，`pre_attach_state:blocked`）——站点在第一个请求就拒绝，**没有挑战窗口**，也就没有"等挑战跑完"这回事。同一套代码换海外出口后，10 s 内拿到 1.57 MB 商品页（标题、价格、描述、推荐位齐全）。
+- **别把拒绝页当正文交出去**：拒绝页标题是 `Access Denied`、正文几百字节，采集层若照单全收就是**假成功**（实测 htmlmini 曾交出 13 个词的拒绝页，看起来像"抓到了但内容很少"）。判据按标题认（`Access Denied` / `Forbidden` / `Error 1020`），并与"挑战页"分开处置：拒绝页提示**换出口或换晚接入引擎**，挑战页提示等或换求解引擎。
+- **推荐命令**（先渲染取数，再按文件模式出字段）：
+
+  ```bash
+  python ../resilient-browser-fetch/scripts/resilient_fetch.py --url '<URL>' --out page.html \
+    --engine chrome-late --proxy '<proxy>' --expect-text '<商品名>'
+  htmlmini page.html --mode ui
+  ```
+
+  `ui` 模式给首屏结构（H1/H2/H3、尺码、配送、成分）与推荐位清单，`markdown` 模式给长描述与完整推荐列表；商品页要字段用 `ui` 打底，要长正文再补 `markdown`。
+- **变量纪律**："用户浏览器能打开"要拆成**出口**与**客户端可信**两项。本例人手工浏览器走系统代理，所以真正的差异只有出口；照抄结论而忽略出口，是最常见的误判。
+
 ## 通用坑
 
 - 同一 URL 只联网抓一次，换视图不是重抓的理由。
