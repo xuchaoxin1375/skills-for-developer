@@ -23,9 +23,12 @@ PowerShell location 与 `[Environment]::CurrentDirectory` 不保证同步。.NET
 |---|---|---|
 | 字符串 `>` / `Out-File` 默认写入 | UTF-16LE，带 BOM | UTF-8 无 BOM |
 | 新文件 `Set-Content` 未指定编码 | 系统 ANSI 编码 | UTF-8 无 BOM |
+| `Export-Csv` 未指定编码 | ASCII，中文变 `?`（信息丢失） | UTF-8 无 BOM |
 | `Set-Content -Encoding UTF8` | UTF-8 带 BOM | UTF-8 无 BOM |
 
 表格针对文本写入；pwsh 7.4+ 的原生 stdout 直接重定向有字节保留行为，不把字符串示例推广到所有原生/二进制输出。
+
+`[System.Text.Encoding]::UTF8` 不是"无 BOM"的别名：它带 BOM 前缀，`File.WriteAllText(..., [System.Text.Encoding]::UTF8)` 在 5.1 与 7 都写出 `EF BB BF`（2026-10-21 实测）；要无 BOM 一律用 `New-Object System.Text.UTF8Encoding($false)`。
 
 跨 5.1/7 明确写 UTF-8 无 BOM、保持字符串自身换行的方式：
 
@@ -94,6 +97,7 @@ $nativeExit = $LASTEXITCODE
 - `-Path` 的方括号匹配到了另一个文件，`-LiteralPath` 读取精确文件。
 - 从另一个工作目录执行脚本时，`$PSScriptRoot` 与 `(Get-Location).Path` 不同。
 - 5.1 字符串 `>` 文件以 `FF FE` 开头，`-Encoding UTF8` 文件以 `EF BB BF` 开头；pwsh 对应文本文件无 BOM。明确 `UTF8Encoding($false)` 的 .NET 写入在两者均无 BOM，文本完整。
+- 2026-10-21：`File.WriteAllText(..., [Text.Encoding]::UTF8)` 在 5.1 与 7 都写出 `EF BB BF`（`GetPreamble()` 均 3 字节）；`Export-Csv` 未指定编码时 5.1 把中文写成 `??`（ASCII，信息丢失），7 写 UTF-8 无 BOM。
 - 使用 Python argv 记录器：两者直接调用均保留带空格参数；5.1 丢掉空参数和内嵌引号，pwsh 的本次调用保留。两者 `Start-Process -ArgumentList` 数组的带空格项都被拆为两个参数。
 
 以上验证本机版本及目标程序，不证明所有包装器、PowerShell 7 小版本或第三方 CLI 有相同参数行为。需要兼容 5.1 的代码也不能直接照抄 `&&`/`||` 等新版本语法。

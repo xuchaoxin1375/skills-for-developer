@@ -20,6 +20,71 @@
 # 中文样本期望 20013 25991；码点正确但显示烂则为输出层，码点错则为读取层
 ```
 
+捕获模式下 `[Console]::IsOutputRedirected` 为 `True`（agent shell 恒如此），此时写 stdout 走 .NET 编码而不是 `WriteConsoleW`，所以"交互终端正常、harness 乱"很常见。要确认子进程实际写了什么字节，用 .NET 进程接口直接取 `StandardOutput.BaseStream`，不经过 PowerShell 文本层：
+
+```powershell
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = 'powershell.exe'
+$psi.UseShellExecute = $false
+$psi.RedirectStandardOutput = $true
+$b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('Write-Output ([char]0x4E2D)'))
+$psi.Arguments = '-NoLogo -NoProfile -NonInteractive -EncodedCommand ' + $b64
+$p = [Diagnostics.Process]::Start($psi)
+$ms = New-Object IO.MemoryStream
+$p.StandardOutput.BaseStream.CopyTo($ms)
+$p.WaitForExit()
+(($ms.ToArray() | ForEach-Object { $_.ToString('X2') }) -join ' ')
+```
+
+UTF-8 的"中"是 `E4 B8 AD`，GBK 是 `D6 D0`，`3F` 表示已被替换成问号（不可恢复）。`-EncodedCommand` 只避免命令行引号问题，不是输出编码设置。
+
+**`chcp` 的自报值不能当证据**：2026-10-21 本机实测，父进程 `[Console]::OutputEncoding=65001`、P/Invoke `GetConsoleOutputCP()` 为 65001、5.1 子进程继承到的也是 65001 时，`chcp` 与 `cmd /c chcp` 仍打印 936。实际状态看 `[Console]::OutputEncoding.CodePage`。
+
+### 编码体检与校准（脚本）
+
+怀疑乱码时先用 `scripts/calibrate-encoding.ps1` 分层定位，不要从反复改编码参数开始。脚本把链路拆成可分别判定的几跳，每个用例单独起进程、从"ANSI 码页"基线出发，判定用码点与字节；只有 `VISUAL_*` 段需要人（或代理）判读。
+
+```powershell
+# 当前 harness 的实际状态 + 完整矩阵
+pwsh -NoProfile -File scripts/calibrate-encoding.ps1
+# 同机对比 5.1；-Keep 保留样本，供 harness 自己的文件读取工具对照
+pwsh -NoProfile -File scripts/calibrate-encoding.ps1 -IncludeWindowsPowerShell -Keep
+```
+
+脚本源文件全 ASCII 是刻意设计：5.1 按 ANSI 解析无 BOM 的 UTF-8 源文件，中文注释会让体检脚本在运行时先自己乱。
+
+**不要把脚本输出接 `| Select-Object` / `| Out-String` / `>` 再判读**：中转那一跳本身就会把 `VISUAL_*` 弄坏，看起来像体检失败（实测 `日本語` 会变成 `日本�?`）。要截断就先落盘，再用可靠的文件读取工具看。
+
+| 输出 | 含义 |
+|---|---|
+| `CALIB_SNAPSHOT` | 当前进程真实状态：`[Console]::OutputEncoding`、`$OutputEncoding`、`chcp` 自报值、`IsOutputRedirected`、ANSI 码页、profile、python 及版本 |
+| `CASE <name> RESULT=` | 该跳是否保住样本：`PASS` / `MANGLED` / `LOSSY_FFFD` / `LOSSY_ASCII` / `SKIP_NOPYTHON` / `CHILD_ERROR` |
+| `CALIB_SAFE_ROUTES` | 文档推荐的安全路线通过数，应当全过；有失败按下面表处置，不用中转路线凑合 |
+| `CALIB_TRANSIT_ROUTES` | 重定向 / `Out-File` / `Out-String` 的通过数，只记录事实：同一配置换宿主会变 |
+| `VISUAL_*` | 需要看的一段：码点行是基准，`VISUAL_PS_TEXT` 与 `VISUAL_CHILD_TEXT` 各一行 |
+| `CALIB_EXIT` | 0 安全路线全过；1 有安全路线失败；2 参数错；3 缺 python |
+
+判读分工（先看清坏在哪一跳，再动手）：
+
+- **码点对、文本乱** → 字符串本身正确，坏在输出/捕获层；不要回头改文件编码。
+- **`VISUAL_CHILD_TEXT` 正常、`VISUAL_PS_TEXT` 乱** → 本 harness 里原生程序直写 stdout 可用、PowerShell 字符串输出不可信：改为进程写文件 + 可靠的文件读取工具，或让程序自己还原并输出。
+- **两者都乱** → 先按字节复核样本文件，再怀疑捕获层；此时只剩 ASCII JSON 与文件接力两条稳定路线。
+- **只有 `read-default` 失败** → 只说明该 shell 默认按 ANSI 解码，不是故障：pwsh 7 通常 `PASS`，5.1 通常 `MANGLED`。
+- 加 `-Keep` 后把 `CALIB_SAMPLE_FILE` 交给 harness 的 `read` 工具；它与 `Get-Content` 结果不同并不矛盾，两条走的是不同层，正好用来分开定位。
+
+矩阵用例固定从本机 ANSI 码页基线出发（非 Windows 用 65001），用于比较路线而不是复现父进程状态；父进程的真实配置看 `CALIB_SNAPSHOT`。`CALIB_CHCP` 是 `chcp` 自报值，可能与实际不一致（见上文），以 `CALIB_CONSOLE_OUTPUT_CP` 和各用例的 `DOTNET=` 为准。
+
+安全路线失败时：
+
+| 失败用例 | 先查什么 |
+|---|---|
+| `read-utf8` / `read-dotnet` | 文件本身是否 UTF-8；按字节看样本，不凭显示判断 |
+| `read-ascii-json` / `json-fallback` | python 是否可用、`ensure_ascii=True` 是否生效、消费端是否真按 JSON 还原 |
+| `gate-utf8` | 生产方到闸门之间是否被再编码一次；闸门必须拿到原始字节 |
+| `producer-bytes` | 生产方自己的编码设置（Python 需 `-X utf8` / `encoding='utf-8'`） |
+
+限制：结论只覆盖本次运行的宿主、启动方式和 profile；换 harness、终端或改 shell 配置后重跑。脚本只改子进程的编码状态，不动系统设置，也不改父 shell。
+
 ### Python 与工具捕获编码
 
 - PowerShell 输出编码与 Python 捕获端默认编码不一致时，`subprocess(..., text=True)` 可能乱码或抛 `UnicodeDecodeError`。先确定生产方编码，再显式指定 `encoding='utf-8'`（生产方确为 UTF-8 时），或先捕获 bytes 并严格按已知编码解码。
@@ -56,6 +121,18 @@ python -c "import json,pathlib;print(json.dumps({p:pathlib.Path(p).read_bytes().
 ```
 
 预期：两个文件都能按 UTF-8 解码，但 `out-redirect.txt` 的内容是双重错位字形，`out-bytes.txt` 是原文。
+
+#### 7.4+ 直接重定向保留原始字节（先分清是否经过 PowerShell）
+
+2026-10-21 本机 pwsh 7.5.4 实测，同一进程、同一脏基线（`[Console]::OutputEncoding=936`）：
+
+| 写法 | 落盘内容 |
+|---|---|
+| `& python -X utf8 -c ... > out.txt`（原生命令直接重定向） | 原始 UTF-8，正确 |
+| `function Emit { & python ... }; Emit > out.txt` | 双重错位 |
+| `& python ... \| Out-File out.txt` | 双重错位 |
+
+分界不是 `>` 本身，而是数据有没有先变成 PowerShell 字符串：7.4+ 的字节保留只覆盖"原生命令 stdout 直接重定向"，经函数、变量、`Out-String` 或 `Out-File` 就回到文本层。5.1 没有这个例外，直接调用同样 MANGLED。校准脚本里 `redirect-*` 测的是文本层路径，`native-redirect` 单独测直接重定向。
 
 ### 链式 CLI 处理的推荐做法（实测对照）
 
@@ -207,6 +284,21 @@ python -c "from pathlib import Path; import json; print(json.dumps(Path('.worksp
 
 2026-10-12，在另一 agent harness 的 shell 工具（pwsh 7.5.4）复现同一现象：UTF-8 无 BOM 中文文件经 `Get-Content -LiteralPath … -Encoding UTF8` 读取后，工具捕获输出仍为乱码；同文件经 Python `read_bytes` 核验为合法 UTF-8，ASCII JSON 路线还原正确。再次确认故障位于“字符串之后的输出/捕获链路”，与文件解码、pwsh 版本无关；跨 harness 遇到时直接采用 ASCII JSON，不重复调试编码参数。
 
+2026-10-21，OpenCode shell 工具（pwsh 7.5.4 + 5.1 子进程，profile 已加载，ANSI 936）运行本 skill 的 `scripts/calibrate-encoding.ps1 -IncludeWindowsPowerShell`：
+
+| 观察 | 结果 |
+|---|---|
+| 快照 | `[Console]::OutputEncoding=936`、`$OutputEncoding=65001`、`chcp=936`、`IsOutputRedirected=True` |
+| 安全路线 | 14/14（两版各 7 条） |
+| 中转路线 | 8/16：`redirect` / `outfile` / `outstring` 的 `-dirty` 变体全 `MANGLED`，`-utf8` 变体全 `PASS`；`native-redirect` 在 7 为 `PASS`、5.1 为 `MANGLED` |
+| `read-default` | pwsh 7 `PASS`，5.1 `MANGLED` |
+| `VISUAL_PS_TEXT` | `���� caf�� ...`，同批 `VISUAL_EXPECT_CODEPOINTS` 正确 |
+| `VISUAL_CHILD_TEXT` | 正确 |
+
+本次最初在同一进程先输出再设 `[Console]::OutputEncoding=UTF8`，PS 字符串输出仍乱；随后单独验证发现这是**设置时机**问题：属性读数已是 65001，但实际写出仍用旧编码器；新调用里先设再输出（5.1 与 7.5.4 各测一次）中文显示正常，同一进程先输出一行再设则仍乱。因此不能把该现象直接归为宿主捕获层；判断时先确认设置是否发生在第一次输出之前。同一文件用 harness 的 `read` 工具打开显示正确、用 `Get-Content -Encoding UTF8` 显示乱码，可作两条链路的对照。
+
+同一轮另测：父进程设 `[Console]::OutputEncoding=65001` 后，P/Invoke `GetConsoleOutputCP()` 与 5.1 子进程继承值均为 65001，`chcp` 仍打印 936；代码页判断不依赖 `chcp` 数字。
+
 ### Select-String 检索的解码层与输出层
 
 2026-10-12，OpenCode shell 工具（pwsh 7.5.4，子进程 Windows PowerShell 5.1，本机 ANSI 936）用同一中文样本写入 UTF-8 无 BOM、带 BOM、GBK 三种文件，对照 `Select-String` 的匹配计数（结果只用 ASCII 标签输出，避免捕获层干扰判读）：
@@ -219,7 +311,7 @@ python -c "from pathlib import Path; import json; print(json.dumps(Path('.worksp
 | 按实际编码读成字符串后管道 `Select-String` | 1 | 1 |
 | `Get-Content` 默认编码读无 BOM UTF-8 后管道 | 0（按 ANSI 误解码） | 1（默认 UTF-8） |
 
-要点：同一无 BOM UTF-8 文件，5.1 的 `Select-String` 能检索而 `Get-Content` 默认读出的文本是错的，两个 cmdlet 的默认解码方向相反；GBK 文件两版 `Select-String` 都静默漏配且退出码 0。5.1 的 `Select-String` 无 `-Encoding` 参数，需控制文件解码时用管道路线。输出层：两版未设 `[Console]::OutputEncoding` 时，匹配行经工具捕获均为乱码；本 harness 同次调用先设输出编码后显示正确，与上文另一 harness“追加输出设置仍未修复”的记录并存，各自只证明所记环境。5.1 输出被重定向捕获时，结果尾部会附加 `#< CLIXML` 进度序列化噪声，属诊断噪声，不影响匹配计数。
+要点：同一无 BOM UTF-8 文件，5.1 的 `Select-String` 能检索而 `Get-Content` 默认读出的文本是错的，两个 cmdlet 的默认解码方向相反；GBK 文件两版 `Select-String` 在未指定编码时都静默漏配且退出码 0。本机 5.1.26100 的 `Select-String` 有 `-Encoding` 参数（String 类型，可用 `Default` 指定 ANSI），GBK 文件加 `-Encoding Default` 可命中；更早资料称 5.1 无此参数，与本次实测不符，跨版本脚本仍应显式指定或先按实际编码读成字符串再管道。输出层：两版未设 `[Console]::OutputEncoding` 时，匹配行经工具捕获均为乱码；本 harness 同次调用先设输出编码后显示正确，与上文另一 harness“追加输出设置仍未修复”的记录并存，各自只证明所记环境。5.1 输出被重定向捕获时，结果尾部会附加 `#< CLIXML` 进度序列化噪声，属诊断噪声，不影响匹配计数。
 
 复现注意：探针脚本曾在新调用中引用上一调用定义的样本变量，写入空文件后所有场景计数全 0，险些误判为“GBK 必漏配”；跨调用重跑探针必须在本调用内重建样本，并用字节回读（按写入编码读回后 `-match`）先验证样本本身。
 
@@ -303,6 +395,23 @@ $content
 ASCII JSON 是跨编码链路的传输格式，不是用户所要的原文。采用该回退时，用程序解析 JSON 并通过工具输出还原文本，不让模型逐字复写。输出限额不足时通过工具分块输出，说明截断或缺口，不把片段称为全文。工具输出完成后只简短确认；用户另行要求在最终回复粘贴全文时按其要求执行。
 
 检查时分别走查“内部读取正常但用户只见读取状态”和“ASCII JSON 正确但尚未还原输出”两种情况：两者都未完成工具输出原文，不能用最终回复重打全文补齐。本说明是针对反馈的行为约束；结构校验或桌面走查不证明其他代理已遵循它。
+
+### 编码守卫插件：确认注入是否生效
+
+Windows 上 OpenCode 插件 `plugins/powershell-encoding-guard` 会替 agent 在每次 shell 调用前前置编码语句与 `PYTHONUTF8=1`。它有两个静默失效的口子，界面都不会给出提示：
+
+1. **装载失败**：宿主在 `globalThis[插件 id]` 上放自己的值，插件若拿同名**字符串键**当进程级注册表，setup 会抛 `registry.get is not a function`，宿主只记一条 `failed to load plugin`。
+2. **钩子没覆盖当前会话**：宿主按 location 路由 shell 钩子，同一服务里不同会话可能有的被覆盖、有的没有；插件文件改动触发热重载时也可能出现某个 location 失联。
+
+排查顺序（先看插件，再看环境，不要一上来就调编码参数）：
+
+1. 服务端日志 `~/.local/share/opencode/log/opencode.log`（Windows：`%USERPROFILE%\.local\share\opencode\log\opencode.log`）里找 `loading plugin` 与 `failed to load plugin`。
+2. 插件诊断文件 `<系统临时目录>/opencode/powershell-encoding-guard.log`：有 `setup` 行说明插件装载过；有 `shell.injected` 行说明**当前这次调用**确实被注入了。
+3. 只有 `setup` 没有 `shell.injected`，说明当前会话没被覆盖：按上面的安全前缀模板手写，模板幂等、与插件并存不冲突。
+
+注入是否生效要看插件自己的标记（`shell.injected` 行、命令前缀、插件特有提示文本）。命令里**自己写了**前缀时，日志里只有一份前缀，据此判断不了是谁加的；退出码 0 或纯英文输出同样不能证明读取正确。
+
+插件的模式、诊断文件格式与踩坑记录见插件包自身的 README（真源在 skills-for-developer 仓库 `plugins/powershell-encoding-guard/`）。
 
 ### 交互式 `help` 乱码：检查分页器
 

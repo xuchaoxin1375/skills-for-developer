@@ -7,6 +7,7 @@
 | 问题 | 维护位置 | 本文的使用边界 |
 |---|---|---|
 | 实体目录、命名、索引、链接分发、路径与过程产物 | [skill-authoring-sync](../SKILL.md) | 引用其当前规则，不另复制安装脚本或分发政策 |
+| OpenCode 插件真源、入口约定、装载规则与分发 | [插件制品](../../../docs/plugins.md) | 细则在文档，不在 skill 正文复制；插件行为规则由插件 README 与对应 skill 共同负责 |
 | Skill 职责、规则强度、正文组织、措辞与示例 | [内容与语言规范](skill-content-guidelines.md) | 自有 skill 内容写作的维护正本 |
 | 创建、提炼、实战补丁、评估如何协作 | [真源工作流程](../SKILL.md#工作流程)及相关维护 skill | 按主要问题选择入口；具体执行读取对应当前正文 |
 | 通用 Markdown 语法与排版 | [markdown-style](../../markdown-style/SKILL.md) | 使用适用排版规范，不让排版改变职责或业务内容 |

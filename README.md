@@ -24,7 +24,7 @@
 | `skills/web-app-testing`             | 前后端 Web 自动化测试规划、编写与维护：有效断言、真实 API/存储、Playwright 回归用例、隔离、运行器资源预算与 CI，含幂等/副作用和兼容回归；浏览器工具决策与操作转 browser-automation，工程设计按应用治理，交付证据按 ai-verified-delivery | Web 测试、自动化测试、该测什么、什么时候写测试、单元/组件/集成/E2E、Playwright 回归用例、API 契约、数据库、权限回归、幂等/兼容回归、过度 Mock、测试隔离、不稳定测试、测试并发、资源预算、CI 分层 |
 | `skills/arena-preview`               | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告；展示截图用于验收时转共用协议                                                                                                                                                                                     | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看                                                                                                                                                        |
 | `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味；对比度与截图行为复用共用规范，保留整体品味和模板覆盖评审                                                                                                                                    | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique                                                                                                 |
-| `skills/powershell-pitfalls`         | PowerShell 5.1/pwsh 执行与排障：编写/运行脚本片段、读取选择、编码保真、启动和安全底线，诊断与版本细节按需读取；原生 read 常规查看无需加载                                                                                                                                                   | PowerShell 读文件、编写脚本、Get-Content/type/cat、UTF-8、默认UTF-8输出、NoProfile、profile、PowerShell 开发测试、退出码、原生参数、Start-Process、LiteralPath、管道输出、中文乱码、BOM、引号、别名、junction |
+| `skills/powershell-pitfalls`         | PowerShell 5.1/pwsh 执行与排障：编写/运行脚本片段、读取选择、编码保真、编码体检与校准、启动和安全底线，诊断与版本细节按需读取；原生 read 常规查看无需加载                                                                                                                                           | PowerShell 读文件、编写脚本、Get-Content/type/cat、UTF-8、默认UTF-8输出、NoProfile、profile、PowerShell 开发测试、退出码、原生参数、Start-Process、LiteralPath、管道输出、中文乱码、编码体检、BOM、引号、别名、junction |
 | `skills/agentic-web-search`          | 智能体联网搜索优化：时间锚定、探测查询、迭代扩词、来源分级与交叉验证、知识冲突与假前提裁决、预算控制、搜索/抓取请求节奏与 429 冷却、输出规范，含工具参数与评测参考                                                                                                                          | 联网搜索、搜索优化、检索词陈旧、信息过时、知识冲突、假前提、交叉验证、来源分级、搜索预算、引用不实、web search                                                                                                |
 | `skills/web-animation-guide`         | Web动画技术实现：选型、示例、退出布局保持、中间帧验证、打断清理、兼容、性能与减弱动效；读取项目令牌，截图取景与查看复用共用协议，与 frontend-design 分工维护                                                                                                                                | web动画、WAAPI、滚动驱动、View Transitions、GSAP、reduced-motion、动效卡顿                                                                                                                                    |
 | `skills/adaptive-responsive-guide`   | 响应式专项：视口/容器阈值、clamp流体、Flex/Grid、媒体、操作收纳、滚动与浮层场景、范围化验收；可独立使用，与 frontend-design 合并交付，动效与截图引用共用规则                                                                                                                                | 自适应、响应式、适配指南、媒体查询、容器查询、clamp、dvh/svh、按钮放不下、窄屏溢出、横向滚动、触控目标、主操作菜单、选中浮层                                                                                  |
@@ -44,12 +44,25 @@
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
+## 插件目录（检索入口）
+
+真源布局：`plugins/<plugin-name>/`（一个目录一个插件，**入口必须是包根目录的 `index.ts`**）；
+`scripts/link-plugins.ps1`（Windows，Junction）/ `scripts/link-plugins.sh`（Linux，symlink）
+链接到 `~/.config/opencode/plugins/<name>`，OpenCode 自动发现该目录下的插件包。
+装载规则（入口文件、发现路径、静默失败）、验证方法与"插件 vs skill"分工见
+[插件制品](docs/plugins.md)。
+
+| 插件目录                             | 一句话说明                                                                                                                                                                                                                        | 关键词 / 何时用                                                                                                                        |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugins/powershell-encoding-guard` | 把 `skills/powershell-pitfalls` 的机械步骤前置到 OpenCode 的 shell 钩子：Windows + PowerShell 自动前置编码语句与 `PYTHONUTF8=1`，原生命令输出经文本层时追加替代方案；判断类规则仍由 skill 负责；自带诊断通道，确认当前会话是否被覆盖 | PowerShell 编码、乱码、shell 钩子、OpenCode 插件、编码前置、原生命令管道、PYTHONUTF8、native 输出落盘、诊断通道、location 路由、热重载、重复装载 |
+
 ## 维护文档
 
 - [仓库维护入口](AGENTS.md)：供代理读取的短入口。
 - [全局 AGENTS.md 真源](config/global-AGENTS.md)：个人常驻引用（一行），新机恢复用；链接脚本不碰各 harness 的 AGENTS.md。
 - [WSL 复用 Windows 侧 OpenCode 配置](docs/wsl-opencode-reuse.md)：完整配置（含模型配置）在 WSL 侧的复用范围、方式选型、密钥红线与验证（复用后默认不测活）；skill 分发仍走链接脚本。
 - [Skill 仓库治理](docs/skill-governance.md)：规则归属、职责划分、变更流程与分级验证。
+- [插件制品（OpenCode 插件）](docs/plugins.md)：插件真源布局、链接分发、装载规则（入口文件/发现路径/静默失败/全局键占用/location 路由）、通用验证清单与 skill 分工。
 - [Skill 内容与语言规范](docs/skill-content-guidelines.md)：约束强度、正文与参考落点、指令措辞、术语、例子和写作复核。
 - 变更历史：直接看 `git log`；本仓库不维护独立 CHANGELOG，提交信息按 Conventional Commits 记录目的与影响。
 - [Skill 编写、提炼与维护协作](docs/skill-authoring-workflow.md)：`reference-to-skill`、社区版 `skill-creator`、`skill-patcher` 与 `skill-authoring-sync` 的职责、引用方式和维护取舍，含社区版/系统版区分与验证边界。
@@ -97,6 +110,11 @@ powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipRecommende
 
 # 移除本仓库创建的链接 (实体不受影响)
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Unlink
+
+# 插件链接 (Junction 到 ~/.config\opencode\plugins\<name>)
+powershell -ExecutionPolicy Bypass -File scripts/link-plugins.ps1
+powershell -ExecutionPolicy Bypass -File scripts/link-plugins.ps1 -VerifyOnly
+powershell -ExecutionPolicy Bypass -File scripts/link-plugins.ps1 -Unlink
 ```
 
 Linux：
@@ -119,6 +137,11 @@ cd ~/repos/skills-for-developer
 # （Linux ~/.local/bin，Windows %USERPROFILE%\.local\bin 并补用户 PATH）
 ./scripts/link-skills.sh --apply-recommended-skills  # 显式安装依赖（代理执行同一次带上）
 ./scripts/link-skills.sh --skip-recommended-skills   # 依赖与命令都不装（含 verify 中的对应检查）
+
+# 插件链接（symlink 到 ~/.config/opencode/plugins/<name>）
+./scripts/link-plugins.sh
+./scripts/link-plugins.sh --verify-only
+./scripts/link-plugins.sh --unlink
 ```
 
 ## 部署清单（新机 / 首次 / 代理执行）
@@ -136,9 +159,10 @@ cd ~/repos/skills-for-developer
    `--apply-recommended-skills` 显式安装）；命令（`htmlmini`）默认装成直接可调用
    （Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH），
    用 `--skip-recommended-skills` 两者都不装。
+   插件（`plugins/`）单独跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
 2. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——缺才复制；不一致只提示，由人或代理对比后合并，不直接覆盖。
 3. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径与五 harness 安装数全过，见「结构校验」。
-4. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」。
+4. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」；插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`）。
 5. **服务端计数对照**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
 
 WSL（Windows 子系统）首次部署除上述步骤外，还要复用 Windows 侧的完整配置（含模型配置），见 [WSL 复用 Windows 侧 OpenCode 配置](docs/wsl-opencode-reuse.md)。

@@ -31,6 +31,7 @@ Windows 与 WSL/Linux 各用自己的克隆：WSL 内用 `~/repos/...`，不要�
 
 **适用范围**：各 agent harness（OpenCode / Codex / Claude / Agents 通用 / dsh）的自定义 skill，
 以及 harness 侧配置偏好（如 OpenCode TUI `cli.json`、全局 `AGENTS.md`）的真源同步。
+本仓库的 OpenCode 插件（`plugins/`）同样走真源唯一与链接分发，细则见[插件制品](../../docs/plugins.md)。
 分发与校验统一走仓库 `scripts/` 下的链接脚本，不手写零散命令。
 
 维护本仓库先读 [治理规范](references/skill-governance.md)；职责设计、正文约束与语言风格按 [内容与语言规范](references/skill-content-guidelines.md)。本 skill 继续维护真源、路径、索引和分发规则，不另复制写作规范；新建前核对邻近能力，适合扩展已有 skill 时不强行新建。
@@ -48,9 +49,13 @@ skills-for-developer/
       SKILL.md                 # 必需：frontmatter + 正文
       references/              # 可选：执行所需的详细规则与示例
       scripts/                 # 可选：配套脚本
+  plugins/
+    <plugin-name>/             # OpenCode 插件真源：入口 index.ts 必须在包根目录
   scripts/
     link-skills.ps1            # Windows：创建 / 校验 / 移除 Junction（幂等）
     link-skills.sh             # Linux/macOS：创建 / 校验 / 移除 symlink（幂等）
+    link-plugins.ps1           # Windows：把 plugins/ 链到 ~/.config/opencode/plugins（幂等）
+    link-plugins.sh            # Linux/macOS：同上（symlink）
 ```
 
 - 必须：`<skill-name>` 使用 kebab-case 小写英文（如 `scripting-best-practices`）。
@@ -90,6 +95,20 @@ skills-for-developer/
 跨机器用 `git push/pull` 同步。改后同步更新 `README.md` 检索表（如语义变化）。
 
 - 必须：用户提及 skill 变更/改动时，先定位真源再查改动：在真源内用 `git status --short`、`git log --oneline -N`、`git diff` 核对实体改动，不得以 harness 侧目录时间判定。例：查近期改动先跑状态与差异，再按名加载对应正文。
+
+### OpenCode 插件
+
+插件真源在 `plugins/<name>/`，只对 OpenCode 生效，不进各 harness 的 skills 目录。
+
+1. 目录内必须有**包根目录的 `index.ts`**：OpenCode V2 对本地目录插件只认这个入口，
+   `package.json` 的 `exports` / `main` 不被采纳；入口放 `src/` 会被**静默跳过**。
+2. 不依赖 `@opencode/plugin` 的运行时解析：直接导出 `{ id, setup }` 纯对象最稳。
+3. 分发：`scripts/link-plugins.ps1`（Windows）/ `scripts/link-plugins.sh`（Linux）建链接到
+   `~/.config/opencode/plugins/<name>`，OpenCode 自动发现该目录下的插件包。
+4. 验证：插件自带测试通过 + 服务端日志出现 `loading plugin` + 一次真实调用对照。
+   **装载失败只写日志、不在界面报错**，只看界面会误判成"插件没生效"。
+
+装载规则、失败排查与"插件 vs skill"分工见[插件制品](../../docs/plugins.md)。
 
 ### 跨机器同步与对齐判定
 
