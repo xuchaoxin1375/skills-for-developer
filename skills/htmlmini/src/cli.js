@@ -155,8 +155,10 @@ ${ENV_HELP.map((line) => `  ${line}`).join('\n')}
   渲染后仍是挑战页            → 换求解引擎：--python-bin auto（scrapling/cloak-cdp），
                                或 --render-engine chrome-late（先让挑战跑完再接入）。
   渲染超时                    → 调大 --render-timeout-ms；客户端渲染的站点常要 30~60 s。
-  提取结果太多/太少           → 换 --mode 或 --extractor；用 --json 的 used 确认实际引擎。
-  中文乱码                    → 输出是 UTF-8；用 --output 写文件，避免 shell 管道二次转码。
+   提取结果太多/太少           → 换 --mode 或 --extractor；用 --json 的 used 确认实际引擎。
+  中文乱码                    → 输出是 UTF-8：文件与 --output 不受影响；控制台显示乱码多半是
+                               Windows 旧代码页（chcp 936），先 chcp 65001；被 shell 重定向的
+                               内容会按控制台代码页二次编码，需要保真就按字节落盘。
 
 MCP 工具 (MCP)
   htmlmini_extract_file(path) / htmlmini_extract_url(url) / htmlmini_extract_html(html_content)
