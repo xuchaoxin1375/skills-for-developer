@@ -37,7 +37,7 @@
 
 要点：
 
-- 重定向按**控制台代码页**解读子进程字节流。本机 `chcp` 为 936，而 `.NET` 的 `[System.Text.Encoding]::Default.CodePage` 与 `[Console]::OutputEncoding.CodePage` 都报 65001——**两者不一致时用 `chcp` 判断**，不要用 .NET 属性推断重定向行为。
+- 重定向按 **.NET 的输出编码**解读子进程字节流。**`chcp` 与它不同步**：`chcp 65001` 只改控制台代码页，`.NET` 的 `[Console]::OutputEncoding` 仍是 936 时，输出照样被按 GBK 误读（见下节对照表）。要判断重定向是否保真，看 `[Console]::OutputEncoding.CodePage`，不看 `chcp`。
 - 落到文件里的仍是**合法 UTF-8**，只是内容双重错位；因此"文件能按 UTF-8 打开"不能证明内容没被改写。
 - 判定顺序：先按字节通道复核（Python `subprocess.run(..., capture_output=True).stdout` 直接写文件；Node `execFileSync(..., {encoding:'buffer'})` 写 Buffer），再判断乱码发生在生产方还是捕获层。
 - 误判代价：这类现象很容易被当成"CLI 源码里的模板字符串或文件编码坏了"，进而去改源文件。**先证明乱码发生在哪一层再动手**；生产方是 UTF-8 就不必改它。
@@ -45,8 +45,9 @@
 复现（探针放被忽略的工作目录，输出用 ASCII JSON 判读，避免显示层干扰）：
 
 ```powershell
-chcp                                  # 936：重定向按这个代码页解读子进程输出
-[Console]::OutputEncoding.CodePage    # 65001：与 chcp 不一致，不能用它判断重定向行为
+chcp                                  # 936：控制台代码页
+[Console]::OutputEncoding.CodePage    # 真正决定重定向解码的是这一项
+$OutputEncoding.CodePage              # 管道传给原生命令的文本编码
 
 node cli.js --help > out-redirect.txt
 node -e "const {execFileSync}=require('child_process');const fs=require('fs');fs.writeFileSync('out-bytes.txt',execFileSync(process.execPath,['cli.js','--help'],{encoding:'buffer'}))"
@@ -55,6 +56,47 @@ python -c "import json,pathlib;print(json.dumps({p:pathlib.Path(p).read_bytes().
 ```
 
 预期：两个文件都能按 UTF-8 解码，但 `out-redirect.txt` 的内容是双重错位字形，`out-bytes.txt` 是原文。
+
+### 链式 CLI 处理的推荐做法（实测对照）
+
+多段 CLI 输出串成一条管道/重定向时，**每一跳都要过一次 PowerShell 的文本层**，任何一跳没设对编码就整条链失真。下面每种做法在本机 pwsh 7.5.4 上单独跑在一个新进程里，并**先把控制台复位到脏状态**（`chcp 936` + .NET 编码 936）以保证可比：
+
+| 做法 | 落盘内容 |
+|---|---|
+| 什么都不设 | **MANGLED** |
+| 只设 `[Console]::OutputEncoding` / `$OutputEncoding` = UTF8（`chcp` 仍 936） | OK |
+| 只 `chcp 65001`（.NET 仍 936） | **MANGLED** |
+| 两者都设 | OK |
+| 生产者自己按字节写文件（Node `writeFileSync(Buffer)` / Python `write_bytes`） | OK |
+| 管道里插"字节闸门"（见下） | OK |
+
+推荐顺序：
+
+1. **首选：文件接力，不传文本**。每个 CLI 自己写文件（`--out` / `--save-html` 这类参数），下一步只读文件。生产方写字节而不是让 shell 替它转码，本仓库的 `resilient_fetch.py --out`、`htmlmini --save-html` / `--output` 就是这个模式。
+2. **必须走管道时，在同一次调用里、第一个 CLI 之前设编码**：
+
+   ```powershell
+   [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+   $OutputEncoding = [System.Text.Encoding]::UTF8
+   ```
+
+   `chcp 65001` 可以一起设，但它单独不够；真正起作用的是上面两行。
+3. **管道里插一个"字节闸门"**，把文本管道换成字节传递：
+
+   ```powershell
+   node build.js | python -X utf8 -c "import sys,pathlib;pathlib.Path('out.json').write_bytes(sys.stdin.buffer.read())"
+   ```
+
+   闸门按原始字节读 stdin 并按字节写文件，绕开 PowerShell 的文本解码。
+4. **兜底：ASCII JSON 中间格式**。`json.dumps(..., ensure_ascii=True)` 传文本，接收端 `json.loads` 还原，链路只剩 ASCII。
+
+配套注意：
+
+- **编码设置是控制台级的，会被后续进程继承**：`chcp` 与 .NET 的输出编码都作用于共享控制台，一个进程改过之后，同控制台里后面的进程会继承它。因此**每次调用都显式设置**（幂等），不要指望"上一次设过了"；同理，上一次调用的输出也不能用来推断这一次的正确性。
+- 同一台机器上"同一条命令"可能给出不同结果，原因就是环境状态被前面的命令改过。**复现时先复位环境，再比较**。
+- 判读分两层：**文件内容本身就是乱的** → 解码层，按上面 1–4 处理；**文件内容对、只有工具里显示乱码** → 捕获层，改用 ASCII JSON 或让程序直接把结果输出到工具。
+
+探针脚本与逐 case 复现见 `.workspaces/encoding-probe/chained-cli-probe.ps1`（被忽略的临时目录，不入库）。
 
 ### 最小复现与修复
 

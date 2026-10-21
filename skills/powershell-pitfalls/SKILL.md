@@ -33,7 +33,15 @@ description: >
 python -c "from pathlib import Path; import json; print(json.dumps(Path('docs/example.md').read_text(encoding='utf-8'), ensure_ascii=True))"
 ```
 
-- **子进程输出经重定向会被二次编码**：`cmd > file` 会按**控制台代码页**解读子进程的字节流再写出，文件仍是合法 UTF-8，内容却已双重错位（形如 `鍓ュ帀`）。`.NET` 的 `[Console]::OutputEncoding` 与 `chcp` 可能不一致（本机 pwsh 7.5.4：前者报 65001、后者 936），**判断重定向是否保真看 `chcp`，不看 .NET 属性**。遇到"行号对、中文乱码"先怀疑这一层：同一命令按字节捕获（Python 读 `bytes`、Node `execFileSync(..., {encoding:'buffer'})`）复核；确认是捕获层就换字节通道或 ASCII JSON，**不要据此去改源文件编码**。
+- **子进程输出经重定向会被二次编码**：`cmd > file` 会按 **.NET 的输出编码**（`[Console]::OutputEncoding`）解读子进程的字节流再写出，文件仍是合法 UTF-8，内容却已双重错位（形如 `鍓ュ帀`）。**`chcp` 与它不同步**：只 `chcp 65001` 而 .NET 仍是 936 时照样乱码，真正起作用的是下面两行，且要在**同一次调用、第一个 CLI 之前**设置：
+
+  ```powershell
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  $OutputEncoding = [System.Text.Encoding]::UTF8
+  ```
+
+  多段 CLI 串成链时，每一跳都要过这层文本解码，任一跳漏设整条链失真。遇到"行号对、中文乱码"先怀疑这一层：同一命令按字节捕获（Python 读 `bytes`、Node `execFileSync(..., {encoding:'buffer'})`）复核；确认是捕获层就换字节通道或 ASCII JSON，**不要据此去改源文件编码**。链式处理的推荐做法（文件接力 / 字节闸门 / ASCII JSON 中间格式）与实测对照见 [编码读取排障](references/encoding-read.md#链式-cli-处理的推荐做法实测对照)。
+- **编码设置是控制台级的，会被后续进程继承**：`chcp` 与 .NET 输出编码都作用于共享控制台，一个进程改过之后同控制台的后续进程会继承。因此每次调用都要显式设置（幂等），也别用上一次调用的结果推断这一次；复现前先把环境复位，否则"同一条命令"会给出不同结果。
 
 - ASCII JSON 按 JSON 还原，不用模型逐字复写。用户要求原文展示时，由程序还原并经可靠工具输出；转义文本或被截断的片段不算完整原文。
 - 编码设置与读取放在同次调用；`[Console]::OutputEncoding` 控制相关输出，`$OutputEncoding` 控制向原生程序管道输入文本，均不替代文件解码或保证宿主转码。禁止把 `errors="replace"` 的有损文本当完整内容审查或修改文件。

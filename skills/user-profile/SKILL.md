@@ -15,7 +15,7 @@ description: >
   免双路探测（抓取本身即核验，成功时不预读长文档）；无可用登记时直连按总耗时上限
   （含首字节等待）熔断后切代理，结论同一任务复用；确认抓取工具的实际出口。
   需代理先读 `~/.config/proxy-resources.json`，无可用代理直接问用户，不盲试端口、不静默放弃。
-- **PowerShell**：带逻辑的片段一律用 PowerShell，运行前先加载 `powershell-pitfalls`。任何可能输出非 ASCII 的调用（含读文件、`Get-ChildItem` 枚举、`Select-String` 结果）同次先设输出编码再输出；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；退出码 0 或纯英文输出不能证明读取正确。
+- **PowerShell**：带逻辑的片段一律用 PowerShell，运行前先加载 `powershell-pitfalls`。任何可能输出非 ASCII 的调用（含读文件、`Get-ChildItem` 枚举、`Select-String` 结果）同次先设输出编码再输出；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；退出码 0 或纯英文输出不能证明读取正确。**多段 CLI 串成管道或重定向时**同样要先设编码（`[Console]::OutputEncoding` 与 `$OutputEncoding`，`chcp` 单独不够），且优先改成"文件接力"或字节闸门——每一跳都要过 PowerShell 的文本解码，漏设一次整条链失真。
 - **脚本（非 PowerShell）**：默认 UTF-8。Python 一律 `-X utf8`（父子多层时父进程先设
   `PYTHONUTF8=1`）、读写显式 `encoding="utf-8"`；新脚本文件 UTF-8 无 BOM、换行 LF。
   细节见 `scripting-best-practices`。
@@ -31,7 +31,7 @@ description: >
 
 动词命中即加载：
 
-1. 写PowerShell 命令/脚本/片段/防乱码: `powershell-pitfalls`；
+1. 写PowerShell 命令/脚本/片段/防乱码/执行多段 CLI 链式管道: `powershell-pitfalls`；
 2. 访问网络/请求失败/出网慢/镜像: `network-access`；
 3. 验收/复现/回归/门禁/交付质量: `ai-verified-delivery`；
 4. 测试代码/编写测试: `web-app-testing`
@@ -45,6 +45,7 @@ description: >
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | 出网慢/失败、GitHub/文档抓取、依赖下载、镜像/加速、超时·403·限流分流                                | `network-access`（含其 `references/network-access.md` 命令与分流表） |
 | 编写/运行 PowerShell 片段、非 ASCII 乱码、静默失败、退出码、启动/profile、引号路径                    | `powershell-pitfalls`（按其“按需读取”表只读相关章节）                |
+| 多段 CLI 输出串成管道/重定向、命令输出落盘后中文变乱码、想按字节传输出                            | `powershell-pitfalls` 的《编码读取排障》——链式 CLI 处理的推荐做法与实测对照 |
 | 编写/审查/重构脚本（.sh/.bash/.py/.mjs/.js，含 Node CLI）、脚本执行侧与文件侧 UTF-8 默认、换行/BOM、子进程输出编码 | `scripting-best-practices`（先读其通用约束，再按语言读对应章节） |
 
 ## 约束
