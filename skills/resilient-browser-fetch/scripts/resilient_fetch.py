@@ -2692,12 +2692,55 @@ def save_page(options: FetchOptions, out: str | Path) -> FetchOutcome:
     return outcome
 
 
+CLI_DESCRIPTION = """\
+按能力分层抓取页面并保存渲染后 HTML。
+
+引擎阶梯: static -> playwright -> scrapling -> cloak-cdp
+  static       裸 HTTP(可用 curl_cffi 做 TLS 伪装)
+  playwright   层 1: Playwright/Patchright 驱动, 只渲染不求解
+  scrapling    层 2: Patchright + 挑战求解
+  cloak-cdp    层 2: CloakBrowser 直连 CDP, 带挑战求解
+  nodriver     层 1 备用: 系统 Chrome 直接 CDP, 仅 --headful 时可用
+  chrome-late  晚接入: 先让站点的挑战跑完再接入读已渲染 DOM, 只能显式指定
+"""
+
+CLI_EPILOG = """\
+以下命令在本 skill 目录下执行(路径按实际位置调整):
+
+常用组合:
+  # 1) 普通页面: 自动升档, 断言目标标题
+  python scripts/resilient_fetch.py --url "<URL>" --out page.html --expect-text "<标题片段>"
+
+  # 2) 挑战站点: 晚接入引擎(先让挑战跑完, 再接入读取)
+  python scripts/resilient_fetch.py --url "<URL>" --out page.html --engine chrome-late --proxy "<proxy>" --expect-text "<标题片段>"
+
+  # 3) 客户端渲染的应用: 等渲染稳定, 并给出最短等待
+  python scripts/resilient_fetch.py --url "<URL>" --out page.html --engine chrome-late --render-timeout-ms 40000 --render-min-ms 10000
+
+  # 4) 走本机登记的代理逐个探测(未指定 --proxy 时)
+  python scripts/resilient_fetch.py --url "<URL>" --out page.html --discover-proxy
+
+  # 5) 排查用: 保留被拒的原文与尝试记录
+  python scripts/resilient_fetch.py --url "<URL>" --out page.html --engine chrome-late --verbose
+  # 失败时会留下 page.html.attempts.json 与 page.html.<engine>.blocked.html
+
+配合 htmlmini 提取正文:
+  python scripts/resilient_fetch.py --url "<URL>" --out page.html --engine chrome-late
+  python ../htmlmini/src/cli.js page.html --mode ui
+
+环境变量:
+  SCRAPE_PROXY  等价 --proxy
+  HTTP_PROXY / HTTPS_PROXY / NO_PROXY  未指定 --proxy 时跟随
+
+退出码: 0 成功; 1 抓取失败(原因与诊断文件路径见 stderr)
+"""
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "按能力分层抓取页面并保存渲染后 HTML"
-            "(static → playwright → scrapling → cloak-cdp；nodriver 为显式/有头后备)。"
-        )
+        description=CLI_DESCRIPTION,
+        epilog=CLI_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--url", help="目标 HTTP(S) URL。")
     parser.add_argument("--out", default="page.html", help="成功页面的输出路径。")
