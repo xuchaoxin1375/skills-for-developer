@@ -1227,9 +1227,10 @@ def system_browser_channel(
 def browser_executable_for_config(config: dict[str, Any]) -> str | None:
     """Resolve the browser binary an engine should launch.
 
-    An explicit path wins. Otherwise a brand preference is resolved against the
-    installed browsers. ``None`` means "no preference": each engine then keeps
-    its own default instead of being silently switched to Chrome.
+    An explicit path wins. A named brand is resolved **strictly**: if that brand
+    is not installed this raises instead of quietly launching another browser,
+    because naming a brand is a request to change the client identity. ``None``
+    means "no preference": each engine then keeps its own default.
     """
 
     explicit = config.get("executable_path")
@@ -1238,7 +1239,13 @@ def browser_executable_for_config(config: dict[str, Any]) -> str | None:
     brand = resolve_browser_brand(config.get("browser_brand"))
     if brand == "auto":
         return None
-    return find_system_browser(brand=brand)
+    found = find_system_browser(brand=brand)
+    if not found:
+        raise FetchError(
+            f"未找到 {brand} 浏览器(--browser-brand {brand})；"
+            f"请先安装它，或用 --executable-path 指定可执行文件路径。"
+        )
+    return found
 
 
 def browser_channel_for_config(config: dict[str, Any], default: str = "chromium") -> str:
@@ -1247,6 +1254,10 @@ def browser_channel_for_config(config: dict[str, Any], default: str = "chromium"
     executable = config.get("executable_path")
     if executable:
         return f"custom-{browser_brand_of(executable)}"
+    # 品牌偏好落到 Playwright 的 channel(msedge/chrome), 由它自己解析安装位置。
+    brand = resolve_browser_brand(config.get("browser_brand"))
+    if brand != "auto":
+        return f"system-{brand}"
     if config.get("real_chrome"):
         return "system-chrome"
     return default
@@ -1733,12 +1744,15 @@ async def fetch_with_nodriver_async(config: dict[str, Any]) -> FetchResult:
             block_reasons=block_reasons(page_html),
             versions=package_versions(),
         )
+        nodriver_executable = browser_executable_for_config(config)
         append_identity_notes(
             result,
             control_plane="direct-cdp",
-            browser_channel=system_browser_channel(browser_executable_for_config(config)),
+            browser_channel=system_browser_channel(nodriver_executable),
             headful=bool(config.get("headful")),
         )
+        if nodriver_executable:
+            result.notes.append(f"browser_path:{nodriver_executable}")
         if config.get("save_cookies"):
             cookies = await browser.cookies.get_all()
             user_agent = await tab.evaluate("navigator.userAgent")
@@ -1923,8 +1937,9 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
     )
     if not executable:
         raise EngineUnavailableError(
-            "chrome-late 不可用:未找到系统 Chrome/Chromium/Edge；"
-            "请安装浏览器、用 --executable-path 指定路径，或用 --browser-brand 换品牌。"
+            "chrome-late 不可用:未找到系统 Chrome/Chromium/Edge"
+            + (f"(--browser-brand {brand} 指定的 {brand} 未安装)" if brand != "auto" else "")
+            + "；请安装浏览器、用 --executable-path 指定路径，或用 --browser-brand 换品牌。"
         )
     if os.name != "nt" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
         raise EngineUnavailableError(
@@ -2041,6 +2056,7 @@ def fetch_with_chrome_late(config: dict[str, Any]) -> FetchResult:
         [
             "control_plane:late-cdp-attach",
             f"browser_channel:{system_browser_channel(executable)}({Path(executable).name})",
+            f"browser_path:{executable}",
             "headless:false",
             f"settle_ms:{int(config.get('settle_ms') or DEFAULT_SETTLE_MS)}",
             f"ready:{str(signal_info.ready).lower()}",

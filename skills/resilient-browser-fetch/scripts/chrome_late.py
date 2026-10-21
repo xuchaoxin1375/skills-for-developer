@@ -139,6 +139,55 @@ def default_browser_brand_order() -> tuple[str, ...]:
     return ("chrome", "chromium", "edge")
 
 
+# 各品牌在 Windows 注册表 App Paths 里的可执行文件名。
+BROWSER_EXECUTABLE_NAMES = {
+    "chrome": "chrome.exe",
+    "edge": "msedge.exe",
+    "chromium": "chromium.exe",
+}
+
+
+def windows_app_paths_keys(executable_name: str) -> list[str]:
+    """List the registry key paths that may hold an App Paths entry.
+
+    The 32 位重定向的 WOW6432Node 也要查: 64 位 Windows 上的 Edge 装在
+    Program Files (x86)，它的 App Paths 在 64 位视图下位于 WOW6432Node。
+    """
+
+    return [
+        rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executable_name}",
+        rf"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\{executable_name}",
+    ]
+
+
+def windows_app_path(executable_name: str) -> Path | None:
+    """Look up a browser executable in the Windows App Paths registry keys.
+
+    App Paths 是"这个浏览器装在哪"的权威来源: 它能覆盖非默认目录的安装。
+    查不到或不是 Windows 时返回 None, 交给固定路径候选继续。
+    """
+
+    if os.name != "nt":
+        return None
+    try:
+        import winreg
+    except ImportError:  # pragma: no cover - Windows 上 winreg 一定在
+        return None
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for key in windows_app_paths_keys(executable_name):
+            try:
+                with winreg.OpenKey(hive, key) as handle:
+                    value, _ = winreg.QueryValueEx(handle, "")
+            except OSError:
+                continue
+            if not value:
+                continue
+            candidate = Path(str(value))
+            if candidate.is_file():
+                return candidate
+    return None
+
+
 def resolve_browser_brand(preferred: str | None = None) -> str:
     """Resolve the wanted browser brand from an argument or the environment.
 
@@ -151,7 +200,12 @@ def resolve_browser_brand(preferred: str | None = None) -> str:
 
 
 def browser_candidates_by_brand() -> dict[str, list[Path]]:
-    """List the known install locations of every supported browser brand."""
+    """List the known install locations of every supported browser brand.
+
+    On Windows the registry is consulted first: ``App Paths\\<exe>`` is the
+    authoritative answer to "where is this browser", and it also covers installs
+    that do not live in the default folders. The fixed paths stay as a fallback.
+    """
 
     local_app_data = os.environ.get("LOCALAPPDATA")
     program_files = os.environ.get("PROGRAMFILES")
@@ -192,6 +246,11 @@ def browser_candidates_by_brand() -> dict[str, list[Path]]:
             found = shutil.which(name)
             if found:
                 edge.append(Path(found))
+    # 注册表答案排在固定路径前面: 它是"装在哪"的权威来源, 也覆盖非默认目录的安装。
+    for brand, bucket in (("chrome", chrome), ("edge", edge), ("chromium", chromium)):
+        registered = windows_app_path(BROWSER_EXECUTABLE_NAMES[brand])
+        if registered is not None:
+            bucket.insert(0, registered)
     return {"chrome": chrome, "edge": edge, "chromium": chromium}
 
 
@@ -200,9 +259,11 @@ def find_system_browser(
 ) -> str | None:
     """Locate a local Chrome/Chromium/Edge binary.
 
-    The explicit path wins. Otherwise the wanted brand is tried first (from the
-    argument, else $RESILIENT_BROWSER), then the remaining brands in platform
-    order: a WAF that blocks one client brand may let another through.
+    The explicit path wins. Otherwise the wanted brand (from the argument, else
+    ``$RESILIENT_BROWSER``) is resolved **strictly**: a named brand that is not
+    installed returns ``None`` instead of quietly using another browser, because
+    the whole point of naming a brand is to change the client identity. ``auto``
+    keeps the platform order with fallbacks.
     """
 
     if explicit:
@@ -211,10 +272,12 @@ def find_system_browser(
 
     preferred = resolve_browser_brand(brand)
     candidates = browser_candidates_by_brand()
-    order = default_browser_brand_order()
     if preferred != "auto":
-        order = (preferred, *[name for name in order if name != preferred])
-    for name in order:
+        for candidate in candidates.get(preferred, []):
+            if candidate.is_file():
+                return str(candidate)
+        return None
+    for name in default_browser_brand_order():
         for candidate in candidates.get(name, []):
             if candidate.is_file():
                 return str(candidate)

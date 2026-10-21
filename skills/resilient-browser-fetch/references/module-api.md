@@ -54,7 +54,7 @@ flowchart TD
 
 - 上图未展开可选的 nodriver：它只在显式 `engine="nodriver"`，或 `engine="auto"` 且 `headful=True` 时作为最后后备；不启用 Network 域，`status` 为 `None`。
 - `chrome-late` 同样不在自动阶梯里：它在显式 `engine="chrome-late"` 时运行，自行拉起系统浏览器、等站点的挑战跑完后接入读取，回收责任见 SKILL.md 的“资源回收”。`settle_ms`（默认 5000）是最小静默窗口，`render_timeout_ms`（默认 15000）是接入后等渲染稳定的上限。
-- `browser_brand`（默认 `None`）指定**系统浏览器品牌**：`auto`（默认，按平台顺序找 Chrome→Edge→Chromium）/`chrome`/`edge`/`chromium`，也可用环境变量 `RESILIENT_BROWSER` 设置。它落到每个引擎的浏览器选择上：`chrome-late` 用它做浏览器发现，层 1 映射成 Playwright 的 `channel`（`msedge`/`chrome`），层 2 与 `nodriver` 用它解析出的可执行文件；`executable_path` 优先级更高（给了路径就用路径）。边缘封禁可能按**客户端品牌**判负（实测同一出口、同一协议、同一 profile 下 Chrome 被拒、Edge 放行），这时换品牌比换出口更对症。`notes` 里的 `browser_channel` 如实写实际客户端（如 `system-edge(msedge.exe)`）。
+- `browser_brand`（默认 `None`）指定**系统浏览器品牌**：`auto`（默认，按平台顺序找 Chrome→Edge→Chromium）/`chrome`/`edge`/`chromium`，也可用环境变量 `RESILIENT_BROWSER` 设置。它落到每个引擎的浏览器选择上：`chrome-late` 用它做浏览器发现，层 1 映射成 Playwright 的 `channel`（`msedge`/`chrome`），层 2 与 `nodriver` 用它解析出的可执行文件；`executable_path` 优先级更高（给了路径就用路径）。**显式指定的品牌是严格的**：该品牌没装就直接报错，不用别的浏览器顶替——点名品牌就是要换客户端身份，静默换人会让 `browser_channel` 与实际客户端对不上。Windows 上先查注册表 `App Paths\<exe>`（"装在哪"的权威来源，能覆盖非默认目录），再退回固定路径候选。边缘封禁可能按**客户端品牌**判负（实测同一出口、同一协议、同一 profile 下 Chrome 被拒、Edge 放行），这时换品牌比换出口更对症。`notes` 里的 `browser_channel` 写实际客户端（如 `system-edge(msedge.exe)`），`browser_path` 写实际拉起的可执行文件绝对路径。
 - worker 隔离防止浏览器启动、挑战循环或关闭阶段拖死调用进程。
 - `wall_timeout_ms` 是调用者可预测的硬上限，不等同于 Scrapling 的页面操作超时。
 - 回退引擎返回 HTTP `200` 也必须经过内容验证，避免把挑战页当成业务页面。

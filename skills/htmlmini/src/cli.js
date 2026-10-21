@@ -112,8 +112,10 @@ ${engineList()}
                                Edge 放行），此时指定 Edge 路径即可放行
     --browser-brand <品牌>     渲染用浏览器品牌偏好：auto（默认，Chrome→Edge→Chromium）|
                                chrome | edge | chromium。不用自己写路径，渲染脚本按品牌
-                               找已安装的浏览器；边缘封禁按客户端品牌判时用它换品牌
-                               （与 --chrome-bin 同时给时，路径优先）
+                               找已安装的浏览器（Windows 先查注册表 App Paths）；边缘封禁
+                               按客户端品牌判时用它换品牌。点名品牌是严格语义：该品牌没装
+                               就报错，不会静默换用别的浏览器（与 --chrome-bin 同时给时
+                               路径优先）
     -b, --browser-brand <品牌> 同上（短选项）
     --python-bin <路径>        save_page 与 Trafilatura 用的解释器；"auto" = 扫描本机挑一个
                                装了引擎的（conda/venv/uv/PATH）

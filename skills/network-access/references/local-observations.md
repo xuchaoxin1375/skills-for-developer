@@ -201,7 +201,7 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - **受控对照**：只换浏览器可执行文件，出口、协议（`http://` 与 `socks5://` 出口 IP 相同）、profile（全新）、启动参数全不变。结论：Akamai 的边缘判决会按**客户端品牌**分叉，`Chrome` 被拒而 `Edge` 放行。这与"换出口"是两条不同的路线——被这类边缘封禁卡住时，先问"是不是只挡了某个客户端"。
 - **协议与 profile 都不是变量**：`<port-B>` 同时接受 `http://` 与 `socks5://`，两种写法判决相同；用别的出口预热过的 profile 再走 `<port-B>` 仍被拒（Akamai 的 `akavpau` 绑 IP，换出口即失效）。
 - **curl 指纹会掩盖判据**：三条路线的 curl 请求都是 403，不能用 curl 的结果区分"哪条出口能过"；有头真实浏览器 + 同一出口才看得出品牌差异。
-- **工具侧的默认行为**：`resilient-browser-fetch` 的 `chrome-late` 默认拉起 Chrome，会继承 Chrome 的判决——用户自己的 Edge 在同一出口能开，晚接入引擎却一直失败。已加 `--browser-brand edge`（或 `--executable-path <Edge 路径>`、环境变量 `RESILIENT_BROWSER`）与 `htmlmini --chrome-bin` 透传。
+- **工具侧的默认行为**：`resilient-browser-fetch` 的 `chrome-late` 默认拉起 Chrome，会继承 Chrome 的判决——用户自己的 Edge 在同一出口能开，晚接入引擎却一直失败。已加 `--browser-brand edge`（或 `--executable-path <Edge 路径>`、环境变量 `RESILIENT_BROWSER`）与 `htmlmini --chrome-bin` 透传。品牌解析为**注册表优先**（Windows `App Paths\<exe>`，本机实测与固定路径候选一致）、**点名即严格**（该品牌没装就报错，不静默换用别的浏览器），并在 `notes` 里回写 `browser_channel` 与 `browser_path` 以便核对实际拉起的二进制。
 - **本机代理登记**：`~/.config/proxy-resources.json` 只登记了 `<port-A>`（已核验 HTTP 代理可用）。`<port-B>` 也在监听且两种协议都能用，但它的出口是机房 IP、撞 Akamai 边缘封禁，暂不作为默认条目。
 
 未验证：边缘判决随时间与频次的波动、是否只针对该站、Edge 的其他版本是否同样放行、机房 IP 段整体信誉、Linux/macOS 上的同品牌差异。

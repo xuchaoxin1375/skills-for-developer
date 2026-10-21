@@ -447,13 +447,40 @@ def test_find_system_browser_honors_brand_preference(
 
     assert subject.find_system_browser() == str(chrome)
     assert subject.find_system_browser(brand="edge") == str(edge)
-    # 找不到首选品牌时退到其他品牌，不因为偏好落空
+    # 显式指定品牌时是严格的: 首选品牌没装就报"没有", 不用别的浏览器顶替
     monkeypatch.setattr(
         subject,
         "browser_candidates_by_brand",
-        lambda: {"chrome": [], "edge": [edge], "chromium": []},
+        lambda: {"chrome": [chrome], "edge": [], "chromium": []},
     )
-    assert subject.find_system_browser(brand="chrome") == str(edge)
+    assert subject.find_system_browser(brand="edge") is None
+    # auto 仍按平台顺序回退
+    assert subject.find_system_browser() == str(chrome)
+
+
+def test_windows_app_paths_keys_cover_both_views() -> None:
+    keys = subject.windows_app_paths_keys("msedge.exe")
+    assert any(key.startswith("SOFTWARE\\Microsoft") for key in keys)
+    assert any("WOW6432Node" in key for key in keys)
+    assert all(key.endswith("App Paths\\msedge.exe") for key in keys)
+
+
+def test_windows_app_path_returns_none_off_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(subject.os, "name", "posix")
+    assert subject.windows_app_path("msedge.exe") is None
+
+
+def test_browser_executable_for_config_is_strict_about_a_named_brand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(engine_subject, "find_system_browser", lambda brand=None: None)
+    with pytest.raises(engine_subject.FetchError) as excinfo:
+        engine_subject.browser_executable_for_config({"browser_brand": "edge"})
+    assert "edge" in str(excinfo.value)
+    # auto 不受影响: 各引擎保留自己的默认
+    assert engine_subject.browser_executable_for_config({}) is None
 
 
 def test_browser_brand_labels_name_the_real_client() -> None:
