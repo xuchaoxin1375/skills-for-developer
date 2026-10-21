@@ -94,6 +94,7 @@ skills-for-developer/
 直接改真源实体，改完即对本机所有 harness 生效，无需重新链接；
 跨机器用 `git push/pull` 同步。改后同步更新 `README.md` 检索表（如语义变化）。
 
+- 推荐：触发不准（该加载没加载、或误加载）时，按[触发描述维护](../../docs/skill-authoring-workflow.md#触发描述维护推荐)做一次改前/改后最小对照，再同时改 `description` 与检索表；不靠改正文规则代偿触发。
 - 必须：用户提及 skill 变更/改动时，先定位真源再查改动：在真源内用 `git status --short`、`git log --oneline -N`、`git diff` 核对实体改动，不得以 harness 侧目录时间判定。例：查近期改动先跑状态与差异，再按名加载对应正文。
 
 ### OpenCode 插件
