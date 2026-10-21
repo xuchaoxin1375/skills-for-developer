@@ -25,6 +25,9 @@ description: >
 - **脚本（非 PowerShell）**：默认 UTF-8。Python 一律 `-X utf8`（父子多层时父进程先设
   `PYTHONUTF8=1`）、读写显式 `encoding="utf-8"`；新脚本文件 UTF-8 无 BOM、换行 LF。
   细节见 `scripting-best-practices`。
+- **命令行选项**：长选项是主名（可读、写在文档与补全里），**条件允许时同时给短选项**——
+  给最高频的几个开关（输出文件、代理、模式、引擎之类）配一两个字母的短选项；短选项与既有
+  字母冲突或含义会歧义时宁可不加，长选项始终保留。细节见 `scripting-best-practices`。
 - **版本号**：自建脚本/小工具的版本号按**日期时间**打，格式 `YYYY.MM.DD.HHmm`（本地时间，
   如 `2026.10.19.1750`），不用手搓语义化版本；唯一真源放 `package.json` 的 `version`，
   其余位置运行时读取，并配一个按当前时间重打的入口（如 `pnpm stamp`）。四段号只用于
