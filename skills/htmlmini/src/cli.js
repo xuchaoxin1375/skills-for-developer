@@ -25,7 +25,47 @@ const ENV_HELP = [
   'HTMLMINI_SOURCE_MARKS=0     不输出来源哨兵行',
 ];
 
+/**
+ * 短版帮助（默认）：一屏内看完——简介、用法、来源、输出模式、常用选项、完整版入口。
+ * 完整选项、取值说明、环境变量、退出码、示例与症状表在 --help full。
+ * 两版共用同一份清单生成函数，内容不许分叉（tests/reliability.mjs 有守卫断言）。
+ */
+const HELP_BRIEF = `htmlmini ${VERSION} - 剥掉 CSS/JS 与样板，只留核心正文（Markdown/JSON，省 token）
+
+用法 (USAGE)
+  htmlmini [来源] [选项]
+  来源：本地 HTML 文件 | http(s) 地址 | -（stdin，默认）
+
+输出模式 (--mode，或对应短选项)
+${modeList()}
+
+常用选项
+  -m, --markdown / -j, --json / -s, --skeleton / -u, --ui / -t, --text / -T, --title
+  --mode <名称>              输出模式，见上表
+  --extractor <名称>         抽取引擎：auto | defuddle | trafilatura | semantic | ui | sanitize | passthrough
+  --render[=auto|always]     浏览器渲染回退：auto 只在静态 403/5xx 时回退；always 静态 200 也渲染
+  --render-engine <名称>     钉住渲染引擎：auto | playwright | scrapling | cloak-cdp | chrome-late | nodriver
+  --proxy <地址>             抓取代理：http(s) 地址，或 direct 绕过环境代理
+  --save-html <文件>         落盘实际使用的 HTML（配兄弟 .meta.json），便于换模式复用
+  --output <文件>            结果写文件而不是 stdout
+  --allow-empty              保留"像应用壳"的结果（默认报错并提示 --render=always）
+  --quiet / --verbose        日志静音 / 详细日志
+
+更多
+  --help full                完整选项、取值说明、环境变量、退出码、示例与常见症状
+  --list-modes / --list-extractors / --list-render-engines / --list-env
+  -V, --version              版本号（YYYY.MM.DD.HHmm）
+
+例子
+  htmlmini page.html
+  htmlmini page.html --json
+  htmlmini "https://example.com/spa" --render=always
+  htmlmini "https://example.com/item" --render=always --render-engine chrome-late --proxy http://127.0.0.1:<port>
+`;
+
+/** 完整版帮助：选项全表 + 取值说明 + 环境变量 + 退出码 + 示例 + 常见症状与对策。 */
 const HELP = `htmlmini ${VERSION} - 剥掉 CSS/JS 与样板，只留核心正文（Markdown/JSON，省 token）
+（完整版；短版见 --help）
 
 用法 (USAGE)
   htmlmini [来源] [选项]
@@ -93,7 +133,7 @@ ${engineList()}
     --list-extractors          列出抽取引擎与说明
     --list-render-engines      列出渲染引擎与说明
     --list-env                 列出环境变量与说明
-    -h, --help                 显示本帮助
+    -h, --help                 显示短版帮助（默认）；--help full 给完整版
     -V, --version              打印版本号（日期时间式 YYYY.MM.DD.HHmm）
 
   --attrs 取值
@@ -220,8 +260,16 @@ let sourceMarks = process.env.HTMLMINI_SOURCE_MARKS !== '0';
 
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '-h' || a === '--help') {
-    process.stdout.write(HELP);
+  if (a === '-h' || a === '--help' || a.startsWith('--help=')) {
+    // 默认短版（一屏看完），"--help full" 给完整版。
+    // 完整版入口要显眼：短版末尾就写着它。
+    let want = 'brief';
+    if (a.startsWith('--help=')) want = a.slice('--help='.length) === 'full' ? 'full' : 'brief';
+    else if (argv[i + 1] === 'full' || argv[i + 1] === 'brief') {
+      want = argv[i + 1];
+      i += 1;
+    }
+    process.stdout.write(want === 'full' ? HELP : HELP_BRIEF);
     process.exit(0);
   } else if (a === '-V' || a === '--version') {
     process.stdout.write(`${VERSION_LINE}\n`);

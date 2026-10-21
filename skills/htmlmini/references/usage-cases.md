@@ -1,6 +1,6 @@
 # 使用案例：按页面类型与症状取命令
 
-`SKILL.md` 保留使用边界、模式选择、调用方式与症状分流；本文件给"具体怎么做"。选项、默认值与完整清单以 `htmlmini --help`（含示例与常见症状两节）/ `--list-modes` / `--list-extractors` / `--list-render-engines` / `--list-env` 为准，这里只写场景、前提和 help 未覆盖的坑。
+`SKILL.md` 保留使用边界、模式选择、调用方式与症状分流；本文件给"具体怎么做"。选项、默认值与完整清单以 `htmlmini --help full`（`--help` 给短版）/ `--list-modes` / `--list-extractors` / `--list-render-engines` / `--list-env` 为准，这里只写场景、前提和 help 未覆盖的坑。
 
 命令里的 `<URL>`、`page.html` 是占位符；同一 URL 只联网抓一次，后续各模式复用已落盘的文件。
 

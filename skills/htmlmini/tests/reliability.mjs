@@ -214,29 +214,46 @@ async function cli(args, { input, env } = {}) {
 {
   const h = await cli(['--help']);
   ok(h.code === 0 && h.stdout.includes('USAGE'), '--help 退出 0');
+  // 默认给短版：一屏看完，并指明完整版入口。
+  const briefLines = h.stdout.split('\n').length;
+  ok(briefLines < 70, `--help 默认是短版（${briefLines} 行）`);
+  ok(h.stdout.includes('--help full'), '短版写明完整版入口');
+  const hf = await cli(['--help', 'full']);
+  ok(hf.code === 0 && hf.stdout.includes('TROUBLESHOOTING'), '--help full 给完整版');
+  ok(hf.stdout.split('\n').length > briefLines, '完整版比短版长');
+  const hEq = await cli(['--help=full']);
+  ok(hEq.code === 0 && hEq.stdout === hf.stdout, '--help=full 与 --help full 一致');
   // 内嵌帮助必须覆盖实现里真实存在的每个选项与每个取值。
   // 历史上帮助文本与实现脱过节（新增引擎/抽取器后帮助没跟上），这里用源码反查兜住。
   const cliSrc = await readFile(CLI, 'utf8');
   const optionNames = [...new Set(
     [...cliSrc.matchAll(/a === '(--[a-z-]+)'/g)].map((m) => m[1])
-      .concat([...cliSrc.matchAll(/a\.startsWith\('(--[a-z-]+)=?'/g)].map((m) => m[1])),
+      .concat([...cliSrc.matchAll(/a\.startsWith\('(--[a-z-]+)=?'/g)].map((m) => m[1]))
+      // 短选项映射表里的长选项名（'-m': 'markdown' -> --markdown）也是真实选项
+      .concat([...cliSrc.matchAll(/'(-[a-zA-Z])':\s*'([a-z]+)'/g)].map((m) => `--${m[2]}`)),
   )];
-  const missingOptions = optionNames.filter((o) => !h.stdout.includes(o));
-  ok(missingOptions.length === 0, `帮助覆盖全部 ${optionNames.length} 个选项（缺 ${missingOptions.join(', ') || '无'}）`);
+  const missingOptions = optionNames.filter((o) => !hf.stdout.includes(o));
+  ok(missingOptions.length === 0, `完整版覆盖全部 ${optionNames.length} 个选项（缺 ${missingOptions.join(', ') || '无'}）`);
   const shortFlags = [...new Set([...cliSrc.matchAll(/'(-[a-zA-Z])':\s*'/g)].map((m) => m[1]))];
-  const missingShort = shortFlags.filter((o) => !h.stdout.includes(o));
-  ok(missingShort.length === 0, `帮助覆盖全部短选项（缺 ${missingShort.join(', ') || '无'}）`);
+  const missingShort = shortFlags.filter((o) => !hf.stdout.includes(o));
+  ok(missingShort.length === 0, `完整版覆盖全部短选项（缺 ${missingShort.join(', ') || '无'}）`);
+  // 短版只能出现真实存在的选项，且必须是完整版的子集（不许两版分叉出各自的选项）。
+  const briefOptions = [...new Set([...h.stdout.matchAll(/--[a-z][a-z-]*/g)].map((m) => m[0]))];
+  const bogus = briefOptions.filter((o) => !optionNames.includes(o) && o !== '--help' && !o.startsWith('--help='));
+  ok(bogus.length === 0, `短版只出现真实选项（异常 ${bogus.join(', ') || '无'}）`);
+  const notInFull = briefOptions.filter((o) => !hf.stdout.includes(o));
+  ok(notInFull.length === 0, `短版是完整版的子集（多出 ${notInFull.join(', ') || '无'}）`);
   const valueSets = {
     mode: ['markdown', 'skeleton', 'text', 'json', 'title', 'ui', 'html'],
     extractor: ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'sanitize', 'passthrough'],
     'render-engine': ['auto', 'playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'],
   };
   for (const [opt, values] of Object.entries(valueSets)) {
-    const missing = values.filter((val) => !h.stdout.includes(val));
-    ok(missing.length === 0, `帮助列出 --${opt} 的全部取值（缺 ${missing.join(', ') || '无'}）`);
+    const missing = values.filter((val) => !hf.stdout.includes(val));
+    ok(missing.length === 0, `完整版列出 --${opt} 的全部取值（缺 ${missing.join(', ') || '无'}）`);
   }
-  ok(h.stdout.includes('EXAMPLES') && h.stdout.includes('TROUBLESHOOTING'), '帮助带示例与常见症状两节');
-  ok(h.stdout.includes('EXIT CODES') && h.stdout.includes('ENVIRONMENT'), '帮助带退出码与环境变量两节');
+  ok(hf.stdout.includes('EXAMPLES') && hf.stdout.includes('TROUBLESHOOTING'), '完整版带示例与常见症状两节');
+  ok(hf.stdout.includes('EXIT CODES') && hf.stdout.includes('ENVIRONMENT'), '完整版带退出码与环境变量两节');
   // 补全脚本是独立文件（无法从 JS 常量派生），只能靠断言防漂移。
   for (const file of ['htmlmini.bash', 'htmlmini.ps1']) {
     const comp = await readFile(path.join(ROOT, 'completions', file), 'utf8');
