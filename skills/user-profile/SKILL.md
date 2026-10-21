@@ -41,7 +41,7 @@ description: >
 动词命中即加载：
 
 1. 写PowerShell 命令/脚本/片段/防乱码/执行多段 CLI 链式管道: `powershell-pitfalls`；
-2. 访问网络/请求失败/出网慢/镜像: `network-access`；
+2. 任何外链抓取（尤其 GitHub raw/网页）或请求失败/出网慢/镜像: `network-access`（先读代理登记与同站观测；搜索成功不证明抓取路线可用）；
 3. 验收/复现/回归/门禁/交付质量: `ai-verified-delivery`；
 4. 测试代码/编写测试: `web-app-testing`
 5. 存量页找错/截图验收/溢出/断点: `frontend-qa`；

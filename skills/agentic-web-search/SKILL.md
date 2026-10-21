@@ -17,6 +17,7 @@ description: >
 - 需要把检索结果写成完整报告、教程或选型文档时，成文与详略规范遵循 `tech-learning-research`；本 Skill 只负责其中的检索与取证策略。
 - 只做文档排版收尾时遵循 `markdown-style`；需要改写文档时转 `doc-rewrite-review`。
 - 国内访问外网慢、超时、403 或 5xx 时，网络环境、跨平台代理及镜像核验遵循 `network-access`；请求频率与限流冷却仍遵循本 Skill。
+- 搜索服务可用不等于正文抓取路线可用：搜索成功只证明检索出口；正文抓取前按 `network-access` 读代理登记与同站观测，同一 URL 同路线超时或传输错误一次后换路线，不原样重发。
 - 抓取受反爬保护站点、Cloudflare 挑战等“取回”问题转 `resilient-browser-fetch`；本 Skill 负责检索取证策略及搜索、抓取的请求节奏，不处理反爬挑战。
 - 需要落地为可运行脚本或自动化流程时，脚本规范遵循 `scripting-best-practices`。
 

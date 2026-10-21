@@ -205,3 +205,25 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - **本机代理登记**：`~/.config/proxy-resources.json` 只登记了 `<port-A>`（已核验 HTTP 代理可用）。`<port-B>` 也在监听且两种协议都能用，但它的出口是机房 IP、撞 Akamai 边缘封禁，暂不作为默认条目。
 
 未验证：边缘判决随时间与频次的波动、是否只针对该站、Edge 的其他版本是否同样放行、机房 IP 段整体信誉、Linux/macOS 上的同品牌差异。
+
+## 2026-10-21 GitHub raw 三路线复核
+
+执行环境：国内 Windows PowerShell 调用 `curl.exe`；目标 `https://raw.githubusercontent.com/mattpocock/skills/main/README.md`；连接超时 5 秒，直连总期限 12 秒、代理 20 秒、加速 15 秒，无自动重试。
+
+| 路线 | 设置 | HTTP / 退出码 | 耗时 | 大小 |
+| --- | --- | --- | --- | --- |
+| 直连 | `--noproxy '*'` | 000 / 28 | 12.0 秒 | 0 字节（超时） |
+| 登记默认代理 | `--proxy http://127.0.0.1:<port>` | 200 / 0 | 0.6 秒 | 16,461 字节 |
+| gh-proxy 加速 | `https://gh-proxy.com/` 前缀，`--noproxy '*'` | 200 / 0 | 3.4 秒 | 16,461 字节 |
+
+代理与加速取回文件 SHA-256 一致：`345041D56CF1411B6B3CA1CC54014D26C563890F817F4CB9E2CB193DCD771A3E`。结论：本机直连 raw 原站在 12 秒内未取到任何字节；代理与加速均可用，代理更快。未验证：其他 raw 路径、大文件、Release/archive/git clone、跨日波动、Linux/macOS。
+
+## 2026-10-21 npm install ETIMEDOUT 排查
+
+执行环境：国内 Windows；Node 24.21.0 / npm 11.19.0，用户级 `.npmrc` 仅设 `registry=https://registry.npmmirror.com` 与 `allow-scripts=...`；整机 `HTTP_PROXY`/`HTTPS_PROXY` 指向 `http://localhost:10808`（xray，登记名 `xray-10808`）。目标为 `registry.npmmirror.com` 与 `cdn.npmmirror.com`。
+
+- 路线：直连 0.05–0.15 s；经 `<port 7897>`、经 `<port 10808>`（http 与 socks5 各一次）均 200，registry 元数据与 tarball 都可取。用 4 个常见依赖做真实 `npm install`（独立缓存、`--ignore-scripts`）：首次 80 包 43 s，其中 `has-symbols` 单个元数据请求两次 `FETCH_ERROR` 后 40 s 才 200；同样的安装在新缓存下重跑 1.5–2.5 s 通过（经 10808 / 经 7897 / 国内镜像绕代理这三种设置都能通）。
+- **`npm config get proxy` 返回 `null` 不能证明 npm 不用代理**：该值不反映环境变量派生的设置。用黑洞代理 + 全新 `--cache` 做对照才可靠——只设 `HTTP(S)_PROXY` / `http_proxy` 时 `npm view` 报 `ECONNREFUSED 127.0.0.1:1`，说明 npm 11 **确实读取**这些环境变量（与 `proxy=null` 的读数不矛盾）。
+- `npm_config_noproxy=registry.npmmirror.com,cdn.npmmirror.com` 在黑洞代理下仍 200，说明 npm 的 `noproxy` 会放行指定域名，可用于"国内镜像直连、其余走代理"。
+- 本机 `fetch-timeout=300000`（默认 5 分钟）：单请求打嗝会被放大成"卡住不动"，随后才报 ETIMEDOUT；诊断期建议 `--fetch-timeout=30000 --fetch-retries=5`。
+- 未复现持续性 ETIMEDOUT（无用户项目路径），以上只证明本机当前到 npm 生态各源可达、且间歇性单请求停顿存在。未验证：具体项目的 `.npmrc`/锁文件固定源、install 脚本额外下载、Git/VCS 依赖、跨日稳定性。

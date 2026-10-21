@@ -48,7 +48,7 @@ flowchart TD
 - 用 background 方式启动，记录**地址 + 停止方法**，两者都必须告诉用户。
 - 端口被占就换端口，不要杀用户机器上未知进程。
 - 默认**保留运行**（用户要看页面），报告里写清地址和关闭命令。
-- `pnpm install`（或对应 `npm ci`）失败先看 `references/web-run.md` 故障表，不要反复裸重装。
+- `pnpm install`（或对应 `npm ci`）失败先看 `references/web-run.md` 故障表，不要反复裸重装；下载慢或连不上按 `network-access` 选路。
 
 ### Step 3 — 分析
 
