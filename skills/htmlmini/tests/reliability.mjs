@@ -244,6 +244,40 @@ async function cli(args, { input, env } = {}) {
   ok(bogus.length === 0, `短版只出现真实选项（异常 ${bogus.join(', ') || '无'}）`);
   const notInFull = briefOptions.filter((o) => !hf.stdout.includes(o));
   ok(notInFull.length === 0, `短版是完整版的子集（多出 ${notInFull.join(', ') || '无'}）`);
+  // 每个选项在选项清单里只占一行：长选项与短选项合写成一行（"-r, --render[...]"），
+  // 不再另起一行写"同上（短选项）"——那属于重复登记，读者要自己对齐两份。
+  // 只认行首的选项写法（可用 " / " 连写多个），描述正文里提到的选项名不算登记。
+  const optionSpec = (line) => {
+    const names = [];
+    let s = line;
+    for (;;) {
+      const m = /^\s*((?:-[A-Za-z], )?--[a-z][a-z-]*(?:\[[^\]]+\])?(?: <[^>]+>)?)/.exec(s);
+      if (!m) break;
+      names.push(m[1].match(/--[a-z][a-z-]*/)[0]);
+      s = s.slice(m[0].length);
+      const sep = /^\s+\/\s+/.exec(s);
+      if (!sep) break;
+      s = s.slice(sep[0].length);
+    }
+    return names;
+  };
+  const dupInOptions = (text, from, to) => {
+    const start = text.indexOf(from);
+    const body = text.slice(start, to ? text.indexOf(to, start) : undefined);
+    const seen = new Set();
+    const dup = new Set();
+    for (const line of body.split('\n')) {
+      for (const name of optionSpec(line)) {
+        if (seen.has(name)) dup.add(name);
+        seen.add(name);
+      }
+    }
+    return [...dup];
+  };
+  const briefDup = dupInOptions(h.stdout, '常用选项', '更多');
+  ok(briefDup.length === 0, `短版选项清单里每个选项只写一行（重复 ${briefDup.join(', ') || '无'}）`);
+  const fullDup = dupInOptions(hf.stdout, '选项 (OPTIONS)', '--attrs 取值');
+  ok(fullDup.length === 0, `完整版选项清单里每个选项只写一行（重复 ${fullDup.join(', ') || '无'}）`);
   const valueSets = {
     mode: ['markdown', 'skeleton', 'text', 'json', 'title', 'ui', 'html'],
     extractor: ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'sanitize', 'passthrough'],

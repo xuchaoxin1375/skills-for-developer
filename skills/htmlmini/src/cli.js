@@ -43,14 +43,11 @@ ${modeList()}
   -m, --markdown / -j, --json / -s, --skeleton / -u, --ui / -t, --text / -T, --title
   --mode <名称>              输出模式，见上表
   --extractor <名称>         抽取引擎：auto | defuddle | trafilatura | semantic | ui | sanitize | passthrough
-  --render[=auto|always]     浏览器渲染回退：auto 只在静态 403/5xx 时回退；always 静态 200 也渲染
-  -r, --render[=auto|always]  同上（短选项；-r always 表示总是渲染）
-  --render-engine <名称>     钉住渲染引擎：auto | playwright | scrapling | cloak-cdp | chrome-late | nodriver
-  -e, --render-engine <名称> 同上（短选项）
+  -r, --render[=auto|always] 浏览器渲染回退：auto 只在静态 403/5xx 时回退；always 静态 200 也渲染
+  -e, --render-engine <名称> 钉住渲染引擎：auto | playwright | scrapling | cloak-cdp | chrome-late | nodriver
   -b, --browser-brand <品牌> 渲染用浏览器品牌：auto | chrome | edge | chromium（默认 auto）
   --cdp-url <地址>           接管你已开着的浏览器（复用它的 cookie/放行凭据），只读已渲染 DOM
-  --proxy <地址>             抓取代理：http(s) 地址，或 direct 绕过环境代理
-  -p, --proxy <地址>         同上（短选项）
+  -p, --proxy <地址>         抓取代理：http(s) 地址，或 direct 绕过环境代理
   --save-html <文件>         落盘实际使用的 HTML（配兄弟 .meta.json），便于换模式复用
   --output <文件>            结果写文件而不是 stdout
   --allow-empty              保留"像应用壳"的结果（默认报错并提示 --render=always）
@@ -94,42 +91,37 @@ ${engineList()}
     --attrs <策略>             仅 --mode html：属性策略 none | semantic | all（默认 semantic）
     --format <策略>            仅 --mode html：排版策略 raw | compact | pretty（默认 compact）
     --text-max <n>             仅 --mode ui / --extractor ui：单条文本的字符上限（默认 150，0 = 不限）
-    --render[=auto|always]     浏览器渲染回退。auto（默认）只在静态 403/5xx 时回退；
-                               always 则静态 200 也渲染。渲染链：save_page（需层 >= 1 引擎）
-                               → 系统 Chrome 无头 dump-dom（零依赖）→ 友好报错
-    -r, --render[=auto|always] 同上（短选项；-r always 表示总是渲染）
-    --render-engine <名称>     钉住 save_page 的引擎（见上表）。显式即严格：只跑这一层，
+    -r, --render[=auto|always] 浏览器渲染回退。auto（默认）只在静态 403/5xx 时回退；
+                               always 则静态 200 也渲染（-r always 同义）。渲染链：save_page
+                               （需层 >= 1 引擎）→ 系统 Chrome 无头 dump-dom（零依赖）→ 友好报错
+    -e, --render-engine <名称> 钉住 save_page 的引擎（见上表）。显式即严格：只跑这一层，
                                缺件直接报错、不再自动升档
-    -e, --render-engine <名称> 同上（短选项）
     --cdp-url <地址>           接管你已开着的浏览器（如 --remote-debugging-port 启动的
                                Chrome/Edge），复用它自己的 profile/cookie/放行凭据，只读已
                                渲染的 DOM，不会关闭它。给了它就走 save_page 的接管路线
-    --render-timeout-ms <毫秒>  渲染超时上限（默认 300000；chrome dump-dom 上限 120000）
+    --render-timeout-ms <毫秒> 渲染超时上限（默认 300000；chrome dump-dom 上限 120000）
     --chrome-bin <路径>        渲染用的浏览器可执行文件（默认自动探测）。零依赖 Chrome 直渲
                                与 save_page 渲染（chrome-late 等）都用它；显式指定时
                                晚接入引擎会拉起这个浏览器，而不是默认的 Chrome——
                                WAF 可能按客户端品牌判负（实测同一出口 Chrome 被拒、
                                Edge 放行），此时指定 Edge 路径即可放行
-    --browser-brand <品牌>     渲染用浏览器品牌偏好：auto（默认，Chrome→Edge→Chromium）|
+    -b, --browser-brand <品牌> 渲染用浏览器品牌偏好：auto（默认，Chrome→Edge→Chromium）|
                                chrome | edge | chromium。不用自己写路径，渲染脚本按品牌
                                找已安装的浏览器（Windows 先查注册表 App Paths）；边缘封禁
                                按客户端品牌判时用它换品牌。点名品牌是严格语义：该品牌没装
                                就报错，不会静默换用别的浏览器（与 --chrome-bin 同时给时
                                路径优先）
-    -b, --browser-brand <品牌> 同上（短选项）
     --python-bin <路径>        save_page 与 Trafilatura 用的解释器；"auto" = 扫描本机挑一个
                                装了引擎的（conda/venv/uv/PATH）
-    --proxy <地址>             抓取代理：http(s) 地址，或 direct 表示绕过环境代理
+    -p, --proxy <地址>         抓取代理：http(s) 地址，或 direct 表示绕过环境代理
                                （默认跟随 HTTP_PROXY/HTTPS_PROXY/NO_PROXY）
-    -p, --proxy <地址>         同上（短选项）
     --save-html <文件>         把实际用于抽取的 HTML 落盘到这个文件，并写一份兄弟
                                "<文件>.meta.json"（含页面 URL）。之后换模式读这份文件即可，
                                不用再抓一次或再渲染一次。仅 URL 输入有效；内容是原始 HTML
                                （不是 --mode html 的清理结果），且在校验之前写盘，
                                所以挑战空壳/空页报错时原文也留得下来
-    --output <文件>            结果写文件而不是 stdout（文件末尾恰好一个换行；
+    -o, --output <文件>        结果写文件而不是 stdout（文件末尾恰好一个换行；
                                比 shell 管道更稳，管道可能多出空行）
-    -o, --output <文件>        同上（短选项）
     --completion <shell>       打印补全脚本：bash | powershell
     （以上取值型选项都接受 --opt=value 写法）
   开关型
