@@ -20,7 +20,7 @@
 | UI 完成清单模板 | [UI DoD](../../frontend-qa/references/definition-of-done.md) | catalog 只链接模板；按适用范围纳入总体 DoD，不另判整个产品完成 |
 | 界面设计与呈现规则 | [frontend-design](../../frontend-design/SKILL.md)及其领域路由 | 测试验证产品已确定的设计，不通过测试规范重选设计 |
 | 轻量工具形态、打包/安装和 CLI/桌面专有基线 | [lightweight-app-builder](../../lightweight-app-builder/SKILL.md)及其 quality-gates | 本地 Web 按产品模型借用测试方法；不把轻量形态限制推广到普通服务端应用 |
-| 仓库工作流、合并保护、依赖/密钥审计与构建供应链 | [repo-governance](../../repo-governance/SKILL.md)及其 CI 参考 | 请求仓库治理时使用；普通补测试不自动补社区文件或改分支政策 |
+| 仓库工作流、合并保护、依赖/密钥审计与构建供应链 | [repo-gov](../../repo-gov/SKILL.md)及其 CI 参考 | 请求仓库治理时使用；普通补测试不自动补社区文件或改分支政策 |
 | Shell/Python/Node 脚本健壮性与风格 | [scripting-best-practices](../../scripting-best-practices/SKILL.md) | 编写相关测试/编排脚本时使用，不代替业务测试设计 |
 
 保留简短的相同底线，例如“Mock 不证明真实持久化”，有助于局部阅读；可变的等级表、状态表、阈值、报告字段和详细实施矩阵只在归属位置维护。领域清单列出要验的结果，测试实施指引解释如何得到有效证据，两者不是重复测试要求。
@@ -37,7 +37,7 @@
 | playwright install / scrapling install、国内浏览器下载慢或制品镜像配置 | network-access | 路径发现引用 browser-automation，Scrapling 的初始化及专用引擎按 resilient-browser-fetch 核对 |
 | 新建或改版界面 | frontend-design | 设计完成后按风险验 UI；新增业务行为时规划对应测试 |
 | 模糊的轻量小工具需求 | lightweight-app-builder | 先确定形态；仅对适用 Web/GUI 引用专项，不让 CLI 套 UI 全流程 |
-| 建 CI、提交前治理 | repo-governance | 根据项目测试命令接入；有测试设计问题再读取测试方法 |
+| 建 CI、提交前治理 | repo-gov | 根据项目测试命令接入；有测试设计问题再读取测试方法 |
 
 引用是按需读取，不是递归调用。进入协作 skill 时只补当前缺少的决策，不重新启动父流程；同一主问题不因多个 description 命中而叠加多套完整工作流。
 

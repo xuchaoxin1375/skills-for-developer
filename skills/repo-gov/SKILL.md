@@ -1,5 +1,5 @@
 ---
-name: repo-governance
+name: repo-gov
 description: >
   代码仓库的规范治理与安全提交，按公开/私有和项目栈裁剪。
   用于新建或改造仓库治理文件、提交前检查、历史密钥/大文件审计、分支与评审保护、

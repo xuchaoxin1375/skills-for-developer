@@ -4,7 +4,7 @@ description: >
   软件工程治理：长期维护应用的工程基线、架构与契约演进、运行可靠性和持续维护。
   用于建立或评审应用开发规范（工程治理、swe）、设计模块边界与 ADR、规划接口/数据兼容迁移、
   SLO 与恢复能力、技术债和工程改进；适用于个人及团队的 Web/服务应用。
-  单独补测试走 web-app-testing，交付验收走 ai-verified-delivery，仓库配置走 repo-governance；
+  单独补测试走 web-app-testing，交付验收走 ai-verified-delivery，仓库配置走 repo-gov；
   不因普通功能开发自动启动全面治理。
 ---
 
@@ -18,7 +18,7 @@ description: >
 - **建立/改进规范**：在授权项目中落实必要契约、决策、架构约束及运行/维护记录，运行相关检查并报告缺口；已有有效做法优先保留。
 - 单个功能、缺陷或重构只处理本次涉及的约束。模糊小工具先由 `lightweight-app-builder` 确定形态；界面设计和 UI 缺陷由对应领域 skill 处理。
 
-本 skill 维护架构、契约演进、运行可靠性和长期维护方法；交付等级、DoD 与状态由 [ai-verified-delivery](../ai-verified-delivery/SKILL.md)维护，测试实施由 [web-app-testing](../web-app-testing/SKILL.md)维护，仓库文件、评审权限与 CI/供应链配置由 [repo-governance](../repo-governance/SKILL.md)维护。职责归属与证据复用见 [共用边界表](../web-app-testing/references/skill-boundaries.md)。
+本 skill 维护架构、契约演进、运行可靠性和长期维护方法；交付等级、DoD 与状态由 [ai-verified-delivery](../ai-verified-delivery/SKILL.md)维护，测试实施由 [web-app-testing](../web-app-testing/SKILL.md)维护，仓库文件、评审权限与 CI/供应链配置由 [repo-gov](../repo-gov/SKILL.md)维护。职责归属与证据复用见 [共用边界表](../web-app-testing/references/skill-boundaries.md)。
 
 按需引用只补当前缺少的判断，共用项目契约、AC、验证入口和有效证据，不循环重启完整流程。治理路线图不是已执行检查，规范写好也不代表应用已验收。
 
