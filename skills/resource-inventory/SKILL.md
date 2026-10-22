@@ -59,7 +59,7 @@ python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会�
 | Python 环境与引擎层 | [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md) 的 `scripts/check_environment.py` |
 | 浏览器 | [browser-automation](../browser-automation/SKILL.md) 的 `scripts/browser_discovery.py` |
 | 代理 | [network-access](../network-access/SKILL.md) 的 `scripts/probe_local_proxies.py`、环境变量与 `~/.config/proxy-resources.json` |
-| 项目工具 | [web-app-testing](../web-app-testing/SKILL.md)（测试运行器与已装证据）、[app-engineering](../app-engineering/SKILL.md)（工程约定） |
+| 项目工具 | [web-app-testing](../web-app-testing/SKILL.md)（测试运行器与已装证据）、[swe-gov](../swe-gov/SKILL.md)（工程约定） |
 
 调整检测口径改归属脚本与 skill；不在这里复制规则或选项。
 

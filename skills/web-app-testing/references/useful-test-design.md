@@ -30,7 +30,7 @@
 
 ### 契约演进与副作用回归
 
-接口/数据设计与事务边界按 [架构与契约](../../app-engineering/references/architecture-and-contracts.md)确定；本节维护如何验证这些承诺，不另选择架构。
+接口/数据设计与事务边界按 [架构与契约](../../swe-gov/references/architecture-and-contracts.md)确定；本节维护如何验证这些承诺，不另选择架构。
 
 | 已确认承诺 | 高价值用例与断言 |
 |---|---|

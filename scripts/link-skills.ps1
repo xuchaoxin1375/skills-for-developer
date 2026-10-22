@@ -66,6 +66,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# -File 调用时逗号分隔值会作为单个字符串传入；统一拆成名字数组。
+if ($Include) {
+  $Include = @($Include | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
 # 默认 UTF-8：5.1 控制台默认 GBK，直接输出中文会被采集侧按 UTF-8 解错；
 # 脚本内设为 UTF-8（仅影响本进程），pwsh 7 下同样无害。
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

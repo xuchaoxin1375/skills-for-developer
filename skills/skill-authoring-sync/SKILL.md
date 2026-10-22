@@ -36,6 +36,8 @@ Windows 与 WSL/Linux 各用自己的克隆：WSL 内用 `~/repos/...`，不要�
 
 维护本仓库先读 [治理规范](references/skill-governance.md)；职责设计、正文约束与语言风格按 [内容与语言规范](references/skill-content-guidelines.md)。本 skill 继续维护真源、路径、索引和分发规则，不另复制写作规范；新建前核对邻近能力，适合扩展已有 skill 时不强行新建。
 
+写 skill 正文、全局 `AGENTS.md` 或任何被指针引用的文档时，按需读 [面向代理的文档写作](references/writing-for-agents.md)：指针措辞、信息层级、主词、完成标准与修剪。
+
 ---
 
 ## 目录与命名约定

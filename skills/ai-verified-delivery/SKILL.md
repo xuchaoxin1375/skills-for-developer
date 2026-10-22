@@ -46,7 +46,7 @@ description: >
 
 本 skill 管交付如何证明完整、正确、可运行及适用时可回滚；界面生成、UI 缺陷深查、脚本写法、仓库治理分别由对应 skill 负责。领域细节按需读 references，避免每项任务都加载全部 Web 检查。
 
-涉及长期应用架构、ADR、接口/数据兼容、运行目标或技术债时，按需读 [app-engineering](../app-engineering/SKILL.md)补工程决策；其产物作为本次规格与验证的输入，不另定义交付等级或状态。例外的记录和批准责任见 [例外与责任](references/spec-driven-delivery.md#例外与责任)，不因引用治理资料增加统一审批步骤。
+涉及长期应用架构、ADR、接口/数据兼容、运行目标或技术债时，按需读 [swe-gov](../swe-gov/SKILL.md)补工程决策；其产物作为本次规格与验证的输入，不另定义交付等级或状态。例外的记录和批准责任见 [例外与责任](references/spec-driven-delivery.md#例外与责任)，不因引用治理资料增加统一审批步骤。
 
 前后端 Web 项目需要确定测试覆盖、编写有用用例、选择编写时机或建设测试环境时，按需读 [web-app-testing](../web-app-testing/SKILL.md)；它补充测试实施方法，本 skill 继续维护唯一等级、必需验证与证据政策。协作共用 AC、检查入口、有效证据和交付报告，不重启或重复执行整套流程；维护关联规则时读 [职责归属](../web-app-testing/references/skill-boundaries.md)。
 

@@ -7,7 +7,7 @@
 | 决策或规则 | 维护位置 | 其他 Skill 如何使用 |
 |---|---|---|
 | Web 测试覆盖层、用例设计、编写时机、数据环境与测试维护 | [web-app-testing 正文](../SKILL.md)及其三个实施参考 | 按需引用方法，保留本领域的验收结果，不复制详细实施表 |
-| 长期应用架构、ADR、契约演进、运行目标与维护方法 | [app-engineering](../../app-engineering/SKILL.md)及其领域参考 | 提供产品约束与工程决策，测试负责验证，交付负责证据与完成判断 |
+| 长期应用架构、ADR、契约演进、运行目标与维护方法 | [swe-gov](../../swe-gov/SKILL.md)及其领域参考 | 提供产品约束与工程决策，测试负责验证，交付负责证据与完成判断 |
 | 交付等级、必需检查组合、DoR/DoD | [等级与门禁](../../ai-verified-delivery/references/levels-and-gates.md) | 按影响面定级；测试建议和局部清单不另定等级 |
 | 交付状态、报告事实与授权边界 | [ai-verified-delivery 正文](../../ai-verified-delivery/SKILL.md) | 测试结果作为输入，不另定义总体完成状态 |
 | 例外字段、风险接受与正式批准事实 | [交付例外与责任](../../ai-verified-delivery/references/spec-driven-delivery.md#例外与责任) | 运行/安全例外沿用项目权限与同一字段，不把原失败改成通过 |
@@ -30,7 +30,7 @@
 | 用户主要问题 | 主入口 | 条件触发的协作 |
 |---|---|---|
 | 测什么、补回归、测试难维护 | web-app-testing | 有交付定级/验收需求才读交付政策；有 UI 专项才读 QA |
-| 建立应用规范、架构/接口演进、运行与长期维护 | app-engineering | 工程约束交给测试验证；仓库配置和交付判断分别按需协作 |
+| 建立应用规范、架构/接口演进、运行与长期维护 | swe-gov | 工程约束交给测试验证；仓库配置和交付判断分别按需协作 |
 | 功能是否完整、能否交付、证据是否足够 | ai-verified-delivery | Web 测试设计/环境缺口交给测试 skill，UI 专项交给 QA |
 | 已有页面交互/布局/可访问性缺陷 | frontend-qa | 跨到真实 API、存储或业务回归时借用测试方法 |
 | 浏览器装在哪、工具/运行器怎么选、浏览器自动化操作、拍截图、shot-quick 卡住或进程残留 | browser-automation | 需要测试覆盖、断言与回归维护才转 web-app-testing；页面缺陷判断交 frontend-qa，安装下载交 network-access |
