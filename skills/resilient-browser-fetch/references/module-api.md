@@ -13,7 +13,7 @@
 | Cloudflare 求解算法 | Scrapling 原生实现 | 仍使用 Scrapling，不声称更强 |
 | 浏览器生命周期 | 调用者管理 | 每个引擎在隔离子进程中运行，并有硬超时和进程树回收 |
 | 引擎可用性 | 调用者自行判断 | 注册表 + 进程内探测；`auto` 只升档到已安装的引擎 |
-| 失败回退 | 调用者编排 | `static → playwright → scrapling → cloak-cdp` 按层升档；`nodriver` 仅在显式选择或 `--headful` 的 `auto` 中作为最后后备 |
+| 失败回退 | 调用者编排 | `auto` 先试 `static`，浏览器段从求解引擎（`scrapling`/`cloak-cdp`）起步、层 1 兜底；无求解引擎时才是 `static → playwright`；`nodriver` 仅在显式选择或 `--headful` 的 `auto` 中作为最后后备 |
 | 代理安全 | 调用者处理 | 代理预检、本地端口发现、默认禁止静默直连、凭据遮蔽 |
 | 成功判断 | 通常由调用者判断 | 同时检查 HTTP 状态、挑战特征、最小字节数和业务文本 |
 | 结果模型 | Scrapling `Response` | 统一为 `FetchResult`、`FetchAttempt`（含 `kind` 失败分类）和 `FetchOutcome` |
@@ -138,7 +138,7 @@ outcome = save_page(
 
 ## 生命周期边界
 
-`fetch_page()` 为单页可靠性使用隔离子进程，并可能按顺序启动 Scrapling、CloakBrowser 或 nodriver。它适合单次调用、作业队列中的独立任务和故障隔离，不适合在连续批量任务中对很多 URL 直接并发调用，否则会创建多个浏览器并重复验证。同一站点的主目标、对照页、接口端点和状态探针也属于连续任务，应复用同一会话，不要为每个探针调用一次 `fetch_page()`。
+`fetch_page()` 为单页可靠性使用隔离子进程，并可能按顺序启动 Scrapling、CloakBrowser、Playwright 或 nodriver（`auto` 阶梯：static 先行 → 有求解引擎则 Scrapling/CloakBrowser 起步 → Playwright 兜底 → nodriver 只在 `--headful` 时）。它适合单次调用、作业队列中的独立任务和故障隔离，不适合在连续批量任务中对很多 URL 直接并发调用，否则会创建多个浏览器并重复验证。同一站点的主目标、对照页、接口端点和状态探针也属于连续任务，应复用同一会话，不要为每个探针调用一次 `fetch_page()`。
 
 连续批量或 sitemap 任务按依赖选会话：[batch-workflows.md](batch-workflows.md) 里的 `StaticBatchSession`（层 0 静态页，零依赖）、`BrowserBatchSession`（层 1 渲染，只要 playwright/patchright）或 `SiteSessionManager`（层 2+，带挑战求解与重验证）：先首页预热，再复用同一会话做受限并发。
 

@@ -10,9 +10,13 @@ validation, and normalized diagnostics around a layered engine set:
 - explicit ``nodriver``: direct-CDP control plane on system Chrome, no solver;
 - explicit ``chrome-late``: let the page load first, then attach and read.
 
-``auto`` tries only the engines that are actually installed, from the lowest
-capability level up, so a missing enhancement package downgrades the run instead
-of failing it. Layer numbers describe capability, not stealth: layers 2 and 3
+``auto`` tries only the engines that are actually installed, so a missing
+enhancement package downgrades the run instead of failing it. The order is not
+purely by layer number: ``static`` is always tried first (it costs nothing), and
+when a solving engine is installed the browser leg starts there -- layer 1 is a
+subset of what layers 2/3 can do, so trying it first only adds a browser
+round-trip that a challenge page will not survive anyway. Layer 1 is kept as the
+last fallback. Layer numbers describe capability, not stealth: layers 2 and 3
 still use Patchright as the control plane. ``nodriver`` runs only when the
 caller explicitly selects it, or in ``auto`` with ``--headful`` because its
 headless mode is substantially weaker. ``chrome-late`` is a different axis
@@ -2602,16 +2606,35 @@ def engine_capabilities(selected: str) -> frozenset[str]:
 
 
 def engine_order(selected: str, *, headful: bool = False) -> list[str]:
-    """List engines to try: explicit selection stays strict, ``auto`` upgrades by order."""
+    """List engines to try: explicit selection stays strict, ``auto`` upgrades by order.
+
+    ``auto`` 的顺序不是单纯按层号从低到高，而是按"能不能白跑一趟"排：
+
+    - ``static`` 永远排最前：零成本的 HTTP 尝试，成了就不用开浏览器。
+    - 装了带挑战求解的引擎（scrapling / cloak-cdp）时，浏览器段直接从求解引擎起步。
+      纯渲染层（playwright）是求解引擎的子集能力，遇到挑战页必然过不去，
+      先试它只会多花一次浏览器往返。纯渲染引擎不删掉，留在后面当求解引擎真出
+      问题时的兜底。
+    - 没有求解引擎时维持原样：按层号从低到高逐级尝试。
+    """
 
     if selected != "auto":
         return [selected]
-    return [
+    usable = [
         name
         for name in available_engines()
         if ENGINES[name].in_auto
         and (headful or not ENGINES[name].auto_requires_headful)
     ]
+    static_first = [name for name in usable if name == "static"]
+    browsers = [name for name in usable if name != "static"]
+    if any(CAP_SOLVE in ENGINES[name].capabilities for name in browsers):
+        browsers = [
+            name for name in browsers if CAP_SOLVE in ENGINES[name].capabilities
+        ] + [
+            name for name in browsers if CAP_SOLVE not in ENGINES[name].capabilities
+        ]
+    return static_first + browsers
 
 
 def available_engines() -> tuple[str, ...]:
@@ -3197,7 +3220,8 @@ def main(argv: list[str] | None = None) -> int:
         choices=ENGINE_CHOICES,
         default="auto",
         help=(
-            "auto 按可用引擎顺序尝试: static → playwright → scrapling → cloak-cdp；"
+            "auto 按可用引擎顺序尝试: static → 有求解引擎则 scrapling/cloak-cdp 起步、playwright 兜底，"
+            "无求解引擎时才是 static → playwright；"
             "nodriver 仅在 --headful 时加入 auto，或显式 --engine nodriver。"
             "chrome-late 先让页面自然加载再接入调试器(需 --settle-ms 调整窗口)，"
             "只能显式指定。显式指定某个引擎时缺件会直接失败。"

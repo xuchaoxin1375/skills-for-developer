@@ -56,7 +56,7 @@ HTML 快照里的图片、字体和外部样式表/脚本仍指向原站；内�
 flowchart TD
     A["任务: 拿到一个页面"] --> B{"要的产物"}
     B -->|"完整 DOM(含 JS): HTML 快照 / 离线存档 / 取证"| C{"该站已知挑战?"}
-    B -->|"正文或字段: 摘要, 取数"| D["auto: static 优先, 命中挑战再升档"]
+    B -->|"正文或字段: 摘要, 取数"| D["auto: static 优先; 有求解引擎则从求解层起步"]
     C -->|"是: 有同站观测"| E["钉 --engine scrapling + save_page"]
     C -->|"否或未知"| F["钉 --engine playwright + save_page"]
     F -->|"撞挑战"| E
@@ -89,7 +89,7 @@ flowchart TD
 
    明确需要本地代理但未设置 `SCRAPE_PROXY` 时，可在抓取命令中添加 `--discover-proxy`，按本机登记文件中的候选依次探测。它只取**第一个**能建立 TCP 连接的候选，不验证协议与出口；命中挑战或 403 时不要据此认定站点不可达，先用 `network-access` 的 `probe_local_proxies.py` 取 `usable[]`，再对每个可用入口各发一次目标请求。端口开放只代表存在候选服务，换出口的结论要写进报告。
 
-3. 取正文时先使用 `auto`；要 HTML 快照或离线存档时按上面的入口图直接钉层。它只把**已安装**的引擎列入顺序，按能力从低到高尝试：`static` → `playwright` → `scrapling` → `cloak-cdp`；缺件的引擎记录为 `unavailable` 并跳过，不算失败。直接 CDP 的 `nodriver` 排在最后，且只在 `--headful` 时加入 `auto`；无头 `auto` 不会尝试它。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
+3. 取正文时先使用 `auto`；要 HTML 快照或离线存档时按上面的入口图直接钉层。它只把**已安装**的引擎列入顺序：先试零成本的 `static`；浏览器段**从求解引擎起步**——装了 `scrapling`/`cloak-cdp` 就直接用，纯渲染的 `playwright` 过不了挑战页，先跑它只是多花一次浏览器往返，因此降到阶梯末尾当兜底（求解引擎真出问题时还有路走）；没有求解引擎时按能力从低到高 `static` → `playwright`。缺件的引擎记录为 `unavailable` 并跳过，不算失败。直接 CDP 的 `nodriver` 排在最后，且只在 `--headful` 时加入 `auto`；无头 `auto` 不会尝试它。每个引擎都在隔离子进程里跑并带硬超时，被内容校验判为挑战页或空壳时再升档。服务端明确返回 404/410 且正文没有挑战特征时，`auto` 停止升档——换引擎不会改变资源级结论。静态页在层 0 就能拿到，不必启动浏览器。有引擎因缺件被跳过时，日志会提示"依赖可能装在别的 Python 环境"并指向 `--list-envs`；全部引擎都缺件时，错误信息同样给出这条排查路径。
 
    ```bash
    python <skill-dir>/scripts/resilient_fetch.py \
@@ -201,7 +201,7 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 | 3 | `cloak-cdp` | 层 2 的指纹底座变体 | 层 2 + `requirements-cloak.txt` + `python -m cloakbrowser install` | CloakBrowser 本身不是 CAPTCHA 求解器 |
 
 - **层号是能力档位，不是隐蔽性排名。** 层 2/3 的控制面仍是 Patchright；层 3 只是把引擎/指纹底座换成 CloakBrowser。目标专门卡 Playwright/Patchright 时，继续在层 2/3 之间切换可能毫无变化，此时先读 [检测层与引擎选择](references/detection-layers.md)，再考虑换出口或显式试 nodriver。
-- `auto`：默认。按上表从低到高、只对已安装的引擎升档；缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。`nodriver` 只有加 `--headful` 时才进入 `auto`，且排在层 3 之后；无头 `auto` 不会尝试它。`chrome-late` 不进 `auto`：它换的是挑战窗口内是否暴露痕迹、每次都要新起浏览器并等挑战跑完，只在明确知道要用时才指定。指定 `--engine <层>` 时缺件直接失败，便于排障。
+- `auto`：默认。只对已安装的引擎升档，缺件引擎记 `skipped(unavailable)`，不会让整次抓取失败。顺序按"会不会白跑一趟"排：先试 `static`；**浏览器段从求解引擎（层 2/3）起步**——层 1 是层 2/3 的子集能力，撞挑战页必然过不去，先跑它只是多花一次浏览器往返，所以 `playwright` 降到阶梯末尾当兜底；没装层 2/3 时才按上表从低到高 `static` → `playwright`。`nodriver` 只有加 `--headful` 时才进入 `auto`，且排在层 3 之后；无头 `auto` 不会尝试它。`chrome-late` 不进 `auto`：它换的是挑战窗口内是否暴露痕迹、每次都要新起浏览器并等挑战跑完，只在明确知道要用时才指定。指定 `--engine <层>` 时缺件直接失败，便于排障。
 - `chrome-late`：适用于“普通浏览器能打开、而本阶梯每个引擎都被拦”的站点。做法是自己拉起系统 Chrome **直接用命令行打开目标 URL**（不接任何调试器），等站点的挑战流程自己跑完再接入读取已渲染 DOM。**机制是挑战窗口**：WAF 先下发挑战页，挑战在页面加载早期约 0–10 s 内判定成败，这个窗口里暴露了自动化痕迹（`navigator.webdriver` 等）就落到 `Access Denied`；晚接入让浏览器在决策窗口里没有调试会话。就绪判定只读 DevTools 的 HTTP 端点（不建立调试会话），**信号是标签标题变成真实标题**（挑战页没有标题），标题是 `Access Denied` 则提前结束等待。接入后还会等 DOM 渲染稳定再读（`--render-timeout-ms`，默认 15000），否则会只拿到半渲染的正文；**稳定不等于就绪**——客户端渲染的应用常先停在稳定的小壳上，所以还会在"HTML 很大但可见文字很少"与"站点自己报错"这两种状态下继续等；给了 `--expect-text` 时则以期望文本出现为准（`--render-min-ms` 可设最短等待）。它固定有头运行，不支持带凭据的代理，读取的是已渲染完的页面（懒加载与折叠区不会展开）。同站多页用 `scripts/example_late_batch.py`：**一次启动开多个标签、各自自然加载、最后统一接入读取**，只付一次启动与一次静默窗口的代价。细节与判读依据见 [检测层与引擎选择](references/detection-layers.md) 的“先让挑战跑完，再接入”。
 - **边缘封禁可能按客户端品牌判**：实测同一出口、同一协议、同一 profile 下，Chrome 被 Akamai 边缘拒（403 `Access Denied` / `Reference #18.…`），Edge 放行——判负挂在**客户端**上时，换出口无用，换浏览器才有用。`chrome-late` 默认拉起 Chrome，会继承 Chrome 的判决，于是出现"用户自己的 Edge 在同一出口能开、晚接入引擎却一直失败"。解法：`--browser-brand edge`（或 `--executable-path <Edge 路径>`、或环境变量 `RESILIENT_BROWSER=edge`）；该偏好对层 1（映射成 Playwright 的 `channel=msedge`）、层 2 与 `nodriver`（解析成可执行文件）同样生效。**点名品牌是严格语义**：该品牌没装就报错，不用别的浏览器顶替（否则 `browser_channel` 与实际客户端对不上，等于白换）；Windows 上先查注册表 `App Paths\<exe>` 再退回固定路径候选。`notes` 里的 `browser_channel` 写实际客户端（`system-edge(msedge.exe)`），`browser_path` 写实际拉起的可执行文件绝对路径。实测与判读见 [检测层与引擎选择](references/detection-layers.md) 的“H&M 商品页”一段。
 - `cdp-attach`：**接管你已经开着的浏览器**，读它里那个已经放行的标签页。适用场景是“同一台机器、同一个出口，你的浏览器能打开，而任何自建浏览器都被拒”——决定放行的是**客户端身份 + 网络路径**（profile、cookie、clearance、VPN、代理规则），不是 IP 信誉时，自建引擎再怎么换都换不出来。用法：浏览器用 `--remote-debugging-port` 启动 → 你自己把目标页打开并等它放行 → `--cdp-url http://127.0.0.1:<port>` 接管读取。**它不拥有那个浏览器**：只连接、只读、然后断开，绝不关闭它、绝不导航它（导航会在挑战窗口里带上调试会话，Akamai 一类站点可能因此判负；确实要导航才加 `--cdp-navigate`）。接管时浏览器里没有目标页就报错并提示先手动打开，不猜、不乱点。

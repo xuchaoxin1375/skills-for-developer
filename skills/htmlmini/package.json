@@ -1,6 +1,6 @@
 {
   "name": "htmlmini",
-  "version": "2026.10.21.1814",
+  "version": "2026.10.22.1833",
   "description": "Strip CSS/JS from HTML, extract the core skeleton as Markdown/JSON. Fallback chain: Defuddle -> optional Trafilatura -> semantic -> UI inventory. Works as a CLI and an MCP server for any AI harness.",
   "type": "module",
   "bin": {

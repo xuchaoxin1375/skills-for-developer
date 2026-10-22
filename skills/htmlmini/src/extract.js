@@ -55,10 +55,10 @@ export const FORMAT_POLICY_DESCRIPTIONS = {
   pretty: '重新缩进，便于人读（需要 js-beautify 依赖）',
 };
 export const RENDER_ENGINE_DESCRIPTIONS = {
-  auto: '逐层升档（默认）：静态 → playwright → scrapling/cloak-cdp',
+  auto: '逐层升档（默认）：静态优先；装了求解引擎就从 scrapling/cloak-cdp 起步，playwright 兜底',
   playwright: '层 1：Playwright/Patchright 驱动，只渲染不求解',
-  scrapling: '层 2：Patchright + 挑战求解',
-  'cloak-cdp': '层 2：CloakBrowser 直连 CDP，带挑战求解',
+  scrapling: '层 2：Patchright + 挑战求解（需 ≥60s 预算）',
+  'cloak-cdp': '层 2：CloakBrowser 直连 CDP，带挑战求解（需 ≥60s 预算）',
   'chrome-late': '晚接入：先让站点的挑战跑完，再接入读已渲染 DOM（挑战站点专用）',
   nodriver: '层 1 备用：系统 Chrome 直接 CDP，不伪造指纹',
 };
@@ -488,6 +488,21 @@ export async function findCapablePython(required = ['playwright']) {
 }
 
 /**
+ * 找本机装了挑战求解引擎（scrapling / cloak-cdp）的解释器；扫描结果按能力排序，首个命中即最强。
+ * 没有则 null：扫描脚本缺失、没装求解引擎、或者只有显式指定的环境，都走这条路。
+ */
+export async function findSolverPython() {
+  const candidates = await scanPythonEnvironments(['playwright']);
+  for (const entry of candidates) {
+    const engines = entry.engines ?? [];
+    if (!entry.path) continue;
+    if (!engines.some((name) => SOLVER_ENGINES.includes(name))) continue;
+    return { path: entry.path, engines, manager: entry.manager ?? null, level: candidateLevel(entry) };
+  }
+  return null;
+}
+
+/**
  * 渲染失败后是否可以换更强的解释器再试。
  * 显式指定了解释器就尊重用户选择；配置类错误换环境也没用。
  */
@@ -736,7 +751,9 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
 }
 
 export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, info = null } = {}) {
-  const { script, engines, solver, python } = await renderCapability(pythonBin);
+  const { script, engines, solver, python } = await renderCapability(pythonBin, { renderTimeoutMs });
+  // 记下实际用的解释器：渲染失败时要能回退到默认环境（更强环境可能没装浏览器二进制）。
+  if (info) info.python = python;
   const canSavePage =
     Boolean(script) && (engines === null || engines.some((name) => BROWSER_ENGINES.includes(name)));
   // 显式钉住引擎：save_page 只在那个引擎上跑（缺件直接失败），因此通路必须走 save_page，
@@ -747,6 +764,14 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
     throw new Error(
       `--render-engine ${pinned} needs the save_page renderer (resilient-browser-fetch), but no browser-capable engine is available here`
       + pythonHint(python, alternative),
+    );
+  }
+  // 求解引擎（scrapling/cloak-cdp）至少要 60s 预算（挑战页自身要等满时长）。
+  // 预算不够时求解引擎用不了：显式钉了求解引擎就直说，否则由 runSavePage 把阶梯钉到层 1。
+  if (pinned && SOLVER_ENGINES.includes(pinned) && renderTimeoutMs < MIN_SOLVER_TIMEOUT_MS) {
+    throw new Error(
+      `--render-engine ${pinned} 至少需要 ${MIN_SOLVER_TIMEOUT_MS}ms 的渲染预算（挑战页自身要等满时长）；`
+      + `当前 --render-timeout-ms ${renderTimeoutMs}。要按这个预算渲染，改用 --render-engine playwright（只渲染，不求解挑战）。`,
     );
   }
 
@@ -769,7 +794,7 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
   // 有求解引擎、需要开窗、本机没有 Chrome、显式钉了引擎，或要接管用户已开着的浏览器时，save_page 更合适；
   // 层 1 与 Chrome 同能力时优先零依赖通路。接管路线没有零依赖版本(必须走 CDP), 所以 cdpUrl 强制走 save_page。
   if (canSavePage && (pinned || solver || headful || !found || cdpUrl)) {
-    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info });
+    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info, solver });
   }
   if (found) {
     try {
@@ -779,13 +804,13 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
       // 零依赖通路崩了（进程退出码异常、超时等）时，同能力的 save_page 值得再试一次。
       log.info('render', `chrome 通路失败，改用 save_page 重试: ${chromeErr.message}`);
       try {
-        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info });
+        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info, solver });
       } catch (saveErr) {
         throw new Error(`${chromeErr.message}; save_page 回退也失败: ${saveErr.message}`);
       }
     }
   }
-  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info });
+  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info, solver });
   const alternative = await findCapablePython(['playwright']).catch(() => null);
   if (headful) {
     throw new Error(
@@ -829,6 +854,8 @@ export function isInterpreterRetryable(e) {
 // 或显式钉了 chrome-late 这类"先让挑战跑完再接入"的引擎。
 const BROWSER_ENGINES = ['playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'];
 const SOLVER_ENGINES = ['scrapling', 'cloak-cdp'];
+/** 求解引擎的最低预算：挑战页自身要等满时长（与 resilient-browser-fetch 的 MIN_SOLVER_TIMEOUT_MS 对齐）。 */
+const MIN_SOLVER_TIMEOUT_MS = 60_000;
 const RENDER_ENGINES_ENV = 'HTMLMINI_RENDER_ENGINES';
 
 async function probeRenderEngines(python, script) {
@@ -858,7 +885,7 @@ async function probeRenderEngines(python, script) {
  * 汇总 save_page 通路的可用性：engines 为 null 表示"按旧口径信任脚本"（显式覆盖或旧版 skill）。
  * python 为实际探测用的解释器，供调用方在失败信息里指名，或提示改用 --python-bin。
  */
-async function renderCapability(pythonBin) {
+async function renderCapability(pythonBin, { renderTimeoutMs = RENDER_TIMEOUT_MS } = {}) {
   let script;
   try {
     script = findRenderScript();
@@ -875,7 +902,7 @@ async function renderCapability(pythonBin) {
     if (pythonBinOverride(pythonBin)) throw e;
     return { script: null, engines: null, solver: false, python: null };
   }
-  const engines = await probeRenderEngines(python, script);
+  let engines = await probeRenderEngines(python, script);
   if (engines === null) {
     // 兼容旧版 resilient-browser-fetch（无 available_engines）或探测整体失败：
     // 退回"能否 import scrapling"的旧口径，宁可不判死。
@@ -887,7 +914,27 @@ async function renderCapability(pythonBin) {
     }
   }
   log.debug('render', `save_page 可用引擎: ${engines.join(', ') || '无'} (python: ${python})`);
-  return { script, engines, solver: engines.some((name) => SOLVER_ENGINES.includes(name)), python };
+  let solver = engines.some((name) => SOLVER_ENGINES.includes(name));
+  // 默认解释器只会渲染、不会求解挑战，而本机另有装了 scrapling/cloak-cdp 的环境：
+  // 直接用那个环境，省掉"弱引擎先跑一遍"的往返（层 1 遇到挑战页必然过不去）。
+  // 显式指定了解释器就尊重用户选择，不静默换环境。
+  // 求解引擎至少要 60s 预算：预算不够时它用不上，别为一个用不了的引擎换环境。
+  if (!solver && !pythonBinOverride(pythonBin) && renderTimeoutMs >= MIN_SOLVER_TIMEOUT_MS) {
+    const stronger = await findSolverPython();
+    if (stronger && resolvePath(String(stronger.path)).toLowerCase() !== resolvePath(String(python)).toLowerCase()) {
+      const probed = await probeRenderEngines(stronger.path, script);
+      if (probed && probed.some((name) => SOLVER_ENGINES.includes(name))) {
+        log.info(
+          'render',
+          `默认解释器不具备挑战求解能力，改用更强环境: ${stronger.path} (${stronger.manager ?? '未知管理方式'}; 引擎: ${probed.join(', ')})`,
+        );
+        python = stronger.path;
+        engines = probed;
+        solver = true;
+      }
+    }
+  }
+  return { script, engines, solver, python };
 }
 
 /** save_page 是否有层 ≥1 的可用引擎；供测试与调用方判断渲染通路。 */
@@ -939,15 +986,35 @@ export function savePageArgs({
   return args;
 }
 
-async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info = null }) {
+/**
+ * 决定传给 save_page 的引擎：显式指定优先；auto 模式下若渲染预算低于求解引擎下限，
+ * 就把阶梯钉到层 1（只渲染，不求解挑战）——save_page 在启用求解时要求 timeout_ms ≥ 60s，
+ * 预算不够时整条命令会被参数校验直接拒绝。
+ */
+export function resolveSavePageEngine({ renderEngine = null, solver = false, renderTimeoutMs = RENDER_TIMEOUT_MS } = {}) {
+  const engine = renderEngine ?? 'auto';
+  if (engine === 'auto' && solver && renderTimeoutMs < MIN_SOLVER_TIMEOUT_MS) return 'playwright';
+  return engine;
+}
+
+async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info = null, solver = false }) {
   const interpreter = python ?? (await findPython({ pythonBin }));
   const proxyUrl = resolveProxy(url, { proxy });
   const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
+  // 求解引擎至少要 60s 预算：预算不够时把 auto 阶梯钉到层 1（只渲染，不求解挑战），
+  // 否则 save_page 会因"启用 Cloudflare 求解时 timeout_ms 不得低于 60000"直接拒绝参数。
+  const engine = resolveSavePageEngine({ renderEngine, solver, renderTimeoutMs });
+  if (engine === 'playwright' && (renderEngine ?? 'auto') === 'auto') {
+    log.info(
+      'render',
+      `渲染预算 ${renderTimeoutMs}ms 不足求解引擎的 ${MIN_SOLVER_TIMEOUT_MS}ms 下限，本次只渲染不求解挑战`,
+    );
+  }
   const args = savePageArgs({
     script,
     url,
     out,
-    engine: renderEngine ?? 'auto',
+    engine,
     renderTimeoutMs,
     proxyUrl,
     cdpUrl,
@@ -1144,7 +1211,7 @@ export async function readWithRender(
   // 渲染一次并做挑战判定；bin 为空表示沿用默认解释器（PATH 的 python/python3）。
   const renderHtml = async (bin) => {
     // 只清上一轮渲染的结果，保留静态回退时记下的状态码（info.staticStatus）。
-    for (const k of ['status', 'engine', 'notes']) delete info[k];
+    for (const k of ['status', 'engine', 'notes', 'python']) delete info[k];
     const html = await renderViaBrowser(source, {
       proxy,
       info,
@@ -1158,30 +1225,49 @@ export async function readWithRender(
     });
     return guardRendered({ html, source, contentType: 'text/html', rendered: true });
   };
-  // 首次渲染失败（含拿到挑战空壳）且用户没显式指定解释器时，扫描本机是否有更强的候选
-  // （层 2/3 带挑战求解），最多换一次。显式指定即尊重用户选择，不自动换。
+  // 渲染没成功时的处置顺序：先换默认环境（更强环境可能没装浏览器二进制），
+  // 再换另一个更强环境。显式指定了解释器就尊重用户选择，不自动换。
   const renderWithEscalation = async () => {
+    let firstError = null;
+    const tryRender = async (bin) => {
+      try {
+        return done(await renderHtml(bin));
+      } catch (e) {
+        if (!isInterpreterRetryable(e)) throw e;
+        if (!firstError) firstError = e;
+        return null;
+      }
+    };
+    const rendered = await tryRender(pythonBin);
+    if (rendered) return rendered;
+    const used = info.python ?? null;
+    let current = null;
     try {
-      return done(await renderHtml(pythonBin));
-    } catch (e) {
-      if (!isInterpreterRetryable(e)) throw e;
-      let current = null;
-      try {
-        current = await findPython({ pythonBin });
-      } catch {
-        current = null;
-      }
-      const stronger = await pickStrongerPython({ pythonBin, current }).catch(() => null);
-      if (!stronger) throw e;
-      log.info(
-        'render',
-        `渲染未成功，改用更强的解释器重试: ${stronger.recommended} (层 ${stronger.level}; 引擎: ${stronger.engines.join(', ') || '未知'})`,
-      );
-      try {
-        return done(await renderHtml(stronger.recommended));
-      } catch (retryErr) {
-        throw new Error(`${e.message}; 改用 ${stronger.recommended} 重试后仍失败: ${retryErr.message}`);
-      }
+      current = await findPython({ pythonBin });
+    } catch {
+      current = null;
+    }
+    // 首选的更强环境失败 → 回退到默认环境再试一次。
+    if (
+      !pythonBinOverride(pythonBin)
+      && used
+      && current
+      && resolvePath(String(used)).toLowerCase() !== resolvePath(String(current)).toLowerCase()
+    ) {
+      log.info('render', `更强环境未成功，回退到默认解释器重试: ${current}`);
+      const fallback = await tryRender(current);
+      if (fallback) return fallback;
+    }
+    const stronger = await pickStrongerPython({ pythonBin, current: used ?? current }).catch(() => null);
+    if (!stronger) throw firstError;
+    log.info(
+      'render',
+      `渲染未成功，改用更强的解释器重试: ${stronger.recommended} (层 ${stronger.level}; 引擎: ${stronger.engines.join(', ') || '未知'})`,
+    );
+    try {
+      return done(await renderHtml(stronger.recommended));
+    } catch (retryErr) {
+      throw new Error(`${firstError.message}; 改用 ${stronger.recommended} 重试后仍失败: ${retryErr.message}`);
     }
   };
   // render="always"：静态 200 也照样渲染。客户端渲染页的正文在水合后才进 DOM，

@@ -13,10 +13,12 @@ import {
   extractHtml,
   findCapablePython,
   findPython,
+  findSolverPython,
   isInterpreterRetryable,
   pickStrongerPython,
   pythonBinOverride,
   resetEnvScanCache,
+  resolveSavePageEngine,
   savePageArgs,
   scanPythonEnvironments,
   hostBypassed,
@@ -1088,6 +1090,24 @@ open(out, 'w', encoding='utf-8').write(
       ok(!isInterpreterRetryable(new Error('HTTP 404 not found')), '404 不触发升档');
       ok(!isInterpreterRetryable(new Error('--python-bin/HTMLMINI_PYTHON interpreter is not usable: x')), '解释器配置错误不触发升档');
       ok(!isInterpreterRetryable(new Error('no python found (tried python/python3)')), '没有 python 时不触发升档');
+
+      // 5) 求解环境的挑选：只认装了 scrapling/cloak-cdp 的解释器
+      const solverFound = await findSolverPython();
+      ok(solverFound && solverFound.path === strong, '挑出带挑战求解引擎的解释器');
+      ok((solverFound?.engines ?? []).includes('scrapling'), '求解环境带上引擎列表');
+      const noSolverScan = path.join(dir, 'scan-nosolver');
+      await mkdir(noSolverScan, { recursive: true });
+      await writeFile(
+        path.join(noSolverScan, 'check_environment.py'),
+        'def scan_environments(required, scripts_dir):\n'
+          + '    return [\n'
+          + `        {"ok": True, "path": ${JSON.stringify(weak)}, "engines": ["static", "playwright"], "levels": [0, 1], "manager": "system", "satisfies": []},\n`
+          + '    ]\n',
+        'utf8',
+      );
+      process.env.HTMLMINI_ENV_SCAN_SCRIPT = path.join(noSolverScan, 'check_environment.py');
+      resetEnvScanCache();
+      ok((await findSolverPython()) === null, '没有求解引擎时不给推荐环境');
     } finally {
       for (const k of Object.keys(saved)) {
         if (saved[k] === undefined) delete process.env[k];
@@ -1097,6 +1117,15 @@ open(out, 'w', encoding='utf-8').write(
       await rm(dir, { recursive: true, force: true });
     }
   }
+}
+
+// ---- 13e. 求解引擎的 60s 预算下限：预算不够时不进求解层 ----
+{
+  ok(resolveSavePageEngine({ solver: true, renderTimeoutMs: 300000 }) === 'auto', '预算够时 auto 阶梯照旧（求解层可用）');
+  ok(resolveSavePageEngine({ solver: true, renderTimeoutMs: 9000 }) === 'playwright', '预算不够求解引擎时钉到层 1');
+  ok(resolveSavePageEngine({ solver: false, renderTimeoutMs: 9000 }) === 'auto', '没有求解引擎时不受预算影响');
+  ok(resolveSavePageEngine({ renderEngine: 'scrapling', solver: true, renderTimeoutMs: 300000 }) === 'scrapling', '显式钉引擎优先于预算');
+  ok(resolveSavePageEngine({ renderEngine: 'auto', solver: true, renderTimeoutMs: 300000 }) === 'auto', '显式 auto 等同默认');
 }
 
 // ---- 14. Chrome 直渲通路：零依赖回退 / headful 限制 / save_page 优先 ----

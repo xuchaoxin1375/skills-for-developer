@@ -439,6 +439,30 @@ def test_engine_order_auto_never_includes_diagnostic_cli(monkeypatch: pytest.Mon
     assert "scrapling-cli" not in subject.engine_order("auto")
 
 
+def test_engine_order_auto_starts_from_the_solver_when_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 纯渲染层过不了挑战页：装了求解引擎就别先跑一遍 playwright。
+    stub_availability(monkeypatch, ("static", "playwright", "scrapling"))
+    assert subject.engine_order("auto") == ["static", "scrapling", "playwright"]
+
+
+def test_engine_order_auto_keeps_render_only_engine_as_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 求解引擎真出问题时还有路可走：纯渲染引擎保留在阶梯末尾。
+    stub_availability(monkeypatch, ("static", "playwright", "scrapling", "cloak-cdp"))
+    assert subject.engine_order("auto") == ["static", "scrapling", "cloak-cdp", "playwright"]
+
+
+def test_engine_order_auto_without_solver_keeps_level_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 没有求解引擎时维持原样：按层号从低到高。
+    stub_availability(monkeypatch, ("static", "playwright"))
+    assert subject.engine_order("auto") == ["static", "playwright"]
+
+
 def test_attempt_kind_separates_missing_deps_from_blocks() -> None:
     assert subject.attempt_kind(("cloudflare_interstitial",), None) == subject.KIND_BLOCKED
     assert subject.attempt_kind(("http_status:403",), None) == subject.KIND_BLOCKED
