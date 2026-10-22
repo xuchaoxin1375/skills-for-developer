@@ -14,3 +14,5 @@
   (类型前缀、标题与正文体例)是决策输入之一,沿用其风格。
 - 本机 skill 以真源仓库 `C:\repos\skills-for-developer` 为准(harness 侧是链接,内容随真源即时更新);
   查 skill 现状先看真源仓库的 `git status`/`log`/`diff`,不以 harness 目录或本机副本的时间判断。
+- `user-profile` 只在明确要求时才改,且保持简洁(只存最常用最重要的常驻默认值);其余长期偏好写在
+  本文件或对应 skill 正文,不放进 user-profile。
