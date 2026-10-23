@@ -4,6 +4,7 @@
     {
       "id": "powershell",
       "required": false,
+      "platforms": ["windows"],
       "alternatives": [
         { "kind": "command", "name": "pwsh" },
         { "kind": "command", "name": "powershell" }

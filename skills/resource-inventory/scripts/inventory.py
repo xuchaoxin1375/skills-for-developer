@@ -307,6 +307,9 @@ def section_runtimes(timeout: float) -> dict[str, Any]:
     found: list[dict[str, Any]] = []
     missing: list[str] = []
     for name, argv in TOOL_SPECS:
+        # PowerShell 只在 Windows 上探测/启动；非 Windows 不为体检拉起 pwsh。
+        if name == "pwsh" and os.name != "nt":
+            continue
         located = shutil.which(argv[0])
         if not located:
             missing.append(name)

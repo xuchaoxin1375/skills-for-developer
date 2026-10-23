@@ -14,8 +14,19 @@ from pathlib import Path
 SCHEMA_VERSION = 1
 KINDS = {"runtime", "command", "browser", "env", "network"}
 TOP_KEYS = {"schemaVersion", "requirements"}
-REQ_KEYS = {"id", "required", "hint", "kind", "name", "minVersion", "url", "alternatives"}
+REQ_KEYS = {
+    "id",
+    "required",
+    "hint",
+    "kind",
+    "name",
+    "minVersion",
+    "url",
+    "alternatives",
+    "platforms",
+}
 OPTION_KEYS = {"kind", "name", "minVersion", "url"}
+PLATFORMS = {"windows", "linux", "macos"}
 ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 VERSION_RE = re.compile(r"^\d+(?:\.\d+)*$")
 
@@ -27,6 +38,16 @@ TOOL_KEYS = {"label", "why", "requirement", "install", "impact", "alternative"}
 def load_manifest(path: Path) -> object:
     """读取 JSON 声明；解析错误由调用方转成带路径的提示。"""
     return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def _validate_platforms(spec: dict, where: str) -> list[str]:
+    if "platforms" not in spec:
+        return []
+    platforms = spec["platforms"]
+    if not isinstance(platforms, list) or not platforms:
+        return [f"{where}.platforms 必须是非空数组"]
+    unknown = sorted({str(item) for item in platforms} - PLATFORMS)
+    return [f"{where}.platforms 含未知平台: {', '.join(unknown)}"] if unknown else []
 
 
 def _validate_spec(spec: object, where: str, allowed: set[str]) -> list[str]:
@@ -54,6 +75,8 @@ def _validate_spec(spec: object, where: str, allowed: set[str]) -> list[str]:
             errors.append(f"{where} minVersion 只用于 runtime/command")
         elif not isinstance(spec["minVersion"], str) or not VERSION_RE.match(spec["minVersion"]):
             errors.append(f"{where} minVersion 须为点分数字（如 3.9、18）")
+
+    errors.extend(_validate_platforms(spec, where))
 
     if kind == "network":
         url = spec.get("url")
@@ -118,9 +141,10 @@ def validate_manifest(data: object) -> list[str]:
             errors.extend(_validate_spec(req, where, REQ_KEYS))
             continue
 
-        extra = sorted(set(req) - {"id", "required", "hint", "alternatives"})
+        extra = sorted(set(req) - {"id", "required", "hint", "alternatives", "platforms"})
         if extra:
             errors.append(f"{where} alternatives 模式不支持字段: {', '.join(extra)}")
+        errors.extend(_validate_platforms(req, where))
         alternatives = req["alternatives"]
         if not isinstance(alternatives, list) or not alternatives:
             errors.append(f"{where}.alternatives 必须是非空数组")

@@ -52,6 +52,7 @@
 | `minVersion` | 仅 `runtime`/`command`，点分数字；版本无法解析时按未知处理 |
 | `url` | 仅 `network`，记录参考地址，不联网探测 |
 | `alternatives` | 数组，至少一个；满足任一项即可，选项内不能再嵌套 |
+| `platforms` | 可选，数组；只在这些平台检查（`windows`/`linux`/`macos`），其他平台显示 `SKIP`，不安装、不启动 |
 | `hint` | 缺失时给出的下一步，不写自动安装命令 |
 
 `kind` 的含义：
@@ -77,7 +78,7 @@ python -X utf8 scripts/check-skill-deps.py --strict
 
 按用户偏好检查整套环境用 `--profile minimal|standard|full`，`--list-profiles` 列出套餐；套餐定义在 `config/dependency-profiles.json`，不替代各 skill 的 `dependencies.json`。
 
-退出码：`0` 必需依赖满足；`1` 有缺失或版本不符（`--strict` 下 `unknown` 与可选缺失也算）；`2` 声明或探测本身失败。
+退出码：`0` 必需依赖满足；`1` 有缺失或版本不符（`--strict` 下 `unknown` 与可选缺失也算）；`2` 声明或探测本身失败。`SKIP` 表示 `platforms` 不包含当前平台，不计失败，也不启动对应工具。
 
 ## 部署基线
 
@@ -88,7 +89,7 @@ python -X utf8 scripts/check-skill-deps.py --strict
 | 套餐 | 内容 | 适合 |
 |---|---|---|
 | `minimal` | Python、Node、浏览器、git | 想尽量少装，接受 npx/dlx/kroki 回退 |
-| `standard`（默认） | `minimal` + pnpm、mmdc（全局）、PowerShell 7 | 日常使用；mmdc 直接可用，减少回退判断 |
+| `standard`（默认） | `minimal` + pnpm、mmdc（全局）、PowerShell 7（仅 Windows） | 日常使用；mmdc 直接可用，减少回退判断 |
 | `full` | `standard` + uv、jq | 想一次装齐常用全局 CLI |
 
 ```bash
@@ -109,7 +110,7 @@ python -X utf8 scripts/check-skill-deps.py --list-profiles
 | minimal | git | skill-authoring-sync、仓库同步与变更检查 | `winget install Git.Git` | `brew install git` / `sudo apt install git` |
 | standard | pnpm（项目依赖管理器） | htmlmini 项目安装、mermaid-render-fix 的单次拉起 | `corepack enable` 后 `corepack prepare pnpm@latest --activate` | 同左 |
 | standard | mmdc（全局） | mermaid-render-fix 直接渲染，省去首次下载与回退判断 | `$env:PUPPETEER_SKIP_DOWNLOAD='true'; npm i -g @mermaid-js/mermaid-cli` | `PUPPETEER_SKIP_DOWNLOAD=true npm i -g @mermaid-js/mermaid-cli` |
-| standard | PowerShell 7 | powershell-pitfalls、Windows 脚本示例 | `winget install Microsoft.PowerShell` | `brew install --cask powershell` / `sudo snap install powershell --classic` |
+| standard | PowerShell 7（仅 Windows） | powershell-pitfalls、Windows 脚本示例 | `winget install Microsoft.PowerShell` | 不适用；非 Windows 不安装也不启动 pwsh |
 | full | uv | resource-inventory、resilient-browser-fetch 的 Python 环境与引擎 | `winget install astral-sh.uv` | `brew install uv` / `curl -LsSf https://astral.sh/uv/install.sh -o uv-install.sh && sh uv-install.sh` |
 | full | jq | opencode-provider-config 的手工 JSON 过滤 | `winget install jqlang.jq` | `brew install jq` / `sudo apt install jq` |
 
@@ -127,6 +128,7 @@ python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
 - 这些命令会联网下载并写入用户或系统目录，可能修改 PATH；Python/Node 安装包通常几十 MB，浏览器更大。先说明再执行，不静默安装。
 - pnpm 只用于项目依赖；全局命令（如 `mmdc`）按治理用 `npm i -g`，不推荐 `pnpm add -g`（全局 bin 常不在 PATH）。
 - `standard` 与 `full` 默认全局安装 mmdc；`minimal` 不装，仍可用 `npx`/`pnpm dlx` 单次拉起。
+- PowerShell 7 只在 Windows 套餐中检查和推荐；非 Windows 不启动 `pwsh`，相关依赖项显示 `SKIP`。
 - 不装或装不上时的降级：Python 缺失先换 `py`/`python3`，Mermaid 渲染可直接走 kroki；Node 缺失时 htmlmini 仍可按 `web_fetch` 分流；浏览器缺失时按 browser-automation 的人工截图或 Playwright 缓存；pnpm 缺失时可用 Corepack 在项目内运行。
 
 按需安装、不放进基线的项：

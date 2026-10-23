@@ -39,6 +39,7 @@ STATUS_LABEL = {
     "mismatch": "VERSION",
     "unknown": "UNKNOWN",
     "optional-missing": "OPTIONAL",
+    "skipped": "SKIP",
 }
 
 
@@ -174,6 +175,11 @@ def check_spec(spec: dict, inventory: Inventory) -> tuple[str, str]:
     return "unknown", f"未知 kind: {kind}"
 
 
+def applies_to_platform(req: dict) -> bool:
+    platforms = req.get("platforms")
+    return not platforms or platform_key() in platforms
+
+
 def check_requirement(req: dict, inventory: Inventory) -> tuple[str, str]:
     if "alternatives" in req:
         results = [
@@ -193,10 +199,13 @@ def check_requirement(req: dict, inventory: Inventory) -> tuple[str, str]:
 def check_skill(name: str, manifest: dict, inventory: Inventory) -> dict:
     requirements = []
     for req in manifest["requirements"]:
-        status, detail = check_requirement(req, inventory)
         required = req.get("required", True)
-        if not required and status in {"missing", "mismatch"}:
-            status = "optional-missing"
+        if not applies_to_platform(req):
+            status, detail = "skipped", f"当前平台不适用（{platform_key()}）"
+        else:
+            status, detail = check_requirement(req, inventory)
+            if not required and status in {"missing", "mismatch"}:
+                status = "optional-missing"
         requirements.append(
             {
                 "id": req["id"],
@@ -264,10 +273,13 @@ def check_profile(name: str, config: dict, inventory: Inventory) -> dict:
     for key in resolve_profile(name, config):
         tool = config["tools"][key]
         requirement = tool["requirement"]
-        status, detail = check_requirement(requirement, inventory)
         required = requirement.get("required", True)
-        if not required and status in {"missing", "mismatch"}:
-            status = "optional-missing"
+        if not applies_to_platform(requirement):
+            status, detail = "skipped", f"当前平台不适用（{platform_key()}）"
+        else:
+            status, detail = check_requirement(requirement, inventory)
+            if not required and status in {"missing", "mismatch"}:
+                status = "optional-missing"
         install = tool.get("install") or {}
         command = install.get(platform_key()) or install.get("default", "")
         tools.append(
@@ -307,7 +319,7 @@ def render_profile_human(profile: dict, strict: bool) -> str:
         lines.append(
             f"  {item['id']:<16} {STATUS_LABEL[item['status']]:<9} {item['detail']}{suffix}"
         )
-        if item["status"] != "ok":
+        if item["status"] not in {"ok", "skipped"}:
             if item["why"]:
                 lines.append(f"    为什么: {item['why']}")
             if item["install"]:
@@ -323,7 +335,7 @@ def render_profile_human(profile: dict, strict: bool) -> str:
     lines.append(
         f"汇总: {len(profile['tools'])} 项；缺失 {counts.get('missing', 0)}，"
         f"版本不符 {counts.get('mismatch', 0)}，未知 {counts.get('unknown', 0)}，"
-        f"可选缺失 {counts.get('optional-missing', 0)}"
+        f"可选缺失 {counts.get('optional-missing', 0)}，跳过 {counts.get('skipped', 0)}"
     )
     if strict:
         lines.append("--strict 已开启：unknown 与可选缺失也计入失败。")
@@ -339,6 +351,7 @@ def summary_of(items: list[dict]) -> dict:
         "optionalMissing": sum(
             1 for item in items if item["status"] == "optional-missing"
         ),
+        "skipped": sum(1 for item in items if item["status"] == "skipped"),
     }
 
 
@@ -352,7 +365,7 @@ def render_human(results: list[dict], strict: bool) -> str:
             lines.append(
                 f"  {item['id']:<20} {STATUS_LABEL[item['status']]:<9} {item['detail']}{suffix}"
             )
-            if item["hint"] and item["status"] not in {"ok"}:
+            if item["hint"] and item["status"] not in {"ok", "skipped"}:
                 lines.append(f"  {'':20} 提示: {item['hint']}")
     counts: dict[str, int] = {}
     for skill in results:
@@ -362,7 +375,8 @@ def render_human(results: list[dict], strict: bool) -> str:
     lines.append(
         f"汇总: {len(results)} 个 skill / {sum(counts.values())} 项依赖；"
         f"缺失 {counts.get('missing', 0)}，版本不符 {counts.get('mismatch', 0)}，"
-        f"未知 {counts.get('unknown', 0)}，可选缺失 {counts.get('optional-missing', 0)}"
+        f"未知 {counts.get('unknown', 0)}，可选缺失 {counts.get('optional-missing', 0)}，"
+        f"跳过 {counts.get('skipped', 0)}"
     )
     if strict:
         lines.append("--strict 已开启：unknown 与可选缺失也计入失败。")
@@ -506,6 +520,10 @@ def main(argv: list[str] | None = None) -> int:
         "optionalMissing": sum(
             1 for skill in results for item in skill["requirements"]
             if item["status"] == "optional-missing"
+        ),
+        "skipped": sum(
+            1 for skill in results for item in skill["requirements"]
+            if item["status"] == "skipped"
         ),
     }
 

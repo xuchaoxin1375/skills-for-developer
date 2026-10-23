@@ -9,7 +9,7 @@
     },
     "standard": {
       "label": "常用全局",
-      "description": "在最小套餐上补 pnpm、mmdc、PowerShell 7；日常使用减少回退判断。",
+      "description": "在最小套餐上补 pnpm、mmdc、PowerShell 7（仅 Windows）；日常使用减少回退判断。",
       "extends": "minimal",
       "tools": ["pnpm", "mmdc", "powershell"]
     },
@@ -121,23 +121,22 @@
       "alternative": "不装时用 npx/pnpm dlx 单次拉起，首次需要联网。"
     },
     "powershell": {
-      "label": "PowerShell 7",
-      "why": "powershell-pitfalls 的跨平台示例与脚本",
+      "label": "PowerShell 7（仅 Windows）",
+      "why": "powershell-pitfalls 的 Windows 示例与脚本",
       "requirement": {
         "id": "powershell",
         "required": true,
+        "platforms": ["windows"],
         "alternatives": [
           { "kind": "command", "name": "pwsh" },
           { "kind": "command", "name": "powershell" }
         ]
       },
       "install": {
-        "windows": "winget install Microsoft.PowerShell",
-        "linux": "sudo snap install powershell --classic",
-        "macos": "brew install --cask powershell"
+        "windows": "winget install Microsoft.PowerShell"
       },
       "impact": "约 100 MB；Windows 已内置 PowerShell 5.1，可先用系统版本。",
-      "alternative": "Windows 直接用 powershell 5.1；非 Windows 只读规范可不装。"
+      "alternative": "非 Windows 不适用；Windows 也可直接用 powershell 5.1。"
     },
     "uv": {
       "label": "uv（Python 环境/工具管理器）",

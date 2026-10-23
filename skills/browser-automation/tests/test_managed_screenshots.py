@@ -346,7 +346,9 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(int.from_bytes(output.read_bytes()[16:20], "big"), 1440)
         self.assertIn("CLEANUP verified", result.stderr)
 
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 required")
+    @unittest.skipUnless(
+        os.name == "nt" and shutil.which("pwsh"), "PowerShell 7 on Windows required"
+    )
     def test_legacy_powershell_delegates_bound_parameters(self) -> None:
         output = self.root / "旧入口 PowerShell.png"
         result = subprocess.run(
@@ -412,7 +414,9 @@ class BrowserTests(unittest.TestCase):
         self.assertFalse(list(manager.STATE_ROOT.glob("run-*")))
         self.assertFalse((manager.STATE_ROOT / "cleanup-failed.json").exists())
 
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 required")
+    @unittest.skipUnless(
+        os.name == "nt" and shutil.which("pwsh"), "PowerShell 7 on Windows required"
+    )
     def test_powershell_adapter_unicode_path(self) -> None:
         output = self.root / "首屏 含空格.png"
         result = subprocess.run(
@@ -435,7 +439,9 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
 
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 required")
+    @unittest.skipUnless(
+        os.name == "nt" and shutil.which("pwsh"), "PowerShell 7 on Windows required"
+    )
     def test_powershell_bottom_switch_delegates(self) -> None:
         output = self.root / "包装器 末屏.png"
         result = subprocess.run(
@@ -463,7 +469,9 @@ class BrowserTests(unittest.TestCase):
         metrics = json.loads(re.search(r"PAGE metrics=(\{.*\})", result.stderr).group(1))
         self.assertEqual(metrics["d"], 3600)
 
-    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 required")
+    @unittest.skipUnless(
+        os.name == "nt" and shutil.which("pwsh"), "PowerShell 7 on Windows required"
+    )
     def test_powershell_browser_inventory_and_discovery(self) -> None:
         base = [
             shutil.which("pwsh"),
