@@ -121,7 +121,7 @@
 | **Scoop Bucket(自建)** | Windows | `scoop bucket add <name> <url>` 后 `scoop install <app>` | 低,自动生成清单 |
 | **apt / dnf 仓库** | Debian/Fedora 系 | `apt install <app>` | 中,要维护仓库与 GPG 签名 |
 | **PyPI** | 跨平台 Python | `pipx install <pkg>` / `uv tool install <pkg>` | 低 |
-| **pnpm** | 跨平台 Node | `pnpm add -g <pkg>`（npm 项目用 `npm i -g <pkg>`） | 低,记得 `files` 字段控制包内容 |
+| **npm** | 跨平台 Node | `npm i -g <pkg>`（已配好 pnpm 全局 bin 的环境可换 `pnpm add -g <pkg>`） | 低,记得 `files` 字段控制包内容 |
 | **crates.io** | Rust | `cargo install <crate>` | 低 |
 | **Go** | 跨平台 | `go install 模块路径@版本` | 极低,打好 tag 就能装 |
 | **Docker Hub / GHCR** | 服务端 | `docker run <image>` | 低 |

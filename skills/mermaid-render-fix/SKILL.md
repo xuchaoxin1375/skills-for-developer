@@ -45,8 +45,8 @@ description: >
    - **以产物判成功，不只看退出码**：`pnpm dlx` 在内部 mermaid-cli 抛 Parse error 时可能仍返回 0；
      产物不存在或为空即失败（脚本已内置该校验，手工跑时自行 `Test-Path` + 长度检查）。
    - 渲染器不可用：用 kroki 交叉验证 `Invoke-WebRequest -Method Post -Uri https://kroki.io/mermaid/svg -ContentType text/plain -InFile block.mmd -OutFile block.svg`，非 2xx 时读响应正文的行号。
-   - 高频使用再全局安装（`npm i -g @mermaid-js/mermaid-cli`；`pnpm add -g` 要求全局 bin 已在 PATH，
-     报 `ERR_PNPM_GLOBAL_BIN_DIR_NOT_IN_PATH` 时改用 npm 或先 `pnpm setup`），装时设 `PUPPETEER_SKIP_DOWNLOAD=true` 免下 Chromium；先征询不擅自改环境。
+   - 高频使用再全局安装：全局工具用 `npm i -g @mermaid-js/mermaid-cli`（pnpm 的全局 bin 默认不在 PATH，
+     不为装机工具去改 shell 配置），装时设 `PUPPETEER_SKIP_DOWNLOAD=true` 免下 Chromium；先征询不擅自改环境。
 4. **修**：每次只改报错行及同类行。最高频根因是节点文本里的 `[` 未加引号
    （报错常为 `got 'SQS'`），修法是给整个节点文本加双引号，
    如 `G["...[Console]::OutputEncoding..."]`。其余转义查 markdown-style 正本。
