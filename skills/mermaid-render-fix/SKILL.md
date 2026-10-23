@@ -22,23 +22,35 @@ description: >
    Test-Path node_modules\.bin\mmdc.cmd
    pnpm bin -g; npm root -g
    ```
-   浏览器写成 puppeteer 配置再传给 `-p`，如 `{"executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"}`，免下载 Chromium；Windows 常见位置还有 `%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe`。
-3. **复现**（按可用性择一）：
+   浏览器写成 puppeteer 配置再传给 `-p`，如 `{"executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"}`，免下载 Chromium；Windows 常见位置还有 `%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe`。这一步由 `render_mmd.ps1` 自动完成。
+3. **复现**：优先用 `scripts/render_mmd.ps1`，一条命令完成预检、渲染与耗时上报；它自动探测
+   Chrome/Edge 并生成临时 puppeteer 配置（不下载 Chromium），退出码 0 成功 / 1 输入或用法 /
+   2 预检 SUSPICIOUS（仅 `-c`）/ 3 无渲染器 / 4 渲染失败或产物缺失 / 5 无浏览器。
    ```powershell
-   # 仅本机有 mmdc 时；无本地依赖改用下面的 dlx/npx
+   ./render_mmd.ps1 -i .\block.mmd                        # 默认出 PNG：parse 校验与目视一次完成
+   ./render_mmd.ps1 -i .\block.mmd -o .\block.svg -s 1200 # 需要矢量交付时再单独出 SVG
+   ./render_mmd.ps1 -i .\block.mmd -c                     # 只跑预检
+   ```
+   需要手工控制时才拆开跑：
+   ```powershell
+   # 仅本机有 mmdc 时；无全局命令改用下面的 dlx/npx
    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
    $OutputEncoding = [System.Text.Encoding]::UTF8
    $env:PUPPETEER_SKIP_DOWNLOAD = "true"   # 已用 -p 指向本机浏览器，不下载 Chromium
-   pnpm exec mmdc -p <puppeteer-config.json> -i <block.mmd> -o <block.svg> 2>&1 | Out-String
-   Write-Output ("EXIT=" + $LASTEXITCODE)
+   pnpm exec mmdc -p <puppeteer-config.json> -i <block.mmd> -o <block.png>
    ```
+   - **先确认已装版本再写参数**：`mmdc --version` 与 `mmdc --help`。12.x 移除了 `-w/--width`，
+     尺寸改用 `--size`；puppeteer 配置的长名为 `--puppeteerConfigFile`（`-p` 仍可用）。
    - 本机无 mmdc：把前缀换成 `pnpm dlx --allow-build=puppeteer --package @mermaid-js/mermaid-cli mmdc` 或 `npx -y -p @mermaid-js/mermaid-cli mmdc`；pnpm 10+ 默认拦截 puppeteer 构建脚本，需带 `--allow-build=puppeteer`（漏加报 `ERR_PNPM_IGNORED_BUILDS`），pnpm 9 及以下无此参数、去掉即可。单次运行不装全局；首次联网下载，先按 `network-access` 选路。
+   - **以产物判成功，不只看退出码**：`pnpm dlx` 在内部 mermaid-cli 抛 Parse error 时可能仍返回 0；
+     产物不存在或为空即失败（脚本已内置该校验，手工跑时自行 `Test-Path` + 长度检查）。
    - 渲染器不可用：用 kroki 交叉验证 `Invoke-WebRequest -Method Post -Uri https://kroki.io/mermaid/svg -ContentType text/plain -InFile block.mmd -OutFile block.svg`，非 2xx 时读响应正文的行号。
-   - 高频使用再建议用户全局安装（`pnpm add -g @mermaid-js/mermaid-cli` 或 `npm i -g`），先征询不擅自改环境；并确认全局 bin 在 PATH，pnpm 报 `ERR_PNPM_GLOBAL_BIN_DIR_NOT_IN_PATH` 时先 `pnpm setup`。
+   - 高频使用再全局安装（`npm i -g @mermaid-js/mermaid-cli`；`pnpm add -g` 要求全局 bin 已在 PATH，
+     报 `ERR_PNPM_GLOBAL_BIN_DIR_NOT_IN_PATH` 时改用 npm 或先 `pnpm setup`），装时设 `PUPPETEER_SKIP_DOWNLOAD=true` 免下 Chromium；先征询不擅自改环境。
 4. **修**：每次只改报错行及同类行。最高频根因是节点文本里的 `[` 未加引号
    （报错常为 `got 'SQS'`），修法是给整个节点文本加双引号，
    如 `G["...[Console]::OutputEncoding..."]`。其余转义查 markdown-style 正本。
-5. **复验**：用同一条渲染方式重跑，`EXIT=0` 才算通过；再出 PNG 目视确认中文与特殊符号。
+5. **复验**：重跑同一条路径，`RENDER=OK`（脚本）或 `EXIT=0` 才算通过；再目视产物确认中文与特殊符号。
 6. **回写**：把验证过的块写回原位置，保持最小 diff；报告根因行、改法与两次 EXIT。
 
 ## 约束
@@ -52,3 +64,5 @@ description: >
 - `check_mermaid.py` 在已知坏块上报 SUSPICIOUS、修好后报 OK（本次已实跑）。
 - mmdc 对同一块复现失败（非零退出）→修复后成功（零退出），PNG 目视确认。
 - 本机无 mmdc 时，`pnpm dlx` 配 Chrome 可渲染出 SVG（EXIT=0）；`pnpm exec` 在无本地依赖时报 `Command "mmdc" not found`（两者本次已实跑）。
+- `render_mmd.ps1`：`-c` 对好块报 0、对坏块报 2；坏块渲染报 4（此时 `pnpm dlx` 自身仍返回 0）；
+  全局 `mmdc` 与 `pnpm dlx` 两条路径在 PowerShell 5.1 与 7 下均 `RENDER=OK`（本次已实跑）。

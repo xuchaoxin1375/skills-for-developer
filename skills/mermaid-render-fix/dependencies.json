@@ -15,9 +15,16 @@
       "required": true,
       "alternatives": [
         { "kind": "command", "name": "mmdc" },
-        { "kind": "browser" }
+        { "kind": "command", "name": "pnpm" },
+        { "kind": "command", "name": "npx" }
       ],
-      "hint": "mmdc 或本机 Chrome/Edge/Chromium；都不可用时联网走 kroki 或 pnpm dlx"
+      "hint": "mmdc 优先；无 mmdc 时脚本经 pnpm/npx 临时拉起，首次需要联网"
+    },
+    {
+      "id": "browser",
+      "required": false,
+      "kind": "browser",
+      "hint": "脚本自动复用本机 Chrome/Edge/Chromium，免下载 Chromium；缺失时指定 -BrowserPath 或 -PuppeteerConfigFile"
     }
   ]
 }
