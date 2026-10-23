@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "python",
+      "required": true,
+      "alternatives": [
+        { "kind": "runtime", "name": "python", "minVersion": "3.9" },
+        { "kind": "runtime", "name": "python3", "minVersion": "3.9" }
+      ],
+      "hint": "check_mermaid.py 仅用标准库，需要 Python 3.9+"
+    },
+    {
+      "id": "renderer",
+      "required": true,
+      "alternatives": [
+        { "kind": "command", "name": "mmdc" },
+        { "kind": "browser" }
+      ],
+      "hint": "mmdc 或本机 Chrome/Edge/Chromium；都不可用时联网走 kroki 或 pnpm dlx"
+    }
+  ]
+}

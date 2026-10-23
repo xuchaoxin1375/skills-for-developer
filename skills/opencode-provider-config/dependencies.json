@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "python",
+      "required": false,
+      "alternatives": [
+        { "kind": "runtime", "name": "python" },
+        { "kind": "runtime", "name": "python3" }
+      ],
+      "hint": "model_info.py 仅用标准库；也可用 curl + 手工查表"
+    }
+  ]
+}

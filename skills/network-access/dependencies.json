@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "python",
+      "required": false,
+      "alternatives": [
+        { "kind": "runtime", "name": "python" },
+        { "kind": "runtime", "name": "python3" }
+      ],
+      "hint": "代理探测脚本需要 Python；手工选路不依赖它"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """真源 skill 快速校验（零依赖，仅标准库）。
 
-查五件事，对应上次踩坑的盲区（链接脚本只查 SKILL.md 存在性，不校验内容）：
+查六件事，对应上次踩坑的盲区（链接脚本只查 SKILL.md 存在性，不校验内容）：
   1. frontmatter：定界符、`name` 与目录一致且 kebab、`description` 非空、
      多行 description 必须用 `>`/`|` 折叠块并缩进（顶格续行曾导致服务端静默丢弃）。
   2. README 索引：每个 skill 在 README.md 有 `skills/<name>` 入口。
@@ -9,6 +9,8 @@
   4. 各 harness 安装数：每个真源 skill 在 5 个 harness 侧都是指向真源的链接。
   5. 推荐部署名单：config/recommended-skills.txt 的名字须有对应真源目录；
      含 package.json（需依赖安装）却不在名单中的给出提醒。
+  6. 依赖声明：skills/*/dependencies.json 的结构与字段校验，见
+     docs/skill-dependencies.md；含 package.json 却未声明依赖时给出提醒。
 
 用法（仓库根）：
   python3 scripts/check-skills.py
@@ -25,6 +27,8 @@ import os
 import re
 import sys
 from pathlib import Path
+
+from skill_deps import load_manifest, validate_manifest
 
 KEBAB = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 KEY = re.compile(r"^([A-Za-z0-9_./-]+):(.*)$")
@@ -226,6 +230,25 @@ def port_scan(skill_dir):
     return errors, warnings
 
 
+def check_dependencies(skill_dir):
+    """校验 skills/<name>/dependencies.json 的结构，返回 (errors, warnings)。"""
+    errors, warnings = [], []
+    name = skill_dir.name
+    path = skill_dir / "dependencies.json"
+    if not path.is_file():
+        if (skill_dir / "package.json").is_file():
+            warnings.append(f"{name}: 含 package.json 但缺少 dependencies.json（外部依赖未声明？）")
+        return errors, warnings
+    try:
+        data = load_manifest(path)
+    except (OSError, UnicodeError, ValueError) as e:
+        errors.append(f"{name}: dependencies.json 无法读取或解析（{e}）")
+        return errors, warnings
+    for message in validate_manifest(data):
+        errors.append(f"{name}: dependencies.json {message}")
+    return errors, warnings
+
+
 def link_target(path):
     """返回链接目标（规范化后），实体/不存在返回 None。
 
@@ -306,12 +329,16 @@ def main(argv=None):
             warnings.append(f"{d}: 缺少 SKILL.md（链接脚本将跳过）")
 
     for s in skills:
-        e, _ = check_skill(s)
+        e, w = check_skill(s)
         errors.extend(e)
+        warnings.extend(w)
         errors.extend(redline_scan(s))
         pe, pw = port_scan(s)
         errors.extend(pe)
         warnings.extend(pw)
+        de, dw = check_dependencies(s)
+        errors.extend(de)
+        warnings.extend(dw)
 
     # 推荐部署名单（只在全量检查时核对，--include 过滤后名单天然不全）
     if not want:

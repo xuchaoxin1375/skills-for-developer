@@ -6,6 +6,7 @@
 - 按主问题选择编写、资料提炼、实战补丁或分发入口；不默认启动所有流程或子代理。
 - 改动职责或触发条件时更新 README 索引和相关引用；可变规则保持一个维护位置。
 - 验证强度与变更风险相称，报告结构检查、桌面走查和真实执行各自的事实与限制。
+- skill 有外部运行时/工具依赖时，在 skill 目录声明 `dependencies.json`（格式见 [skill 依赖声明](docs/skill-dependencies.md)）；用 `python -X utf8 scripts/check-skill-deps.py` 检查本机可用性。
 - 本仓库不维护 CHANGELOG：变更以 `git log` 和提交信息为准；只有影响使用、触发或兼容性的变化需要同步到 README 或相关说明。
 - 分发复用仓库链接脚本；过程产物放被忽略的 `.workspaces/`，不进入 skill 实体。
 - OpenCode 插件制品（`plugins/`）的入口约定、装载规则与分发见 [插件制品](docs/plugins.md)；插件只对 OpenCode 生效，不进各 harness 的 skills 目录。

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "node",
+      "kind": "runtime",
+      "name": "node",
+      "minVersion": "18",
+      "required": true,
+      "hint": "CLI/MCP 入口需要 Node.js 18+；包依赖由 pnpm install 安装"
+    },
+    {
+      "id": "package-manager",
+      "required": false,
+      "alternatives": [
+        { "kind": "command", "name": "pnpm" },
+        { "kind": "command", "name": "npm" }
+      ],
+      "hint": "安装 node_modules 用 pnpm（优先）或 npm"
+    }
+  ]
+}

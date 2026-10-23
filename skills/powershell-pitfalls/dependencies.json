@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "powershell",
+      "required": false,
+      "alternatives": [
+        { "kind": "command", "name": "pwsh" },
+        { "kind": "command", "name": "powershell" }
+      ],
+      "hint": "执行示例需要 PowerShell 5.1 或 pwsh 7；只读规范不需要"
+    }
+  ]
+}

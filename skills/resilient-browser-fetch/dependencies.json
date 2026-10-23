@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "python",
+      "required": true,
+      "alternatives": [
+        { "kind": "runtime", "name": "python", "minVersion": "3.10" },
+        { "kind": "runtime", "name": "python3", "minVersion": "3.10" }
+      ],
+      "hint": "随 skill 分发的脚本要求 Python 3.10+；引擎层按任务另装"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "git",
+      "kind": "command",
+      "name": "git",
+      "required": false,
+      "hint": "跨机器同步、查变更与真源比对需要 git"
+    }
+  ]
+}

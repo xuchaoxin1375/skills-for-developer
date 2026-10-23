@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "python",
+      "required": false,
+      "alternatives": [
+        { "kind": "runtime", "name": "python", "minVersion": "3.10" },
+        { "kind": "runtime", "name": "python3", "minVersion": "3.10" }
+      ],
+      "hint": "浏览器发现与截图脚本需要 Python；只做方案决策时可不用"
+    },
+    {
+      "id": "browser",
+      "kind": "browser",
+      "required": false,
+      "hint": "截图与交互需要 Chrome/Edge/Chromium；没有时按人工截图或安装流程处理"
+    }
+  ]
+}
