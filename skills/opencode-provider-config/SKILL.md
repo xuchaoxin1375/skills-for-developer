@@ -27,6 +27,7 @@ OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可�
 
 - 对话模型才配进 OpenCode；嵌入（`*-embed*`）、重写、翻译、安全审查（`*content-safety*`）类模型不适合做 agent，直接跳过。
 - 网关常同时暴露多种协议（`supported_endpoint_types` 含 `anthropic`/`openai`），OpenCode 一律走 OpenAI 协议即可，只取模型 `id`。
+- 同一网关域名常并存多把 key，各自对应不同渠道分组、模型目录互不相交：已有该域名的 provider 时，先拿新旧 key 各拉一次 `/v1/models` 比对，再决定新增还是覆盖。新 key 暴露的是既有 provider 里没有的模型组，就新建 provider 并配独立 `env` 变量名（与既有 key 错开），不覆盖既有 key——覆盖会让旧 provider 静默丢掉一半模型。例：同域名旧 key 只暴露通用对话组，新 key 另开专用系列，两组并存。
 
 ### 2. 网络诊断（直连超时时按序排查）
 
@@ -43,6 +44,8 @@ OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可�
 数据源按序取用，一个源查全即停；字段冲突时以供应商官方文档为最终权威。所有大 JSON 一律先落盘、按模型名过滤出目标条目再读，不把整段响应拖进上下文。
 
 **首选**：本 skill 自带零依赖脚本 `scripts/model_info.py`（纯标准库，多源自动回退，jsdelivr 超时自动落回 raw）：Windows `python <本skill目录>/scripts/model_info.py <模型名>`（部分机器是 `py`），*nix `python3 <本skill目录>/scripts/model_info.py <模型名>`；`--source all` 跨源合并，`--json` 输出供程序读取，无命中退出码 1、全源失败退出码 2。脚本不可用或需自定义时再手工取（下表与示例）。
+
+一次要查多个模型时先 `--source openrouter`：全源模式会逐个卡在 litellm/jsdelivr 超时上，几个模型就能跑成分钟级且可能整体超时；openrouter 通常一个文件覆盖多数主流模型，命中即停，只对没命中的模型再补 `--source all` 或官方文档。
 
 | 数据源（按序） | 关键字段 | 可达性与取法 |
 | --- | --- | --- |
@@ -136,6 +139,8 @@ opencode service start   # set env 本身也会重启服务
 2. `opencode models | findstr <providerID>` —— 配置被识别、模型全部列出。
 3. `opencode run -m <provider>/<model> "reply with exactly: OK"` —— 真实调用，默认限时 10 秒（可酌情放宽到 15 秒）：超时即判该模型当前时段可靠性不佳，不换长超时重试翻案（见约束/规范）；同时 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。
 4. 用 `max_tokens=512` 直接打 `/v1/chat/completions`，只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）：核对 `choices[0].message.content` 非空、`finish_reason`（reasoning 模型小 max_tokens 会 `length` 且 content 为 null，属正常，说明思考占用了输出预算）、`usage` 里 `reasoning_tokens`。官方 Console 免费模型（`opencode/*-free`）**不能**用直连 curl 判定：免费档按客户端身份放行，非 OpenCode 客户端一律 403 `FreeTierError`，这类模型改用 `opencode run -m opencode/<id>-free` 验证；Go 模型直连需带 `x-opencode-session`。
+   - 请求体先写成文件再用 `--data-binary "@<文件>"`：PowerShell 里内联 `-d "{\"model\":…}"` 经转义常被拆坏，网关回 400 `invalid JSON request body`，看起来像密钥或协议问题，实际只是引号被吃掉。
+   - 限时用执行器的超时参数（或 curl 的 `-m`）施加；Windows 下别写成 `timeout 10 <命令>`——那里的 `timeout` 是系统自带的等待命令，不认这种用法，直接报 "Invalid syntax. Default option is not allowed more than '1' time(s)"，命令根本没跑。
 
 改过 `limit` 时追加一步：`opencode api get /api/model` 取服务解析后的目录，确认目标模型的 `limit.context` 已是新值。`opencode models` 只列模型 ID、不显示 limit，不能用来验证。
 
@@ -164,6 +169,7 @@ opencode service start   # set env 本身也会重启服务
 - [ ] `NO_PROXY` 为逗号分隔、含回环；多入口分流时直连域名已加入，代理端口来自实测或用户告知。
 - [ ] 改服务级 env 前已 `get env` 抄下既有值，代理变量只增合并不覆盖。
 - [ ] `env` 变量名与 `providerID` 未占用既有名称；同名不同值已换名。
+- [ ] 同域名多把 key 时已各自拉 `/v1/models` 比对分组，模型组不同时新增 provider 用独立 `env` 名，未覆盖既有 key。
 - [ ] `set env` 次数已压到最少；含逗号的值已加引号并核验落盘格式。
 - [ ] `get env` 与 live 服务进程环境一致：无陈旧密钥，大写代理变量齐全。
 - [ ] 重启生效已用端口/`run=` 变化或新进程 environ 确认；重启后以 `STARTED` 时间最新的进程为准；live 陈旧时已用 `--standalone` 隔离验证。
@@ -172,6 +178,7 @@ opencode service start   # set env 本身也会重启服务
 - [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败。
 - [ ] `limit` 来自数据源或官方文档，并经交叉核验；覆盖已有/内置模型时只写 `limit`，且已用 `opencode api get /api/model` 确认解析值。
 - [ ] 只实测本次接入要用的模型，默认限时 10 秒（最多放宽到 15 秒）。
+- [ ] 直连验证的请求体走文件（`--data-binary "@…"`），限时用执行器超时参数而非 `timeout` 前缀。
 - [ ] 三步验证（get env → models → run）全部通过，配置文件原有内容未被覆盖。
 
 ## 验证协议
