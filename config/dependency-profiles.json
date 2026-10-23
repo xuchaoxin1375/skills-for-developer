@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "default": "standard",
+  "profiles": {
+    "minimal": {
+      "label": "最小可用",
+      "description": "运行时、浏览器与 git；不装全局 CLI，接受 npx/dlx/kroki 回退。",
+      "tools": ["python", "node", "browser", "git"]
+    },
+    "standard": {
+      "label": "常用全局",
+      "description": "在最小套餐上补 pnpm、mmdc、PowerShell 7；日常使用减少回退判断。",
+      "extends": "minimal",
+      "tools": ["pnpm", "mmdc", "powershell"]
+    },
+    "full": {
+      "label": "完整全局",
+      "description": "在标准套餐上补 uv 与 jq；想一次装齐常用全局 CLI 时使用。",
+      "extends": "standard",
+      "tools": ["uv", "jq"]
+    }
+  },
+  "tools": {
+    "python": {
+      "label": "Python 3.10+",
+      "why": "resource-inventory、mermaid-render-fix、resilient-browser-fetch、network-access、opencode-provider-config 的脚本",
+      "requirement": {
+        "id": "python",
+        "required": true,
+        "alternatives": [
+          { "kind": "runtime", "name": "python", "minVersion": "3.10" },
+          { "kind": "runtime", "name": "python3", "minVersion": "3.10" }
+        ]
+      },
+      "install": {
+        "windows": "winget install Python.Python.3.12",
+        "linux": "sudo apt install python3",
+        "macos": "brew install python@3.12"
+      },
+      "impact": "写入用户/系统目录并可能修改 PATH；安装包约 30–80 MB。",
+      "alternative": "已有 py/python3 时直接用；Mermaid 渲染也可走 kroki。"
+    },
+    "node": {
+      "label": "Node.js 18+（含 npm/npx）",
+      "why": "htmlmini 的 CLI/MCP 入口，以及 mermaid-render-fix 的 npx 单次拉起",
+      "requirement": {
+        "id": "node",
+        "kind": "runtime",
+        "name": "node",
+        "minVersion": "18"
+      },
+      "install": {
+        "windows": "winget install OpenJS.NodeJS.LTS",
+        "linux": "sudo apt install nodejs npm",
+        "macos": "brew install node"
+      },
+      "impact": "写入用户/系统目录并可能修改 PATH；安装包约 30–60 MB。",
+      "alternative": "htmlmini 仍可按 web_fetch 分流；Mermaid 可用 kroki。"
+    },
+    "browser": {
+      "label": "Chrome / Edge / Chromium",
+      "why": "browser-automation、mermaid-render-fix、frontend-qa 的截图与渲染",
+      "requirement": {
+        "id": "browser",
+        "kind": "browser"
+      },
+      "install": {
+        "windows": "winget install Google.Chrome",
+        "linux": "sudo apt install chromium",
+        "macos": "brew install --cask google-chrome"
+      },
+      "impact": "用户/系统级应用，下载约 100–300 MB；通常已有 Edge 可免装。",
+      "alternative": "使用系统 Edge；没有浏览器时按人工截图或 Playwright 缓存。"
+    },
+    "git": {
+      "label": "git",
+      "why": "skill-authoring-sync 的跨机器同步、变更检查与真源比对",
+      "requirement": {
+        "id": "git",
+        "kind": "command",
+        "name": "git"
+      },
+      "install": {
+        "windows": "winget install Git.Git",
+        "linux": "sudo apt install git",
+        "macos": "brew install git"
+      },
+      "impact": "约 50 MB；多数开发机已有。",
+      "alternative": "只读使用 skill 时可以先不装。"
+    },
+    "pnpm": {
+      "label": "pnpm（项目依赖管理器）",
+      "why": "htmlmini 的 pnpm-lock 安装，以及 mermaid-render-fix 的单次拉起",
+      "requirement": {
+        "id": "pnpm",
+        "kind": "command",
+        "name": "pnpm"
+      },
+      "install": {
+        "windows": "corepack enable; corepack prepare pnpm@latest --activate",
+        "linux": "corepack enable && corepack prepare pnpm@latest --activate",
+        "macos": "corepack enable && corepack prepare pnpm@latest --activate"
+      },
+      "impact": "通过 Node Corepack 写入 shim；不改全局包目录，Windows 下可能需要管理员。",
+      "alternative": "项目内可用 corepack pnpm install；全局工具请用 npm i -g。"
+    },
+    "mmdc": {
+      "label": "@mermaid-js/mermaid-cli（mmdc）",
+      "why": "mermaid-render-fix 直接渲染，省去 npx/dlx 首次下载与回退判断",
+      "requirement": {
+        "id": "mmdc",
+        "kind": "command",
+        "name": "mmdc"
+      },
+      "install": {
+        "windows": "$env:PUPPETEER_SKIP_DOWNLOAD='true'; npm i -g @mermaid-js/mermaid-cli",
+        "linux": "PUPPETEER_SKIP_DOWNLOAD=true npm i -g @mermaid-js/mermaid-cli",
+        "macos": "PUPPETEER_SKIP_DOWNLOAD=true npm i -g @mermaid-js/mermaid-cli"
+      },
+      "impact": "写入全局 npm 目录与 PATH；跳过 Chromium 下载，渲染时用 -p 指向本机浏览器。",
+      "alternative": "不装时用 npx/pnpm dlx 单次拉起，首次需要联网。"
+    },
+    "powershell": {
+      "label": "PowerShell 7",
+      "why": "powershell-pitfalls 的跨平台示例与脚本",
+      "requirement": {
+        "id": "powershell",
+        "required": true,
+        "alternatives": [
+          { "kind": "command", "name": "pwsh" },
+          { "kind": "command", "name": "powershell" }
+        ]
+      },
+      "install": {
+        "windows": "winget install Microsoft.PowerShell",
+        "linux": "sudo snap install powershell --classic",
+        "macos": "brew install --cask powershell"
+      },
+      "impact": "约 100 MB；Windows 已内置 PowerShell 5.1，可先用系统版本。",
+      "alternative": "Windows 直接用 powershell 5.1；非 Windows 只读规范可不装。"
+    },
+    "uv": {
+      "label": "uv（Python 环境/工具管理器）",
+      "why": "resource-inventory 与 resilient-browser-fetch 的独立 Python 环境、引擎安装",
+      "requirement": {
+        "id": "uv",
+        "kind": "command",
+        "name": "uv"
+      },
+      "install": {
+        "windows": "winget install astral-sh.uv",
+        "linux": "curl -LsSf https://astral.sh/uv/install.sh | sh",
+        "macos": "brew install uv"
+      },
+      "impact": "用户级二进制与 PATH；安装脚本需要联网。",
+      "alternative": "可用 conda/venv 代替。"
+    },
+    "jq": {
+      "label": "jq",
+      "why": "opencode-provider-config 的手工 JSON 过滤路径",
+      "requirement": {
+        "id": "jq",
+        "kind": "command",
+        "name": "jq"
+      },
+      "install": {
+        "windows": "winget install jqlang.jq",
+        "linux": "sudo apt install jq",
+        "macos": "brew install jq"
+      },
+      "impact": "约 1 MB；Windows 默认没有。",
+      "alternative": "用 python3 -m json.tool 或 PowerShell ConvertFrom-Json。"
+    }
+  }
+}

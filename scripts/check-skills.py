@@ -28,7 +28,7 @@ import re
 import sys
 from pathlib import Path
 
-from skill_deps import load_manifest, validate_manifest
+from skill_deps import load_manifest, validate_manifest, validate_profiles
 
 KEBAB = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 KEY = re.compile(r"^([A-Za-z0-9_./-]+):(.*)$")
@@ -249,6 +249,18 @@ def check_dependencies(skill_dir):
     return errors, warnings
 
 
+def check_profiles(repo):
+    """校验 config/dependency-profiles.json（依赖套餐），返回 (errors, warnings)。"""
+    path = repo / "config" / "dependency-profiles.json"
+    if not path.is_file():
+        return [], []
+    try:
+        data = load_manifest(path)
+    except (OSError, UnicodeError, ValueError) as e:
+        return [f"dependency-profiles.json 无法读取或解析（{e}）"], []
+    return [f"dependency-profiles.json {message}" for message in validate_profiles(data)], []
+
+
 def link_target(path):
     """返回链接目标（规范化后），实体/不存在返回 None。
 
@@ -339,6 +351,10 @@ def main(argv=None):
         de, dw = check_dependencies(s)
         errors.extend(de)
         warnings.extend(dw)
+
+    pe, pw = check_profiles(repo)
+    errors.extend(pe)
+    warnings.extend(pw)
 
     # 推荐部署名单（只在全量检查时核对，--include 过滤后名单天然不全）
     if not want:

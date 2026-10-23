@@ -471,5 +471,5 @@ if ($VerifyOnly) {
 }
 
 if (-not $VerifyOnly -and -not $Unlink) {
-  Write-Host '提示：推荐依赖基线见 docs/skill-dependencies.md#部署基线；检查命令 python -X utf8 scripts/check-skill-deps.py'
+  Write-Host '提示：推荐依赖套餐见 docs/skill-dependencies.md#部署基线；检查命令 python -X utf8 scripts/check-skill-deps.py --profile standard'
 }

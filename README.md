@@ -153,7 +153,7 @@ cd ~/repos/skills-for-developer
 
 部署 = 推荐基线依赖 + skill 链接安装 + 全局 AGENTS.md 合并 + 两级校验。按下列顺序一次跑完，避免来回补步；各步细则见对应小节，此处只给顺序与开关。
 
-1. **推荐基线依赖（强烈建议）**：先装 Python 3.10+、Node.js 18+、pnpm、Chrome/Edge/Chromium、git；PowerShell 7 可选。它们覆盖 resource-inventory、htmlmini、mermaid-render-fix、browser-automation、network-access 等，缺了会退化到在线回退、人工路径或能力不全。安装命令与验证方式见 [依赖声明与部署基线](docs/skill-dependencies.md#部署基线)。
+1. **推荐基线依赖（强烈建议）**：按 `minimal` / `standard` / `full` 选套餐（默认 `standard`，含全局 mmdc）；`full` 再补 uv 与 jq。它们覆盖 resource-inventory、htmlmini、mermaid-render-fix、browser-automation、network-access 等，缺了会退化到在线回退、人工路径或能力不全。检查命令与安装明细见 [依赖套餐](docs/skill-dependencies.md#部署基线)。
 2. **链接安装（首跑即定 cli.json）**：命令见「常用操作」。交互终端不带开关会询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
    ```bash
    ./scripts/link-skills.sh --apply-recommended-cli   # 应用推荐 TUI 配置

@@ -19,6 +19,10 @@ OPTION_KEYS = {"kind", "name", "minVersion", "url"}
 ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 VERSION_RE = re.compile(r"^\d+(?:\.\d+)*$")
 
+PROFILE_TOP_KEYS = {"schemaVersion", "default", "profiles", "tools"}
+PROFILE_KEYS = {"label", "description", "extends", "tools"}
+TOOL_KEYS = {"label", "why", "requirement", "install", "impact", "alternative"}
+
 
 def load_manifest(path: Path) -> object:
     """读取 JSON 声明；解析错误由调用方转成带路径的提示。"""
@@ -125,4 +129,113 @@ def validate_manifest(data: object) -> list[str]:
             errors.extend(
                 _validate_spec(option, f"{where}.alternatives[{option_index}]", OPTION_KEYS)
             )
+    return errors
+
+
+def validate_profiles(data: object) -> list[str]:
+    """校验 config/dependency-profiles.json（依赖套餐）的结构。"""
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return ["顶层必须是对象"]
+    extra = sorted(set(data) - PROFILE_TOP_KEYS)
+    if extra:
+        errors.append(f"含未知顶层字段: {', '.join(extra)}")
+    version = data.get("schemaVersion")
+    if isinstance(version, bool) or not isinstance(version, int) or version != SCHEMA_VERSION:
+        errors.append(f"schemaVersion 必须是 {SCHEMA_VERSION}")
+
+    profiles = data.get("profiles")
+    tools = data.get("tools")
+    if not isinstance(profiles, dict) or not profiles:
+        errors.append("profiles 必须是非空对象")
+    if not isinstance(tools, dict) or not tools:
+        errors.append("tools 必须是非空对象")
+    if errors:
+        return errors
+
+    for key, tool in tools.items():
+        where = f"tools.{key}"
+        if not isinstance(key, str) or not ID_RE.match(key):
+            errors.append(f"{where} 工具名须为 kebab-case")
+        if not isinstance(tool, dict):
+            errors.append(f"{where} 必须是对象")
+            continue
+        extra = sorted(set(tool) - TOOL_KEYS)
+        if extra:
+            errors.append(f"{where} 含未知字段: {', '.join(extra)}")
+        label = tool.get("label")
+        if not isinstance(label, str) or not label.strip():
+            errors.append(f"{where}.label 必须是非空字符串")
+        for field in ("why", "impact", "alternative"):
+            if field in tool and (
+                not isinstance(tool[field], str) or not tool[field].strip()
+            ):
+                errors.append(f"{where}.{field} 必须是非空字符串")
+
+        requirement = tool.get("requirement")
+        requirement_errors = validate_manifest(
+            {"schemaVersion": SCHEMA_VERSION, "requirements": [requirement]}
+        )
+        errors.extend(f"{where}.requirement: {message}" for message in requirement_errors)
+        if isinstance(requirement, dict) and requirement.get("id") != key:
+            errors.append(f"{where}.requirement.id 必须与工具名一致")
+
+        install = tool.get("install")
+        if not isinstance(install, dict) or not install:
+            errors.append(f"{where}.install 必须是非空对象")
+        else:
+            for platform, command in install.items():
+                if platform not in {"windows", "linux", "macos", "default"}:
+                    errors.append(f"{where}.install 含未知平台: {platform}")
+                if not isinstance(command, str) or not command.strip():
+                    errors.append(f"{where}.install.{platform} 必须是非空命令")
+
+    for name, profile in profiles.items():
+        where = f"profiles.{name}"
+        if not isinstance(name, str) or not ID_RE.match(name):
+            errors.append(f"{where} 套餐名须为 kebab-case")
+        if not isinstance(profile, dict):
+            errors.append(f"{where} 必须是对象")
+            continue
+        extra = sorted(set(profile) - PROFILE_KEYS)
+        if extra:
+            errors.append(f"{where} 含未知字段: {', '.join(extra)}")
+        label = profile.get("label")
+        if not isinstance(label, str) or not label.strip():
+            errors.append(f"{where}.label 必须是非空字符串")
+        extends = profile.get("extends")
+        if extends is not None and (
+            not isinstance(extends, str) or extends not in profiles
+        ):
+            errors.append(f"{where}.extends 必须指向已存在的套餐")
+        names = profile.get("tools")
+        if not isinstance(names, list):
+            errors.append(f"{where}.tools 必须是数组")
+        else:
+            seen: set[str] = set()
+            for tool_name in names:
+                if not isinstance(tool_name, str) or tool_name not in tools:
+                    errors.append(f"{where}.tools 含未知工具: {tool_name}")
+                elif tool_name in seen:
+                    errors.append(f"{where}.tools 重复: {tool_name}")
+                else:
+                    seen.add(tool_name)
+
+    default = data.get("default")
+    if not isinstance(default, str) or default not in profiles:
+        errors.append("default 必须指向已存在的套餐")
+
+    for name in profiles:
+        seen: set[str] = set()
+        current = name
+        while (
+            isinstance(current, str)
+            and current in profiles
+            and isinstance(profiles[current], dict)
+        ):
+            if current in seen:
+                errors.append(f"profiles.{name} 的 extends 出现循环")
+                break
+            seen.add(current)
+            current = profiles[current].get("extends")
     return errors
