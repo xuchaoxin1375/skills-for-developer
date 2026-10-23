@@ -1,6 +1,6 @@
 ---
 name: opencode-provider-config
-description: 把第三方 AI API（中转站/NewAPI/one-api 渠道/自定义 OpenAI 兼容网关）接入 OpenCode 的完整流程：获取模型列表、网络与 DNS 诊断、联网查模型参数、写 providers 配置、设置服务环境变量与代理、端到端验证。凡是用户给出 API 地址+密钥要求"接入 opencode"、"配置自定义供应商/模型"、"添加中转站"、"第三方模型接入"、"配置 provider"，或需要在 OpenCode 中新增非内置模型、调整已有或内置模型的上下文（limit）、查 /v1/models 列表、用 models.dev 查模型上下文参数时使用本 skill。
+description: 把第三方 AI API（中转站/NewAPI/one-api 渠道/自定义 OpenAI 兼容网关）接入 OpenCode 的完整流程：获取模型列表、网络与 DNS 诊断、联网查模型参数、写 providers 配置、把模型切到 Responses 协议、设置服务环境变量与代理、端到端验证。凡是用户给出 API 地址+密钥要求"接入 opencode"、"配置自定义供应商/模型"、"添加中转站"、"第三方模型接入"、"配置 provider"，或需要在 OpenCode 中新增非内置模型、切换模型到 responses/openai-response 协议、调整已有或内置模型的上下文（limit）、查 /v1/models 列表、用 models.dev 查模型上下文参数时使用本 skill。
 ---
 
 # OpenCode 自定义供应商模型接入流程
@@ -26,7 +26,7 @@ OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可�
 筛选规则：
 
 - 对话模型才配进 OpenCode；嵌入（`*-embed*`）、重写、翻译、安全审查（`*content-safety*`）类模型不适合做 agent，直接跳过。
-- 网关常同时暴露多种协议（`supported_endpoint_types` 含 `anthropic`/`openai`），OpenCode 一律走 OpenAI 协议即可，只取模型 `id`。
+- 网关常同时暴露多种协议（`supported_endpoint_types` 含 `anthropic`/`openai`/`openai-response`），只取模型 `id`；默认走 OpenAI Chat 协议，需要 Responses 协议时按第 4 步做模型级覆盖。
 - 同一网关域名常并存多把 key，各自对应不同渠道分组、模型目录互不相交：已有该域名的 provider 时，先拿新旧 key 各拉一次 `/v1/models` 比对，再决定新增还是覆盖。新 key 暴露的是既有 provider 里没有的模型组，就新建 provider 并配独立 `env` 变量名（与既有 key 错开），不覆盖既有 key——覆盖会让旧 provider 静默丢掉一半模型。例：同域名旧 key 只暴露通用对话组，新 key 另开专用系列，两组并存。
 
 ### 2. 网络诊断（直连超时时按序排查）
@@ -118,6 +118,27 @@ curl -s -m 30 -A "Mozilla/5.0" https://openrouter.ai/api/v1/models \
 
 例：把官方免费模型 `opencode/deepseek-v4.1-flash-free` 的上下文提到 1M，只需在 `providers.opencode.models` 加上述条目，其他字段一概不动。`limit` 只是 OpenCode 侧声明的容量上限，不改变网关/供应商的真实能力——超出其支持范围仍会报错或截断；数值取自数据源或供应商文档，不臆造。改完 `opencode reload` 热加载，进行中的请求仍用旧值，下一请求起生效。
 
+**Responses 协议走模型级 `package` 覆盖**：网关 `supported_endpoint_types` 含 `openai-response`、且直连该路由实测可用时，把目标模型切到 `@opencode/ai/providers/openai-compatible/responses`。写在模型级 `package`，不要改 provider 级——同一 provider 下的其它模型未必支持 Responses，provider 级会连带把它们也切过去（`/v1/models` 里逐个模型的 `supported_endpoint_types` 才是准据，不能用一个模型的结果推断整组）：
+
+```jsonc
+{
+  "providers": {
+    "<providerID>": {
+      "models": {
+        "<modelID>": {
+          "package": "@opencode/ai/providers/openai-compatible/responses",
+          "limit": { "context": 1048576, "output": 131072 }
+        }
+      }
+    }
+  }
+}
+```
+
+判据与验证分三步：① 先直连 `POST <baseURL>/v1/responses`（body 用 `{"model":…,"input":…,"max_output_tokens":…}`，照第 5 步走请求体文件）确认 200 且 `output[].content[].type=output_text` 非空；② 改完 `opencode reload` 后 `opencode api get /api/model` 核对目标模型 `package` 已是 responses 版本（`opencode models` 只列 ID，看不到协议）；③ 协议是否真的切换，用本地抓包服务（返回 400 即可）看请求 path：responses 模型只应打 `/v1/responses`、同 provider 的 chat 模型只应打 `/v1/chat/completions`。回复内容正常**不能**证明协议已切换，两套路由都能产出同样的文本。
+
+Responses 路由的默认值与 Chat 不同（`store`、`include` 等），`opencode run` 回 `OK` 只说明文本通路可用；要做 agent 还必须补一次工具调用验证（让模型读一个内容含唯一标记的文件回显该标记），不能据 Chat 路由的旧结论推断。
+
 **服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值——该命令只读，读 `service.json` 的 `env` 块，与 live 进程快照、shell 变量分属三层，细节见 [references/service-env.md](references/service-env.md)）：
 
 ```bash
@@ -140,7 +161,7 @@ opencode service start   # set env 本身也会重启服务
 1. `opencode service get env` —— 密钥、代理变量齐全（打码展示）。
 2. `opencode models | findstr <providerID>` —— 配置被识别、模型全部列出。
 3. `opencode run -m <provider>/<model> "reply with exactly: OK"` —— 真实调用，默认限时 10 秒（可酌情放宽到 15 秒）：超时即判该模型当前时段可靠性不佳，不换长超时重试翻案（见约束/规范）；同时 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。
-4. 用 `max_tokens=512` 直接打 `/v1/chat/completions`，只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）：核对 `choices[0].message.content` 非空、`finish_reason`（reasoning 模型小 max_tokens 会 `length` 且 content 为 null，属正常，说明思考占用了输出预算）、`usage` 里 `reasoning_tokens`。官方 Console 免费模型（`opencode/*-free`）**不能**用直连 curl 判定：免费档按客户端身份放行，非 OpenCode 客户端一律 403 `FreeTierError`，这类模型改用 `opencode run -m opencode/<id>-free` 验证；Go 模型直连需带 `x-opencode-session`。
+4. 用 `max_tokens=512` 直接打 `/v1/chat/completions`（该模型已切 Responses 协议时改打 `/v1/responses`，参数换成 `max_output_tokens`），只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）：核对 `choices[0].message.content` 非空、`finish_reason`（reasoning 模型小 max_tokens 会 `length` 且 content 为 null，属正常，说明思考占用了输出预算）、`usage` 里 `reasoning_tokens`。官方 Console 免费模型（`opencode/*-free`）**不能**用直连 curl 判定：免费档按客户端身份放行，非 OpenCode 客户端一律 403 `FreeTierError`，这类模型改用 `opencode run -m opencode/<id>-free` 验证；Go 模型直连需带 `x-opencode-session`。
    - 请求体先写成文件再用 `--data-binary "@<文件>"`：PowerShell 里内联 `-d "{\"model\":…}"` 经转义常被拆坏，网关回 400 `invalid JSON request body`，看起来像密钥或协议问题，实际只是引号被吃掉。
    - 限时用执行器的超时参数（或 curl 的 `-m`）施加；Windows 下别写成 `timeout 10 <命令>`——那里的 `timeout` 是系统自带的等待命令，不认这种用法，直接报 "Invalid syntax. Default option is not allowed more than '1' time(s)"，命令根本没跑。
 
@@ -180,6 +201,8 @@ opencode service start   # set env 本身也会重启服务
 - [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败。
 - [ ] `limit` 来自数据源或官方文档，并经交叉核验；覆盖已有/内置模型时只写 `limit`，且已用 `opencode api get /api/model` 确认解析值。
 - [ ] 只实测本次接入要用的模型，默认限时 10 秒（最多放宽到 15 秒）；用户未点名时已问过一次，未自行挑模型、未逐组遍历。
+- [ ] 需要 Responses 协议时只对目标模型写 `package`，未改 provider 级；已直连 `/v1/responses` 确认 200，且 `opencode api get /api/model` 解析到 responses 包。
+- [ ] 切协议的模型已用请求 path（抓包）或等价手段确认真的打 `/v1/responses`，未仅凭回复文本相同判成功；agent 场景另做过一次工具调用验证。
 - [ ] 直连验证的请求体走文件（`--data-binary "@…"`），限时用执行器超时参数而非 `timeout` 前缀。
 - [ ] 三步验证（get env → models → run）全部通过，配置文件原有内容未被覆盖。
 
