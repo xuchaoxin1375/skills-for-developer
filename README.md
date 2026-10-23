@@ -149,6 +149,10 @@ cd ~/repos/skills-for-developer
 ./scripts/link-plugins.sh --unlink
 ```
 
+链接脚本会顺手清理**指向本仓库、但目标已不存在的悬空链接**（skill 重命名或删除后的残留）；
+`--verify-only` 会把它计为异常并给出重跑提示。指向别处的链接与 harness 自带内容不动；
+`--include` 时只清理名单内的名字。`check-skills.py` 也会把本仓库的悬空链接报为 ERROR。
+
 ## 部署清单（新机 / 首次 / 代理执行）
 
 部署 = 推荐基线依赖 + skill 链接安装 + 全局 AGENTS.md 合并 + 两级校验。按下列顺序一次跑完，避免来回补步；各步细则见对应小节，此处只给顺序与开关。

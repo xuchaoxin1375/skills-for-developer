@@ -15,7 +15,8 @@ skills-for-developer/
 ```
 
 - 真源唯一：harness 侧只放链接，不存实体；改动直接改真源，改完即对本机生效。
-- 链接脚本幂等，只管理仓库里存在的插件名；该目录下其他来源的插件不动；
+- 链接脚本幂等，只管理仓库里存在的插件名；顺带清理指向本仓库、但目标已不存在的
+  悬空链接（插件重命名/删除后的残留，`-VerifyOnly` 计为异常）；该目录下其他来源的插件不动；
   路径上是实体目录时先备份到 `~/.skills-migration-backup/<时间戳>/opencode-plugins/` 再替换为链接。
 - 插件只对 OpenCode 生效（其他 harness 没有插件机制），因此不分发到 skills 目录。
 - `opencode.json`（供应商与密钥）不入库，插件注册不依赖它：靠 `~/.config/opencode/plugins/`

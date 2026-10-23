@@ -10,7 +10,8 @@
 # OpenCode 会自动发现该目录下的插件包（与 .opencode/plugins/ 同一套布局），
 # 因此本脚本不改 opencode.json，也不动该目录里其他来源的插件。
 #
-# 幂等，可反复执行。只管理仓库中存在的插件名。
+# 幂等，可反复执行。只管理仓库中存在的插件名，并顺手清理指向本仓库
+# 但目标已不存在的悬空链接（重命名/删除插件的残留）。
 #
 # 用法：
 #   scripts/link-plugins.sh                # 全量链接
@@ -19,7 +20,7 @@
 #   scripts/link-plugins.sh --include a,b  # 只处理部分插件
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PLUGINS_DIR="$REPO_ROOT/plugins"
 BACKUP_ROOT="$HOME/.skills-migration-backup"
 TARGET_DIR="$HOME/.config/opencode/plugins"
@@ -34,7 +35,7 @@ while [[ $# -gt 0 ]]; do
     --unlink) UNLINK=1; shift ;;
     --include) INCLUDE="${2:-}"; shift 2 ;;
     --include=*) INCLUDE="${1#--include=}"; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
 done
@@ -60,6 +61,57 @@ if [[ -n "$INCLUDE" ]]; then
   PLUGINS=("${FILTERED[@]}")
 fi
 [[ ${#PLUGINS[@]} -gt 0 ]] || { echo "没有可处理的插件。" >&2; exit 1; }
+
+normalize_path() {
+  # 词法归一化：折叠 //、/./、/../，不要求路径存在（悬空链接的目标通常不存在）
+  local p="$1" out="" part
+  local -a parts
+  IFS=/ read -r -a parts <<< "$p"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      ''|'.') ;;
+      '..') out="${out%/*}" ;;
+      *) out="$out/$part" ;;
+    esac
+  done
+  printf '%s\n' "${out:-/}"
+}
+
+clean_stale_links() {
+  # 清理指向本仓库 plugins/ 但目标已不存在的悬空链接（重命名/删除插件的残留）。
+  # 只处理指向本仓库 plugins/ 的符号链接；VerifyOnly 下只报告并计为异常。
+  local p cur abs name w hit
+  for p in "$TARGET_DIR"/*; do
+    [[ -L "$p" ]] || continue
+    cur="$(readlink "$p")"
+    case "$cur" in
+      /*) abs="$cur" ;;
+      *) abs="$(dirname "$p")/$cur" ;;
+    esac
+    abs="$(normalize_path "$abs")"
+    case "$abs" in
+      "$PLUGINS_DIR"/*) ;;
+      *) continue ;;
+    esac
+    [[ -e "$p" ]] && continue
+    name="$(basename "$p")"
+    if [[ -n "$INCLUDE" ]]; then
+      hit=0
+      IFS=',' read -ra WANT <<< "$INCLUDE"
+      for w in "${WANT[@]}"; do
+        [[ "$name" == "$w" ]] && hit=1
+      done
+      [[ $hit -eq 0 ]] && continue
+    fi
+    if [[ $VERIFY_ONLY -eq 1 ]]; then
+      echo "  [$name] 悬空链接（目标已不存在），重跑链接脚本清理: $cur" >&2
+      failures=$((failures + 1))
+    else
+      rm "$p"
+      echo "  [$name] 悬空链接已清理（目标不存在）: $cur"
+    fi
+  done
+}
 
 failures=0
 
@@ -142,6 +194,8 @@ for plugin in "${PLUGINS[@]}"; do
   ln -s "$dest" "$link"
   echo "$label 实体已备份到 $backup，链接已创建"
 done
+
+clean_stale_links
 
 if [[ $VERIFY_ONLY -eq 1 ]]; then
   if [[ $failures -gt 0 ]]; then

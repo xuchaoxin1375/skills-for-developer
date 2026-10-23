@@ -12,7 +12,8 @@
   OpenCode 会自动发现该目录下的插件包（与 .opencode/plugins/ 同一套布局），
   因此本脚本不改 opencode.json，也不动该目录里其他来源的插件。
 
-  幂等, 可反复执行。只管理仓库中存在的插件名。
+  幂等, 可反复执行。只管理仓库中存在的插件名, 并顺手清理指向本仓库
+  但目标已不存在的悬空链接 (重命名/删除插件的残留)。
 
 .PARAMETER RepoRoot
   仓库根目录, 默认自动推导为脚本所在目录的上级。
@@ -24,7 +25,8 @@
   移除本仓库创建的 Junction (仅移除指向本仓库的链接, 实体目录不动)。
 
 .PARAMETER VerifyOnly
-  只检查链接状态, 不做任何修改, 有异常时以非零退出码返回。
+  只检查链接状态, 不做任何修改; 悬空链接 (目标已不存在) 也计为异常。
+  有异常时以非零退出码返回。
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-plugins.ps1
@@ -82,6 +84,41 @@ function Get-LinkTarget([string]$Path) {
   # Junction / Symlink 都会带 LinkType; 普通目录则 LinkType 为空
   if ([string]::IsNullOrEmpty($item.LinkType)) { return $null }
   return $item.Target
+}
+
+function Remove-StalePluginLinks {
+  # 清理指向本仓库 plugins\ 但目标已不存在的 Junction/Symlink
+  # (重命名/删除插件的残留)。VerifyOnly 下只报告并计为异常。
+  if (-not (Test-Path -LiteralPath $targetDir -PathType Container)) { return }
+  $pluginsRoot = (Resolve-Path -LiteralPath $pluginsDir).Path.TrimEnd('\')
+  foreach ($entry in (Get-ChildItem -LiteralPath $targetDir -Force -ErrorAction SilentlyContinue)) {
+    $targets = Get-LinkTarget $entry.FullName
+    if ($null -eq $targets) { continue }
+    $owned = $false
+    $alive = $false
+    foreach ($t in @($targets)) {
+      if ([string]::IsNullOrWhiteSpace($t)) { continue }
+      $clean = $t.TrimEnd('\')
+      if (-not [System.IO.Path]::IsPathRooted($clean)) {
+        $clean = [System.IO.Path]::GetFullPath((Join-Path $targetDir $clean))
+      }
+      if ($clean -ieq $pluginsRoot -or $clean.StartsWith($pluginsRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        $owned = $true
+        if (Test-Path -LiteralPath $t) { $alive = $true }
+      }
+    }
+    if (-not $owned -or $alive) { continue }
+    if ($Include -and $Include.Count -gt 0 -and -not ($Include -contains $entry.Name)) { continue }
+    if ($VerifyOnly) {
+      Write-Warning "  [$($entry.Name)] 悬空链接 (目标已不存在), 重跑链接脚本清理"
+      $script:failures++
+      continue
+    }
+    if ($PSCmdlet.ShouldProcess($entry.FullName, '清理悬空链接')) {
+      Remove-Item -LiteralPath $entry.FullName -Force
+      Write-Host "  [$($entry.Name)] 悬空链接已清理 (目标不存在)"
+    }
+  }
 }
 
 $failures = 0
@@ -176,6 +213,8 @@ foreach ($plugin in $plugins) {
     Write-Host "$label 实体已备份到 $backup, 链接已创建"
   }
 }
+
+Remove-StalePluginLinks
 
 if ($VerifyOnly) {
   if ($failures -gt 0) {

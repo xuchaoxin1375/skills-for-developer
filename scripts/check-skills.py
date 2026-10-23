@@ -277,6 +277,39 @@ def link_target(path):
     return rp if rp != ap else None
 
 
+def is_dangling_repo_link(path, skills_dir):
+    """链接存在但目标缺失，且目标落在本仓库 skills/ 下。
+
+    用于识别 skill 重命名或删除后遗留的悬空链接（链接脚本会顺手清理）。
+    只认指向本仓库的链接，避免把 harness 侧第三方悬空条目算成仓库问题。
+    优先用 readlink 取原始目标（Windows Junction 也适用），取不到再退回 realpath。
+    """
+    try:
+        if not os.path.lexists(path) or os.path.exists(path):
+            return False
+        try:
+            raw = os.readlink(path)
+        except (OSError, AttributeError):
+            raw = None
+        if raw:
+            base = os.path.dirname(os.path.abspath(path))
+            tgt = raw if os.path.isabs(raw) else os.path.join(base, raw)
+        else:
+            tgt = os.path.realpath(path)
+        tgt = os.path.abspath(tgt)
+        root = os.path.abspath(skills_dir)
+    except OSError:
+        return False
+    # Windows 长路径前缀会干扰前缀比较
+    if tgt.startswith("\\\\?\\"):
+        tgt = tgt[4:]
+    if root.startswith("\\\\?\\"):
+        root = root[4:]
+    tgt = os.path.normcase(tgt)
+    root = os.path.normcase(root)
+    return tgt == root or tgt.startswith(root + os.sep)
+
+
 def read_recommended(repo):
     """读取推荐部署名单，返回名字列表；文件缺失/不可读返回 None。"""
     p = repo / "config" / "recommended-skills.txt"
@@ -394,12 +427,16 @@ def main(argv=None):
             if not target.is_dir():
                 errors.append(f"[{label}] 缺失目录: {target}")
                 continue
-            ok = missing = drift = wrong = 0
+            ok = missing = drift = wrong = dangling = 0
             for s in skills:
                 link = target / s.name
                 if not os.path.lexists(link):
                     missing += 1
                     errors.append(f"[{label}] {s.name} 缺失（期望 -> {s}）")
+                    continue
+                if is_dangling_repo_link(link, skills_dir):
+                    dangling += 1
+                    errors.append(f"[{label}] {s.name} 悬空链接（目标已不存在），跑链接脚本清理")
                     continue
                 tgt = link_target(str(link))
                 if tgt is None:
@@ -413,17 +450,24 @@ def main(argv=None):
                     wrong += 1
                     errors.append(f"[{label}] {s.name} 指向错误: {tgt}")
             try:
-                extras = sorted(
-                    p.name for p in target.iterdir()
-                    if p.name not in repo_names
-                    and os.path.lexists(str(p))
-                    and "AGENTS" not in p.name
-                    and not p.name.startswith(".")
-                )
+                extras, stale = [], []
+                for p in target.iterdir():
+                    if p.name in repo_names or "AGENTS" in p.name or p.name.startswith("."):
+                        continue
+                    if not os.path.lexists(str(p)):
+                        continue
+                    if is_dangling_repo_link(str(p), skills_dir):
+                        stale.append(p.name)
+                    else:
+                        extras.append(p.name)
+                extras.sort()
+                stale.sort()
             except OSError:
-                extras = []
+                extras, stale = [], []
+            for name in stale:
+                errors.append(f"[{label}] {name} 悬空链接（目标已不存在），跑链接脚本清理")
             print(f"[{label}] {ok}/{len(skills)} OK，缺失{missing}，实体{drift}，"
-                  f"指错{wrong}，额外{len(extras)}"
+                  f"指错{wrong}，悬空{dangling + len(stale)}，额外{len(extras)}"
                   + (f"（{', '.join(extras[:8])}{'…' if len(extras) > 8 else ''}）" if extras else ""))
             if extras and ("system" not in extras):
                 pass  # harness 自带/第三方内容不动，仅告知数量

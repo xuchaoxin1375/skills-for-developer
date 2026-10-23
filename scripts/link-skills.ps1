@@ -13,7 +13,8 @@
     - Agents 通用: $env:DSH_AGENTS_HOME\skills (默认 $env:USERPROFILE\.agents\skills)
     - DeepSeek Harness (dsh): $env:DSH_HOME\skills (默认 $env:USERPROFILE\.dsh\skills)
 
-  幂等, 可反复执行。只管理仓库中存在的 skill 名,
+  幂等, 可反复执行。只管理仓库中存在的 skill 名, 并顺手清理指向本仓库
+  但目标已不存在的悬空链接 (重命名/删除 skill 的残留);
   不会动 harness 自带内容 (如 Codex 的 .system/、AGENTS.md)。
 
 .PARAMETER RepoRoot
@@ -26,7 +27,8 @@
   移除本仓库创建的 Junction (仅移除指向本仓库的链接, 实体目录不动)。
 
 .PARAMETER VerifyOnly
-  只检查链接状态与全局 AGENTS.md 是否漂移, 不做任何修改,
+  只检查链接状态与全局 AGENTS.md 是否漂移, 不做任何修改;
+  悬空链接 (目标已不存在) 也计为异常。
   有异常时以非零退出码返回 (AGENTS 缺失计异常, 内容不一致只警告)。
 
 .PARAMETER ApplyRecommendedCli
@@ -122,6 +124,43 @@ function Get-LinkTarget([string]$Path) {
   # Junction / Symlink 都会带 LinkType; 普通目录则 LinkType 为空
   if ([string]::IsNullOrEmpty($item.LinkType)) { return $null }
   return $item.Target
+}
+
+function Remove-StaleRepoLinks([string]$TargetDir) {
+  # 清理指向本仓库 skills\ 但目标已不存在的 Junction/Symlink:
+  # skill 重命名或删除后, 旧链接不在“仓库现有 skill”名单里, 正常循环不会碰到。
+  # 只处理指向本仓库 skills\ 的链接, 不动指向别处的内容与实体目录。
+  # VerifyOnly 下只报告并计为异常; -Include 时只清理名单内的名字。
+  if (-not (Test-Path -LiteralPath $TargetDir -PathType Container)) { return }
+  $skillsRoot = (Resolve-Path -LiteralPath $skillsDir).Path.TrimEnd('\')
+  foreach ($entry in (Get-ChildItem -LiteralPath $TargetDir -Force -ErrorAction SilentlyContinue)) {
+    $targets = Get-LinkTarget $entry.FullName
+    if ($null -eq $targets) { continue }
+    $owned = $false
+    $alive = $false
+    foreach ($t in @($targets)) {
+      if ([string]::IsNullOrWhiteSpace($t)) { continue }
+      $clean = $t.TrimEnd('\')
+      if (-not [System.IO.Path]::IsPathRooted($clean)) {
+        $clean = [System.IO.Path]::GetFullPath((Join-Path $TargetDir $clean))
+      }
+      if ($clean -ieq $skillsRoot -or $clean.StartsWith($skillsRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        $owned = $true
+        if (Test-Path -LiteralPath $t) { $alive = $true }
+      }
+    }
+    if (-not $owned -or $alive) { continue }
+    if ($Include -and $Include.Count -gt 0 -and -not ($Include -contains $entry.Name)) { continue }
+    if ($VerifyOnly) {
+      Write-Warning "  [$($entry.Name)] 悬空链接 (目标已不存在), 重跑链接脚本清理"
+      $script:failures++
+      continue
+    }
+    if ($PSCmdlet.ShouldProcess($entry.FullName, '清理悬空链接')) {
+      Remove-Item -LiteralPath $entry.FullName -Force
+      Write-Host "  [$($entry.Name)] 悬空链接已清理 (目标不存在)"
+    }
+  }
 }
 
 $failures = 0
@@ -229,6 +268,8 @@ foreach ($targetDir in $targets) {
       Write-Host "$label 实体已备份到 $backup, 链接已创建"
     }
   }
+
+  Remove-StaleRepoLinks $targetDir
 }
 
 # --- 推荐 skill（需依赖/命令安装，名单见 config/recommended-skills.txt） ---

@@ -11,7 +11,8 @@
 #   - Agents 通用: ${DSH_AGENTS_HOME:-$HOME/.agents}/skills（Pi 等标准兼容 harness 共用）
 #   - DeepSeek Harness (dsh): ${DSH_HOME:-$HOME/.dsh}/skills
 #
-# 幂等，可反复执行。只管理仓库中存在的 skill 名，
+# 幂等，可反复执行。只管理仓库中存在的 skill 名，并顺手清理指向本仓库
+# 但目标已不存在的悬空链接（重命名/删除 skill 的残留）；
 # 不会动 harness 自带内容（如 Codex 的 .system/、AGENTS.md）。
 #
 # 用法：
@@ -29,7 +30,7 @@
 # 当前为 htmlmini）：依赖安装走询问/显式开关，命令默认装到 ~/.local/bin。
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SKILLS_DIR="$REPO_ROOT/skills"
 BACKUP_ROOT="$HOME/.skills-migration-backup"
 TARGETS=(
@@ -58,7 +59,7 @@ while [[ $# -gt 0 ]]; do
     --skip-recommended-skills) SKIP_REC_SKILLS=1; shift ;;
     --include) INCLUDE="${2:-}"; shift 2 ;;
     --include=*) INCLUDE="${1#--include=}"; shift ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
 done
@@ -95,6 +96,61 @@ harness_tag() {
     *.dsh*) echo dsh ;;
     *) echo other ;;
   esac
+}
+
+normalize_path() {
+  # 词法归一化：折叠 //、/./、/../，不要求路径存在（悬空链接的目标通常不存在）
+  # 用 read -a 切分，避免未加引号的路径被当作 glob 展开
+  local p="$1" out="" part
+  local -a parts
+  IFS=/ read -r -a parts <<< "$p"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      ''|'.') ;;
+      '..') out="${out%/*}" ;;
+      *) out="$out/$part" ;;
+    esac
+  done
+  printf '%s\n' "${out:-/}"
+}
+
+clean_stale_links() {
+  # 清理指向本仓库 skills/ 但目标已不存在的悬空链接：
+  # skill 重命名或删除后，旧链接不在“仓库现有 skill”名单里，正常循环不会碰到。
+  # 只处理指向本仓库 skills/ 的符号链接，不动指向别处的内容与实体目录。
+  # VerifyOnly 下只报告并计为异常；--include 时只清理名单内的名字。
+  local target="$1" p cur abs name w hit
+  for p in "$target"/*; do
+    [[ -L "$p" ]] || continue
+    cur="$(readlink "$p")"
+    # 相对链接先合并到所在目录，再词法归一化，最后比对前缀
+    case "$cur" in
+      /*) abs="$cur" ;;
+      *) abs="$(dirname "$p")/$cur" ;;
+    esac
+    abs="$(normalize_path "$abs")"
+    case "$abs" in
+      "$SKILLS_DIR"/*) ;;
+      *) continue ;;
+    esac
+    [[ -e "$p" ]] && continue
+    name="$(basename "$p")"
+    if [[ -n "$INCLUDE" ]]; then
+      hit=0
+      IFS=',' read -ra WANT <<< "$INCLUDE"
+      for w in "${WANT[@]}"; do
+        [[ "$name" == "$w" ]] && hit=1
+      done
+      [[ $hit -eq 0 ]] && continue
+    fi
+    if [[ $VERIFY_ONLY -eq 1 ]]; then
+      echo "  [$name] 悬空链接（目标已不存在），重跑链接脚本清理: $cur" >&2
+      failures=$((failures + 1))
+    else
+      rm "$p"
+      echo "  [$name] 悬空链接已清理（目标不存在）: $cur"
+    fi
+  done
 }
 
 failures=0
@@ -175,6 +231,8 @@ for target in "${TARGETS[@]}"; do
       fi
     fi
   done
+
+  clean_stale_links "$target"
 done
 
 # --- 推荐 skill（需依赖/命令安装，名单见 config/recommended-skills.txt） ---
