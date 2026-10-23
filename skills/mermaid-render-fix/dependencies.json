@@ -8,7 +8,7 @@
         { "kind": "runtime", "name": "python", "minVersion": "3.9" },
         { "kind": "runtime", "name": "python3", "minVersion": "3.9" }
       ],
-      "hint": "check_mermaid.py 仅用标准库，需要 Python 3.9+"
+      "hint": "check_mermaid.py 与 render_mmd.py 仅用标准库，需要 Python 3.9+（Windows/Linux/macOS 通用）"
     },
     {
       "id": "renderer",
@@ -24,7 +24,7 @@
       "id": "browser",
       "required": false,
       "kind": "browser",
-      "hint": "脚本自动复用本机 Chrome/Edge/Chromium，免下载 Chromium；缺失时指定 -BrowserPath 或 -PuppeteerConfigFile"
+      "hint": "脚本自动复用本机 Chrome/Edge/Chromium（含 Playwright 自带），免下载 Chromium；缺失时指定 -b/--browser 或 -p/--puppeteer-config"
     }
   ]
 }
