@@ -6,6 +6,8 @@ Usage:
 Exit codes: 0 = no suspicious lines, 2 = suspicious lines found.
 Does NOT replace real rendering (mmdc/kroki); use it for fast triage only.
 """
+from __future__ import annotations
+
 import re
 import sys
 from pathlib import Path

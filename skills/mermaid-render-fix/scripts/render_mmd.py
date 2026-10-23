@@ -48,6 +48,15 @@ MIN_PYTHON = (3, 9)
 PATH_ENV_VARS = ("PUPPETEER_EXECUTABLE_PATH", "CHROME_PATH")
 
 
+def log_next(text: str) -> None:
+    """Attach an actionable next step to a failure.
+
+    Goes to stderr next to the error so the order is stable and stdout stays
+    machine-parseable KEY=VALUE only.
+    """
+    LOG.warning("NEXT: %s", text)
+
+
 def setup_logging() -> None:
     """KEY=VALUE lines to stdout, diagnostics to stderr."""
 
@@ -287,8 +296,10 @@ def main(argv: list[str] | None = None) -> int:
             "Python %s+ required, found %s",
             ".".join(map(str, MIN_PYTHON)), sys.version.split()[0],
         )
+        log_next("install Python 3.9+ (python3 -V shows the current one)")
         return EXIT_USAGE
     args = parse_args(argv)
+    LOG.info("PYTHON=%s", sys.version.split()[0])
 
     input_path = Path(args.input_file)
     if not input_path.is_file():
@@ -326,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
     renderer = resolve_renderer()
     if renderer is None:
         LOG.error("no renderer found: install mmdc, or make pnpm/npx available")
+        log_next("npm i -g @mermaid-js/mermaid-cli  (one-off alternative: pnpm dlx / npx)")
         return EXIT_NO_RENDERER
     renderer_name, command = renderer
     LOG.info("RENDERER=%s", renderer_name)
@@ -341,9 +353,11 @@ def main(argv: list[str] | None = None) -> int:
             browser = Path(args.browser) if args.browser else find_browser()
             if browser is None:
                 LOG.error("no browser found; pass -b/--browser or -p/--puppeteer-config")
+                log_next("install Chrome/Chromium, or pass its path with -b <path>")
                 return EXIT_NO_BROWSER
             if not browser.is_file():
                 LOG.error("browser not found: %s", browser)
+                log_next("check the path, or omit -b to auto-detect Chrome/Edge/Chromium")
                 return EXIT_NO_BROWSER
             temp_dir = Path(tempfile.mkdtemp(prefix="render_mmd_"))
             config_path = write_puppeteer_config(browser, temp_dir)
@@ -371,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
         if proc.returncode != 0:
             LOG.info("RENDER=FAILED")
             LOG.error("renderer exited with %s", proc.returncode)
+            log_next("read stderr above; check flags with mmdc --help (v12 uses --size)")
             return EXIT_RENDER_FAILED
         if not output_path.exists() or output_path.stat().st_size == 0:
             LOG.info("RENDER=FAILED")
@@ -378,6 +393,7 @@ def main(argv: list[str] | None = None) -> int:
                 "no output produced: %s (exit was 0; see stderr for the parser error)",
                 output_path,
             )
+            log_next("quote node text that contains [ ] { }, then rerun")
             return EXIT_RENDER_FAILED
 
         LOG.info("RENDER=OK")

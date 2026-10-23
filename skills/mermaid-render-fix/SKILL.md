@@ -61,5 +61,5 @@ description: >
 - mmdc 对同一块复现失败（非零退出）→修复后成功（零退出），PNG 目视确认。
 - 本机无 mmdc 时，`pnpm dlx` 配 Chrome 可渲染出 SVG（EXIT=0）；`pnpm exec` 在无本地依赖时报 `Command "mmdc" not found`（两者本次已实跑）。
 - `render_mmd.py`：好块 `RENDER=OK`（Windows 用 Chrome、Playwright 自带 Chromium 均通过）；坏块渲染 `RENDER=FAILED` 退出 4、`-c` 退出 2；
-  预检脚本抛异常时只告警并继续渲染（退出 0）；无渲染器退出 3、无浏览器退出 5；Linux（WSL Ubuntu 24，Python 3.12）跑通
-  `--help`、预检、无渲染器与无浏览器分支（本次已实跑，Linux 侧未做真实渲染）。
+  预检脚本抛异常时只告警并继续渲染（退出 0）；无渲染器退出 3、无浏览器退出 5，失败分支在 stderr 追加 `NEXT:` 补救命令；
+  Linux（WSL Ubuntu 24，Python 3.12）跑通 `--help`、预检、无渲染器与无浏览器分支（本次已实跑，Linux 侧未做真实渲染）。
