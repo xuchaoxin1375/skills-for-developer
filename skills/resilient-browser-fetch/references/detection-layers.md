@@ -68,10 +68,11 @@
 
 ```bash
 # 1) 浏览器开着调试端口（用你平时那个 profile，保留你的 cookie / VPN / 代理规则）
-msedge --remote-debugging-port=9222
+#    端口自己定，下面 <port> 前后要一致
+msedge --remote-debugging-port=<port>
 # 2) 你在这个浏览器里打开目标页，确认正文已经出来
 # 3) 接管读取（只连接、只读、然后断开；不关闭浏览器、不导航）
-python scripts/resilient_fetch.py --url "<目标 URL>" --cdp-url http://127.0.0.1:9222 --out page.html
+python scripts/resilient_fetch.py --url "<目标 URL>" --cdp-url http://127.0.0.1:<port> --out page.html
 ```
 
 要点：
@@ -79,7 +80,7 @@ python scripts/resilient_fetch.py --url "<目标 URL>" --cdp-url http://127.0.0.
 - **只读已放行的标签页**：接管到的浏览器里没有目标页时直接报错并提示先手动打开，不猜、不乱点；确实要让它去导航才加 `--cdp-navigate`（导航期间调试会话在挑战窗口里，Akamai 一类站点可能因此判负）。
 - **不拥有那个浏览器**：只断开连接，不关闭进程、不删 profile、不导航；`notes` 里记 `browser_owned:false` 与 `control_plane:cdp-attach`，复盘时能区分"我们自建的浏览器"与"用户的会话"。
 - **它不解决挑战，只复用结果**：挑战是你在真实浏览器里过的，我们只是把已经渲染好的 DOM 取出来。所以它排在所有自建引擎之后用——自建引擎能过就别动用用户的会话。
-- **htmlmini 也能走这条路**：`htmlmini "<URL>" --cdp-url http://127.0.0.1:9222 --render=always --mode markdown`；渲染由 `resilient-browser-fetch` 的 `cdp-attach` 执行（同一代理、同一解释器），htmlmini 只做提取。
+- **htmlmini 也能走这条路**：`htmlmini "<URL>" --cdp-url http://127.0.0.1:<port> --render=always --mode markdown`；渲染由 `resilient-browser-fetch` 的 `cdp-attach` 执行（同一代理、同一解释器），htmlmini 只做提取。
 
 ## nodriver 的边界
 

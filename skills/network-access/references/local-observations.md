@@ -220,7 +220,7 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 ## 2026-10-21 npm install ETIMEDOUT 排查
 
-执行环境：国内 Windows；Node 24.21.0 / npm 11.19.0，用户级 `.npmrc` 仅设 `registry=https://registry.npmmirror.com` 与 `allow-scripts=...`；整机 `HTTP_PROXY`/`HTTPS_PROXY` 指向 `http://localhost:10808`（xray，登记名 `xray-10808`）。目标为 `registry.npmmirror.com` 与 `cdn.npmmirror.com`。
+执行环境：国内 Windows；Node 24.21.0 / npm 11.19.0，用户级 `.npmrc` 仅设 `registry=https://registry.npmmirror.com` 与 `allow-scripts=...`；整机 `HTTP_PROXY`/`HTTPS_PROXY` 指向 `http://localhost:<port>`（xray，登记名 `xray-10808`）。目标为 `registry.npmmirror.com` 与 `cdn.npmmirror.com`。
 
 - 路线：直连 0.05–0.15 s；经 `<port 7897>`、经 `<port 10808>`（http 与 socks5 各一次）均 200，registry 元数据与 tarball 都可取。用 4 个常见依赖做真实 `npm install`（独立缓存、`--ignore-scripts`）：首次 80 包 43 s，其中 `has-symbols` 单个元数据请求两次 `FETCH_ERROR` 后 40 s 才 200；同样的安装在新缓存下重跑 1.5–2.5 s 通过（经 10808 / 经 7897 / 国内镜像绕代理这三种设置都能通）。
 - **`npm config get proxy` 返回 `null` 不能证明 npm 不用代理**：该值不反映环境变量派生的设置。用黑洞代理 + 全新 `--cache` 做对照才可靠——只设 `HTTP(S)_PROXY` / `http_proxy` 时 `npm view` 报 `ECONNREFUSED 127.0.0.1:1`，说明 npm 11 **确实读取**这些环境变量（与 `proxy=null` 的读数不矛盾）。

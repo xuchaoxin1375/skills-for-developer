@@ -65,7 +65,7 @@ flowchart TD
 - `impersonate` 只作用于层 0：非空时改用 curl_cffi 以浏览器同族的 TLS/HTTP2 指纹出网（需安装 curl_cffi，否则构造 `FetchOptions` 即报错），结果里记 `notes: impersonate:<目标>`；浏览器层自带指纹，传了会告警忽略。
 - `user_agent` / `referer` 控制身份头：`user_agent` 覆盖各层默认 UA（层 0 只有显式给出时才覆盖 impersonate 目标的 UA，避免 TLS/UA 版本矛盾）；`referer` 为 `None` 时保留各层默认（层 2/3 默认是 Scrapling 带来的 `https://www.google.com/`），空串表示显式不发，非空必须是完整 http(s) URL。含换行的 UA 或非法 URL 在构造 `FetchOptions` 时即报错。
 - `solve_akamai`（默认 `False`）打开 Akamai Bot Manager 求解，只在层 1/2/3 与 `chrome-late` 生效，其它引擎会告警忽略。开启时 `timeout_ms` 不得低于 60000（挑战页自身要等满最短时长，之后才轮到本地兜底）。求解流程是“先让挑战页自己跑，跑不过再本地解 SEC-CPT 的 SHA-256 工作量证明并从页面内提交”，不需要外部 API 或密钥；结果写进 `result.notes`：`akamai:solved` / `akamai:unsolved` / `akamai:no_challenge` / `akamai:edge_block`，另有 `akamai_detail:` 与 `akamai_step:` 说明经过的步骤。**它只解挑战页**：Akamai 的边缘封禁（403 `Access Denied` / `Reference #18.…`）没有挑战窗口，求解器无解，只能换出口；behavioral 型挑战要采集行为数据，本 skill 不伪造。
-- `cdp_url`（默认 `None`）指定一个**已经开着调试端口的浏览器**，例如 `http://127.0.0.1:9222`。给了它就只走 `cdp-attach` 引擎：接管那个浏览器，读它里已经放行的目标标签页的 DOM，然后断开。**不关闭那个浏览器、不导航它、不碰它的 profile**（`notes` 记 `browser_owned:false`）。浏览器里没有目标页时直接报错并提示先手动打开；`cdp_navigate=True` 才让它去导航（导航期间调试会话在挑战窗口里，可能被 WAF 判负）。`--cdp-url` 与 `--engine <别的引擎>` 冲突会在校验期报错。
+- `cdp_url`（默认 `None`）指定一个**已经开着调试端口的浏览器**，例如 `http://127.0.0.1:<port>`。给了它就只走 `cdp-attach` 引擎：接管那个浏览器，读它里已经放行的目标标签页的 DOM，然后断开。**不关闭那个浏览器、不导航它、不碰它的 profile**（`notes` 记 `browser_owned:false`）。浏览器里没有目标页时直接报错并提示先手动打开；`cdp_navigate=True` 才让它去导航（导航期间调试会话在挑战窗口里，可能被 WAF 判负）。`--cdp-url` 与 `--engine <别的引擎>` 冲突会在校验期报错。
 - `fetch_page()` 不写业务文件；`save_page()` 才拥有文件副作用。
 
 ## 获取页面但不写文件
