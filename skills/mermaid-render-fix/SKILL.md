@@ -1,5 +1,5 @@
 ---
-name: mermaid-fix
+name: mermaid-render-fix
 description: >
   诊断并修复渲染失败的 Mermaid 图：提取代码块复现 Parse error，按报错行修复后用 mmdc 或 kroki 复验。
   渲染失败、Parse error、节点含方括号导致断裂时使用；纯新建图或排版统一走 markdown-style。
