@@ -408,3 +408,7 @@ if [[ $VERIFY_ONLY -eq 1 ]]; then
   fi
   echo "全部链接正常。"
 fi
+
+if [[ $VERIFY_ONLY -eq 0 && $UNLINK -eq 0 ]]; then
+  echo "提示：推荐依赖基线见 docs/skill-dependencies.md#部署基线；检查命令 python3 -X utf8 scripts/check-skill-deps.py"
+fi

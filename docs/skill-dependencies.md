@@ -77,6 +77,41 @@ python -X utf8 scripts/check-skill-deps.py --strict
 
 退出码：`0` 必需依赖满足；`1` 有缺失或版本不符（`--strict` 下 `unknown` 与可选缺失也算）；`2` 声明或探测本身失败。
 
+## 部署基线
+
+新机部署时先装这一组，覆盖大多数带运行时的 skill。它们不是每个 skill 的硬门槛，但缺了会退化到在线回退、人工路径或能力不全；命令按本机包管理器调整，不自动执行。
+
+| 依赖 | 主要覆盖 | Windows | Linux / macOS |
+|---|---|---|---|
+| Python 3.10+ | resource-inventory、resilient-browser-fetch、mermaid-render-fix、network-access、opencode-provider-config | `winget install Python.Python.3.12` | `brew install python@3.12` / `sudo apt install python3` |
+| Node.js 18+（含 npm/npx） | htmlmini | `winget install OpenJS.NodeJS.LTS` | `brew install node` / `sudo apt install nodejs` |
+| pnpm | htmlmini 项目安装、mermaid-render-fix 的单次拉起 | `corepack enable` 后 `corepack prepare pnpm@latest --activate`（或项目内 `corepack pnpm install`） | 同左 |
+| Chrome / Edge / Chromium | browser-automation、mermaid-render-fix、frontend-qa | `winget install Google.Chrome`（或使用系统 Edge） | `brew install --cask google-chrome` / `sudo apt install chromium` |
+| git | skill-authoring-sync、仓库同步与变更检查 | `winget install Git.Git` | `brew install git` / `sudo apt install git` |
+| PowerShell 7（可选） | powershell-pitfalls、Windows 脚本示例 | `winget install Microsoft.PowerShell` | `brew install --cask powershell` |
+
+安装后验证：
+
+```bash
+python -X utf8 scripts/check-skill-deps.py      # Windows
+python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
+```
+
+期望全部 `OK`；`OPTIONAL` 只表示可选能力未装，不影响必需项。准备完整环境时再用 `--strict`。
+
+安装影响与替代：
+
+- 这些命令会联网下载并写入用户或系统目录，可能修改 PATH；Python/Node 安装包通常几十 MB，浏览器更大。先说明再执行，不静默安装。
+- pnpm 只用于项目依赖；全局命令（如 `mmdc`）按治理用 `npm i -g`，不推荐 `pnpm add -g`（全局 bin 常不在 PATH）。
+- 不装或装不上时的降级：Python 缺失先换 `py`/`python3`，Mermaid 渲染可直接走 kroki；Node 缺失时 htmlmini 仍可按 `web_fetch` 分流；浏览器缺失时按 browser-automation 的人工截图或 Playwright 缓存；pnpm 缺失时可用 Corepack 在项目内运行。
+
+按需安装、不放进基线的项：
+
+- Playwright/Scrapling：浏览器自动化、E2E 与挑战页采集，按项目或任务装；优先复用系统 Chrome/Edge。
+- `mmdc`：Mermaid 渲染可用 `pnpm dlx`/`npx` 零安装，高频使用再按 `npm i -g @mermaid-js/mermaid-cli` 安装。
+- `uv`/conda：需要独立 Python 环境或引擎层时再装，按 `resilient-browser-fetch` 的分层说明。
+- 国内下载受阻时按 `network-access` 选镜像或代理，不把某次可达的源写成永久默认值。
+
 ## 维护
 
 - 新增或修改依赖时同步更新 `dependencies.json` 与 `hint`，不要只改正文；正文与声明各写一次时，以 `dependencies.json` 为机器检查口径。
