@@ -1,16 +1,18 @@
 ---
 name: mermaid-render-fix
 description: >
-  诊断并修复渲染失败的 Mermaid 图：提取代码块复现 Parse error，按报错行修复后用 mmdc 或 kroki 复验。
-  渲染失败、Parse error、节点含方括号导致断裂时使用；纯新建图或排版统一走 markdown-style。
+  诊断并修复渲染失败的 Mermaid 图：提取代码块复现 Parse error，按报错行修复后用 mmdc 或 kroki 复验；
+  也用于体检/规范化现有 Mermaid 块（引号与转义、跨渲染器版本隐患、象限图非 ASCII 文案）。
+  渲染失败、Parse error、节点含方括号导致断裂、检查或规范化 mermaid 代码时使用；纯新建图或排版统一走 markdown-style。
 ---
 
 # Mermaid 渲染失败修复
 
 ## 适用范围
 
-输入是渲染失败的 Mermaid 代码块，产出可独立渲染的最小修改版。语法规则的维护位置在
-`../markdown-style/SKILL.md` 的 Mermaid 一节，本 skill 只保留最高频根因摘要，
+输入是 Mermaid 代码块，有两种入口：渲染失败要复现并修复，或渲染正常但要体检/规范化（跨渲染器分发、
+修好一处后同类行连带排查）。产出可独立渲染的最小修改版，不重排图结构。语法规则的维护位置在
+`../markdown-style/SKILL.md` 的 Mermaid 一节，本 skill 只保留最高频根因摘要与体检清单，
 完整转义规则以该正本为准。只改写法不改图语义；渲染正常但样式不好看不归本 skill 管。
 
 ## 工作流程
@@ -46,8 +48,26 @@ description: >
 4. **修**：每次只改报错行及同类行。最高频根因是节点文本里的 `[` 未加引号
    （报错常为 `got 'SQS'`），修法是给整个节点文本加双引号，
    如 `G["...[Console]::OutputEncoding..."]`。其余转义查 markdown-style 正本。
+   第二类根因是 `quadrantChart` 里未加引号的非 ASCII 文案（轴文案、`quadrant-N` 文案、点名称）：
+   Mermaid 10.x–11.x 报 `Lexical error on line N. Unrecognized text.`，插入符落在出问题的那段 token 上，
+   修法同样是给该段加双引号，不改写图语义；12.x 起不加引号也能渲染，跨版本分发仍统一加。
 5. **复验**：重跑同一条路径，`RENDER=OK`（脚本）或 `EXIT=0` 才算通过；再目视产物确认中文与特殊符号。
 6. **回写**：把验证过的块写回原位置，保持最小 diff；报告根因行、改法与两次 EXIT。
+
+## 体检与规范化（可渲染不等于安全）
+
+用户要求“检查/规范化/审一下这段 mermaid”，或要把图贴到别的渲染器（编辑器插件、文档站内嵌版本
+常停在 10.x/11.x）时走这一节：先预检，再按图类型过清单，有渲染器时仍以产物为准。
+
+- 所有图：节点与标签文本用双引号包裹；`;` 写 `#59;`；换行写 `<br>`。
+- `quadrantChart`：`x-axis "低" --> "高"` 两侧都保留 `-->`，缺箭头不会提示“缺箭头”，而是报词法/解析错误；轴文案、
+  `quadrant-1`…`quadrant-4` 文案、点名称含非 ASCII 字符（中文等）时一律加双引号；点格式
+  `"名称": [x, y]`，`x`/`y` 必须落在 `0`–`1`（越界同样只报词法错误，容易被误当成语法写错）；
+  `quadrant-1` 右上、`quadrant-2` 左上、`quadrant-3` 左下、`quadrant-4` 右下；象限文案与轴方向
+  冲突（如右下角写“立刻做”）时报给用户确认，不靠挪数据点掩盖。
+- 版本敏感项：低版本渲染器报错、高版本正常时，按低版本可渲染的写法收敛，再决定是否升级；
+  不用“我这边能渲染”当结论。
+- 输出按“行号 + 隐患 + 改法”列出，并区分会直接失败的与当前版本可渲染的潜在隐患。
 
 ## 约束
 
@@ -58,6 +78,10 @@ description: >
 ## 验证协议
 
 - `check_mermaid.py` 在已知坏块上报 SUSPICIOUS、修好后报 OK（本次已实跑）。
+- `check_mermaid.py` 的象限图规则：未加引号的中文轴文案/象限文案/点名称、缺 `-->`、坐标超出 `0`~`1` 均报 SUSPICIOUS，
+  全部加引号并改正坐标后报 OK；既有流程图节点 `[` 与时序图 `;` 两条规则未回归（本次已实跑）。
+- 非 ASCII 引号根因：同一块在 Mermaid 10.9.1、11.4.0 复现 `Lexical error on line 3. Unrecognized text.`（插入符位置一致），
+  加双引号后渲染通过且 SVG 文本中无残留引号；12.2.0 上不加引号也能渲染（本次已实跑）。
 - mmdc 对同一块复现失败（非零退出）→修复后成功（零退出），PNG 目视确认。
 - 本机无 mmdc 时，`pnpm dlx` 配 Chrome 可渲染出 SVG（EXIT=0）；`pnpm exec` 在无本地依赖时报 `Command "mmdc" not found`（两者本次已实跑）。
 - `render_mmd.py`：好块 `RENDER=OK`（Windows 用 Chrome、Playwright 自带 Chromium 均通过）；坏块渲染 `RENDER=FAILED` 退出 4、`-c` 退出 2；
