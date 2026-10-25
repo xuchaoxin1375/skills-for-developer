@@ -15,6 +15,8 @@ description: >
   免双路探测（抓取本身即核验，成功时不预读长文档）；无可用登记时直连按总耗时上限
   （含首字节等待）熔断后切代理，结论同一任务复用；确认抓取工具的实际出口。
   需代理先读 `~/.config/proxy-resources.json`，无可用代理直接问用户，不盲试端口、不静默放弃。
+- **Shell 选择**：Windows 下优先 PowerShell，其次 git-bash，cmd.exe 不推荐（仅作最后回退）；
+  工具侧默认 shell 是 cmd 时，命令显式包一层 `powershell -NoProfile -Command` 调用。
 - **PowerShell**：带逻辑的片段一律用 PowerShell，运行前先加载 `powershell-pitfalls`。任何可能输出非 ASCII 的调用（含读文件、`Get-ChildItem` 枚举、`Select-String` 结果）同次先设输出编码再输出；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；退出码 0 或纯英文输出不能证明读取正确。**不要给原生命令的输出接 PowerShell 管道/重定向**（`| Select-Object` / `| Out-String` / `| Out-File`）——实测这条链的保真不稳定，出现过"设了编码反而更乱"；要筛选就让程序自己筛（`--format`、原生 `grep`），要落盘就用程序的 `--out` 参数或字节闸门。**多段 CLI 串成链时**每一跳都要过 PowerShell 的文本解码，漏设一次整条链失真，优先改成"文件接力"。非 ASCII 安全前缀（幂等，贴片段最前）：
 
   ```powershell
