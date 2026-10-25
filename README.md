@@ -88,6 +88,7 @@
 | Codex            | `%USERPROFILE%/.codex/skills`                                       | `~/.codex/skills`                      | 全量链接; 自带的`.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude           | `%USERPROFILE%/.claude/skills`                                      | `~/.claude/skills`                     | 全量链接                                                         |
 | DeepSeek Harness | `%DSH_HOME%/skills`（默认 `%USERPROFILE%/.dsh/skills`）           | `${DSH_HOME:-~/.dsh}/skills`           | 全量链接；dsh 原生用户级（rank 高于通用位置）                    |
+| ZCode            | `%USERPROFILE%/.zcode/skills`（优先），回退 `%USERPROFILE%/.agents/skills` | `~/.zcode/skills`（优先），回退 `~/.agents/skills` | 只读取不建链，复用 Agents 通用行的链接；个别 skill 只想在 ZCode 内覆盖时放 `~/.zcode/skills` |
 
 ## 链接方式：Junction（Win）/ symlink（Linux）
 
