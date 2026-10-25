@@ -125,7 +125,7 @@ skills-for-developer/
    输出为 `<ahead> <behind>`；两者都为 `0` 才算对齐。
 4. **按结果处理**：
    - `behind > 0`、`ahead = 0`：先处理工作区未提交改动（提交或 stash），再 `git pull --ff-only`（或 `git merge --ff-only <remote>/<branch>`）后复跑第 3 步。
-   - `ahead > 0`、`behind = 0`：本地有未推送提交；只有用户明确指示才 push，push 后重新 fetch 核对。
+   - `ahead > 0`、`behind = 0`：本地有未推送提交；默认直接 push（多远端逐个推），push 后重新 fetch 核对；推送失败（无凭据、网络、非快进、远端拒绝）就跳过并如实报告，不改用 `--force`。
    - 双向非零：先报告分叉点和双方提交，不擅自 merge/rebase。
 5. **报告核验事实**：写明 remote、branch、远端 SHA、本地 HEAD、ahead/behind，以及是否实际执行过 fetch。ahead/behind 只描述提交历史；工作区有未提交改动时另用 `git status --short` 说明，不能把它算作已同步。不要用 `git status -sb` 的 `up to date` 代替远端结论；远端不可达时明确说“未能验证远端”。
 
@@ -170,7 +170,7 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 3. **写入**：让真源与本机字节一致（链接脚本按文件 hash 判断“已是最新”，不一致时下次部署会提示覆盖）。
 4. **校验**：`python3 scripts/check-skills.py --no-harness`，以及
    `scripts\link-skills.ps1 -VerifyOnly`（Linux `./scripts/link-skills.sh --verify-only`）。
-5. **报告**：列出采纳与保留项及依据；`git commit/push` 仅在用户明确指示时执行。
+5. **报告**：列出采纳与保留项及依据；默认提交并推送，推送失败就跳过并报告。
 
 反向分发（真源 → 本机）由链接脚本承担：`-ApplyRecommendedCli`（Linux `--apply-recommended-cli`）
 应用推荐配置，覆盖前备份为同目录 `cli.json.bak-<时间戳>`；`-SkipRecommendedCli` 跳过，
@@ -188,6 +188,6 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 ## 红线
 
 - 不把 harness 链接本体提交到 git；`git add` 只点名实体文件。
-- `git commit/push` 必须用户明确指示才做。
+- 默认提交并推送（多远端逐个推）；推送失败（无凭据、网络、非快进、远端拒绝）就跳过并如实报告，不擅自 `--force`、不改写已推送历史。
 - 不在 harness 侧手工存放实体副本；所有改动走“真源 → 链接生效”单向流动。
 - skill 正文、引用、示例、配套脚本中不得出现仓库外真实路径（本机绝对路径如 `C:\Users\…`、`C:\tools\…`、`/home/…`，写死的 `/tmp/…`）：真实引用只许仓库内相对路径或 URL；示例路径必须用 `<…>` 占位符；约定俗成的标准位置须用环境变量形式（如 `%USERPROFILE%`、`$HOME`、`$XDG_RUNTIME_DIR`）而非写死；本文「定位真源仓库」记录的 `C:\repos\skills-for-developer` 与 `~/repos/skills-for-developer` 属分发约定位置，不视为个人机器路径；历史/迁移说明中提及的已删除旧路径须标注“旧/已删除”。
