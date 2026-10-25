@@ -17,6 +17,7 @@ NON_ASCII = re.compile(r"[^\x00-\x7f]")
 QUADRANT_AXIS = re.compile(r"^(x-axis|y-axis)\s+(.+)$", re.IGNORECASE)
 QUADRANT_LABEL = re.compile(r"^quadrant-([1-4])\s+(.+?)\s*$", re.IGNORECASE)
 QUADRANT_POINT = re.compile(r"^(.+?):\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\]\s*$")
+ARCH_NODE = re.compile(r"^(?:group|service|junction)\s+\S+?\([^)]*\)\s*\[(.+?)\]", re.IGNORECASE)
 
 
 def is_quoted(text: str) -> bool:
@@ -59,6 +60,20 @@ def quadrant_hits(block: str) -> list[str]:
     return hits
 
 
+def architecture_hits(block: str) -> list[str]:
+    """architecture-beta: 非 ASCII 标签在 mermaid <11.13 无法渲染，11.13 起必须加引号。"""
+    hits = []
+    for i, raw in enumerate(block.splitlines(), start=1):
+        line = raw.strip()
+        node = ARCH_NODE.match(line)
+        if node and NON_ASCII.search(node.group(1)) and not is_quoted(node.group(1)):
+            hits.append(
+                f"line {i}: unquoted non-ASCII label (needs mermaid>=11.13; "
+                f"use english labels for older): {line[:120]}"
+            )
+    return hits
+
+
 def check_block(block: str) -> list[str]:
     hits = []
     lines = block.splitlines()
@@ -81,6 +96,8 @@ def check_block(block: str) -> list[str]:
                 hits.append(f"line {i}: raw ';' in sequence diagram: {raw.strip()[:120]}")
     if head.lower().startswith("quadrantchart"):
         hits.extend(quadrant_hits(block))
+    if head.lower().startswith("architecture"):
+        hits.extend(architecture_hits(block))
     return hits
 
 
