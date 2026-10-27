@@ -21,7 +21,7 @@ lightweight-app-builder/          # skill 根（本目录，含 SKILL.md）
 │   ├── hybrid-core-shell.md      # ★Qwen：内核三纪律 + 四语言布局 + 错误映射（sidecar 标进阶）
 │   ├── packaging-distribution.md # 融合：Qwen 签名链/install.sh/CI 为骨 + GLM 光谱规则/命令表/九勾
 │   ├── engineering-standards.md  # ★GLM：目录骨架 + 配置日志错误 + 质链 + CI 最小集
-│   ├── quality-gates.md          # ★Qwen：G1-G5 闸门 + 工具链表 + 发布前 14 项
+│   ├── quality-gates.md          # ★Qwen：QG1-QG5 闸门 + 工具链表 + 发布前 14 项
 │   ├── prompt-recipes.md         # ★GLM：七段骨架 + 提问模板 + 好坏对照（已删拆分元讨论）
 │   └── case-walkthroughs.md      # ★GLM 独有：三完整案例（Qwen 无）
 ├── assets/                       # 可复制模板（Qwen 独有，GLM 无）

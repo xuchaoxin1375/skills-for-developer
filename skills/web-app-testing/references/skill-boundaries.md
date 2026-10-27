@@ -20,7 +20,7 @@
 | UI 缺陷分类、诊断与专项验收方法 | [frontend-qa/catalog](../../frontend-qa/references/catalog.md) | 测试计划引用相关类别；不把完整 UI 扫描强加给每个后端任务 |
 | UI 完成清单模板 | [UI DoD](../../frontend-qa/references/definition-of-done.md) | catalog 只链接模板；按适用范围纳入总体 DoD，不另判整个产品完成 |
 | 界面设计与呈现规则 | [frontend-design](../../frontend-design/SKILL.md)及其领域路由 | 测试验证产品已确定的设计，不通过测试规范重选设计 |
-| 轻量工具形态、打包/安装和 CLI/桌面专有基线 | [lightweight-app-builder](../../lightweight-app-builder/SKILL.md)及其 quality-gates | 本地 Web 按产品模型借用测试方法；不把轻量形态限制推广到普通服务端应用 |
+| 轻量工具形态、打包/安装和 CLI/桌面专有基线 | [lightweight-app-builder](../../lightweight-app-builder/SKILL.md)及其 quality-gates | 本地 Web 按产品模型借用测试方法；仓库/许可/CI 按 repo-gov，长期架构按 swe-gov；不把轻量形态限制推广到普通服务端应用 |
 | 仓库工作流、合并保护、依赖/密钥审计与构建供应链 | [repo-gov](../../repo-gov/SKILL.md)及其 CI 参考 | 请求仓库治理时使用；普通补测试不自动补社区文件或改分支政策 |
 | Shell/Python/Node 脚本健壮性与风格 | [scripting-best-practices](../../scripting-best-practices/SKILL.md) | 编写相关测试/编排脚本时使用，不代替业务测试设计 |
 
@@ -45,6 +45,27 @@
 浏览器工具按 URL、截图文件和资源收尾交付，自动化测试按场景、断言和回归用例交付。依用户所需结果选入口，不能只凭出现 Playwright 就同时启动所有测试相关 skill。
 
 同一任务共用一份 AC/测试计划、一套项目检查入口与一份交付报告。多个 skill 可以引用同一次版本匹配的测试、截图和日志；已完成且仍有效的检查不重复执行。相关输入变化、失败未解决或影响面扩大时，依交付政策重验。
+
+### 构建应用时的组合顺序
+
+下表是跨领域路由，不另定等级、门禁或状态；同一项目共用一份 AC、验证入口和证据。
+
+| 阶段 | 主入口 | 主要产出 | 边界 |
+|---|---|---|---|
+| 形态、选型、打包 | lightweight-app-builder | 需求确认单、技术栈、交付形态与安装方式 | 不在此定交付等级；长期服务转 swe-gov |
+| 仓库、许可、提交、CI/供应链 | repo-gov | 仓库基线、分支/提交规则、CI 与依赖控制 | 不在此定业务测试覆盖；必需检查按交付矩阵 |
+| 架构、契约、运行与维护 | swe-gov | ADR、模块边界、兼容迁移、可靠性与恢复 | 只对长期维护应用；不套一次性脚本 |
+| 测试设计与回归 | web-app-testing | 测试层、用例、隔离环境与回归 | 不另定等级；开发侧通过不替代独立测试/验收 |
+| 验证与交付 | ai-verified-delivery | 等级、必需检查、证据与交付状态 | 不替代实现、测试设计或正式验收 |
+| UI 专项 | frontend-design / frontend-qa | 设计方向、UI 缺陷与视觉验收 | 按需；CLI/纯后端不套 UI 清单 |
+
+常见组合：
+
+- 轻量 CLI/桌面工具：lightweight-app-builder + repo-gov + ai-verified-delivery 的 L1/L2；有 Web/后端时加 web-app-testing；不启动 swe-gov 全套治理。
+- 长期 Web 服务：swe-gov + repo-gov + web-app-testing + ai-verified-delivery 的 L3/L4；UI 按需加 frontend-qa。
+- 一次性脚本：lightweight-app-builder + repo-gov 的最小仓库检查；按风险采用 L1 证据；不建完整架构/发布体系。
+
+冲突时按上表归属执行。lightweight-app-builder 的 QG1–QG5 是打包闸门，ai-verified-delivery 的 G0–G13 是交付检查点，二者可归并到同一报告但不互相替代。
 
 ### 冲突与维护
 
