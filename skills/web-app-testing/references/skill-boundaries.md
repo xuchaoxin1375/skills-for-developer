@@ -7,6 +7,7 @@
 | 决策或规则 | 维护位置 | 其他 Skill 如何使用 |
 |---|---|---|
 | Web 测试覆盖层、用例设计、编写时机、数据环境与测试维护 | [web-app-testing 正文](../SKILL.md)及其三个实施参考 | 按需引用方法，保留本领域的验收结果，不复制详细实施表 |
+| 测试层与开发侧/独立测试阶段的区分 | [覆盖与分层](coverage-and-layers.md#测试层测试阶段与责任) | 交付等级、独立验收与发布批准仍按 ai-verified-delivery；测试层选择按 web-app-testing |
 | 长期应用架构、ADR、契约演进、运行目标与维护方法 | [swe-gov](../../swe-gov/SKILL.md)及其领域参考 | 提供产品约束与工程决策，测试负责验证，交付负责证据与完成判断 |
 | 交付等级、必需检查组合、DoR/DoD | [等级与门禁](../../ai-verified-delivery/references/levels-and-gates.md) | 按影响面定级；测试建议和局部清单不另定等级 |
 | 交付状态、报告事实与授权边界 | [ai-verified-delivery 正文](../../ai-verified-delivery/SKILL.md) | 测试结果作为输入，不另定义总体完成状态 |
