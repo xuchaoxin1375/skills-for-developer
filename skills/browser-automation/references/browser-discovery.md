@@ -51,7 +51,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 
 自动选择等价于 `browser_discovery.select_browser()`：只在 `eligible` 且非 `playwright-cache` 的候选中取发现顺序第一个，也可按产品过滤（如 `chrome`）。不确定引擎或浏览器时先跑 `shot_scroll.py --doctor`：它只读报告 Playwright 包是否可用、候选列表、会自动选中的浏览器与建议引擎，不启动 guardian 或浏览器；只有加 `--probe-launch` 才实际探一次启动，`launch=not-probed` 表示尚未取得启动事实。
 
-截图仍需目标环境的 Playwright 包，除非显式使用轻量引擎：`--engine oneshot|cdp` 只要求本机浏览器文件，不导入 Playwright（用法与保真差异见 [托管截图工作流](screenshot-workflow.md#轻量引擎)）。使用受控本地页面先验证浏览器启动和截图，再验证外网、代理与业务；浏览器制品及系统依赖准备按 [浏览器安装](../../network-access/references/browser-installation.md)。缓存条目只作信息报告，选哪个缓存版本仍由实际运行环境的 Playwright/项目运行器决定。
+截图仍需目标环境的 Playwright 包，除非显式使用轻量引擎：`--engine oneshot|cdp` 只要求本机浏览器文件，不导入 Playwright（用法与保真差异见 [托管截图工作流](screenshot-workflow.md#轻量引擎与体检)）。使用受控本地页面先验证浏览器启动和截图，再验证外网、代理与业务；浏览器制品及系统依赖准备按 [浏览器安装](../../network-access/references/browser-installation.md)。缓存条目只作信息报告，选哪个缓存版本仍由实际运行环境的 Playwright/项目运行器决定。
 
 ### 其他 skill 如何复用
 

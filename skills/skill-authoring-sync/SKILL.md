@@ -180,10 +180,11 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 
 1. Windows：`scripts\link-skills.ps1 -VerifyOnly` 全量通过；
    Linux：`./scripts/link-skills.sh --verify-only` 全量通过。
-2. 新 skill 在 harness 中可见/可加载（出现在可用 skill 列表即算通过；dsh 差异见 `references/dsh-skills.md`）。
-3. 抽查正文：描述的触发条件在对应请求下能命中加载，含 skill 变更/查变更触发。
-4. `git status` 确认无链接本体被误暂存；涉及跨机器同步时，按「跨机器同步与对齐判定」核对远端，不以 `git status -sb` 代替。
-5. 查变更请求已在真源用 `git status`/`log`/`diff` 核对，未用 harness 时间判定。
+2. 仓库侧：`python scripts/check-skills.py --no-harness --strict` 与 `python scripts/check-links.py` 通过。
+3. 新 skill 在 harness 中可见/可加载（出现在可用 skill 列表即算通过；dsh 差异见 `references/dsh-skills.md`）。
+4. 抽查正文：描述的触发条件在对应请求下能命中加载，含 skill 变更/查变更触发。
+5. `git status` 确认无链接本体被误暂存；涉及跨机器同步时，按「跨机器同步与对齐判定」核对远端，不以 `git status -sb` 代替。
+6. 查变更请求已在真源用 `git status`/`log`/`diff` 核对，未用 harness 时间判定。
 
 ## 红线
 

@@ -259,7 +259,7 @@ Akamai 不是 Cloudflare，`solve_cloudflare` 对它无效。本 skill 的 `--so
 1. 用系统 Chrome 以**命令行参数**打开目标 URL，**不接任何调试器客户端**（调试端口可以先开着，端口本身无害）。用系统 Chrome 还有第二重收益：它不带 `navigator.webdriver` 之类的标志，挑战能正常通过。
 2. 等挑战跑完。**判别信号是标签标题**：挑战页没有 `<title>`，Chrome 于是显示 URL；标题变成真实标题就说明挑战已过、正文已就位。只读 DevTools 的 HTTP 端点（`/json`）即可，不建立调试会话。标题直接是 `Access Denied` 则不用再等。
 3. 再通过 CDP 连上浏览器，**等 DOM 渲染稳定后**读正文（`Runtime.evaluate` 取 `document.documentElement.outerHTML`）并落盘。标题就绪时正文往往只渲染了一半（实测 596 KB → 渲染稳定后 1.4 MB）。
-4. 用 [htmlmini](../htmlmini/SKILL.md) 从落盘 HTML 提取正文与字段。
+4. 用 [htmlmini](../../htmlmini/SKILL.md) 从落盘 HTML 提取正文与字段。
 
 本 skill 已把这套做法做成 `chrome-late` 引擎（`--engine chrome-late`）：`--settle-ms` 控制最小静默窗口，`--render-timeout-ms` 控制渲染等待上限；上面四步由它自动完成，包括浏览器回收。运行结果里 `pre_attach_state`（接入前页面状态）、`final_state`（读取时页面状态）、`attach_delay_ms`、`render_wait_ms` 四个 note 用来复盘当时发生了什么。
 

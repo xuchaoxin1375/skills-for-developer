@@ -12,6 +12,8 @@
   6. 依赖声明：skills/*/dependencies.json 的结构与字段校验，见
      docs/skill-dependencies.md；含 package.json 却未声明依赖时给出提醒。
 
+内部 Markdown 链接与锚点由 scripts/check-links.py 单独校验。
+
 用法（仓库根）：
   python3 scripts/check-skills.py
   python3 scripts/check-skills.py --include doc-rewrite-review,htmlmini
