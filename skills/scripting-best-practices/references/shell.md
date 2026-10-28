@@ -121,6 +121,7 @@ main "$@"
 - 这类脚本只用 POSIX 子集（`[ ]`、`$( )`、`printf`、`command -v`），不用 `[[ ]]`、数组、`local -n` 等 bash 扩展；确实需要 bash 特性时显式走 `bash -s`，并把该前提写进脚本注释。
 - 下发前把**真实字节**分别过 `bash -n`、`zsh -n`、`sh -n`；本机只有 bash 就只验一种，等于把另一类机器的解析问题留到线上。
 - 换行必须是 LF、引号不依赖外层命令行解析：从 Windows 侧生成这段文本时按 [文件与程序调用](../../powershell-pitfalls/references/files-and-invocation.md) 的换行与传参规则处理。
+- 参数不要有空值：`ssh host bash -s -- "$a" "$b"` 的参数会被 ssh 拼成一行交给远端 shell 重新解析，空字符串直接消失，远端 `set -u` 下报 `$2: unbound variable`。可能为空的参数用占位值（例如 `-`）并在远端还原，或先编码成不含空白与换行的文本再传。
 
 ## 跨平台要点
 
