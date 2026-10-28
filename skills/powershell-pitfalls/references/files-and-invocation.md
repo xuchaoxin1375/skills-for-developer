@@ -43,6 +43,21 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 读后写必须两端显式指定编码；不用 `>` 结果当原始 stdout（5.1 为 UTF-16LE；7.4+ 原生重定向保留原始字节）。写后用 `Format-Hex` 或前导字节核验，不只看显示。
 
+### 交给 Linux shell 的文本必须用 LF
+
+把 here-string、模板或变量拼成的脚本经 `ssh` 下发时，换行符跟着源文件走：`.psm1`/`.ps1` 保存为 CRLF 时，here-string 原样带出 CRLF。远端 bash 与 zsh 都不把 CR 当空白字符，`then`、`fi`、`}` 这些标记会退化成普通词，典型报错是 `syntax error: unexpected end of file`、`parse error near ...`，位置往往落在脚本末尾，看起来像最后一行写错。
+
+2026-10-28 实测：7 台目标机（4 台 bash、3 台 zsh 登录）同一份下发命令全部失败；把生成的字节原样交 `bash -n` / `zsh -n` 复现出与线上一致的报错，去掉 CR 后两者都通过。
+
+组装完显式归一，不依赖编辑器或 `.gitattributes` 的 eol 设置：
+
+```powershell
+# $remoteCmd 是要交给远端 shell 的整段文本
+$remoteCmd = ($remoteCmd -replace "`r`n", "`n") -replace "`r", ''
+```
+
+验证时把**将要下发的真实字节**写到文件后交 `bash -n` / `zsh -n`，不要先做换行归一化再验证——那正好把缺陷洗掉。
+
 ### 参数数组与旧式原生命令传递
 
 直接调用优先把程序和参数分开：
@@ -56,6 +71,8 @@ $nativeExit = $LASTEXITCODE
 不使用 `Invoke-Expression` 重新解释拼接命令。参数数组减少自行拼接，但不是所有版本的 argv 保真保证：5.1 旧式传递可能丢空字符串、移除内嵌引号；7.3+ 还受 `$PSNativeCommandArgumentPassing` 与目标程序/包装器影响。`-EncodedCommand` 只解决 PowerShell 命令文本的跨层传输，不修复对原生程序的 argv 传递。
 
 遇到必须传空值、JSON 或复杂引号的协议，优先使用目标明确支持的配置文件、响应文件或结构化 stdin；也可选择经过验证的调用层。不能假定任意 CLI 支持这些接口。验证目标实际收到的参数，覆盖空值、空格、引号和路径，不把 PowerShell 变量中的字符串正确当目标已收到正确。
+
+把整段脚本作为**单个参数**交给远端 shell（`ssh host '...'`）时，这条风险最直接：5.1 实测会把参数里的双引号全部移除（argv 中剩余 0 个，7.5.4 完整保留），远端于是报引号未闭合。这类场景改用单引号书写脚本，或改走 `bash -s` 的标准输入、base64 传输，不让引号穿过命令行；路径类参数靠参数校验保证不含空白后，也不必再加引号。
 
 ### Start-Process 不是 argv 数组接口
 
@@ -99,5 +116,6 @@ $nativeExit = $LASTEXITCODE
 - 5.1 字符串 `>` 文件以 `FF FE` 开头，`-Encoding UTF8` 文件以 `EF BB BF` 开头；pwsh 对应文本文件无 BOM。明确 `UTF8Encoding($false)` 的 .NET 写入在两者均无 BOM，文本完整。
 - 2026-10-21：`File.WriteAllText(..., [Text.Encoding]::UTF8)` 在 5.1 与 7 都写出 `EF BB BF`（`GetPreamble()` 均 3 字节）；`Export-Csv` 未指定编码时 5.1 把中文写成 `??`（ASCII，信息丢失），7 写 UTF-8 无 BOM。
 - 使用 Python argv 记录器：两者直接调用均保留带空格参数；5.1 丢掉空参数和内嵌引号，pwsh 的本次调用保留。两者 `Start-Process -ArgumentList` 数组的带空格项都被拆为两个参数。
+- 2026-10-28：`.psm1` 以 CRLF 保存时，here-string 拼出的远端命令带 CR，bash 与 zsh 都拒绝解析（`unexpected end of file` / `parse error near`）；同一份字节交 `bash -n`、`zsh -n` 可复现，去 CR 后通过。同一环境用 argv 记录器对比：5.1.26100 把参数内的双引号全部移除，7.5.4 完整保留。
 
 以上验证本机版本及目标程序，不证明所有包装器、PowerShell 7 小版本或第三方 CLI 有相同参数行为。需要兼容 5.1 的代码也不能直接照抄 `&&`/`||` 等新版本语法。
