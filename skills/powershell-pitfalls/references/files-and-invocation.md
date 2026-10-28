@@ -81,7 +81,8 @@ $nativeExit = $LASTEXITCODE
 - **模块内自定义函数不可见**：并行脚本块里调用同一模块的函数直接 `CommandNotFound`，`Start-ThreadJob` 同样不可见。把单项逻辑写成自包含脚本块，顺序与并发复用同一份，避免两套实现漂移。
 - **`$using:` 不接受 scriptblock 对象**：报 "A ForEach-Object -Parallel using variable cannot be a script block"。传代码就传 `.ToString()` 文本，在 runspace 内 `[scriptblock]::Create($using:text)` 还原。
 - **`$using:` 传的是快照**：`$using:stopwatch` 在 runspace 里恒为传入时的读数，计时、进度计数这类活状态必须在 runspace 内新建。
-- **`Write-Host` 会转发到主控制台**，也能被 `6>&1` 捕获成 `InformationRecord`；逐项进度用它，结果对象照旧走成功流，两者不互相污染。
+- **`Write-Host` 会转发到主控制台**，也能被 `6>&1` 捕获成 `InformationRecord`；逐项进度用它，结果对象照旧走成功流，两者不互相污染。**这条只在 `ForEach-Object -Parallel` 成立**：`Start-ThreadJob` 与 `Start-Job` 的 runspace 没有交互宿主，`Write-Host` 要等到 `Receive-Job` 才一次性出现，作业方式下的进度行必须由调用方打印。
+- **要同时兼容 5.1 与 7 就别依赖 `-Parallel`**：它只在 7 有。作业池在两边都能跑——优先 `Start-ThreadJob`（7 自带，5.1 需装 `ThreadJob` 模块），缺装退回 `Start-Job` 进程级作业；`-ThrottleLimit 1` 时直接顺序调用，省掉作业启动开销。
 
 ### Start-Process 不是 argv 数组接口
 

@@ -42,6 +42,8 @@ if ($nativeExit -ne 0) {
 
 上述示例以 0 为唯一成功值；实际工具按其退出码契约判断，例如搜索无匹配可以是预期分支。捕获码应紧跟调用：其他原生命令可能覆盖 `$LASTEXITCODE`；`$?` 只表示最近执行状态，输出一条日志后就可能由失败变成功。不以 stderr 有无、启动成功或子进程存在代替退出码和预期结果。
 
+合并且 stderr 会绕过这套退出码分支：`$ErrorActionPreference = 'Stop'` 下写 `$out = & tool ... 2>&1`，5.1 把合并进来的 stderr 记录当成终止错误（`NativeCommandError`），批量处理在第一次失败处就中断，后面的 `$LASTEXITCODE` 判断根本执行不到。2026-10-28 实测：同一函数在 5.1 的顺序分支直接终止，同一份代码在 7.5.4 正常返回。要靠退出码决定"单台失败继续下一台"的逻辑，进入这段前把 `$ErrorActionPreference` 在脚本块或函数作用域内局部降为 `Continue`，失败统一由 `$LASTEXITCODE` 判定。
+
 ### 函数的成功输出流
 
 ```powershell
