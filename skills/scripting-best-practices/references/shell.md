@@ -114,6 +114,14 @@ main "$@"
 `headline="* Headline *"` 不加引号时 `*` 会展开为当前目录文件列表。
 **规则：除非明确需要词分割或通配符展开，否则永远加双引号。**
 
+### 交给远端登录 shell 执行的脚本
+
+管理员主机的登录 shell 可能是 bash、zsh 或 sh，`ssh host '...'` 的整段命令由登录 shell 解析。
+
+- 这类脚本只用 POSIX 子集（`[ ]`、`$( )`、`printf`、`command -v`），不用 `[[ ]]`、数组、`local -n` 等 bash 扩展；确实需要 bash 特性时显式走 `bash -s`，并把该前提写进脚本注释。
+- 下发前把**真实字节**分别过 `bash -n`、`zsh -n`、`sh -n`；本机只有 bash 就只验一种，等于把另一类机器的解析问题留到线上。
+- 换行必须是 LF、引号不依赖外层命令行解析：从 Windows 侧生成这段文本时按 [文件与程序调用](../../powershell-pitfalls/references/files-and-invocation.md) 的换行与传参规则处理。
+
 ## 跨平台要点
 
 | 差异点 | Linux (GNU) | macOS (BSD) | 兼容方案 |
