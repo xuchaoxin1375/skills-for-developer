@@ -74,6 +74,15 @@ $nativeExit = $LASTEXITCODE
 
 把整段脚本作为**单个参数**交给远端 shell（`ssh host '...'`）时，这条风险最直接：5.1 实测会把参数里的双引号全部移除（argv 中剩余 0 个，7.5.4 完整保留），远端于是报引号未闭合。这类场景改用单引号书写脚本，或改走 `bash -s` 的标准输入、base64 传输，不让引号穿过命令行；路径类参数靠参数校验保证不含空白后，也不必再加引号。
 
+### ForEach-Object -Parallel 的 runspace 边界
+
+`-Parallel` 把每一项放进独立 runspace，除显式传入的变量与文本外都拿不到。2026-10-28 在 pwsh 7.5.4 逐项实测：
+
+- **模块内自定义函数不可见**：并行脚本块里调用同一模块的函数直接 `CommandNotFound`，`Start-ThreadJob` 同样不可见。把单项逻辑写成自包含脚本块，顺序与并发复用同一份，避免两套实现漂移。
+- **`$using:` 不接受 scriptblock 对象**：报 "A ForEach-Object -Parallel using variable cannot be a script block"。传代码就传 `.ToString()` 文本，在 runspace 内 `[scriptblock]::Create($using:text)` 还原。
+- **`$using:` 传的是快照**：`$using:stopwatch` 在 runspace 里恒为传入时的读数，计时、进度计数这类活状态必须在 runspace 内新建。
+- **`Write-Host` 会转发到主控制台**，也能被 `6>&1` 捕获成 `InformationRecord`；逐项进度用它，结果对象照旧走成功流，两者不互相污染。
+
 ### Start-Process 不是 argv 数组接口
 
 `Start-Process -ArgumentList @('a', 'two words')` 会把数组拼成命令行，`two words` 可能成为两个参数。需要它的异步、窗口或重定向功能时，按目标解析规则构造并验证命令行；不依赖一套通用引号替换覆盖所有 EXE、`.cmd` 与 shell。仅需同步执行时可优先直接调用。

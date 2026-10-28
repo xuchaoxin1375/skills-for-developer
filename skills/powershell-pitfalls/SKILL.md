@@ -92,7 +92,7 @@ python -c "from pathlib import Path; import json; print(json.dumps(Path('docs/ex
 | 怀疑乱码、换 harness/终端后要先确认坏在哪一跳 | [编码体检与校准（脚本）](references/encoding-read.md#编码体检与校准脚本) |
 | 用户要求工具输出原文；交互式 help 乱码 | [工具输出原文](references/encoding-read.md#用户要求工具输出原文)；[help 与分页器](references/encoding-read.md#交互式-help-乱码检查分页器) |
 | 启动/profile 集成、5.1 与 pwsh 兼容差异 | [启动方式与版本差异](references/startup-and-version.md) |
-| 跨层引号、别名、精确路径、写入、原生参数或 Junction | [文件与程序调用](references/files-and-invocation.md) |
+| 跨层引号、别名、精确路径、写入、原生参数、并发 runspace 或 Junction | [文件与程序调用](references/files-and-invocation.md) |
 | 静默失败、异常未捕获、退出码或返回对象混入日志 | [错误与输出契约](references/errors-and-output.md) |
 
 ## 验证与维护
