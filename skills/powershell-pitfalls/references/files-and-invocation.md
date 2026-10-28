@@ -17,6 +17,19 @@ Get-Content -LiteralPath 'item[1].txt'  # 读取名称含方括号的文件
 
 PowerShell location 与 `[Environment]::CurrentDirectory` 不保证同步。.NET 文件 API 使用完整文件系统路径，避免 PowerShell 中已切目录而 API 仍访问旧目录。存在的任务文件可用 `(Resolve-Path -LiteralPath $inputPath).ProviderPath`；新文件从明确的文件系统基目录用 `Join-Path` 组成路径。
 
+### 路径分隔符优先用 `/`
+
+Windows 下写路径默认用正斜杠：PowerShell 的 `-Path`/`-LiteralPath`、`Join-Path`、.NET 文件 API 和多数命令行工具都接受 `C:/repos/scripts/PS` 这样的写法，斜杠在 Linux、macOS 与配置文件里还能直接复用，反斜杠要多一层转义。
+
+以下情况保留反斜杠，不做机械替换：
+
+- UNC 与长路径前缀：`\\server\share`、`\\?\C:\...`。
+- 注册表与 PowerShell provider 路径：`HKLM:\SOFTWARE\...`。
+- 交给 `cmd.exe` 内建命令（`cd /d`、`dir /w`），或把 `/` 当作选项前缀的原生工具。
+- 目标程序明确只接受反斜杠时，按它的接口处理。
+
+改写既有脚本或文档里的分隔符前先确认这几类，避免把可用路径改坏。
+
 ### 明确写入编码、BOM 和换行
 
 | 写法 | Windows PowerShell 5.1 | pwsh 7 |
