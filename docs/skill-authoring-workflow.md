@@ -68,6 +68,8 @@ description 是唯一的自动触发入口，但它只该承载"何时加载、�
 
 可执行 prompt、输出格式、判据与案例库见 [触发评测](../skills/skill-authoring-sync/references/trigger-eval.md)。
 
+行为评测（skill-up）的试点范围与验收见 [skill-up 试点](skill-up-pilot.md)，未纳入默认流程。
+
 ### 引用约定
 
 **skill 引用表示代理按需读取并采用相关指引，不是程序自动调用、自动安装或权限传递。**仅写出另一个 skill 的名字不能保证其正文已读取、指定流程已执行或依赖工具可用。
