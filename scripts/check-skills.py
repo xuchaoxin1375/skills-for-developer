@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """真源 skill 快速校验（零依赖，仅标准库）。
 
-查六件事，对应上次踩坑的盲区（链接脚本只查 SKILL.md 存在性，不校验内容）：
+查七件事，对应上次踩坑的盲区（链接脚本只查 SKILL.md 存在性，不校验内容）：
   1. frontmatter：定界符、`name` 与目录一致且 kebab、`description` 非空、
      多行 description 必须用 `>`/`|` 折叠块并缩进（顶格续行曾导致服务端静默丢弃）；
      description 超过 500 字符时给警告，提示把症状/方案清单下沉正文。
@@ -13,6 +13,7 @@
      含 package.json（需依赖安装）却不在名单中的给出提醒。
   6. 依赖声明：skills/*/dependencies.json 的结构与字段校验，见
      docs/skill-dependencies.md；含 package.json 却未声明依赖时给出提醒。
+  7. references 孤儿：references/ 下未被 skill 内文本引用的文件给警告。
 
 内部 Markdown 链接与锚点由 scripts/check-links.py 单独校验。
 
@@ -186,6 +187,34 @@ def readme_row_cells(idx, name):
             if len(cells) >= 3:
                 return cells
     return None
+
+
+TEXT_SUFFIXES = {".md", ".txt", ".yaml", ".yml", ".json", ".py", ".sh", ".ps1", ".cmd", ".bat"}
+
+
+def orphan_reference_scan(skill_dir):
+    """references/ 下未被 skill 内文本引用的文件，返回 warnings。"""
+    warnings = []
+    if skill_dir.name in REDLINE_EXEMPT_DIRS:
+        return warnings
+    refs = skill_dir / "references"
+    if not refs.is_dir():
+        return warnings
+    texts = []
+    for p in skill_dir.rglob("*"):
+        if p.is_file() and p.suffix.lower() in TEXT_SUFFIXES:
+            try:
+                texts.append((p, p.read_text(encoding="utf-8-sig")))
+            except (OSError, UnicodeError):
+                pass
+    for p in refs.rglob("*"):
+        if not p.is_file() or p.suffix.lower() not in TEXT_SUFFIXES:
+            continue
+        if not any(p.name in t for other, t in texts if other != p):
+            warnings.append(
+                f"{skill_dir.name}: references/{p.relative_to(refs).as_posix()} 未被引用"
+            )
+    return warnings
 
 
 def redline_scan(skill_dir):
@@ -406,6 +435,7 @@ def main(argv=None):
         de, dw = check_dependencies(s)
         errors.extend(de)
         warnings.extend(dw)
+        warnings.extend(orphan_reference_scan(s))
 
     pe, pw = check_profiles(repo)
     errors.extend(pe)
