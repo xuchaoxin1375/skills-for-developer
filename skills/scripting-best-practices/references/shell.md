@@ -204,4 +204,5 @@ complete -F _deploy_completions deploy.sh
 - [ ] `cd` 后是否检查了退出码？
 - [ ] 是否使用了 `trap ... EXIT` 清理资源？
 - [ ] 是否通过 ShellCheck 零告警？
+- [ ] 下发或覆盖类脚本的写入前检查是否只做可证实的判定，且保留了 `--force` 这类无条件覆盖入口，没有用 `grep -F <脚本名>` 一类子串匹配拒绝正常更新？
 - [ ] 需要补全时是否有配套 `<脚本名>-completion.bash`（同目录、已纳入版本控制、安装方式已写入 `usage()` 或 README）？
