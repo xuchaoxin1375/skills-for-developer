@@ -95,10 +95,19 @@ skills-for-developer/
 
 直接改真源实体，改完即对本机所有 harness 生效，无需重新链接；
 跨机器用 `git push/pull` 同步。改后同步更新 `README.md` 检索表（如语义变化）。
+触发描述改动按 [触发评测](references/trigger-eval.md) 跑最小对照，并同步 description 与 README 行。
 
 - 推荐：触发不准（该加载没加载、或误加载）时，按[触发描述维护](../../docs/skill-authoring-workflow.md#触发描述维护推荐)做一次改前/改后最小对照，再同时改 `description` 与检索表；不靠改正文规则代偿触发。
 - 必须：用户提及 skill 变更/改动时，先定位真源再查改动：在真源内用 `git status --short`、`git log --oneline -N`、`git diff` 核对实体改动，不得以 harness 侧目录时间判定。例：查近期改动先跑状态与差异，再按名加载对应正文。
 - 必须：`skills/user-profile/` 只在用户明确要求改它时才动；它只存最常用最重要的常驻默认值，保持简洁。用户的其他长期偏好写进全局 `AGENTS.md`（真源 `config/global-AGENTS.md`），域规则写进对应 skill 正文，不往 user-profile 堆。
+
+### 子模块中的 skill
+
+`skills/<name>/` 可能是 git submodule（`git submodule status` 可见）。改动要在子仓库完成并推送，再更新主仓库指针：
+
+1. 在子模块内提交并推送。detached HEAD 时用 `git push origin HEAD:<branch>`，不要依赖本地陈旧分支。
+2. 回到主仓库 `git add skills/<name>` 更新指针，与相关描述、README 改动一起提交。
+3. 推送主仓库后确认 `git submodule status` 无 `+`/`-` 前缀。
 
 ### OpenCode 插件
 

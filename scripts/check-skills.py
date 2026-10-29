@@ -3,8 +3,10 @@
 
 查六件事，对应上次踩坑的盲区（链接脚本只查 SKILL.md 存在性，不校验内容）：
   1. frontmatter：定界符、`name` 与目录一致且 kebab、`description` 非空、
-     多行 description 必须用 `>`/`|` 折叠块并缩进（顶格续行曾导致服务端静默丢弃）。
-  2. README 索引：每个 skill 在 README.md 有 `skills/<name>` 入口。
+     多行 description 必须用 `>`/`|` 折叠块并缩进（顶格续行曾导致服务端静默丢弃）；
+     description 超过 500 字符时给警告，提示把症状/方案清单下沉正文。
+  2. README 索引：每个 skill 在 README.md 有 `skills/<name>` 入口，
+     且该行有说明与关键词列（过短时给警告）。
   3. 红线路径：skill 正文/引用/示例/配套脚本不得出现仓库外真实路径。
   4. 各 harness 安装数：每个真源 skill 在 5 个 harness 侧都是指向真源的链接。
   5. 推荐部署名单：config/recommended-skills.txt 的名字须有对应真源目录；
@@ -33,6 +35,7 @@ from pathlib import Path
 from skill_deps import load_manifest, validate_manifest, validate_profiles
 
 KEBAB = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+DESC_WARN_LEN = 500  # description 超过此长度仅警告，不阻断
 KEY = re.compile(r"^([A-Za-z0-9_./-]+):(.*)$")
 BLOCK_MARK = {"#", ">", "|", ">-", "|-", ">+", "|+"}
 
@@ -165,7 +168,24 @@ def check_skill(skill_dir):
             errors.append(f"{name}: name 非 kebab 小写 exact 格式")
     if "description" not in data or not data.get("description", "").strip():
         errors.append(f"{name}: frontmatter 缺少非空 description")
+    else:
+        desc = " ".join(data["description"].split())
+        if len(desc) > DESC_WARN_LEN:
+            warnings.append(
+                f"{name}: description 偏长（{len(desc)} 字符），考虑把症状/方案清单下沉正文"
+            )
     return errors, warnings
+
+
+def readme_row_cells(idx, name):
+    """返回 README 索引表中该 skill 行的单元格；不是三列表格行时返回 None。"""
+    needle = f"skills/{name}"
+    for line in idx.splitlines():
+        if needle in line and line.lstrip().startswith("|"):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) >= 3:
+                return cells
+    return None
 
 
 def redline_scan(skill_dir):
@@ -416,6 +436,14 @@ def main(argv=None):
         for s in skills:
             if f"skills/{s.name}" not in idx:
                 errors.append(f"{s.name}: README.md 缺少 skills/{s.name} 检索入口")
+                continue
+            cells = readme_row_cells(idx, s.name)
+            if cells is None:
+                warnings.append(f"{s.name}: README 行不是三列表格，无法核对说明与关键词")
+            elif len(cells[1]) < 10 or len(cells[2]) < 3:
+                warnings.append(
+                    f"{s.name}: README 行的说明或关键词过短，需与 description 语义一致"
+                )
         for m in sorted(set(re.findall(r"skills/([a-z0-9]+(?:-[a-z0-9]+)*)", idx))):
             if not (skills_dir / m).is_dir():
                 warnings.append(f"README.md 提及 skills/{m}，但目录不存在（孤儿入口？）")

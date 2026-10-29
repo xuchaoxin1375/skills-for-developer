@@ -1,0 +1,22 @@
+name: skills-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 结构与索引
+        run: python scripts/check-skills.py --no-harness --strict
+      - name: 内部链接
+        run: python scripts/check-links.py
