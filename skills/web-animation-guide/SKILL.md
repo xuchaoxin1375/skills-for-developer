@@ -1,6 +1,6 @@
 ---
 name: web-animation-guide
-description: Web动画应用指导：选型、性能与无障碍落地。Whenever user mentions web动画、CSS Transition/Animation、WAAPI、requestAnimationFrame、FLIP、滚动驱动scroll-driven、View Transitions、SVG/Canvas动画、GSAP/Motion/Lottie、动效卡顿、prefers-reduced-motion、高度展开收起、steps逐格、弹簧spring、@property, even if they don't say skill, use this skill. Also for animation selection, jank debugging, reduced-motion compliance.
+description: Web 动画的技术选型、实现与排障：CSS Transition/Animation、WAAPI、requestAnimationFrame、FLIP、scroll-driven、View Transitions、SVG/Canvas、GSAP/Motion/Lottie；含打断与清理、性能与卡顿、prefers-reduced-motion 合规。当用户要做动效、排查动画卡顿或减弱动效，或评审动画代码时使用；反馈目的与设计预算走 frontend-design，响应式布局走 adaptive-responsive-guide。
 ---
 
 # Web Animation Guide

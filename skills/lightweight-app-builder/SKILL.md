@@ -1,6 +1,6 @@
 ---
 name: lightweight-app-builder
-description: 把一句模糊的"我想做个小工具/小软件"落成轻量、跨平台的可交付程序（自动化脚本 / CLI / TUI / 本地 Web UI / 桌面 GUI / CLI+GUI 混合）。替不熟悉技术的用户做技术选型：通俗复述需求、给唯一推荐并说明取舍、只问影响成败的问题、交付可安装可更新的完整项目。用户只说了模糊想法还没定形态时，优先用本 skill 先分诊与选型，而不是直接写代码。Use when the user wants to build a small tool, CLI, automation script, local web UI, or desktop app; or asks which stack to choose and how to package it. Not for large backends, mobile-only apps, or fixing bugs in existing projects.
+description: 把一句模糊的"我想做个小工具/小软件"落成轻量、跨平台的可交付程序（自动化脚本 / CLI / TUI / 本地 Web UI / 桌面 GUI / CLI+GUI 混合）。替不熟悉技术的用户做技术选型：通俗复述需求、给唯一推荐并说明取舍、只问影响成败的问题、交付可安装可更新的完整项目。用户只说了模糊想法还没定形态时，优先用本 skill 先分诊与选型，而不是直接写代码。Use when the user wants to build a small tool, CLI, automation script, local web UI, or desktop app; or asks which stack to choose and how to package it. 已有脚本的编写与重构规范走 scripting-best-practices；Not for large backends, mobile-only apps, or fixing bugs in existing projects.
 license: MIT
 metadata:
   language: zh-CN

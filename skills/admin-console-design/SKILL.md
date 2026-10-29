@@ -2,8 +2,10 @@
 name: admin-console-design
 description: >
   设计、实现或改版后台控制台、管理面板及其导航、数据列表、表单、设置与向导。
-  提供 Cloudflare-inspired 三参考工程的模板、源码与交互决策：默认采用 fable 外壳和 DNS 页面，按需参考 sonnet 列宽与撤销、gpt 导入与验收。
-  用于 admin/console/dashboard 整体任务及其中的侧栏折叠悬停、表格编辑批量、设置保存等设计；通用表单校验或单独 CSS 问题不因关键词自动套整套控制台。
+  提供 Cloudflare 风格参考工程的模板、源码与交互决策：默认沿用整体主题与页面结构，
+  按需补列宽与撤销、导入校验与验收案例。
+  用于 admin/console/dashboard 整体任务及其中的侧栏折叠悬停、表格编辑批量、设置保存等设计；
+  通用表单校验或单独 CSS 问题不因关键词自动套整套控制台。
 ---
 
 # 后台控制台设计

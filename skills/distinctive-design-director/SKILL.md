@@ -1,6 +1,6 @@
 ---
 name: distinctive-design-director
-description: 为界面、网站、产品概念、品牌表面与交互原型制定有辨识度的视觉方向，并执行品味主导的点评与打磨。适用于设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化重设计、去除AI味与终稿打磨；also for design inspiration, aesthetic direction, visual exploration, UI critique, anti-generic redesign.
+description: 为界面、网站、产品概念、品牌表面与交互原型制定有辨识度的视觉方向，并执行品味主导的点评与打磨。适用于设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化重设计、去除AI味与终稿打磨；落地实现走 frontend-design，存量缺陷与验收走 frontend-qa。also for design inspiration, aesthetic direction, visual exploration, UI critique, anti-generic redesign.
 compatibility: 适用于可查看与编辑项目文件的 agent harness。配合浏览器截图与可选 subagent 或图像/视频生成效果最佳；缺失这些工具时有降级方案。
 ---
 
