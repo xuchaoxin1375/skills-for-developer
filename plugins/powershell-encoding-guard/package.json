@@ -1,6 +1,6 @@
 {
   "name": "opencode-powershell-encoding-guard",
-  "version": "2026.10.21.1129",
+  "version": "2026.10.29.0951",
   "private": true,
   "type": "module",
   "description": "OpenCode 插件：把 powershell-pitfalls 的编码前置与高危管道形态检查前置到 shell 钩子",

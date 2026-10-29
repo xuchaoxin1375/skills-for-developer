@@ -406,10 +406,10 @@ Windows 上 OpenCode 插件 `plugins/powershell-encoding-guard` 会替 agent 在
 排查顺序（先看插件，再看环境，不要一上来就调编码参数）：
 
 1. 服务端日志 `~/.local/share/opencode/log/opencode.log`（Windows：`%USERPROFILE%\.local\share\opencode\log\opencode.log`）里找 `loading plugin` 与 `failed to load plugin`。
-2. 插件诊断文件 `<系统临时目录>/opencode/powershell-encoding-guard.log`：有 `setup` 行说明插件装载过；有 `shell.injected` 行说明**当前这次调用**确实被注入了。
+2. 插件诊断文件 `<系统临时目录>/opencode/powershell-encoding-guard.log`：有 `setup` 行说明插件装载过；有 `shell.injected` 行说明**当前这次调用**确实被注入了；有 `risk` 行说明那条命令被记成了高危形态（只记录，不改输出）。
 3. 只有 `setup` 没有 `shell.injected`，说明当前会话没被覆盖：按上面的安全前缀模板手写，模板幂等、与插件并存不冲突。
 
-注入是否生效要看插件自己的标记（`shell.injected` 行、命令前缀、插件特有提示文本）。命令里**自己写了**前缀时，日志里只有一份前缀，据此判断不了是谁加的；退出码 0 或纯英文输出同样不能证明读取正确。
+注入是否生效要看插件自己的标记（`shell.injected` 行、命令前缀）。命令里**自己写了**前缀时，日志里只有一份前缀，据此判断不了是谁加的；退出码 0 或纯英文输出同样不能证明读取正确。
 
 插件的模式、诊断文件格式与踩坑记录见插件包自身的 README（真源在 skills-for-developer 仓库 `plugins/powershell-encoding-guard/`）。
 

@@ -3,7 +3,8 @@
  *
  * 职责：把 `skills/powershell-pitfalls` 中"每次 shell 调用都要做"的机械步骤前置到 shell 钩子：
  *   1. Windows 上的 PowerShell 调用自动前置编码语句（同次调用内、第一次输出之前）。
- *   2. 原生命令输出经 PowerShell 文本层（管道/重定向）时，给出可执行的替代建议。
+ *   2. 原生命令输出经 PowerShell 文本层（管道/重定向）时，记一条诊断日志；
+ *      在工具结果末尾追加提示是**可选项**，默认关闭（`appendNote`）。
  *
  * 明确不做的事：判断类规则（何时加 `-ErrorAction Stop`、退出码契约、落盘链路设计、
  * 何时改用原生 read 工具）仍由 skill 维护。插件不替代理做判读，也不改写命令结构，
@@ -21,8 +22,10 @@ export const PLUGIN_ID = "powershell-encoding-guard";
 export type GuardMode = "off" | "warn" | "enforce";
 
 export interface GuardOptions {
-  /** off=不动作；warn=前置编码 + 风险提示（默认）；enforce=风险形态直接拒绝执行 */
+  /** off=不动作；warn=前置编码 + 记录风险（默认）；enforce=风险形态直接拒绝执行 */
   mode?: GuardMode;
+  /** 是否把风险提示追加到工具结果末尾（默认 false：只写诊断日志，不污染输出） */
+  appendNote?: boolean;
   /** 未识别到外壳时按 PowerShell 处理（默认 false：Git Bash 下不能注入 PowerShell 语句） */
   assumePowerShell?: boolean;
   /** 非 Windows 平台也注入（默认 false：pwsh 7 默认即 UTF-8） */
@@ -302,8 +305,12 @@ function resolveOptions(ctx: { options?: unknown }): Required<GuardOptions> {
   const raw = (ctx?.options ?? {}) as GuardOptions;
   const envMode = process.env.OPENCODE_PS_GUARD_MODE;
   const mode = (raw.mode ?? envMode ?? "warn") as GuardMode;
+  const envNote = process.env.OPENCODE_PS_GUARD_APPEND_NOTE;
   return {
     mode: mode === "off" || mode === "enforce" || mode === "warn" ? mode : "warn",
+    appendNote:
+      raw.appendNote === true ||
+      (raw.appendNote === undefined && envNote === "1"),
     assumePowerShell: raw.assumePowerShell === true,
     injectOnPosix: raw.injectOnPosix === true,
     preamble: typeof raw.preamble === "string" && raw.preamble.trim() ? raw.preamble : DEFAULT_PREAMBLE,
@@ -357,7 +364,7 @@ function describeHostValue(): string {
  * 钩子分工：
  *   - shell "create.before"：知道实际外壳，负责注入编码前置并记录风险形态；
  *   - tool "execute.before"：记录原始命令；enforce 模式下直接拒绝高危形态；
- *   - tool "execute.after"：把风险提示追加到工具结果，让代理看到替代方案。
+ *   - tool "execute.after"：默认只记诊断日志；`appendNote` 打开时才把风险提示追加到工具结果。
  *
  * 装载与卸载：同一进程内可能被重复装载（自动发现 + 配置条目）或重新装载（配置热重载）。
  * 因此把钩子句柄记在进程级注册表里，重复装载时先注销旧钩子再注册新的，
@@ -399,7 +406,7 @@ const plugin = {
     // **不要在这里注销上一个实例的钩子**：宿主把 shell 事件路由到哪个实例，
     // 由它自己的加载顺序决定，我们无法可靠判断被注销的那个是不是"正在被路由"的那个。
     // 实测：注销之后该 location 的 shell 事件全部失联（插件静默失效）。
-    // 旧实例留着也无害——注入幂等、提示按标记去重，多份实例行为一致。
+    // 旧实例留着也无害——注入幂等、风险记录按行去重，多份实例行为一致。
     // 想彻底清掉旧实例，重启服务即可（宿主会重新装载）。
     const previous = registry.get(key);
     console.log(
@@ -503,11 +510,22 @@ const plugin = {
       if (!isPowerShell(info.shell)) return;
       if (!info.risks.length) return;
 
+      // 默认只在诊断日志里留痕：往工具结果末尾追加段落会污染输出、被误当成命令输出的一部分，
+      // 因此改为可选（options.appendNote 或 OPENCODE_PS_GUARD_APPEND_NOTE=1）。
+      if (!options.appendNote) {
+        const detail = info.risks.map((f) => f.detail).join("、");
+        writeDiagnostic(
+          `risk location=${locationKey ?? "unknown"} risk=${JSON.stringify(detail)} ` +
+            `cmd=${JSON.stringify(command.slice(0, 60))}`,
+        );
+        return;
+      }
+
       const note = riskNote(info.risks);
       const result = event.result;
       if (!result) return;
       const content = result.content;
-      // 同一命令可能被多个 location 实例各处理一次，按标记去重，避免重复提示
+      // 同一命令可能被多个 location 实例各处理一次，按标记去重，避免重复追加
       const already = JSON.stringify(content ?? "").includes(`[${PLUGIN_ID}]`);
       if (already) return;
       const parts = Array.isArray(content)

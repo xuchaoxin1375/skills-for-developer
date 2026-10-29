@@ -8,9 +8,12 @@ shell 钩子，减少"每次都要记得写那两行"的遗漏。
 | 能力 | 触发条件 | 行为 |
 | --- | --- | --- |
 | 编码前置 | Windows + PowerShell 外壳（`pwsh` / `powershell`） | 在命令前插入 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` 与 `$OutputEncoding = [System.Text.Encoding]::UTF8`，并置 `PYTHONUTF8=1` |
-| 风险提示 | 原生命令输出经 PowerShell 文本层（管道 / stdout 重定向） | 在工具结果末尾追加替代方案（程序自带 `--format` / `--out`、字节闸门） |
+| 风险记录 | 原生命令输出经 PowerShell 文本层（管道 / stdout 重定向） | 写一条诊断日志；**默认不往工具结果里追加任何文字**（要追加需显式开 `appendNote`） |
 
 命令里已经写过编码语句时**不重复注入**（幂等）。
+
+工具结果属于输出通道，往里追加段落会被当成命令输出的一部分、也会干扰下游解析，因此该行为
+默认关闭。
 
 实测（本机 OpenCode 2.1.1，Windows）：同样执行 `python -c "print('中文测试')"`，
 无插件时输出为乱码 `���Ĳ���`，装载本插件后输出为 `中文测试`。
@@ -30,10 +33,11 @@ shell 钩子，减少"每次都要记得写那两行"的遗漏。
 | 模式 | 行为 |
 | --- | --- |
 | `off` | 不注册任何钩子 |
-| `warn`（默认） | 编码前置 + 风险提示；不改命令语义 |
+| `warn`（默认） | 编码前置 + 记录风险形态到诊断日志；不改命令语义、不改输出 |
 | `enforce` | 额外拒绝高危形态（Windows 上按 OpenCode 默认 shell 为 PowerShell 处理） |
 
-其他选项：`assumePowerShell`（未识别外壳时是否按 PowerShell 处理，默认 false）、
+其他选项：`appendNote`（是否把风险提示追加到工具结果末尾，默认 `false`）、
+`assumePowerShell`（未识别外壳时是否按 PowerShell 处理，默认 false）、
 `injectOnPosix`（非 Windows 也注入，默认 false）、`preamble`（覆盖前置语句）。
 
 自动发现方式注册（`~/.config/opencode/plugins/<name>`）时读不到 `options`，用环境变量设模式；
@@ -45,10 +49,13 @@ Windows 上给服务端设环境变量（`~/.config/opencode/service.json` 的 `
 ```json
 {
   "env": {
-    "OPENCODE_PS_GUARD_MODE": "enforce"
+    "OPENCODE_PS_GUARD_MODE": "enforce",
+    "OPENCODE_PS_GUARD_APPEND_NOTE": "1"
   }
 }
 ```
+
+`OPENCODE_PS_GUARD_APPEND_NOTE=1` 只在确实想把风险提示写进工具结果时才设；默认不设即静默。
 
 ## 装载规则（本机实测 + 上游确认）
 
@@ -95,7 +102,7 @@ OpenCode V2 对**本地目录插件**的装载规则（2.1.1 实测）：
 插件静默失效，界面无提示。
 
 现在的做法：**不主动注销任何实例的钩子**。重复实例留着无害——注入幂等（命令里已有前缀就
-跳过），风险提示按 `[powershell-encoding-guard]` 标记去重。代价是旧版本的代码会一直留到
+跳过），风险记录按 `risk` 行去重统计。代价是旧版本的代码会一直留到
 进程重启；想彻底清掉就重启服务。
 
 ### 3. 热重载期间的文件半成品会让 location 失去钩子
@@ -139,7 +146,8 @@ level=WARN message="failed to load plugin" target="...powershell-encoding-guard"
 3. shell 里查环境变量：`[Environment]::GetEnvironmentVariable('PYTHONUTF8','Process')` 返回 `1`。
 4. 跑一个会输出非 ASCII 的命令（例如 `python -c "print('中文')"`），输出可读。
 5. 跑一个"原生命令接 cmdlet 管道"的命令（例如 `git --version | Select-String git`），
-   工具结果末尾出现 `[powershell-encoding-guard]` 提示。
+   诊断日志里出现 `risk ...` 行，而**工具结果末尾没有任何插件追加的文字**
+   （除非显式开了 `appendNote`）。
 
 第 2 步要注意区分：命令里**自己写了**前缀时，日志里只会出现一份（幂等），
 不能据此判断是插件注入还是自己写的。
@@ -151,9 +159,9 @@ level=WARN message="failed to load plugin" target="...powershell-encoding-guard"
 | 编码前置 | 命令不写前缀，直接 `python -c "print('中文测试-插件验证')"` | 输出可读；服务端日志的 `spawning process` 里能看到被前置的两行 |
 | `PYTHONUTF8` 注入 | `[Environment]::GetEnvironmentVariable('PYTHONUTF8','Process')` | `1`；Python 3.13 的 `sys.stdout.encoding` 为 `utf-8`（默认会是 cp936） |
 | 幂等 | 命令自己写前缀 | 日志里前缀只出现一份 |
-| 管道提示 | `git --version \| Select-String git` | 工具结果末尾追加替代方案 |
-| 重定向提示 | `node -e "..." > out.txt` | 工具结果末尾追加替代方案 |
-| 不误报 | `git --version \| more`（native→native） | 无提示 |
+| 管道形态 | `git --version \| Select-String git` | 诊断日志记 `risk`，工具结果干净 |
+| 重定向形态 | `node -e "..." > out.txt` | 诊断日志记 `risk`，工具结果干净 |
+| 不误报 | `git --version \| more`（native→native） | 无记录、无提示 |
 | 无插件基线 | 清掉 `PYTHONUTF8`、控制台输出编码设 936 后跑同一条 python 命令 | 输出乱码（GBK 字节被按 UTF-8 解码） |
 
 ## 已知边界
@@ -164,19 +172,19 @@ level=WARN message="failed to load plugin" target="...powershell-encoding-guard"
   Windows 上按 PowerShell 处理，其他平台只拦"native → cmdlet 管道"这类在 bash 下不可能出现的形态。
 - 风险识别是形态级启发式：命令集合有维护成本，新增原生命令需要同步 `index.ts` 的清单；
   PowerShell 内置别名（`cat`/`ls`/`sort`/`where` 等）刻意不在清单内，避免误报。
-- 清单外的原生 exe（例如 `certutil`）接 cmdlet 管道时会被**保守**判为风险：提示方向是
-  "多提醒"，不会漏报；`findstr` / `fc` 这类常见 Windows 原生工具已列入清单。
+- 清单外的原生 exe（例如 `certutil`）接 cmdlet 管道时会被**保守**判为风险：记录方向是
+  "多记一条"，不会漏报；`findstr` / `fc` 这类常见 Windows 原生工具已列入清单。
 - `2> file`（只重定向 stderr）与 `2>&1` 不算高危；`> file`、`1> file`、`&> file` 算。
-- PowerShell 7 的条件运算符 `||` 不是数据管道，不提示。
-- 提示是**无条件追加**到工具结果：包括代理自己写的 `native | Select-String` 这类命令，
-  属预期行为，不是误报。
+- PowerShell 7 的条件运算符 `||` 不是数据管道，不记录。
+- 只有显式开 `appendNote` 才会往工具结果追加提示；默认不碰输出通道——输出属于命令执行结果，
+  插件不往里写字。
 - 钩子由宿主按 location 路由，同一服务里不同会话的表现可能不同（有的会话有注入、有的没有）；
   这是宿主行为，插件侧无法干预，用上面的验证步骤确认当前会话是否被覆盖。
 
 ## 本地验证
 
 ```bash
-node --test        # 22 条：前置、幂等、外壳分流、风险识别、warn/enforce/off、宿主键冲突与重复装载回归
+node --test        # 23 条：前置、幂等、外壳分流、风险识别、appendNote 开关、warn/enforce/off、宿主键冲突与重复装载回归
 ```
 
 **Node 24 下 `node --test test/` 会失败**：目录参数会被当成入口模块解析，报

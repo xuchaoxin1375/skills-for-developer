@@ -55,7 +55,7 @@ python -c "from pathlib import Path; import json; print(json.dumps(Path('docs/ex
   Get-Content -LiteralPath '示例.md' -Encoding UTF8 -ErrorAction Stop
   ```
   判读标准：行号对但中文烂为显示层问题，重跑模板而非换解码；模板无效才走 ASCII JSON 保真通道。
-- **已装载编码守卫插件时不必手写前缀**：OpenCode 插件 `plugins/powershell-encoding-guard` 会在 Windows 的 PowerShell 调用前自动前置上述语句并置 `PYTHONUTF8=1`（幂等，命令里已写不冲突），并在"原生命令输出经 PowerShell 文本层"时追加替代方案提示。插件只做机械前置与形态提示，判断类规则（何时加 `-ErrorAction Stop`、退出码契约、落盘链路设计）仍在本 skill 维护。**但不要依赖它**：宿主按 location 路由钩子，同一服务里不同会话可能有的被覆盖、有的没有，装载失败还是静默的。是否被覆盖看系统临时目录 `opencode/powershell-encoding-guard.log` 有没有 `setup` 与 `shell.injected` 行；没有就按上面模板手写，模板永远安全（排查见[编码读取排障](references/encoding-read.md#编码守卫插件确认注入是否生效)）。
+- **已装载编码守卫插件时不必手写前缀**：OpenCode 插件 `plugins/powershell-encoding-guard` 会在 Windows 的 PowerShell 调用前自动前置上述语句并置 `PYTHONUTF8=1`（幂等，命令里已写不冲突）；"原生命令输出经 PowerShell 文本层"时只在诊断日志里记一条 `risk`，默认**不往工具输出追加任何文字**（需要时显式开 `appendNote`）。插件只做机械前置与形态记录，判断类规则（何时加 `-ErrorAction Stop`、退出码契约、落盘链路设计）仍在本 skill 维护。**但不要依赖它**：宿主按 location 路由钩子，同一服务里不同会话可能有的被覆盖、有的没有，装载失败还是静默的。是否被覆盖看系统临时目录 `opencode/powershell-encoding-guard.log` 有没有 `setup` 与 `shell.injected` 行；没有就按上面模板手写，模板永远安全（排查见[编码读取排障](references/encoding-read.md#编码守卫插件确认注入是否生效)）。
 - 修显示乱码时不静默修改全局 profile、系统代码页或原文件编码。需由 5.1 解析且含非 ASCII 的 UTF-8 `.ps1` 应带 BOM；普通文档无需批量加 BOM。
 - **先分层再修**：怀疑乱码、换新 harness/终端，或想确认"设了编码到底有没有用"时，先跑 `scripts/calibrate-encoding.ps1`（每个用例独立进程、ANSI 基线、码点裁决），不要从反复改编码参数试起；判读见[编码体检与校准](references/encoding-read.md#编码体检与校准脚本)。
 

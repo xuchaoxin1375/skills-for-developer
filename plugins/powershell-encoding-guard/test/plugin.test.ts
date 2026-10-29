@@ -152,7 +152,7 @@ test("PowerShell 条件运算符 || 不算数据管道", async () => {
   assert.equal(findRisks("git log || echo failed").length, 0);
 });
 
-test("warn 模式：风险形态以提示形式追加到工具结果", async () => {
+test("warn 模式：默认不往工具结果追加提示，只记诊断日志", async () => {
   const hooks = await setup({ platform: "win32", mode: "warn" });
   const command = "git log | Select-String 'fix'";
 
@@ -165,6 +165,27 @@ test("warn 模式：风险形态以提示形式追加到工具结果", async () 
   const after: any = {
     tool: "bash",
     id: "call-1",
+    input: { command },
+    status: "completed",
+    result: { content: [{ type: "text", text: "log output" }] },
+  };
+  hooks.tool["execute.after"](after);
+
+  const parts = after.result.content as Array<{ type: string; text?: string }>;
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0].text, "log output");
+});
+
+test("appendNote 打开时才把风险提示追加到工具结果", async () => {
+  const hooks = await setup({ platform: "win32", mode: "warn", appendNote: true });
+  const command = "git log | Select-String 'fix'";
+
+  hooks.tool["execute.before"]({ tool: "bash", id: "call-1b", input: { command } });
+  hooks.shell["create.before"](shellEvent(command));
+
+  const after: any = {
+    tool: "bash",
+    id: "call-1b",
     input: { command },
     status: "completed",
     result: { content: [{ type: "text", text: "log output" }] },
