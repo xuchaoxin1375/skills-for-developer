@@ -1,9 +1,10 @@
 ---
 name: scripting-best-practices
 description: >
-  Shell、Python 与 Node 脚本/小工具 CLI 的编写、审查与重构规范，通用约束语言无关。
-  当用户要求编写新脚本、审查或重构 .sh/.bash/.py/.mjs/.js 脚本（含 Node CLI 工具）、
-  或排查脚本健壮性问题时使用此 Skill。
+  Shell、Python 与 Node 脚本/小工具 CLI 的编写、审查与重构规范：快速失败、输入校验、`--help` 与退出码、
+  长选项为主并给常用短选项、批量覆盖与下发的幂等和预检、UTF-8 编码与跨平台换行、多脚本交付。
+  当用户要写新脚本、审查或重构 .sh/.bash/.py/.mjs/.js（含 Node CLI）、排查脚本健壮性，
+  或设计批量写入、下发与覆盖策略时使用；大型应用工程走 swe-gov，从模糊需求做小工具走 lightweight-app-builder。
 ---
 
 # 脚本编写规范

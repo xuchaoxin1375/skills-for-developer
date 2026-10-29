@@ -1,16 +1,13 @@
 ---
 name: htmlmini
 description: >
-  凡是需要总结、分析、审查网页或 HTML 文件，或从 URL/页面取表格、榜单、分数、规格等数据，
-  先使用本 skill 提取核心骨架再回答；包括本地设计稿、后台面板、仪表盘与页面源码，
-  即使用户没点名 htmlmini。默认不整份读取原始 HTML。
-  手上已有 `.html`/`.htm` 落盘快照同样适用——包括为绕代理先用 curl 抓下来、或调研途中顺手存的页面，
-  哪怕任务是"整理成 CSV/排序/算个数"这类取数活。打算自己写正则或一次性脚本从 HTML 里抠数据时，
-  也先加载本 skill：手写正则解析原始 HTML 是最常见的逃逸路径。
-  Also use for "summarize/analyze/review this page or HTML" and "extract the table/scores/rankings from this URL".
-  写爬虫或采集规则时也可先用它侦查页面结构与数据来源，但选择器与字段契约必须回到原始或渲染 DOM 核对：
-  骨架剥掉了 class/id/data-*，不能当契约；批量采集、反爬与渲染调度走 resilient-browser-fetch。
-  不用于 office/PDF 转换或动态交互页的可操作结构。
+  网页与 HTML 的核心骨架提取：总结、分析、审查页面，或从 URL/本地快照取表格、榜单、分数、规格等数据时，
+  先提取骨架再回答，默认不整份读取原始 HTML；设计稿、面板、仪表盘与页面源码同样适用。
+  当用户要总结网页、从页面取数、写正则或脚本抠 HTML，或整理已落盘的 .html 快照时使用，即使没点名 htmlmini。
+  也用于写采集规则前侦查页面结构与数据来源，但选择器与字段契约必须回到原始或渲染 DOM 核对。
+  Also for English requests to summarize, review, or extract data from a page or HTML.
+  不用于写或改页面代码与设计评审（frontend-design / frontend-qa）、office/PDF 转换、动态交互页的可操作结构；
+  批量采集、反爬与渲染调度走 resilient-browser-fetch。
 ---
 
 # htmlmini — 网页核心骨架提取

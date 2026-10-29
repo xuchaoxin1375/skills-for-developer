@@ -1,10 +1,11 @@
 ---
 name: resilient-browser-fetch
 description: >
-  按能力与检测层分层的稳健网页采集：层 0 标准库 HTTP、层 1 Playwright/Patchright 渲染、层 2 Scrapling 的 Cloudflare 挑战处理、层 3 可选 CloakBrowser 指纹底座，另有 nodriver 直接 CDP 的有头备用与 chrome-late 晚接入（先让站点挑战跑完、再接调试器读取）；
-  auto 只升能力档、不保证隐蔽性，缺件降级而不是整体失败，遇到 404/410 等资源级状态停止升档。
-  用于抓取需渲染或经 network-access 确认为挑战页的站点、Managed JavaScript Challenge、交互式或 Invisible Turnstile、Akamai Bot Manager（SEC-CPT/SBSD 挑战页与边缘封禁的判读、`--solve-akamai` 本地工作量证明求解）、长时间人工验证、拦截页识别、同站会话复用、控制面/指纹/IP 分层判断、挑战窗口、真实浏览器会话复用与同类方案对比（DrissionPage、Selenium、托管浏览器等），以及 Windows、macOS、Linux、WSL 或容器中的浏览器依赖和图形环境排障；
-  也用于保存渲染后的 HTML 快照：默认只写 HTML 与元数据，图片等子资源保留原 URL；离线存档（下载或内联资源）需用户明确要求；本 skill 启动的浏览器按所有权回收。选路与代理/镜像决策走 network-access，本 skill 不做首跳选路；面向中文用户输出中文说明。
+  稳健网页采集：抓取需渲染的页面、Cloudflare/Turnstile/Akamai 等挑战页、拦截页与长时间人工验证，
+  按能力分层选择 HTTP、Playwright/Patchright、Scrapling、指纹底座或有头浏览器，缺件降级而不是整体失败；
+  也用于同站会话复用、真实浏览器会话接管、保存渲染后的 HTML 快照，以及 Windows/macOS/Linux/WSL/容器中的浏览器依赖与图形环境排障。
+  当 network-access 判定为挑战页，或普通抓取拿不到正文、被拦截、需要渲染后的 DOM 时使用。
+  选路与代理/镜像走 network-access，本 skill 不做首跳选路；页面结构侦查与批量字段提取先用 htmlmini。
 ---
 
 # 稳健浏览器采集
