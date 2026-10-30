@@ -26,7 +26,7 @@ _htmlmini() {
     -o|--output) COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
   esac
   if [[ "$cur" == -* ]]; then
-    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --text-max --allow-empty --proxy --noproxy --render --render-always --headful --render-timeout-ms --render-engine --browser-brand --chrome-bin --python-bin --save-html --expect-text --wait-selector --post-wait-ms --output --quiet --verbose --no-source-marks --list-modes --list-extractors --list-render-engines --list-env --completion --help --version -m -j -s -u -t -T -o -p -r -e -b -h -V" -- "$cur") )
+    COMPREPLY=( $(compgen -W "--markdown --json --skeleton --ui --text --title --mode --extractor --attrs --format --compact --pretty --prune-empty --text-max --allow-empty --proxy --noproxy --render --render-always --headful --render-timeout-ms --render-engine --browser-brand --chrome-bin --python-bin --save-html --expect-text --wait-selector --post-wait-ms --output --quiet --verbose --source-marks --no-source-marks --list-modes --list-extractors --list-render-engines --list-env --completion --help --version -m -j -s -u -t -T -o -p -r -e -b -h -V" -- "$cur") )
   else
     COMPREPLY=( $(compgen -f -- "$cur") )
   fi

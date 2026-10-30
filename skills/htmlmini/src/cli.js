@@ -2,6 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { ATTR_POLICIES, ATTR_POLICY_DESCRIPTIONS, EXTRACTORS, EXTRACTOR_DESCRIPTIONS, FORMAT_POLICIES, FORMAT_POLICY_DESCRIPTIONS, MODES, MODE_DESCRIPTIONS, RENDER_ENGINE_CHOICES, RENDER_ENGINE_DESCRIPTIONS, runExtractDetailed } from './extract.js';
 import { fmtBytes, fmtMs, log, setLogLevel } from './log.js';
+import { markSource, padPayload } from './output.js';
 import { VERSION, VERSION_LINE } from './version.js';
 
 /** 取值清单统一从这里生成：帮助文本、--list-* 输出与实现共用一份，避免互相脱节。 */
@@ -22,7 +23,7 @@ const ENV_HELP = [
     + '只读不改，仅用于在报错里提示可用代理）',
   'HTMLMINI_LOG=quiet|info|debug 日志级别',
   'HTMLMINI_LOG_TIME=0         去掉日志行首时间戳',
-  'HTMLMINI_SOURCE_MARKS=0     不输出来源哨兵行',
+  'HTMLMINI_SOURCE_MARKS=1     输出来源哨兵行（HTML 注释风格，默认关）',
 ];
 
 /**
@@ -159,8 +160,9 @@ ${engineList()}
     --noproxy                  强制直连，忽略环境代理
     --quiet                    只输出错误（进度日志静音）
     --verbose                  额外细节：解析/抽取内部信息、耗时、体积
-    --no-source-marks          不输出 "<<< htmlmini:source begin/end ... >>>" 来源哨兵行（别名 --no-marks）
-    --source-marks             强制输出来源哨兵行（默认开）
+    --source-marks             输出来源哨兵行：HTML 注释风格，包住载荷并写明
+                               url / 状态码 / 抓取方式 / 时刻；默认关（别名 --marks）
+    --no-source-marks          显式关闭来源哨兵行（默认即关；别名 --no-marks）
     --list-modes               列出输出模式与说明
     --list-extractors          列出抽取引擎与说明
     --list-render-engines      列出渲染引擎与说明
@@ -212,7 +214,8 @@ ${ENV_HELP.map((line) => `  ${line}`).join('\n')}
 
   # 9) 管道与输出控制
   cat page.html | htmlmini - --text
-  htmlmini page.html --output out.md --no-source-marks --quiet
+  htmlmini page.html --output out.md --quiet
+  htmlmini "https://example.com/app" --source-marks --mode markdown  # 加一行来源注释
 
   # 10) 异步清单 / 下拉框：等目标块出现，并断言真的抓到（缺了直接失败）
   htmlmini "https://example.com/list" --render=always \
@@ -313,8 +316,8 @@ let pruneEmpty = false;
 let textMax = 150;
 let allowEmpty = false;
 let logLevelOverride = null;
-// 来源哨兵行：默认开，`--no-source-marks` 或 HTMLMINI_SOURCE_MARKS=0 关闭（管道/后处理不想要时）。
-let sourceMarks = process.env.HTMLMINI_SOURCE_MARKS !== '0';
+// 来源哨兵行：默认关（HTML 注释风格）。显式 `--source-marks` 或 HTMLMINI_SOURCE_MARKS=1 才加。
+let sourceMarks = process.env.HTMLMINI_SOURCE_MARKS === '1';
 
 for (let i = 0; i < argv.length; i++) {
   let a = argv[i];
@@ -452,7 +455,7 @@ for (let i = 0; i < argv.length; i++) {
     allowEmpty = true;
   } else if (a === '--no-source-marks' || a === '--no-marks') {
     sourceMarks = false;
-  } else if (a === '--source-marks') {
+  } else if (a === '--source-marks' || a === '--marks') {
     sourceMarks = true;
   } else if (a === '--quiet') {
     logLevelOverride = 'quiet';
@@ -547,18 +550,8 @@ if (source === '-' && process.stdin.isTTY) {
   process.exit(2);
 }
 
-/**
- * 用起止哨兵行包住载荷，标出来源、状态码、抓取方式与时刻；正文本身一字不改。
- * 选 ASCII 单行标记而不是 HTML 注释：text/ui/skeleton 模式下也读得懂，且便于 grep 与剥离。
- */
-function markSource(out, info) {
-  const status = Number.isFinite(info.status) ? String(info.status) : info.rendered ? 'unknown' : 'n/a';
-  const via = info.rendered ? 'browser' : 'static';
-  const body = out.replace(/\n+$/, '');
-  const begin = `<<< htmlmini:source begin status=${status} url=${info.source} render=${via} fetched=${info.fetchedAt} >>>`;
-  const end = `<<< htmlmini:source end url=${info.source} >>>`;
-  return body ? `${begin}\n${body}\n${end}` : `${begin}\n${end}`;
-}
+// 哨兵行与终端留白都在 output.js（纯函数，单测直接覆盖）；这里只决定用哪种：
+// `--json` 不掺任何外围内容，管道/重定向保持纯载荷。
 
 try {
   const startedAt = Date.now();
@@ -571,7 +564,11 @@ try {
     await writeFile(output, out.endsWith('\n') ? out : out + '\n', 'utf8');
     log.info('write', `${output} ${fmtBytes(Buffer.byteLength(out, 'utf8'))} (${total})`);
   } else {
-    process.stdout.write(out + (out.endsWith('\n') ? '' : '\n'));
+    // 终端里在载荷上下各留一行空白，好和 [read] / [write] 日志分开；管道与重定向写纯载荷，
+    // 脚本里 `$(htmlmini … -t)` 拿到的仍是精确值（哨兵行本身已是边界，不再留白）。
+    const pad = !sourceMarks && mode !== 'json' && Boolean(process.stdout.isTTY);
+    const shown = pad ? padPayload(out) : out;
+    process.stdout.write(shown + (shown.endsWith('\n') ? '' : '\n'));
     log.info('write', `stdout ${fmtBytes(Buffer.byteLength(out, 'utf8'))} (${total})`);
   }
 } catch (err) {

@@ -9,7 +9,7 @@ Register-ArgumentCompleter -Native -CommandName htmlmini -ScriptBlock {
   $flags = @('--markdown', '--json', '--skeleton', '--ui', '--text', '--title',
     '--mode', '--extractor', '--attrs', '--format', '--compact', '--pretty', '--prune-empty', '--text-max', '--allow-empty',
     '--proxy', '--noproxy', '--render', '--render-always', '--headful', '--render-timeout-ms',
-    '--chrome-bin', '--browser-brand', '--python-bin', '--save-html', '--expect-text', '--wait-selector', '--post-wait-ms', '--output', '--quiet', '--verbose', '--no-source-marks',
+    '--chrome-bin', '--browser-brand', '--python-bin', '--save-html', '--expect-text', '--wait-selector', '--post-wait-ms', '--output', '--quiet', '--verbose', '--source-marks', '--no-source-marks',
     '--list-modes', '--list-extractors', '--list-render-engines', '--list-env',
     '--render-engine',
     '--completion', '--help', '--version', '-m', '-j', '-s', '-u', '-t', '-T', '-o', '-p', '-r', '-e', '-b', '-h', '-V')

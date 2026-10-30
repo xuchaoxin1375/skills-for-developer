@@ -94,7 +94,7 @@ node scripts/stamp-version.mjs 2026.10.19.1805   # 或显式指定
 
 ## 日志与进度
 
-进度一律走 **stderr**（stdout 只放载荷与一对来源哨兵行，日志不会污染 `| htmlmini - -t` 这类管道；要纯净载荷加 `--no-source-marks`），每行行首是方括号包住的本地时间戳（`[YYYY-MM-DD HH:mm:ss,SSS]`，与 Python `logging` 的 `asctime` 同形），后面接阶段标签 `htmlmini: [阶段] …`：
+进度一律走 **stderr**（stdout 只放载荷，日志不会污染 `| htmlmini - -t` 这类管道；需要标明来源加 `--source-marks`），每行行首是方括号包住的本地时间戳（`[YYYY-MM-DD HH:mm:ss,SSS]`，与 Python `logging` 的 `asctime` 同形），后面接阶段标签 `htmlmini: [阶段] …`：
 
 ```console
 $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot.clean.html
@@ -110,15 +110,17 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 
 ### 来源哨兵行
 
-文本模式（markdown/text/html/ui/skeleton 等）的载荷默认被一对哨兵行包住，标出 URL、状态码、抓取方式与抓取时刻；正文一字不改，只是外围加边界：
+文本模式（markdown/text/html/ui/skeleton 等）默认**不加**哨兵行：stdout 就是载荷。终端里载荷上下各留一行空白，好和 `[read]` / `[write]` 日志分开；管道、重定向与 `-o` 落盘都写纯载荷（`-o` 首行即内容、尾部只有一个换行）。
+
+需要标明来源时加 `--source-marks`（或 `HTMLMINI_SOURCE_MARKS=1`），用一对 HTML 注释包住载荷，标出 URL、状态码、抓取方式与抓取时刻；正文一字不改，markdown 渲染后注释不可见：
 
 ```text
-<<< htmlmini:source begin status=200 url=https://example.com/app render=static fetched=2026-10-20 16:22:45,120 >>>
+<!-- htmlmini:source begin status=200 url=https://example.com/app render=static fetched=2026-10-20 16:22:45,120 -->
 …提取结果…
-<<< htmlmini:source end url=https://example.com/app >>>
+<!-- htmlmini:source end url=https://example.com/app -->
 ```
 
-- 落盘（`-o`）与 stdout 同口径；`--no-source-marks`（或 `HTMLMINI_SOURCE_MARKS=0`）关闭。
+- `--no-source-marks`（别名 `--no-marks`）是显式关闭，与默认同效；`--source-marks` 的别名是 `--marks`。
 - `--json` 不掺哨兵行，来源改由 `source`、`fetchStatus`、`rendered`、`fetchedAt` 字段承载，`JSON.parse` 仍直接可用。
 - 本地文件/stdin 没有 HTTP 状态，记 `status=n/a`；MCP 工具返回结构化结果，不加哨兵行。
 

@@ -38,6 +38,7 @@ import {
   tryTrafilatura,
 } from '../src/extract.js';
 import { setLogLevel } from '../src/log.js';
+import { markSource, padPayload } from '../src/output.js';
 
 // 进程内断言只看返回值；子进程 CLI 会各自按默认级别打日志（下面显式断言）。
 setLogLevel('quiet');
@@ -52,11 +53,30 @@ const ok = (cond, msg) => {
   console.log(`ok ${n} - ${msg}`);
 };
 
-/** 剥掉 CLI 加在载荷外的来源哨兵行，便于比对正文本身。 */
+/** 剥掉 CLI 加在载荷外的来源哨兵行（HTML 注释）与首尾留白，便于比对正文本身。 */
 const stripMarks = (s) =>
   String(s)
-    .replace(/^<<< htmlmini:source begin [^\n]*\n/, '')
-    .replace(/\n<<< htmlmini:source end [^\n]*\n?$/, '');
+    .replace(/^\n*<!-- htmlmini:source begin [^\n]*\n/, '')
+    .replace(/\n*<!-- htmlmini:source end [^\n]*\n*$/, '');
+
+// ---- 0. 载荷外围：来源哨兵行（HTML 注释）与终端留白 ----
+{
+  const info = { status: 200, source: 'https://example.com/app', rendered: false, fetchedAt: '2026-10-30 10:00:00,000' };
+  const marked = markSource('# 标题\n', info);
+  const [begin, ...rest] = marked.split('\n');
+  ok(
+    begin === '<!-- htmlmini:source begin status=200 url=https://example.com/app render=static fetched=2026-10-30 10:00:00,000 -->',
+    '哨兵行是 HTML 注释，写明 url/状态码/抓取方式/时刻',
+  );
+  ok(rest.at(-1) === '<!-- htmlmini:source end url=https://example.com/app -->', '结尾哨兵行收口');
+  ok(rest.slice(0, -1).join('\n') === '# 标题', '哨兵行之间正文一字不改');
+  const rendered = markSource('x', { ...info, status: null, rendered: true });
+  ok(rendered.includes('status=unknown') && rendered.includes('render=browser'), '无状态码的渲染结果记 unknown/browser');
+  ok(markSource('', info).split('\n').length === 2, '空载荷只留起止两行');
+
+  ok(padPayload('# 标题\n') === '\n# 标题\n\n', '终端留白：上下各一行空行');
+  ok(padPayload('') === '' && padPayload('\n') === '\n', '空载荷不加留白');
+}
 
 // ---- 1. decodeHtml：BOM / GBK / 非法字节 ----
 {
@@ -326,7 +346,7 @@ async function cli(args, { input, env } = {}) {
     input: '<html><head><title>管道标题</title></head><body><p>x</p></body></html>',
   });
   ok(s.code === 0 && stripMarks(s.stdout).trim() === '管道标题', 'stdin 管道正常');
-  ok(s.stdout.startsWith('<<< htmlmini:source begin ') && s.stdout.includes('<<< htmlmini:source end '), 'stdout 用起止哨兵行包住载荷');
+  ok(!s.stdout.includes('htmlmini:source'), '默认不加来源哨兵行');
 
   const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-cli-'));
   try {
@@ -342,6 +362,7 @@ async function cli(args, { input, env } = {}) {
     const w = await cli([dash, '--ui', '-o', out]);
     const saved = await readFile(out, 'utf8');
     ok(w.code === 0 && saved.includes('## 按钮'), '-o 落盘');
+    ok(!saved.startsWith('\n') && saved.endsWith('\n') && !saved.endsWith('\n\n'), '-o 落盘写纯载荷，不留首尾空行');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -365,24 +386,32 @@ async function cli(args, { input, env } = {}) {
     const v = await cli([page, '--mode', 'html', '--verbose']);
     ok(v.stderr.includes('source=') && v.stderr.includes('reduction='), '--verbose 追加细节行');
 
-    // 状态码与来源哨兵：状态码进 [read] 行；文本模式用起止行包住载荷，JSON 用字段承载。
+    // 状态码与来源哨兵：状态码进 [read] 行；哨兵行默认关，显式开启才是 HTML 注释。
     const live = await cli([`${base}/article`]);
     ok(live.code === 0 && /\[read\] status=200 /.test(live.stderr), '抓取状态码放在 [read] 行最前面');
-    const beginLine = live.stdout.split('\n')[0];
+    ok(!live.stdout.includes('htmlmini:source'), '默认输出不带来源哨兵行');
     ok(
-      beginLine.startsWith('<<< htmlmini:source begin ') &&
+      !live.stdout.startsWith('\n') && !live.stdout.endsWith('\n\n') && live.stdout.endsWith('\n'),
+      '管道 stdout 写纯载荷，不留空行',
+    );
+    ok(live.stdout.includes('本地文章') && !live.stdout.includes('<!--'), '默认正文原样保留，无注释');
+    const marked = await cli([`${base}/article`, '--source-marks']);
+    const beginLine = marked.stdout.split('\n').find((l) => l.startsWith('<!-- htmlmini:source begin ')) ?? '';
+    ok(
+      beginLine.startsWith('<!-- htmlmini:source begin ') &&
+        beginLine.endsWith(' -->') &&
         beginLine.includes(`url=${base}/article`) &&
         beginLine.includes('status=200') &&
         beginLine.includes('render=static') &&
         /fetched=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}/.test(beginLine),
-      '开头哨兵行写明 url/状态码/抓取方式/时刻',
+      '--source-marks 用 HTML 注释写明 url/状态码/抓取方式/时刻',
     );
-    ok(live.stdout.includes(`<<< htmlmini:source end url=${base}/article >>>`), '结尾哨兵行收口');
-    ok(stripMarks(live.stdout).includes('本地文章'), '哨兵行之外正文原样保留');
+    ok(marked.stdout.includes(`<!-- htmlmini:source end url=${base}/article -->`), '结尾哨兵行收口');
+    ok(stripMarks(marked.stdout).includes('本地文章'), '哨兵行之外正文原样保留');
+    const envOn = await cli([`${base}/article`], { env: { HTMLMINI_SOURCE_MARKS: '1' } });
+    ok(envOn.stdout.includes('<!-- htmlmini:source begin '), 'HTMLMINI_SOURCE_MARKS=1 开启哨兵行');
     const bare = await cli([`${base}/article`, '--no-source-marks']);
-    ok(bare.code === 0 && !bare.stdout.includes('htmlmini:source'), '--no-source-marks 关闭哨兵行');
-    const envOff = await cli([`${base}/article`], { env: { HTMLMINI_SOURCE_MARKS: '0' } });
-    ok(envOff.code === 0 && !envOff.stdout.includes('htmlmini:source'), 'HTMLMINI_SOURCE_MARKS=0 关闭哨兵行');
+    ok(bare.code === 0 && !bare.stdout.includes('htmlmini:source'), '--no-source-marks 保持关闭');
     const asJson = await cli([`${base}/article`, '--json']);
     const parsed = JSON.parse(asJson.stdout);
     ok(!asJson.stdout.includes('htmlmini:source'), '--json 不掺哨兵行');
@@ -420,10 +449,10 @@ async function cli(args, { input, env } = {}) {
     ok(meta.url === `${base}/article` && meta.rendered === false, 'meta 记下源 URL 与静态抓取');
     ok(withSave.stderr.includes('[write]') && withSave.stderr.includes('static fetch'), '日志写明落盘与来源');
 
-    // 关键回归：复用文件必须与直抓等价（URL 基准与 fetchCss 都要跟过来）；来源哨兵行不比。
+    // 关键回归：复用文件必须与直抓等价（URL 基准与 fetchCss 都要跟过来）；首尾留白（stdout 专有）不比。
     const directMd = await readFile(directPath, 'utf8');
     const reuse = await cli([savedHtml, '-m']);
-    ok(reuse.code === 0 && stripMarks(reuse.stdout) === stripMarks(directMd), '复用文件与直抓结果一致');
+    ok(reuse.code === 0 && reuse.stdout.trim() === directMd.trim(), '复用文件与直抓结果一致');
 
     const local = path.join(dir, 'local.html');
     await writeFile(local, '<html><head><title>本地</title></head><body><p>x</p></body></html>');

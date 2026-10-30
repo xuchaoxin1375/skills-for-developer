@@ -80,7 +80,7 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 1. MCP（已配置时）：`htmlmini_extract_file(path)` / `htmlmini_extract_url(url)` / `htmlmini_extract_html(html_content)`，可选 `mode`、`extractor`。旧拼写 `htmmini_*` 是兼容别名。
 2. CLI：`htmlmini <文件|URL|stdin> [--mode <模式>]`。选项、默认值、示例与常见症状以 `htmlmini --help full` 为准（`--help` 给一屏看完的短版）；取值清单用 `--list-modes` / `--list-extractors` / `--list-render-engines` / `--list-env`（各带一句说明）。
    - **长选项是主名，短选项给高频开关**：`-p/--proxy`、`-r/--render[=auto|always]`、`-e/--render-engine`、`-b/--browser-brand`、`-o/--output`，加上模式的 `-m/-j/-s/-u/-t/-T`。写脚本时用长选项（可读），手敲时用短选项；两者等价。
-   - 进度日志走 stderr，行首带方括号本地时间戳（`[YYYY-MM-DD HH:mm:ss,SSS]`，同 Python logging），故相邻行可直接相减看阶段耗时；`[read]` 行把 `status=…` 放在最前并着色（2xx 绿 / 4xx 红 / 未知暗色），chrome dump-dom 无状态码时显示 `status=unknown` 并给出取码办法。stdout 只放载荷与一对来源哨兵行，不要时加 `--no-source-marks`。要安静用 `--quiet`，排查用 `--verbose`。
+   - 进度日志走 stderr，行首带方括号本地时间戳（`[YYYY-MM-DD HH:mm:ss,SSS]`，同 Python logging），故相邻行可直接相减看阶段耗时；`[read]` 行把 `status=…` 放在最前并着色（2xx 绿 / 4xx 红 / 未知暗色），chrome dump-dom 无状态码时显示 `status=unknown` 并给出取码办法。stdout 只放载荷（终端里上下各留一行空白，管道/重定向/`-o` 不留）；要标明来源加 `--source-marks`，输出 `<!-- htmlmini:source begin/end … -->` 注释。要安静用 `--quiet`，排查用 `--verbose`。
    - 落盘用 `-o <文件>`；不要用 PowerShell 管道接 `Set-Content` 收载荷。
    - CLI 不在 PATH：用 `node <本 skill 目录>/src/cli.js <同样参数>`。
    - 报 `ERR_MODULE_NOT_FOUND`：依赖未装。在 skill 目录运行 `corepack pnpm install --frozen-lockfile` 后重跑，不改换工具。
