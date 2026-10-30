@@ -244,23 +244,21 @@ flowchart TD
 - 一条命令取全量：`htmlmini "<URL>" --render=always --wait-selector '<目标容器>:has(<子元素>)' --expect-text '<只在目标块里出现的文本>' --save-html page.html`——等目标块出现再断言，缺了直接失败。
 - `--wait-selector` 等的是**可见**：闭合 `<select>` 里的 `<option>` 没有布局，等它只会等到超时；等容器本身并加 `:has(option)`（如 `#nodeSelector:has(option)`），或直接用 `--expect-text`。
 - 断言文本要选**只在目标块里出现**的：正文示例、导航、页脚里也有的词，静态 HTML 就能命中，等于没断言。
-- 要控件值或清单本身：加 `--keep-options` 在正文末尾追加"表单选项"清单，或用 `--mode html` / `--save-html` 后按节点取；正文模式默认不给控件值。断言命中但输出里没有时，htmlmini 会提示换模式。
+- 要控件值或清单本身：正文模式默认按控件在页面里的位置插入清单（见[案例 17](#17-导出后下拉框--单选选项全丢表单选项)），`--keep-options=none` 可关闭；也可以用 `--mode html` / `--save-html` 后按节点取。断言命中但输出里没有时，htmlmini 会提示换模式。
 - 数据源是可选捷径，不是通用做法：只有打开页面就能在开发者工具 Network 里看到那个请求、或数据 URL 直接写在可见源码里时，才值得直接抓；需要逆推压缩脚本、拼参数、试鉴权时不值得，分析成本通常高于一次渲染。接口取数的完整做法见[案例 11](#11-后端接口--xhr-数据源)。
 - 站点侧根治：把清单内联进 HTML 或构建期预渲染，抓取端就不必为一块数据跑 JS。
 
 ## 17 导出后下拉框 / 单选选项全丢（表单选项）
 
-页面把清单放在表单控件里：`<select>` 的 `<option>`、`<datalist>` 的候选、`radio` / `checkbox` 的标签。正文模式只保留正文，控件值按设计被当样板剔除，于是导出的 markdown 只剩使用说明，一条选项都没有。这不是抓取失败（`--mode html` 里选项齐全），是输出模式的选择问题。
+页面把清单放在表单控件里：`<select>` 的 `<option>`、`<datalist>` 的候选、`radio` / `checkbox` 的标签。正文模式曾只保留正文，控件值被当样板剔除，导出的 markdown 只剩使用说明，一条选项都没有。这不是抓取失败（`--mode html` 里选项齐全），是输出模式的选择问题；现在默认会把它们按页面位置插回正文，`--keep-options=none` 才回到旧行为。
 
-取法：加 `--keep-options`，在正文末尾追加一节 `## 表单选项`：
+取法：不用加开关，正文模式默认保留；清单按控件在页面里的位置插入：
 
 ```bash
-htmlmini page.html -m --keep-options
+htmlmini page.html -m
 ```
 
 ```text
-## 表单选项
-
 - 加速源（92 项）
   - gh-proxy.com
   - ghproxy.net
@@ -271,11 +269,13 @@ htmlmini page.html -m --keep-options
 ```
 
 - 覆盖 `select`（含 `optgroup`）、`datalist`、`radio` / `checkbox`（同 `name` 一组，组名取 `fieldset` 的 `legend`，已选项标 `[已选]`）。
+- 位置跟页面一致，不再集中到文末。控件在导航、页脚、侧栏时，抽取器会把整段丢掉，标记也跟着消失——这类控件直接跳过（日志报"N 组未出现在正文里，已跳过"），不补到正文末尾制造噪声。
+- 列表头优先用 `label[for]` / `aria-label` / `fieldset` 的 `legend`；都没有时读控件前面单独一行的短标签（`<div>加速源：</div>` → `- 加速源（5 项）`），带句末标点的段落不算。
 - 列表只写显示文本：`<option value="https://x">x</option>` 输出 `- x`，value 是提交用的编码值，读正文时是噪声；选项本身没有文本（图片、色块）时才退回 value。
 - 要连 value 一起看，加 `--keep-values`（`北京（bj）`）：与格式无关，列表、单选/多选、datalist 的选项都适用。
 - 需要 value 属性、或想让支持 HTML 的查看器显示真正的下拉框，用 `--keep-options=html`：下拉框写成 `<select>`（保留 `selected`，默认不带 value；要 value 加 `--keep-values`），`datalist` 与单选/多选仍按列表（没有配套表单时不可见也点不动）。
-- 按页面顺序输出，不去重、不截断：几千项的下拉框会让输出明显变长，先确认是否真要全量。
-- `--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断，要全量仍用这个开关。MCP 对应 `keep_options: "list" | "html"`。
+- 按页面顺序输出，不去重、不截断：几千项的下拉框会让输出明显变长，先确认是否真要全量；只要可见文字用 `--keep-options=none`。
+- `--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断，要全量仍用正文模式。MCP 默认同样插入，`keep_options: false` 或 `"none"` 关闭。
 
 折叠块是同一类问题：抽取器把 `<details>` 压成"摘要 + 正文"的普通段落，折叠结构没了。加 `--keep-details` 会在原位包回 HTML：
 

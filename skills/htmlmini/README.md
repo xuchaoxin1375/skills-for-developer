@@ -19,7 +19,7 @@
 | 文章、博客、文档（最常用） | `htmlmini "<URL>" -o page.md` | 默认 Markdown，Defuddle 正文 |
 | 静态 200 但正文要等水合 | `htmlmini "<URL>" --render=always` | 强制执行 JS；拿到 `engine=static` 会自动换浏览器层重跑 |
 | 异步清单 / 下拉框 / 懒加载（特色） | `htmlmini "<URL>" --render=always --wait-selector '<目标块>' --expect-text '<只在目标块里出现的文本>' --save-html page.html` | 等目标节点出现并断言真的抓到，缺了直接失败；控件值只在 HTML 里 |
-| 清单藏在表单控件里（特色） | `htmlmini page.html -m --keep-options` | 正文模式默认丢控件值；追加"表单选项"：下拉框/optgroup/datalist/单选多选 |
+| 清单藏在表单控件里（特色） | `htmlmini page.html -m` | 默认按页面位置保留下拉框/optgroup/datalist/单选多选；`--keep-options=none` 关闭，`--keep-values` 带 value |
 | 403 / 挑战 / 自动化被拦 | `htmlmini "<URL>" --render` 或 `--render=always --render-engine chrome-late` | 静态优先，挑战站点走晚接入引擎 |
 | 面板、仪表盘、设计稿 | `htmlmini page.html -u` | 按可访问语义出组件清单（标签/按钮/字段/表格） |
 | 要结构不要摘要 | `htmlmini page.html --mode html --attrs semantic` | 保留 DOM 顺序与表格/表单状态（含 value/selected/checked） |
@@ -145,15 +145,11 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 
 级别也可用环境变量 `HTMLMINI_LOG=quiet|info|debug` 预设，CLI 开关覆盖环境变量；MCP 侧只认环境变量。时间戳用 `HTMLMINI_LOG_TIME=0` 关闭。慢的阶段（网络抓取、`--render` 回退、`pretty` 重排）都会先报开始再报耗时，所以长时间等待不会静默。
 
-### 表单可选项与折叠块（`--keep-options` / `--keep-details`）
+### 表单可选项与折叠块（默认保留 / `--keep-options` / `--keep-details`）
 
-正文模式（`markdown` / `text` / `skeleton`）只留正文：表单控件里的值和 `<details>` 的折叠结构都会被抹平。页面把清单放进下拉框、单选或多选时（镜像列表、地区、套餐），导出后就只剩使用说明。
-
-`--keep-options` 在正文末尾追加一节：
+正文模式（`markdown` / `text` / `skeleton`）默认保留表单选项：抽取前把控件换成标记，抽取后按标记在正文里的位置换成清单。页面把清单放进下拉框、单选或多选时（镜像列表、地区、套餐），导出后仍是一份可读清单：
 
 ```text
-## 表单选项
-
 - 加速源（92 项）
   - gh-proxy.com
   - ghproxy.net
@@ -164,6 +160,8 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 ```
 
 - 覆盖 `select`（含 `optgroup` 分组）、`datalist` 候选、`radio` / `checkbox`（同 `name` 一组，组名取 `fieldset` 的 `legend`，已选项标 `[已选]`）。
+- 位置跟页面一致，不再集中到文末。控件被抽取器整段丢弃时（导航、页脚、侧栏里的筛选器）标记也会消失，这类控件直接跳过，日志报"未出现在正文里，已跳过"——不把它补到正文末尾制造噪声。
+- 列表头优先用 `label[for]` / `aria-label` / `fieldset` 的 `legend`；都没有时读控件前面单独一行的短标签（`<div>加速源：</div>` → `- 加速源（5 项）`）。带句末标点的段落不算标签，仍退回"下拉框"。
 - 列表只写显示文本：`<option value="https://x">x</option>` 输出 `- x`。value 是提交用的编码值，读正文时是噪声；只有选项本身没有文本（图片、色块）时才退回 value。
 - 要连 value 一起看，加 `--keep-values`：列表里写成 `北京（bj）`，`<select>` 里保留 `value="…"`。默认两种形式都不带 value（html 只保留 `selected`）；它与格式无关，单选/多选、datalist 的选项同样适用。
 - 需要 value 属性、或想让支持 HTML 的查看器显示真正的下拉框，用 `--keep-options=html`：
@@ -179,6 +177,8 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 
   只有 `select` 写成控件；`datalist`（没有配套输入框时不可见）和单选/多选（离开表单点不动）仍按列表输出。
 
+- 只要正文可见文字（不想要清单），用 `--keep-options=none`；`--keep-options` 与 `--keep-options=list` 是同一档，显式写出来便于阅读命令。
+
 `--keep-details` 把被压平的 `<details>` 原位包回 HTML：
 
 ```html
@@ -193,7 +193,7 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 - 做法是"摘要行 + 逐行文本比对"：从摘要所在行开始累加，直到与 `<details>` 的文本完全一致才替换。定位或比对失败就保持纯文本——宁可不折叠，也不会错包别的段落或让内容丢失（日志会报保留/跳过各几个）。
 - 只在 `markdown` 模式生效（`text` 会剥掉 HTML）；嵌套 `<details>` 只包最外层。
 - 查看器支持度不一样：GitHub 渲染 `<details>`，但会过滤 `<select>` 等表单控件；VS Code、Obsidian、Typora 之类大多能显示。要"到处都能读"用默认列表，要交互再用 `=html`。
-- 只作用于正文模式：`--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断；`--json` 不受影响。MCP 对应 `keep_options: "list" | "html"`、`keep_details: true`。
+- 只作用于正文模式：`--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断；`--json` 不受影响。MCP 默认同样插入，传 `keep_options: false` 或 `"none"` 关闭，`keep_values: true` 带 value。
 
 ## 与 resilient-browser-fetch 的流水线
 

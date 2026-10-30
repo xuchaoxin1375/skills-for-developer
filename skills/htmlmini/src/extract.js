@@ -15,7 +15,7 @@ import { VERSION } from './version.js';
 const execFileAsync = promisify(execFile);
 
 export const MODES = ['markdown', 'skeleton', 'text', 'json', 'title', 'ui', 'html'];
-/** 正文类模式：结果是 markdown 正文，`--keep-options` 只在它们后面追加选项清单。 */
+/** 正文类模式：结果是 markdown 正文，选项清单只在这些模式里按控件位置插入。 */
 const TEXT_MODES = new Set(['markdown', 'text', 'skeleton']);
 export const EXTRACTORS = ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'sanitize', 'passthrough'];
 /** html 模式的属性策略：none 清空全部属性 | semantic（默认）保留语义属性 | all 保留全部属性。 */
@@ -1488,7 +1488,28 @@ function labelledByText(doc, el) {
     .trim();
 }
 
-/** 表单控件的可访问名称：label[for] > 包裹 label > aria-labelledby > aria-label > placeholder > name/id。 */
+/**
+ * 控件前面单独一行的短标签（`<div>加速源：</div>` 这种很常见）。
+ * 只认 select/datalist：单选/多选的每个 input 都拿同一段前置文本会重复，
+ * 它们的组名另有 fieldset legend 与 name 可用。带句末标点或过长的句子不算标签。
+ */
+function precedingLabel(el) {
+  let node = el.parentElement;
+  for (let depth = 0; node && depth < 3; depth++, node = node.parentElement) {
+    const prev = node.previousElementSibling;
+    if (!prev) continue;
+    const tag = prev.tagName ? prev.tagName.toLowerCase() : '';
+    if (!['div', 'span', 'p', 'dt', 'strong', 'b', 'label'].includes(tag)) continue;
+    if (prev.querySelector && prev.querySelector('input, select, textarea, button, datalist')) continue;
+    const t = collectText(prev).replace(/\s+/g, ' ').trim();
+    if (!t || t.length > 20 || /[。！？!?]/.test(t)) continue;
+    if (!/[:：]$/.test(t) && t.length > 12) continue;
+    return t.replace(/[:：]\s*$/, '');
+  }
+  return '';
+}
+
+/** 表单控件的可访问名称：label[for] > 包裹 label > aria-labelledby > aria-label > 前置短标签 > placeholder > name/id。 */
 function fieldLabel(doc, el) {
   const id = typeof el.getAttribute === 'function' ? el.getAttribute('id') : null;
   if (id) {
@@ -1510,7 +1531,14 @@ function fieldLabel(doc, el) {
   const by = labelledByText(doc, el);
   if (by) return by;
   const get = (name) => (typeof el.getAttribute === 'function' ? el.getAttribute(name) : null) || '';
-  return get('aria-label') || get('placeholder') || get('name') || (id ? `#${id}` : '');
+  const aria = get('aria-label');
+  if (aria) return aria;
+  const tag = el.tagName ? el.tagName.toLowerCase() : '';
+  if (tag === 'select' || tag === 'datalist') {
+    const near = precedingLabel(el);
+    if (near) return near;
+  }
+  return get('placeholder') || get('name') || (id ? `#${id}` : '');
 }
 
 function buttonName(doc, el) {
@@ -2408,18 +2436,17 @@ export function assertUsableResult(res, htmlChars, { allowEmpty = false, mode = 
 const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
- * `--keep-options`：把表单控件的可选项整理成列表（或把下拉框写成真正的 `<select>`）。
+ * 把表单控件的可选项整理成列表（或把下拉框写成真正的 `<select>`）。
  * 正文模式按设计丢掉控件值（下拉框/单选的选项、datalist 候选），可这些值常是页面真正
- * 要给的内容（镜像列表、地区、套餐）。这里按页面顺序收一遍，由调用方追加到正文后面：
- * 不依赖具体抽取引擎，defuddle/trafilatura/内置转换器都不影响结果。
- * 不去重、不截断：选项数就是输出长度，页面上有上千项时输出会很长。
+ * 要给的内容（镜像列表、地区、套餐）。这里按页面顺序收一遍，返回控件锚点与对应清单，
+ * 由调用方按控件在页面里的位置插入：不依赖具体抽取引擎，defuddle/trafilatura/内置转换器
+ * 都不影响结果。不去重、不截断：选项数就是输出长度，页面上有上千项时输出会很长。
  *
  * format='html' 只改变 `<select>`：写成 `<select>` 后，支持 HTML 表单控件的查看器能直接
  * 交互。datalist 没有配套输入框时不可见、单选多选离开表单也点不动，它们仍按列表输出。
  * values 与 format 正交：列表里写成 `文本（value）`，`<select>` 里保留/去掉 value 属性。
  */
-export function formOptionsSection(html, { format = 'list', values = false } = {}) {
-  const doc = parseOnce(html);
+function collectFormOptions(doc, { format = 'list', values = false } = {}) {
   const blocks = [];
 
   const optionHtml = (opt) => {
@@ -2514,7 +2541,7 @@ export function formOptionsSection(html, { format = 'list', values = false } = {
     const tag = el.tagName.toLowerCase();
     if (tag === 'select' || tag === 'datalist') {
       const block = selectBlock(el, tag);
-      if (block) blocks.push(block);
+      if (block) blocks.push({ anchor: el, block, elements: [el] });
       continue;
     }
     const type = (el.getAttribute('type') ?? '').toLowerCase();
@@ -2524,10 +2551,100 @@ export function formOptionsSection(html, { format = 'list', values = false } = {
     done.add(name);
     const els = [...doc.querySelectorAll(`input[type="${type}"]`)].filter((e) => ((e.getAttribute('name') ?? '').trim()) === name);
     const block = choiceBlock(els, name);
-    if (block) blocks.push(block);
+    if (block) blocks.push({ anchor: els[0], block, elements: els });
   }
 
+  return blocks;
+}
+
+/**
+ * 追加形式（“## 表单选项”小节），保留给需要整段清单的调用方与测试。
+ * 正文提取不再走这里：它用 injectOptionMarkers 按控件在页面里的位置插入。
+ */
+export function formOptionsSection(html, opts = {}) {
+  const blocks = collectFormOptions(parseOnce(html), opts).map((b) => b.block);
   return blocks.length ? `## 表单选项\n\n${blocks.join('\n\n')}` : '';
+}
+
+/**
+ * 原位插入用的标记。抽取器会把 select/datalist/单选组整段丢掉，但会保留普通文本；
+ * 所以在抽取**之前**把控件换成一行标记，抽取后再把标记换成选项清单，位置就与页面一致。
+ * 标记必须独一份、不像 URL 或代码，避免被抽取器当成正文重排。
+ */
+const OPTION_MARKER = (n) => `⟦htmlmini-options-${n}⟧`;
+
+/**
+ * 标记插在控件之前，但要先爬出 form/label/fieldset（抽取器常整段丢弃表单），
+ * 以及 p/summary（块级标记嵌不进去，会跟相邻文本粘成一行）；插在这些容器的前面，
+ * 才落在正文里该出现的位置。
+ */
+function markerAnchor(el) {
+  if (typeof el.closest === 'function') {
+    const form = el.closest('form');
+    if (form) return form;
+  }
+  let node = el;
+  let parent = node.parentElement;
+  while (parent) {
+    const tag = parent.tagName ? parent.tagName.toLowerCase() : '';
+    // p 里不能嵌块级标记，否则会跟相邻文本粘成一行；summary 是折叠块的标题行，同理。
+    if (tag !== 'label' && tag !== 'fieldset' && tag !== 'p' && tag !== 'summary') break;
+    node = parent;
+    parent = node.parentElement;
+  }
+  return node;
+}
+
+/**
+ * 在抽取前把每个控件换成标记，返回改写的 HTML 与"标记 → 清单"映射。
+ * 控件不在正文里（被抽取器丢弃、或本来就在导航/侧栏）时标记会消失，调用方据此跳过。
+ */
+export function injectOptionMarkers(html, opts = {}) {
+  const doc = parseOnce(html);
+  const items = collectFormOptions(doc, opts);
+  if (!items.length) return { html, blocks: new Map(), count: 0 };
+  const blocks = new Map();
+  items.forEach(({ anchor, block, elements }, i) => {
+    const token = OPTION_MARKER(i);
+    // 块级标记：行内标记会跟相邻段落粘成一行（抽取器按文本流重排），位置和替换都会走样。
+    const marker = doc.createElement('p');
+    marker.setAttribute('data-htmlmini-options', String(i));
+    marker.textContent = token;
+    const target = markerAnchor(anchor);
+    if (!target.parentNode) return;
+    target.parentNode.insertBefore(marker, target);
+    // 控件本身移出 DOM：抽取器本就会丢掉它，留着只会让语义兜底把 option 文本重复一遍，
+    // 也会让 --keep-details 的文本比对（DOM 含选项文本、markdown 不含）失败。
+    for (const node of elements) {
+      if (typeof node.remove === 'function') node.remove();
+    }
+    blocks.set(token, block);
+  });
+  return { html: doc.toString(), blocks, count: blocks.size };
+}
+
+/**
+ * 抽取后把标记换成清单。标记没出现在正文里就跳过该控件（不挪到文末）：
+ * 那类控件多半本来就在导航、页脚或侧栏，补到正文末尾反而制造噪声。
+ */
+export function applyOptionMarkers(content, blocks) {
+  let out = String(content ?? '');
+  if (!blocks || !blocks.size) return { content: out, replaced: 0, missing: 0 };
+  let replaced = 0;
+  for (const [token, block] of blocks) {
+    if (!out.includes(token)) continue;
+    replaced += 1;
+    out = out.split(token).join(`\n\n${block}\n\n`);
+  }
+  if (replaced) {
+    out = out
+      // 有的抽取器把标记渲染成列表项（`- ⟦…⟧`），换掉后只剩空条目。
+      .replace(/^[ \t]*[-*+][ \t]*$/gm, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^\n+|\n+$/g, '');
+  }
+  return { content: out, replaced, missing: blocks.size - replaced };
 }
 
 /**
@@ -2631,7 +2748,7 @@ export async function runExtract(source, mode = 'markdown', options = {}) {
  * 与 runExtract 相同，但把来源信息（URL、状态码、是否渲染、抓取时刻）一起返回，
  * 供调用方做来源标记或 JSON 字段；CLI 用它生成起止行。
  */
-export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = false, keepValues = false, keepDetails = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
+export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = 'list', keepValues = false, keepDetails = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -2691,8 +2808,19 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
       : 'file:///' + (src === 'stdin' || src === 'content' ? src : src.replaceAll('\\', '/'));
   // 取到内容之后再记时刻：哨兵行的 fetched 表示"这份载荷什么时候拿到的"，不是命令启动时间。
   fetchedAt = timestamp();
+  // 选项清单按控件在页面里的位置插入：抽取前把控件换成标记，抽取后把标记换成清单。
+  // 标记没活下来（控件在导航/侧栏、或抽取器整段丢弃）就跳过，不挪到文末。
+  const optionsOn = keepOptions !== false && keepOptions !== 'none' && keepOptions != null;
+  let optionBlocks = null;
+  if (optionsOn && TEXT_MODES.has(mode) && /<(?:select|datalist|input)\b/i.test(html)) {
+    const injected = injectOptionMarkers(html, { format: keepOptions === 'html' ? 'html' : 'list', ...(keepValues ? { values: true } : {}) });
+    if (injected.count) {
+      html = injected.html;
+      optionBlocks = injected.blocks;
+    }
+  }
   const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, fetchCss: rendered || Boolean(sibling && /^https?:/i.test(sibling.url)), ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
-  // 被压平的 <details> 先按原位包回 HTML，再追加选项清单：后者加在末尾，不影响前面的定位。
+  // 被压平的 <details> 先按原位包回 HTML；选项标记随内容一起被包进去，之后在原位替换。
   if (keepDetails) {
     if (mode === 'markdown') {
       const r = wrapDetails(res.content, html);
@@ -2702,17 +2830,15 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
       log.info('extract', `--keep-details 只作用于 markdown；${mode} 模式会丢掉 HTML 结构，忽略`);
     }
   }
-  // 可选项在正文模式里被当控件样板丢掉，但常是页面要给的清单；追加在正文之后，
-  // 与抽取引擎无关（defuddle/trafilatura 内建的 select 处理不归我们控制）。
-  if (keepOptions) {
+  // 可选项在正文模式里被当控件样板丢掉，但常是页面要给的清单。
+  if (optionsOn) {
     if (TEXT_MODES.has(mode)) {
-      const section = formOptionsSection(html, { format: keepOptions === 'html' ? 'html' : 'list', ...(keepValues ? { values: true } : {}) });
-      if (section) {
-        const body = String(res.content ?? '').replace(/\n+$/, '');
-        res.content = body ? `${body}\n\n${section}` : section;
-        log.info('extract', `--keep-options 追加 ${section.split('\n').filter((l) => /^\s*- /.test(l)).length} 条可选项`);
+      if (optionBlocks) {
+        const r = applyOptionMarkers(res.content, optionBlocks);
+        res.content = r.content;
+        log.info('extract', `原位保留 ${r.replaced} 组可选项${r.missing ? `，${r.missing} 组未出现在正文里，已跳过` : ''}`);
       }
-    } else {
+    } else if (keepOptions === 'html') {
       log.info('extract', `--keep-options 只作用于 ${[...TEXT_MODES].join('/')}；${mode} 模式自带结构，忽略`);
     }
   }

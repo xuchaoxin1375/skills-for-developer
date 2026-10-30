@@ -24,11 +24,11 @@ const textMaxDesc =
 const allowEmptyDesc =
   '即使结果像"客户端渲染应用壳"（正文不足 200 字符而 HTML 不小于 5 KB）也保留。默认 false：这类页面报错并提示改用 render:"always"，因为静态 HTML 里还没有正文。';
 const keepOptionsDesc =
-  '正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：下拉框、optgroup、datalist、单选/多选的选项按页面顺序列成列表。默认 false：正文模式不收控件值，页面若把清单放在表单里（镜像列表、地区、套餐）就会丢。传 "list" 或 true 只写显示文本（文本为空才用 value）；传 "html" 把下拉框写成真正的 <select>（保留 selected），供支持 HTML 表单控件的查看器交互。value 属性两种形式都默认不带，需要时配合 keep_values。';
+  '正文模式（markdown/text/skeleton）默认按控件在页面里的位置插入选项清单：下拉框、optgroup、datalist、单选/多选按页面顺序列出，抽取器丢弃了该控件就跳过、不挪到文末。默认 "list"（或 true）：只写显示文本（文本为空才用 value）；"html" 把下拉框写成真正的 <select>（保留 selected），供支持 HTML 表单控件的查看器交互；false 或 "none" 关闭，正文只留可见文字。value 属性两种形式都默认不带，需要时配合 keep_values。';
 const keepDetailsDesc =
   '把正文里被压平的 <details> 原位包回 HTML 块（FAQ、手风琴页），保留折叠结构。需要能在正文里定位到该段并比对成功；定位不到时保持纯文本，不会错包或丢内容。仅 markdown 模式生效。';
 const keepValuesDesc =
-  '与 keep_options 一起用：选项同时输出 value。列表里写成"文本（value）"，<select> 里保留 value 属性（option/datalist/单选多选都算）。默认 false 只写显示文本——value 是提交用的编码值。';
+  '选项清单开启时（默认开启）让选项同时输出 value。列表里写成"文本（value）"，<select> 里保留 value 属性（option/datalist/单选多选都算）。默认 false 只写显示文本——value 是提交用的编码值。';
 const toTexts = (v) => (v == null ? undefined : Array.isArray(v) ? v : [v]);
 
 /**
@@ -49,7 +49,7 @@ const toOptions = (a) => ({
   pruneEmpty: a.prune_empty ?? false,
   textMax: a.text_max,
   allowEmpty: a.allow_empty ?? false,
-  keepOptions: a.keep_options === true ? 'list' : a.keep_options ?? false,
+  keepOptions: a.keep_options === false ? 'none' : a.keep_options === true ? 'list' : a.keep_options ?? 'list',
   keepValues: a.keep_values ?? false,
   keepDetails: a.keep_details ?? false,
   proxy: a.proxy,
@@ -88,7 +88,7 @@ const shapeFile = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
-  keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_options: z.union([z.boolean(), z.enum(['list', 'html', 'none'])]).optional().describe(keepOptionsDesc),
   keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
 };
@@ -101,7 +101,7 @@ const shapeUrl = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
-  keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_options: z.union([z.boolean(), z.enum(['list', 'html', 'none'])]).optional().describe(keepOptionsDesc),
   keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
   proxy: z
@@ -166,7 +166,7 @@ const shapeHtml = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
-  keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_options: z.union([z.boolean(), z.enum(['list', 'html', 'none'])]).optional().describe(keepOptionsDesc),
   keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
 };

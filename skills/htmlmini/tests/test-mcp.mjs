@@ -140,16 +140,21 @@ const FORM = `<html><head><title>表单</title></head><body><p>正文</p>
 </body></html>`;
 const kept = await rpc('tools/call', {
   name: 'htmlmini_extract_html',
-  arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: true },
+  arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic' },
 });
 const keptText = kept.result.content[0].text;
-if (!keptText.includes('## 表单选项') || !keptText.includes('- 北京')) throw new Error('keep_options did not append the option list');
+if (!keptText.includes('- 北京') || keptText.includes('## 表单选项')) throw new Error('keep_options default should insert the option list in place');
 if (keptText.includes('（bj）')) throw new Error('keep_options should not print option values by default');
 const keptValues = await rpc('tools/call', {
   name: 'htmlmini_extract_html',
-  arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: true, keep_values: true },
+  arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_values: true },
 });
 if (!keptValues.result.content[0].text.includes('- 北京（bj）')) throw new Error('keep_values did not add option values');
+const offOptions = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: false },
+});
+if (offOptions.result.content[0].text.includes('北京')) throw new Error('keep_options:false should turn the option list off');
 const keptHtml = await rpc('tools/call', {
   name: 'htmlmini_extract_html',
   arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: 'html' },

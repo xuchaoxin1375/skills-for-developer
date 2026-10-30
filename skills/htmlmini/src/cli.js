@@ -157,14 +157,15 @@ ${engineList()}
                                （空 div/span/nav/header…；table/form/pre 结构保留）
     --allow-empty              保留"像客户端渲染壳"的结果（正文 < 200 字符且 HTML >= 5 KB）。
                                默认报错并提示改用 --render=always
-    --keep-options[=list|html]
-                               正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：
-                               下拉框/optgroup/datalist/单选多选的选项按页面顺序列出。
-                               默认 list 只写显示文本（文本为空才用 value）；html 把下拉框
-                               写成真正的 <select>（保留 selected；value 默认不带，要带
-                               加 --keep-values，查看器支持表单控件时才有交互）；都不截断
+    --keep-options[=list|html|none]
+                               正文模式（markdown/text/skeleton）默认按控件在页面里的位置
+                               插入选项清单（下拉框/optgroup/datalist/单选多选）；抽取器
+                               丢弃了该控件就跳过，不挪到文末。list 只写显示文本（文本为空
+                               才用 value）；html 把下拉框写成真正的 <select>（保留
+                               selected；value 默认不带，要带加 --keep-values）；
+                               none 关闭，正文只留可见文字
     --keep-values              选项同时输出 value（option/datalist/单选多选），写成
-                               "文本（value）"；默认只写文本。与 --keep-options 一起用
+                               "文本（value）"；默认只写文本。需选项清单开启（默认开启）
     --keep-details             把正文里被压平的 <details> 原位包回 HTML（FAQ/手风琴页）。
                                需能在正文里定位到该段并比对成功，否则保持纯文本
     --noproxy                  强制直连，忽略环境代理
@@ -235,9 +236,10 @@ ${ENV_HELP.map((line) => `  ${line}`).join('\n')}
   python ../resilient-browser-fetch/scripts/resilient_fetch.py --url "https://example.com/app" --out app.html --engine chrome-late
   htmlmini app.html --json
 
-  # 12) 表单可选项与折叠块：正文模式不收控件值，details 会被压平
-  htmlmini "https://example.com/tool" -m --keep-options         # 追加列表（只写显示文本）
+  # 12) 表单可选项与折叠块：选项默认按控件在页面里的位置插入，details 会被压平
+  htmlmini "https://example.com/tool" -m                       # 选项默认原位插入（只写显示文本）
   htmlmini "https://example.com/tool" -m --keep-options=html    # 下拉框写成真正的 <select>
+  htmlmini "https://example.com/tool" -m --keep-options=none    # 只要正文可见文字
   htmlmini "https://example.com/faq" -m --keep-details          # details 原位包回 HTML
 
 常见症状与对策 (TROUBLESHOOTING)
@@ -330,7 +332,7 @@ let format = 'compact';
 let pruneEmpty = false;
 let textMax = 150;
 let allowEmpty = false;
-let keepOptions = false;
+let keepOptions = 'list';
 let keepValues = false;
 let keepDetails = false;
 let logLevelOverride = null;
@@ -471,11 +473,11 @@ for (let i = 0; i < argv.length; i++) {
     }
   } else if (a === '--allow-empty') {
     allowEmpty = true;
-  } else if (a === '--keep-options' || a === '--keep-options=list' || a === '--keep-options=html') {
+  } else if (a === '--keep-options' || a === '--keep-options=list' || a === '--keep-options=html' || a === '--keep-options=none') {
     // 可选值只认 `=` 形式：空格形式会把下一个参数（通常是输入路径）当值吞掉。
-    keepOptions = a === '--keep-options=html' ? 'html' : 'list';
+    keepOptions = a === '--keep-options=html' ? 'html' : a === '--keep-options=none' ? 'none' : 'list';
   } else if (a.startsWith('--keep-options=')) {
-    log.error(`--keep-options 取值只能是 list 或 html，got "${a.slice('--keep-options='.length)}"`);
+    log.error(`--keep-options 取值只能是 list、html 或 none，got "${a.slice('--keep-options='.length)}"`);
     process.exit(2);
   } else if (a === '--keep-details') {
     keepDetails = true;
@@ -571,8 +573,8 @@ if (!FORMAT_POLICIES.includes(format)) {
   process.exit(2);
 }
 if (logLevelOverride) setLogLevel(logLevelOverride);
-if (keepValues && !keepOptions) {
-  log.info('options', '--keep-values 只配合 --keep-options 生效：列表里附带 value（--keep-options=html 本来就保留 value 属性）');
+if (keepValues && keepOptions === 'none') {
+  log.info('options', '--keep-values 只作用于选项清单：已用 --keep-options=none 关闭，value 不会出现');
 }
 
 // 终端裸跑（无管道、无文件参数）会无限等 stdin：直接给提示而不是挂起。
@@ -586,7 +588,7 @@ if (source === '-' && process.stdin.isTTY) {
 
 try {
   const startedAt = Date.now();
-  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }), ...(keepOptions ? { keepOptions } : {}), ...(keepValues ? { keepValues: true } : {}), ...(keepDetails ? { keepDetails: true } : {}) });
+  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }), ...(keepOptions !== 'list' ? { keepOptions } : {}), ...(keepValues ? { keepValues: true } : {}), ...(keepDetails ? { keepDetails: true } : {}) });
   // JSON 模式不包哨兵行（否则不再可解析），来源由 JSON 里的 source/fetchStatus/fetchedAt 字段承载。
   const out = mode === 'json' || !sourceMarks ? raw : markSource(raw, info);
   const total = `total ${fmtMs(Date.now() - startedAt)}`;

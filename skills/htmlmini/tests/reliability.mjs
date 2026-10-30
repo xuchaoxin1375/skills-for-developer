@@ -15,6 +15,8 @@ import {
   findPython,
   findSolverPython,
   formOptionsSection,
+  applyOptionMarkers,
+  injectOptionMarkers,
   isInterpreterRetryable,
   pickStrongerPython,
   pickHydrationEngine,
@@ -1283,8 +1285,8 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   const html = '<!doctype html><html><head><title>清单页</title></head><body><article><h1>清单页</h1>'
     + `<p>${'这是一段足够长的正文，用来确保抽取结果不会被判定成空壳页面。'.repeat(4)}</p>`
     + '<select id="nodeSelector"><option>only-in-select.example</option></select></article></body></html>';
-  const md = await runExtractDetailed('content', 'markdown', { forceContent: html, expectTexts: ['only-in-select.example'] });
-  ok(!md.output.includes('only-in-select.example'), 'markdown 输出不含 select 选项');
+  const md = await runExtractDetailed('content', 'markdown', { forceContent: html, keepOptions: 'none', expectTexts: ['only-in-select.example'] });
+  ok(!md.output.includes('only-in-select.example'), '关闭选项清单后 markdown 输出不含 select 选项');
   ok(md.info.expectTextsNotInOutput?.length === 1, '断言命中但不在输出里时记到 info');
   const ui = await runExtractDetailed('content', 'ui', { forceContent: html, expectTexts: ['only-in-select.example'] });
   ok(ui.output.includes('only-in-select.example') && !ui.info.expectTextsNotInOutput, 'ui 收下控件值后不再提示');
@@ -1768,6 +1770,23 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   const htmlValues = formOptionsSection(FORM, { format: 'html', values: true });
   ok(htmlValues.includes('<option value="bj">北京</option>') && htmlValues.includes('<option value="https://gh-proxy.com">gh-proxy.com</option>'), 'html 形式加 values 才带 value 属性');
 
+  // 没有 aria-label/label[for] 时，用控件前面单独一行的短标签（常见写法）。
+  const near = formOptionsSection('<html><body><div>加速源：</div><div><select><option>甲</option></select></div></body></html>');
+  ok(near.includes('- 加速源（1 项）'), '前置短标签作列表头，去掉结尾冒号');
+  const notLabel = formOptionsSection('<html><body><p>这段说明有句号。</p><div><select><option>甲</option></select></div></body></html>');
+  ok(notLabel.includes('- 下拉框（1 项）'), '带句末标点的段落不算标签');
+
+  // 原位插入：抽取前把控件换成标记，抽取后换回清单；标记没活下来就跳过。
+  const injected = injectOptionMarkers(FORM);
+  ok(injected.count === 5 && injected.html.includes('⟦htmlmini-options-0⟧'), '按控件数插入标记（select/单选组/datalist），抽取前已放入标记');
+  const placed = applyOptionMarkers('前文\n\n⟦htmlmini-options-0⟧\n\n后文', new Map([['⟦htmlmini-options-0⟧', '- 城市（1 项）\n  - 北京']]));
+  ok(placed.replaced === 1 && placed.missing === 0, '标记命中时替换并记账');
+  ok(placed.content === '前文\n\n- 城市（1 项）\n  - 北京\n\n后文', '清单落在标记原位置，不挪到末尾');
+  const skipped = applyOptionMarkers('只有正文', new Map([['⟦htmlmini-options-9⟧', '- 侧栏（1 项）']]));
+  ok(skipped.replaced === 0 && skipped.missing === 1 && skipped.content === '只有正文', '标记没出现在正文里就跳过，不追加到末尾');
+  const asItem = applyOptionMarkers('- ⟦htmlmini-options-1⟧\n\n正文', new Map([['⟦htmlmini-options-1⟧', '- 组（1 项）']]));
+  ok(asItem.content === '- 组（1 项）\n\n正文', '抽取器把标记渲染成列表项时不留空条目');
+
   // details：抽取器把它压平成"摘要 + 正文"，--keep-details 按文本比对包回原位。
   const DETAILS = `<html><head><title>折叠</title></head><body>
     <p>开头。</p>
@@ -1787,26 +1806,29 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   try {
     const file = path.join(dir, 'form.html');
     await writeFile(file, FORM);
-    // 强制 semantic：auto 遇到表单页会回退 ui 清单，自己就把选项列了一部分，看不出追加效果。
+    // 强制 semantic：auto 遇到表单页会回退 ui 清单，自己就把选项列了一部分，看不出原位插入。
     const plain = await cli([file, '-m', '--extractor', 'semantic']);
-    ok(!plain.stdout.includes('表单选项') && !plain.stdout.includes('gh-proxy.com'), '默认不追加选项清单');
-    const kept = await cli([file, '-m', '--extractor', 'semantic', '--keep-options']);
-    ok(kept.code === 0 && kept.stdout.includes('## 表单选项') && kept.stdout.includes('  - 北京'), '--keep-options 追加选项清单');
-    ok(/--keep-options 追加 \d+ 条/.test(kept.stderr), '追加时日志写明条数');
+    ok(plain.code === 0 && plain.stdout.includes('  - 北京') && !plain.stdout.includes('## 表单选项'), '默认原位插入选项清单，不再追加到文末');
+    ok(plain.stdout.indexOf('正文') < plain.stdout.indexOf('城市'), '选项出现在页面里的位置（正文之后、按控件顺序）');
+    ok(/原位保留 5 组可选项/.test(plain.stderr), '插入时日志写明组数');
+    const off = await cli([file, '-m', '--extractor', 'semantic', '--keep-options=none']);
+    ok(off.code === 0 && !off.stdout.includes('北京') && !off.stdout.includes('城市'), '--keep-options=none 关闭选项清单');
     const keptHtml = await cli([file, '-m', '--extractor', 'semantic', '--keep-options=html']);
     ok(keptHtml.code === 0 && keptHtml.stdout.includes('<select aria-label="镜像">'), '--keep-options=html 输出真正的 <select>');
     ok(!keptHtml.stdout.includes('value='), 'html 形式默认不带 value');
     const keptHtmlValues = await cli([file, '-m', '--extractor', 'semantic', '--keep-options=html', '--keep-values']);
     ok(keptHtmlValues.stdout.includes('<option value="https://gh-proxy.com">gh-proxy.com</option>'), 'html + --keep-values 才带 value 属性');
-    const keptValues = await cli([file, '-m', '--extractor', 'semantic', '--keep-options', '--keep-values']);
-    ok(keptValues.code === 0 && keptValues.stdout.includes('  - 北京（bj）'), '--keep-values 让列表带上 value');
-    const valuesAlone = await cli([file, '-m', '--keep-values']);
-    ok(valuesAlone.stderr.includes('只配合 --keep-options'), '单独用 --keep-values 时说明它不生效');
+    const keptValues = await cli([file, '-m', '--extractor', 'semantic', '--keep-values']);
+    ok(keptValues.code === 0 && keptValues.stdout.includes('  - 北京（bj）'), '--keep-values 让列表带上 value（默认清单已开）');
+    const valuesOff = await cli([file, '-m', '--keep-values', '--keep-options=none']);
+    ok(valuesOff.stderr.includes('只作用于选项清单'), '关闭清单时说明 --keep-values 不生效');
     const bad = await cli([file, '--keep-options=xml']);
-    ok(bad.code === 2 && bad.stderr.includes('list 或 html'), '非法取值退出 2');
-    const htmlMode = await cli([file, '--mode', 'html', '--keep-options']);
-    ok(htmlMode.code === 0 && !htmlMode.stdout.includes('表单选项') && htmlMode.stderr.includes('只作用于'), 'html 模式不追加，并说明原因');
-    const asJson = await cli([file, '--json', '--keep-options']);
+    ok(bad.code === 2 && bad.stderr.includes('list、html 或 none'), '非法取值退出 2');
+    const htmlMode = await cli([file, '--mode', 'html', '--keep-options=html']);
+    ok(htmlMode.code === 0 && !htmlMode.stdout.includes('表单选项') && htmlMode.stderr.includes('只作用于'), 'html 模式不插入，并说明原因');
+    const htmlModeDefault = await cli([file, '--mode', 'html']);
+    ok(htmlModeDefault.code === 0 && !htmlModeDefault.stderr.includes('只作用于'), 'html 模式默认不提示（选项清单本就只作用于正文模式）');
+    const asJson = await cli([file, '--json']);
     ok(asJson.code === 0 && JSON.parse(asJson.stdout).content.includes('正文'), '--json 不受影响，仍是合法 JSON');
 
     const detailsFile = path.join(dir, 'details.html');
@@ -1817,6 +1839,16 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
     ok(details.stdout.includes('<details open>\n<summary>问题二</summary>'), 'CLI 输出里 details 是 HTML 块');
     const detailsText = await cli([detailsFile, '-t', '--keep-details']);
     ok(detailsText.code === 0 && detailsText.stderr.includes('只作用于 markdown'), 'text 模式忽略并说明原因');
+
+    // 两个开关叠加：选项标记不能破坏 details 的文本比对，清单要落在折叠块里面。
+    const bothFile = path.join(dir, 'details-form.html');
+    await writeFile(bothFile, `<html><head><title>折叠表单</title></head><body><p>开头。</p>
+      <details><summary>选项一</summary><p>说明。</p><select><option>甲</option><option>乙</option></select></details>
+      <details><summary>选项二</summary><p>说明二。</p></details><p>结尾。</p></body></html>`);
+    const both = await cli([bothFile, '-m', '--extractor', 'defuddle', '--keep-details']);
+    ok(/--keep-details 原位保留 2 个/.test(both.stderr), '选项标记不影响 details 定位');
+    ok(both.stdout.includes('<summary>选项一</summary>') && both.stdout.includes('  - 甲'), '清单落在折叠块内部');
+    ok(both.stdout.indexOf('- 甲') < both.stdout.indexOf('</details>'), '清单在 details 结束标签之前');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
