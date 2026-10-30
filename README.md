@@ -94,7 +94,7 @@
 | Codex            | `%USERPROFILE%/.codex/skills`                                       | `~/.codex/skills`                      | 全量链接; 自带的`.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude           | `%USERPROFILE%/.claude/skills`                                      | `~/.claude/skills`                     | 全量链接                                                         |
 | DeepSeek Harness | `%DSH_HOME%/skills`（默认 `%USERPROFILE%/.dsh/skills`）           | `${DSH_HOME:-~/.dsh}/skills`           | 全量链接；dsh 原生用户级（rank 高于通用位置）                    |
-| ZCode            | `%USERPROFILE%/.zcode/skills`（优先），回退 `%USERPROFILE%/.agents/skills` | `~/.zcode/skills`（优先），回退 `~/.agents/skills` | 只读取不建链，复用 Agents 通用行的链接；个别 skill 只想在 ZCode 内覆盖时放 `~/.zcode/skills` |
+| ZCode            | `%USERPROFILE%/.zcode/skills`（优先），回退 `%USERPROFILE%/.agents/skills` | `~/.zcode/skills`（优先），回退 `~/.agents/skills` | 只读取不建链，复用 Agents 通用行的链接；个别 skill 只想在 ZCode 内覆盖时放 `~/.zcode/skills`；全局 AGENTS.md 落 `~/.zcode/AGENTS.md`（见「全局 AGENTS.md 同步与合并」） |
 
 ## 链接方式：Junction（Win）/ symlink（Linux）
 
@@ -254,28 +254,34 @@ python3 -c "import json,sys,os;ids={s['id'] for s in json.load(open(sys.argv[1])
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
 
-真源：`config/global-AGENTS.md`（与目标文件字节一致）。链接脚本不碰各 harness 的 `AGENTS.md`，但 `-VerifyOnly`/`--verify-only` 会一并提示漂移：目标缺失计异常，内容不一致只警告（由人或代理手工合并，不自动覆盖）。新机 clone 后跑一次下面命令；已存在且不一致时只提示，需agent对比后合并(或手工合并，不是直接覆盖)。
+真源：`config/global-AGENTS.md`（与各目标文件字节一致）。每个消费全局 `AGENTS.md` 的 harness 一个部署目标：OpenCode 落 `~/.config/opencode/AGENTS.md`，ZCode 落 `~/.zcode/AGENTS.md`（ZCode 的用户级指令文件只认该路径，不回退 `~/.agents`）。链接脚本不碰各 harness 的 `AGENTS.md`，但 `-VerifyOnly`/`--verify-only` 会一并提示漂移：目标缺失计异常，内容不一致只警告（由人或代理手工合并，不自动覆盖）。新机 clone 后跑一次下面命令；已存在且不一致时只提示，需agent对比后合并(或手工合并，不是直接覆盖)。
 
 Windows（PowerShell）：
 
 ```powershell
 $src = Join-Path (git rev-parse --show-toplevel) 'config\global-AGENTS.md'
-$dst = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
+$targets = @(
+  (Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'),
+  (Join-Path $env:USERPROFILE '.zcode\AGENTS.md')
+)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null; Copy-Item -LiteralPath $src -Destination $dst; 'restored' }
-elseif ((Get-FileHash -LiteralPath $src).Hash -eq (Get-FileHash -LiteralPath $dst).Hash) { 'already in sync' }
-else { 'differs, merge manually (one line), will not overwrite' }
+foreach ($dst in $targets) {
+  if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null; Copy-Item -LiteralPath $src -Destination $dst; "$dst restored" }
+  elseif ((Get-FileHash -LiteralPath $src).Hash -eq (Get-FileHash -LiteralPath $dst).Hash) { "$dst already in sync" }
+  else { "$dst differs, merge manually (one line), will not overwrite" }
+}
 ```
 
 Linux：
 
 ```bash
 src="$(git rev-parse --show-toplevel)/config/global-AGENTS.md"
-dst=~/.config/opencode/AGENTS.md
-if [ ! -f "$dst" ]; then mkdir -p "$(dirname "$dst")"; cp "$src" "$dst"; echo 'restored';
-elif cmp -s "$src" "$dst"; then echo 'already in sync';
-else echo 'differs, merge manually (one line), will not overwrite'; fi
+for dst in ~/.config/opencode/AGENTS.md ~/.zcode/AGENTS.md; do
+  if [ ! -f "$dst" ]; then mkdir -p "$(dirname "$dst")"; cp "$src" "$dst"; echo "$dst restored";
+  elif cmp -s "$src" "$dst"; then echo "$dst already in sync";
+  else echo "$dst differs, merge manually (one line), will not overwrite"; fi
+done
 ```
 
 ## 日常工作流

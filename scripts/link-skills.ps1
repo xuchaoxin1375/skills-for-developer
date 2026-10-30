@@ -466,15 +466,22 @@ if ($Unlink) {
 
 if ($VerifyOnly) {
   $repoAgents = Join-Path (Join-Path $RepoRoot 'config') 'global-AGENTS.md'
-  $liveAgents = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
   if (Test-Path -LiteralPath $repoAgents -PathType Leaf) {
-    if (-not (Test-Path -LiteralPath $liveAgents -PathType Leaf)) {
-      Write-Warning '全局 AGENTS.md 缺失 (期望按 README 从 config/global-AGENTS.md 恢复)'
-      $failures++
-    } elseif ((Get-FileHash -LiteralPath $repoAgents).Hash -ne (Get-FileHash -LiteralPath $liveAgents).Hash) {
-      Write-Warning '全局 AGENTS.md 与真源不一致, 按 README 手工合并 (不自动覆盖)'
-    } else {
-      Write-Host '全局 AGENTS.md 与真源一致。'
+    $repoHash = (Get-FileHash -LiteralPath $repoAgents).Hash
+    # 每个消费全局 AGENTS.md 的 harness 一个目标路径, 与 README「全局 AGENTS.md 同步与合并」保持一致
+    $agentsTargets = @(
+      @{ Name = 'OpenCode'; Path = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md' }
+      @{ Name = 'ZCode'; Path = Join-Path $env:USERPROFILE '.zcode\AGENTS.md' }
+    )
+    foreach ($t in $agentsTargets) {
+      if (-not (Test-Path -LiteralPath $t.Path -PathType Leaf)) {
+        Write-Warning "全局 AGENTS.md($($t.Name)) 缺失 (期望按 README 从 config/global-AGENTS.md 恢复)"
+        $failures++
+      } elseif ((Get-FileHash -LiteralPath $t.Path).Hash -ne $repoHash) {
+        Write-Warning "全局 AGENTS.md($($t.Name)) 与真源不一致, 按 README 手工合并 (不自动覆盖)"
+      } else {
+        Write-Host "全局 AGENTS.md($($t.Name)) 与真源一致。"
+      }
     }
   }
 

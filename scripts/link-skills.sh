@@ -445,15 +445,20 @@ check_global_agents() {
   [[ $VERIFY_ONLY -eq 1 ]] || return 0
   local repo_agents="$REPO_ROOT/config/global-AGENTS.md"
   [[ -f "$repo_agents" ]] || return 0
-  local live="$HOME/.config/opencode/AGENTS.md"
-  if [[ ! -f "$live" ]]; then
-    echo "全局 AGENTS.md 缺失（期望按 README 从 config/global-AGENTS.md 恢复）" >&2
-    failures=$((failures + 1))
-  elif ! cmp -s "$repo_agents" "$live"; then
-    echo "全局 AGENTS.md 与真源不一致，按 README 手工合并（不自动覆盖）" >&2
-  else
-    echo "全局 AGENTS.md 与真源一致。"
-  fi
+  # 每个消费全局 AGENTS.md 的 harness 一个目标路径，与 README「全局 AGENTS.md 同步与合并」保持一致
+  local target name live
+  for target in "OpenCode|$HOME/.config/opencode/AGENTS.md" "ZCode|$HOME/.zcode/AGENTS.md"; do
+    name="${target%%|*}"
+    live="${target#*|}"
+    if [[ ! -f "$live" ]]; then
+      echo "全局 AGENTS.md($name) 缺失（期望按 README 从 config/global-AGENTS.md 恢复）" >&2
+      failures=$((failures + 1))
+    elif ! cmp -s "$repo_agents" "$live"; then
+      echo "全局 AGENTS.md($name) 与真源不一致，按 README 手工合并（不自动覆盖）" >&2
+    else
+      echo "全局 AGENTS.md($name) 与真源一致。"
+    fi
+  done
 }
 
 check_global_agents
