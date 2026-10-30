@@ -2416,8 +2416,9 @@ const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
  *
  * format='html' 只改变 `<select>`：写成 `<select>` 后，支持 HTML 表单控件的查看器能直接
  * 交互。datalist 没有配套输入框时不可见、单选多选离开表单也点不动，它们仍按列表输出。
+ * values 与 format 正交：列表里写成 `文本（value）`，`<select>` 里保留/去掉 value 属性。
  */
-export function formOptionsSection(html, { format = 'list' } = {}) {
+export function formOptionsSection(html, { format = 'list', values = format === 'html' } = {}) {
   const doc = parseOnce(html);
   const blocks = [];
 
@@ -2425,7 +2426,7 @@ export function formOptionsSection(html, { format = 'list' } = {}) {
     const text = collectText(opt);
     const value = (opt.getAttribute('value') ?? '').trim();
     const attrs = [];
-    if (value) attrs.push(`value="${escapeHtml(value)}"`);
+    if (values && value) attrs.push(`value="${escapeHtml(value)}"`);
     if (opt.hasAttribute('selected')) attrs.push('selected');
     if (opt.hasAttribute('disabled')) attrs.push('disabled');
     return `<option${attrs.length ? ` ${attrs.join(' ')}` : ''}>${escapeHtml(text || value)}</option>`;
@@ -2454,14 +2455,15 @@ export function formOptionsSection(html, { format = 'list' } = {}) {
     return lines.join('\n');
   };
 
-  // 列表只取显示文本：`<option value="https://x">x</option>` 的 value 是提交用的编码值，
+  // 列表默认只取显示文本：`<option value="https://x">x</option>` 的 value 是提交用的编码值，
   // 读正文时是噪声。文本为空（选项是图片/纯色块等非文本内容）才退回 value，否则语义就没了。
-  // 需要 value 属性本身时用 --keep-options=html，那里按原样保留。
+  // --keep-values 打开后按 `文本（value）` 一并写出，与 format 无关（list/html 都生效）。
   const optionLine = (opt, indent) => {
     const text = collectText(opt);
     const value = (opt.getAttribute('value') ?? '').trim();
-    const shown = text || value;
-    return shown ? `${indent}- ${shown}` : '';
+    if (!text) return value ? `${indent}- ${value}` : '';
+    const shown = values && value && value !== text ? `${text}（${value}）` : text;
+    return `${indent}- ${shown}`;
   };
 
   const selectBlock = (el, tag) => {
@@ -2495,8 +2497,9 @@ export function formOptionsSection(html, { format = 'list' } = {}) {
       const named = fieldLabel(doc, el);
       const text = named && named !== name && named !== (id ? `#${id}` : null) ? named : value;
       if (!text) continue;
+      const shown = values && value && value !== text ? `${text}（${value}）` : text;
       const checked = el.hasAttribute('checked') ? ' [已选]' : '';
-      const line = `  - ${text}${checked}`;
+      const line = `  - ${shown}${checked}`;
       if (!items.includes(line)) items.push(line);
     }
     if (!items.length) return '';
@@ -2628,7 +2631,7 @@ export async function runExtract(source, mode = 'markdown', options = {}) {
  * 与 runExtract 相同，但把来源信息（URL、状态码、是否渲染、抓取时刻）一起返回，
  * 供调用方做来源标记或 JSON 字段；CLI 用它生成起止行。
  */
-export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = false, keepDetails = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
+export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = false, keepValues = false, keepDetails = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -2703,7 +2706,7 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
   // 与抽取引擎无关（defuddle/trafilatura 内建的 select 处理不归我们控制）。
   if (keepOptions) {
     if (TEXT_MODES.has(mode)) {
-      const section = formOptionsSection(html, { format: keepOptions === 'html' ? 'html' : 'list' });
+      const section = formOptionsSection(html, { format: keepOptions === 'html' ? 'html' : 'list', ...(keepValues ? { values: true } : {}) });
       if (section) {
         const body = String(res.content ?? '').replace(/\n+$/, '');
         res.content = body ? `${body}\n\n${section}` : section;

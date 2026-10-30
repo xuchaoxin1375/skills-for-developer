@@ -272,6 +272,7 @@ htmlmini page.html -m --keep-options
 
 - 覆盖 `select`（含 `optgroup`）、`datalist`、`radio` / `checkbox`（同 `name` 一组，组名取 `fieldset` 的 `legend`，已选项标 `[已选]`）。
 - 列表只写显示文本：`<option value="https://x">x</option>` 输出 `- x`，value 是提交用的编码值，读正文时是噪声；选项本身没有文本（图片、色块）时才退回 value。
+- 要连 value 一起看，加 `--keep-values`（`北京（bj）`）：与格式无关，列表、单选/多选、datalist 的选项都适用。
 - 需要 value 属性、或想让支持 HTML 的查看器显示真正的下拉框，用 `--keep-options=html`：下拉框写成 `<select>`（保留 `value`/`selected`），`datalist` 与单选/多选仍按列表（没有配套表单时不可见也点不动）。
 - 按页面顺序输出，不去重、不截断：几千项的下拉框会让输出明显变长，先确认是否真要全量。
 - `--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断，要全量仍用这个开关。MCP 对应 `keep_options: "list" | "html"`。

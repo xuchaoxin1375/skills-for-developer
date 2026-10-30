@@ -163,6 +163,8 @@ ${engineList()}
                                默认 list 只写显示文本（文本为空才用 value）；html 把下拉框
                                写成真正的 <select>（保留 value/selected，查看器支持表单控件
                                时才有交互）；都不截断
+    --keep-values              选项同时输出 value（option/datalist/单选多选），写成
+                               "文本（value）"；默认只写文本。与 --keep-options 一起用
     --keep-details             把正文里被压平的 <details> 原位包回 HTML（FAQ/手风琴页）。
                                需能在正文里定位到该段并比对成功，否则保持纯文本
     --noproxy                  强制直连，忽略环境代理
@@ -329,6 +331,7 @@ let pruneEmpty = false;
 let textMax = 150;
 let allowEmpty = false;
 let keepOptions = false;
+let keepValues = false;
 let keepDetails = false;
 let logLevelOverride = null;
 // 来源哨兵行：默认关（HTML 注释风格）。显式 `--source-marks` 或 HTMLMINI_SOURCE_MARKS=1 才加。
@@ -476,6 +479,8 @@ for (let i = 0; i < argv.length; i++) {
     process.exit(2);
   } else if (a === '--keep-details') {
     keepDetails = true;
+  } else if (a === '--keep-values') {
+    keepValues = true;
   } else if (a === '--no-source-marks' || a === '--no-marks') {
     sourceMarks = false;
   } else if (a === '--source-marks' || a === '--marks') {
@@ -566,6 +571,9 @@ if (!FORMAT_POLICIES.includes(format)) {
   process.exit(2);
 }
 if (logLevelOverride) setLogLevel(logLevelOverride);
+if (keepValues && !keepOptions) {
+  log.info('options', '--keep-values 只配合 --keep-options 生效：列表里附带 value（--keep-options=html 本来就保留 value 属性）');
+}
 
 // 终端裸跑（无管道、无文件参数）会无限等 stdin：直接给提示而不是挂起。
 if (source === '-' && process.stdin.isTTY) {
@@ -578,7 +586,7 @@ if (source === '-' && process.stdin.isTTY) {
 
 try {
   const startedAt = Date.now();
-  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }), ...(keepOptions ? { keepOptions } : {}), ...(keepDetails ? { keepDetails: true } : {}) });
+  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }), ...(keepOptions ? { keepOptions } : {}), ...(keepValues ? { keepValues: true } : {}), ...(keepDetails ? { keepDetails: true } : {}) });
   // JSON 模式不包哨兵行（否则不再可解析），来源由 JSON 里的 source/fetchStatus/fetchedAt 字段承载。
   const out = mode === 'json' || !sourceMarks ? raw : markSource(raw, info);
   const total = `total ${fmtMs(Date.now() - startedAt)}`;

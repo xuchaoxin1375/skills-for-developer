@@ -134,6 +134,7 @@ console.log('ok - 别名调用可用');
 
 if (!urlProps.keep_options) throw new Error('extract_url missing keep_options param');
 if (!urlProps.keep_details) throw new Error('extract_url missing keep_details param');
+if (!urlProps.keep_values) throw new Error('extract_url missing keep_values param');
 const FORM = `<html><head><title>表单</title></head><body><p>正文</p>
 <label for="c">城市</label><select id="c"><option value="bj">北京</option><option value="sh">上海</option></select>
 </body></html>`;
@@ -144,6 +145,11 @@ const kept = await rpc('tools/call', {
 const keptText = kept.result.content[0].text;
 if (!keptText.includes('## 表单选项') || !keptText.includes('- 北京')) throw new Error('keep_options did not append the option list');
 if (keptText.includes('（bj）')) throw new Error('keep_options should not print option values by default');
+const keptValues = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: true, keep_values: true },
+});
+if (!keptValues.result.content[0].text.includes('- 北京（bj）')) throw new Error('keep_values did not add option values');
 const keptHtml = await rpc('tools/call', {
   name: 'htmlmini_extract_html',
   arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: 'html' },

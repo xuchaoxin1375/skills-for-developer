@@ -27,6 +27,8 @@ const keepOptionsDesc =
   '正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：下拉框、optgroup、datalist、单选/多选的选项按页面顺序列成列表。默认 false：正文模式不收控件值，页面若把清单放在表单里（镜像列表、地区、套餐）就会丢。传 "list" 或 true 只写显示文本（文本为空才用 value）；传 "html" 把下拉框写成真正的 <select> 并保留 value/selected，供支持 HTML 表单控件的查看器交互。';
 const keepDetailsDesc =
   '把正文里被压平的 <details> 原位包回 HTML 块（FAQ、手风琴页），保留折叠结构。需要能在正文里定位到该段并比对成功；定位不到时保持纯文本，不会错包或丢内容。仅 markdown 模式生效。';
+const keepValuesDesc =
+  '与 keep_options 一起用：选项同时输出 value，列表里写成"文本（value）"（option/datalist/单选多选）。默认 false 只写显示文本——value 是提交用的编码值。keep_options:"html" 本来就保留 value 属性。';
 const toTexts = (v) => (v == null ? undefined : Array.isArray(v) ? v : [v]);
 
 /**
@@ -48,6 +50,7 @@ const toOptions = (a) => ({
   textMax: a.text_max,
   allowEmpty: a.allow_empty ?? false,
   keepOptions: a.keep_options === true ? 'list' : a.keep_options ?? false,
+  keepValues: a.keep_values ?? false,
   keepDetails: a.keep_details ?? false,
   proxy: a.proxy,
   render: a.render ?? false,
@@ -86,6 +89,7 @@ const shapeFile = {
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
   keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
 };
 const shapeUrl = {
@@ -98,6 +102,7 @@ const shapeUrl = {
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
   keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
   proxy: z
     .string()
@@ -162,6 +167,7 @@ const shapeHtml = {
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
   keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
 };
 
