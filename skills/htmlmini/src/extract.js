@@ -48,7 +48,7 @@ export const EXTRACTOR_DESCRIPTIONS = {
 };
 export const ATTR_POLICY_DESCRIPTIONS = {
   none: '清空全部属性（最小，但丢链接目标与合并单元格）',
-  semantic: '保留 href/src/alt/title/colspan/rowspan/scope 与表格/表单状态（默认，推荐）',
+  semantic: '保留 href/src/alt/title/colspan/rowspan/scope 与表格/表单状态（value/selected/checked/name/type，默认，推荐）',
   all: '保留全部属性，只去掉脚本与样式',
 };
 export const FORMAT_POLICY_DESCRIPTIONS = {

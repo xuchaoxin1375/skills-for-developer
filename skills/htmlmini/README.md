@@ -22,7 +22,7 @@
 | 清单藏在表单控件里（特色） | `htmlmini page.html -m --keep-options` | 正文模式默认丢控件值；追加"表单选项"：下拉框/optgroup/datalist/单选多选 |
 | 403 / 挑战 / 自动化被拦 | `htmlmini "<URL>" --render` 或 `--render=always --render-engine chrome-late` | 静态优先，挑战站点走晚接入引擎 |
 | 面板、仪表盘、设计稿 | `htmlmini page.html -u` | 按可访问语义出组件清单（标签/按钮/字段/表格） |
-| 要结构不要摘要 | `htmlmini page.html --mode html --attrs semantic` | 保留 DOM 顺序与表格/表单状态 |
+| 要结构不要摘要 | `htmlmini page.html --mode html --attrs semantic` | 保留 DOM 顺序与表格/表单状态（含 value/selected/checked） |
 | 抓一次、多视图复用 | `htmlmini "<URL>" --render=always --save-html page.html` | 之后 `htmlmini page.html -m` / `-u` 不再联网 |
 
 ## 为什么是这个选型（结论）

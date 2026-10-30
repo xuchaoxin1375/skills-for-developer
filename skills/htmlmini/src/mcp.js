@@ -14,7 +14,7 @@ const extractorDesc =
 const modeDesc =
   '输出样式。默认 markdown。"html" 返回清理后的 HTML：保留完整 DOM 结构与文字顺序，去掉脚本/样式/模板/图标/注释；比 markdown 或界面清单更费 token，但不截断——需要结构（表格、表单状态、嵌套）时用它。';
 const attrsDesc =
-  '属性策略，仅对 mode "html" 有效。semantic（默认）：保留 href/src/alt/title/colspan/rowspan/scope 与表格/表单状态，去掉 class/style/id/data-*/aria-*。none：清空全部属性（最小，但丢链接目标与合并单元格）。all：保留全部属性，只去掉脚本与样式。';
+  '属性策略，仅对 mode "html" 有效。semantic（默认）：保留 href/src/alt/title/colspan/rowspan/scope 与表格/表单状态（value/selected/checked/name/type），去掉 class/style/id/data-*/aria-*。none：清空全部属性（最小，但丢链接目标、合并单元格与表单状态）。all：保留全部属性，只去掉脚本与样式。';
 const formatDesc =
   '排版策略，仅对 mode "html" 有效。compact（默认）：压掉源码缩进与空行，行内元素间留一个空格（最小，不重排）。pretty：重新缩进便于人读。raw：保留源码原始空白。';
 const pruneEmptyDesc =

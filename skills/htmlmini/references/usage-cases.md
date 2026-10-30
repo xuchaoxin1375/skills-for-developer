@@ -143,7 +143,7 @@ flowchart TD
 ## 9 要结构而不是摘要
 
 - 命令：`htmlmini page.html --mode html`
-- 默认 `--attrs semantic`（保 `href/src/alt/colspan/rowspan` 与表格 / 表单状态）、`--format compact`（压掉源码缩进与空行）。
+- 默认 `--attrs semantic`（保 `href/src/alt/colspan/rowspan` 与表格 / 表单状态，表单状态含 `value`/`selected`/`checked`/`name`/`type`）、`--format compact`（压掉源码缩进与空行）。
 - 更小：`--attrs none`、`--prune-empty`；更好读：`--format pretty`。
 - 坑：清洗产物会重排（doctype 被提到最前），**不是**浏览器真实 DOM；写选择器 / 字段契约仍要回原始 HTML 或渲染后 DOM。
 
