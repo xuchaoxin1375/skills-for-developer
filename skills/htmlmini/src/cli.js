@@ -49,6 +49,8 @@ ${modeList()}
   --cdp-url <地址>           接管你已开着的浏览器（复用它的 cookie/放行凭据），只读已渲染 DOM
   -p, --proxy <地址>         抓取代理：http(s) 地址，或 direct 绕过环境代理
   --save-html <文件>         落盘实际使用的 HTML（配兄弟 .meta.json），便于换模式复用
+  --expect-text <文本>       断言最终 HTML 含该文本（可重复）；缺失直接失败，不交"空壳"结果
+  --wait-selector <选择器>   渲染时等该 CSS 选择器可见（需 save_page 通路）
   --output <文件>            结果写文件而不是 stdout
   --allow-empty              保留"像应用壳"的结果（默认报错并提示 --render=always）
   --quiet / --verbose        日志静音 / 详细日志
@@ -120,6 +122,16 @@ ${engineList()}
                                不用再抓一次或再渲染一次。仅 URL 输入有效；内容是原始 HTML
                                （不是 --mode html 的清理结果），且在校验之前写盘，
                                所以挑战空壳/空页报错时原文也留得下来
+    --expect-text <文本>       断言最终 HTML 必须包含该文本（可重复，全部命中才算成功）。
+                               缺失时直接报错，不把"渲染成功但没有目标块"当成结果；
+                               静态抓取与渲染后都会校验，渲染时同时透传给 save_page，
+                               让它按引擎升档而不是提前交差。用于下拉清单、商品名、
+                               价格这类"有没有真的抓到"的判据
+    --wait-selector <选择器>   渲染时等该 CSS 选择器可见再取 DOM（save_page 通路的
+                               playwright / scrapling / chrome-late 等；零依赖 chrome
+                               dump-dom 没有等待钩子，给了它会改用 save_page）
+    --post-wait-ms <毫秒>      取 DOM 前额外等待（save_page 默认 1000）；数据在 load
+                               之后才到的页面用它补齐，与 --wait-selector 一起用更稳
     -o, --output <文件>        结果写文件而不是 stdout（文件末尾恰好一个换行；
                                比 shell 管道更稳，管道可能多出空行）
     --completion <shell>       打印补全脚本：bash | powershell
@@ -197,7 +209,11 @@ ${ENV_HELP.map((line) => `  ${line}`).join('\n')}
   cat page.html | htmlmini - --text
   htmlmini page.html --output out.md --no-source-marks --quiet
 
-  # 10) 与 resilient-browser-fetch 配合（渲染产物 + 兄弟 .meta.json 会被自动利用）
+  # 10) 异步清单 / 下拉框：等目标块出现，并断言真的抓到（缺了直接失败）
+  htmlmini "https://example.com/list" --render=always \
+    --wait-selector '#list li' --expect-text '<清单里必有的文本>'
+
+  # 11) 与 resilient-browser-fetch 配合（渲染产物 + 兄弟 .meta.json 会被自动利用）
   python ../resilient-browser-fetch/scripts/resilient_fetch.py --url "https://example.com/app" --out app.html --engine chrome-late
   htmlmini app.html --json
 
@@ -283,6 +299,9 @@ let pythonBin;
 let saveHtml;
 let renderEngine;
 let cdpUrl;
+let expectTexts = [];
+let waitSelector;
+let postWaitMs;
 let attrs = 'semantic';
 let format = 'compact';
 let pruneEmpty = false;
@@ -362,6 +381,48 @@ for (let i = 0; i < argv.length; i++) {
     else if (a === '--render-engine') renderEngine = v;
     else if (a === '--cdp-url') cdpUrl = v;
     else await printCompletion(v);
+  } else if (a === '--expect-text') {
+    const v = argv[++i];
+    if (!v) {
+      log.error('--expect-text needs a value');
+      process.exit(2);
+    }
+    expectTexts.push(v);
+  } else if (a.startsWith('--expect-text=')) {
+    const [, v] = splitEq(a);
+    if (!v) {
+      log.error('--expect-text needs a value');
+      process.exit(2);
+    }
+    expectTexts.push(v);
+  } else if (a === '--wait-selector') {
+    const v = argv[++i];
+    if (!v) {
+      log.error('--wait-selector needs a CSS selector');
+      process.exit(2);
+    }
+    waitSelector = v;
+  } else if (a.startsWith('--wait-selector=')) {
+    const [, v] = splitEq(a);
+    if (!v) {
+      log.error('--wait-selector needs a CSS selector');
+      process.exit(2);
+    }
+    waitSelector = v;
+  } else if (a === '--post-wait-ms') {
+    const v = argv[++i];
+    postWaitMs = Number(v);
+    if (!Number.isFinite(postWaitMs) || postWaitMs < 0) {
+      log.error(`--post-wait-ms needs a number >= 0 (got "${v ?? ''}")`);
+      process.exit(2);
+    }
+  } else if (a.startsWith('--post-wait-ms=')) {
+    const [, v] = splitEq(a);
+    postWaitMs = Number(v);
+    if (!Number.isFinite(postWaitMs) || postWaitMs < 0) {
+      log.error(`--post-wait-ms needs a number >= 0 (got "${v ?? ''}")`);
+      process.exit(2);
+    }
   } else if (a === '--compact') {
     format = 'compact';
   } else if (a === '--pretty') {
@@ -496,7 +557,7 @@ function markSource(out, info) {
 
 try {
   const startedAt = Date.now();
-  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }) });
+  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }) });
   // JSON 模式不包哨兵行（否则不再可解析），来源由 JSON 里的 source/fetchStatus/fetchedAt 字段承载。
   const out = mode === 'json' || !sourceMarks ? raw : markSource(raw, info);
   const total = `total ${fmtMs(Date.now() - startedAt)}`;

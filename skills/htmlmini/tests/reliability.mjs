@@ -1153,7 +1153,12 @@ open(out, 'w', encoding='utf-8').write(
 argv = sys.argv[1:]
 out = argv[argv.index('--out') + 1]
 engine = argv[argv.index('--engine') + 1] if '--engine' in argv else 'auto'
-open(os.environ['STUB_CALLS'], 'a', encoding='utf-8').write(engine + '\\n')
+open(os.environ['STUB_CALLS'], 'a', encoding='utf-8').write(json.dumps({
+    'engine': engine,
+    'wait_selector': argv[argv.index('--wait-selector') + 1] if '--wait-selector' in argv else None,
+    'post_wait_ms': argv[argv.index('--post-wait-ms') + 1] if '--post-wait-ms' in argv else None,
+    'expect_texts': [argv[i + 1] for i, a in enumerate(argv) if a == '--expect-text'],
+}) + '\\n')
 if engine == 'auto':
     html = ('<!doctype html><html><head><title>静态壳</title></head><body><article><h1>静态壳</h1><p>'
             + '静态抓取拿到正文但下拉列表是空的。' * 20 + '</p></article></body></html>')
@@ -1167,19 +1172,40 @@ json.dump({'status': 200, 'engine': 'static' if engine == 'auto' else engine},
 `,
         'utf8',
       );
-      for (const k of ['HTMLMINI_RENDER_SCRIPT', 'STUB_CALLS']) saved[k] = process.env[k];
+      const fakeChrome = path.join(dir, 'fake-chrome.mjs');
+      const chromeMarker = path.join(dir, 'chrome.log');
+      await writeFile(
+        fakeChrome,
+        `import { appendFileSync } from 'node:fs';
+if (process.env.CHROME_MARKER) appendFileSync(process.env.CHROME_MARKER, 'chrome-invoked\\n');
+process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head><body>'
+  + '<article><h1>Chrome标题</h1><p>' + 'Chrome正文内容足够长可以被识别为主体。'.repeat(10) + '</p></article>'
+  + '</body></html>');
+`,
+        'utf8',
+      );
+      for (const k of ['HTMLMINI_RENDER_SCRIPT', 'STUB_CALLS', 'HTMLMINI_CHROME_BIN', 'CHROME_MARKER']) saved[k] = process.env[k];
       process.env.HTMLMINI_RENDER_SCRIPT = stub;
       process.env.STUB_CALLS = calls;
+      process.env.HTMLMINI_CHROME_BIN = fakeChrome;
+      process.env.CHROME_MARKER = chromeMarker;
 
       const hydrated = await runExtract(`${base}/article`, 'markdown', { render: 'always', renderTimeoutMs: 90000 });
-      const first = (await readFile(calls, 'utf8')).trim().split('\n');
+      const first = (await readFile(calls, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
       ok(hydrated.includes('水合后的正文'), 'render=always 拿到执行过 JS 的正文');
-      ok(first.length === 2 && first[1] === 'playwright', 'static 层交差后改用 playwright 重渲染');
+      ok(first.length === 2 && first[1].engine === 'playwright', 'static 层交差后改用 playwright 重渲染');
 
       await writeFile(calls, '');
       await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 90000 });
-      const fallback = (await readFile(calls, 'utf8')).trim().split('\n');
-      ok(fallback.length === 1 && fallback[0] === 'auto', '非 always 的回退路径不为水合多跑一次');
+      const fallback = (await readFile(calls, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+      ok(fallback.length === 1 && fallback[0].engine === 'auto', '非 always 的回退路径不为水合多跑一次');
+
+      // 等待参数只能由 save_page 执行：给了就不许退到 chrome dump-dom。
+      await writeFile(calls, '');
+      await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 90000, waitSelector: '#nodeSelector option', postWaitMs: 1500 });
+      const waited = (await readFile(calls, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+      ok(waited.length === 1 && waited[0].wait_selector === '#nodeSelector option' && waited[0].post_wait_ms === '1500', '等待参数透传到 save_page');
+      ok(!existsSync(chromeMarker), '给了 --wait-selector 时不退到 chrome dump-dom');
     } finally {
       for (const k of Object.keys(saved)) {
         if (saved[k] === undefined) delete process.env[k];
@@ -1197,6 +1223,22 @@ json.dump({'status': 200, 'engine': 'static' if engine == 'auto' else engine},
   ok(pickHydrationEngine({ engines: ['static', 'scrapling'], renderTimeoutMs: 90000 }) === 'scrapling', '没有纯渲染层时用求解引擎');
   ok(pickHydrationEngine({ engines: ['static', 'scrapling'], renderTimeoutMs: 9000 }) === null, '求解引擎预算不够时明确失败');
   ok(pickHydrationEngine({ engines: ['static'] }) === null, '没有浏览器层时明确失败');
+}
+
+// ---- 13h. 目标断言：抓到了页面但没有目标块，不能算成功 ----
+{
+  const hit = await runExtract(`${base}/article`, 'text', { expectTexts: ['正文内容足够长'] });
+  ok(hit.includes('正文内容足够长'), '目标文本命中时正常返回');
+
+  let missing = null;
+  try {
+    await runExtract(`${base}/article`, 'text', { expectTexts: ['正文内容足够长', '不存在的标记'] });
+  } catch (e) {
+    missing = e;
+  }
+  ok(missing && /missing expected text/.test(missing.message) && missing.expectedTextMissing === true, '目标文本缺失时明确失败');
+  ok(!isInterpreterRetryable(missing), '目标文本缺失不触发解释器升档');
+  ok(/--render=always/.test(missing.message), '静态缺文本时提示先渲染');
 }
 
 // ---- 14. Chrome 直渲通路：零依赖回退 / headful 限制 / save_page 优先 ----
@@ -1625,6 +1667,13 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   ok(withoutBin.includes('--discover-proxy'), '未指定代理时让渲染脚本自己发现代理');
   ok(!withoutBin.includes('--headful'), '未开窗时不带 --headful');
   ok(withBin[withBin.indexOf('--render-timeout-ms') + 1] === '60000', '渲染预算上限压到 60s');
+
+  const guarded = savePageArgs({ ...base, expectTexts: ['甲清单', '乙清单'], waitSelector: '#nodeSelector option', postWaitMs: 1500 });
+  const textAt = guarded.indexOf('--expect-text');
+  ok(textAt >= 0 && guarded[textAt + 1] === '甲清单' && guarded.filter((a) => a === '--expect-text').length === 2, '目标断言逐条透传 --expect-text');
+  ok(guarded[guarded.indexOf('--wait-selector') + 1] === '#nodeSelector option', '选择器等待透传 --wait-selector');
+  ok(guarded[guarded.indexOf('--post-wait-ms') + 1] === '1500', '额外等待透传 --post-wait-ms');
+  ok(!savePageArgs(base).includes('--expect-text'), '未给断言时不带 --expect-text');
 }
 
 await new Promise((resolve) => server.close(resolve));

@@ -750,7 +750,7 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   return html;
 }
 
-export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, info = null, forceRender = false } = {}) {
+export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, info = null, forceRender = false, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
   const { script, engines, solver, python } = await renderCapability(pythonBin, { renderTimeoutMs });
   // 记下实际用的解释器：渲染失败时要能回退到默认环境（更强环境可能没装浏览器二进制）。
   if (info) info.python = python;
@@ -806,6 +806,9 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
     browserBrand,
     info,
     solver,
+    expectTexts,
+    waitSelector,
+    postWaitMs,
   });
   // render=always 的语义是"必须执行 JS"。save_page 的 auto 阶梯以 static 层起步，页面 200 时
   // 它先"成功"，交回未水合 HTML；这时换浏览器层重跑一次，而不是把没跑脚本的 DOM 当结果。
@@ -823,8 +826,15 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
     for (const k of ['status', 'engine', 'notes']) delete info[k];
     return await runSave(engine);
   };
-  if (canSavePage && (pinned || solver || headful || !found || cdpUrl)) {
+  // 等选择器/补等待只能由 save_page 执行（chrome dump-dom 没有等待钩子），给了就必须走 save_page。
+  if (canSavePage && (pinned || solver || headful || !found || cdpUrl || waitSelector || postWaitMs != null)) {
     return await ensureHydrated(await runSave());
+  }
+  if (waitSelector || postWaitMs != null) {
+    log.info(
+      'render',
+      `--wait-selector / --post-wait-ms 只在 save_page 通路生效；本次用 chrome dump-dom，等待被忽略（装 playwright 或钉 --render-engine playwright）`,
+    );
   }
   if (found) {
     try {
@@ -871,6 +881,8 @@ function pythonHint(python, alternative) {
 export function isInterpreterRetryable(e) {
   const m = String(e?.message ?? '');
   if (!m) return false;
+  // 目标文本缺失是页面/数据源的问题，换解释器不会变。
+  if (e?.expectedTextMissing) return false;
   if (/renderer not found|no python found|interpreter is not usable/i.test(m)) return false;
   if (/ENOTFOUND|EAI_AGAIN|\b(?:404|410)\b/.test(m)) return false;
   return /challenge|save_page|engine|引擎|render|渲染|chrome|dump-dom|timeout|超时/i.test(m);
@@ -994,6 +1006,9 @@ export function savePageArgs({
   headful = false,
   chromeBin = null,
   browserBrand = null,
+  expectTexts = [],
+  waitSelector = null,
+  postWaitMs = null,
 }) {
   // -X utf8 + PYTHONUTF8：子进程日志强制 UTF-8 输出，本侧按 UTF-8 增量解码、
   // 逐行透传（Windows 控制台查看侧按 powershell-pitfalls 的 UTF-8 模板设置）。
@@ -1013,6 +1028,11 @@ export function savePageArgs({
   if (chromeBin) args.push('--executable-path', chromeBin);
   // 品牌偏好: 让渲染脚本按品牌去找已安装的浏览器(不用自己写路径)。
   if (browserBrand) args.push('--browser-brand', browserBrand);
+  // 目标断言与等待：交给 save_page 在浏览器层执行，它会在缺失时升档、最终失败，
+  // 比拿到"渲染成功但没有目标块"的 HTML 再猜要可靠。
+  for (const text of expectTexts) args.push('--expect-text', text);
+  if (waitSelector) args.push('--wait-selector', waitSelector);
+  if (postWaitMs != null) args.push('--post-wait-ms', String(postWaitMs));
   return args;
 }
 
@@ -1042,7 +1062,7 @@ export function pickHydrationEngine({ engines = null, renderTimeoutMs = RENDER_T
   return null;
 }
 
-async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info = null, solver = false }) {
+async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info = null, solver = false, expectTexts = [], waitSelector = null, postWaitMs = null }) {
   const interpreter = python ?? (await findPython({ pythonBin }));
   const proxyUrl = resolveProxy(url, { proxy });
   const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
@@ -1066,6 +1086,9 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
     headful,
     chromeBin,
     browserBrand,
+    expectTexts,
+    waitSelector,
+    postWaitMs,
   });
   const proxyNote = describeProxy(url, proxy);
   const browserNote = chromeBin
@@ -1191,7 +1214,7 @@ export function isRenderableError(e) {
 
 export async function readWithRender(
   source,
-  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, allowEmpty = false } = {},
+  { timeoutMs = FETCH_TIMEOUT_MS, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, allowEmpty = false, expectTexts = [], waitSelector = null, postWaitMs = null } = {},
 ) {
   const remote = /^https?:\/\//i.test(source ?? '');
   const tRead = Date.now();
@@ -1222,6 +1245,22 @@ export async function readWithRender(
       );
     }
     log.debug('read', `source=${r.source ?? source} status=${Number.isFinite(status) ? status : 'unknown'} contentType=${r.contentType ?? 'unknown'}${r.engine ? ` engine=${r.engine}` : ''}${remote ? ` render=${render === 'always' ? 'always' : render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
+    // 目标断言：抓取端的"成功"不能只看状态码。文本缺失时明确失败，
+    // 不把"拿到了页面但没有目标块"当成结果交出去。
+    if (expectTexts.length) {
+      const missing = expectTexts.filter((t) => !String(r.html ?? '').includes(t));
+      if (missing.length) {
+        const err = new Error(
+          `missing expected text (${missing.map((t) => JSON.stringify(t)).join(', ')}): `
+          + (r.rendered
+            ? '浏览器取到的 HTML 里没有这些文本——换 --render-engine（chrome-late / scrapling）、调大 --render-timeout-ms，或确认文本在接口/图片里而不是 DOM'
+            : '静态 HTML 里没有这些文本——页面可能要等 JS 执行，加 --render=always；或改抓页面自己取的数据源'),
+        );
+        // 换解释器解决不了"目标文本不在页面里"，别触发升档。
+        err.expectedTextMissing = true;
+        throw err;
+      }
+    }
     return r;
   };
   // 渲染通路拿到的仍是挑战空壳时，别把"水合没做"当成原因：零依赖 Chrome 只渲染、不求解。
@@ -1268,6 +1307,9 @@ export async function readWithRender(
       ...(renderEngine == null ? {} : { renderEngine }),
       ...(cdpUrl == null ? {} : { cdpUrl }),
       ...(render === 'always' ? { forceRender: true } : {}),
+      ...(expectTexts.length ? { expectTexts } : {}),
+      ...(waitSelector == null ? {} : { waitSelector }),
+      ...(postWaitMs == null ? {} : { postWaitMs }),
     });
     return guardRendered({ html, source, contentType: 'text/html', rendered: true });
   };
@@ -2378,7 +2420,7 @@ export async function runExtract(source, mode = 'markdown', options = {}) {
  * 与 runExtract 相同，但把来源信息（URL、状态码、是否渲染、抓取时刻）一起返回，
  * 供调用方做来源标记或 JSON 字段；CLI 用它生成起止行。
  */
-export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml } = {}) {
+export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -2408,6 +2450,9 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
         ...(pythonBin == null ? {} : { pythonBin }),
         ...(renderEngine == null ? {} : { renderEngine }),
         ...(cdpUrl == null ? {} : { cdpUrl }),
+        ...(expectTexts.length ? { expectTexts } : {}),
+        ...(waitSelector == null ? {} : { waitSelector }),
+        ...(postWaitMs == null ? {} : { postWaitMs }),
         allowEmpty,
       },
     );

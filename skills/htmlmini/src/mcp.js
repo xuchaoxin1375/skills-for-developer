@@ -24,8 +24,9 @@ const textMaxDesc =
   '仅对 mode "ui"（或 extractor "ui"）有效：单条文本的字符上限。默认 150；更长的段落（商品描述、FAQ 正文、条款）会从清单里剔除，输出里会报告剔除了多少条。设 0 表示不限制——当界面清单是唯一视图、长段落本身重要时用它。';
 const allowEmptyDesc =
   '即使结果像"客户端渲染应用壳"（正文不足 200 字符而 HTML 不小于 5 KB）也保留。默认 false：这类页面报错并提示改用 render:"always"，因为静态 HTML 里还没有正文。';
+const toTexts = (v) => (v == null ? undefined : Array.isArray(v) ? v : [v]);
 
-async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml }) {
+async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts, waitSelector, postWaitMs }) {
   const { html, source, contentType, rendered } = await readWithRender(
     src,
     {
@@ -38,6 +39,9 @@ async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, t
       ...(pythonBin == null ? {} : { pythonBin }),
       ...(renderEngine == null ? {} : { renderEngine }),
       ...(cdpUrl == null ? {} : { cdpUrl }),
+      ...(expectTexts && expectTexts.length ? { expectTexts } : {}),
+      ...(waitSelector == null ? {} : { waitSelector }),
+      ...(postWaitMs == null ? {} : { postWaitMs }),
       allowEmpty: allowEmpty === true,
     },
   );
@@ -129,6 +133,18 @@ const shapeUrl = {
     .string()
     .optional()
     .describe('接管你已经开着的浏览器（如 --remote-debugging-port 启动的 Chrome/Edge），复用它自己的 profile、cookie 与放行凭据，只读它里已渲染的 DOM，不会关闭它。适用：同一台机器、同一个出口，你的浏览器能打开而任何自建浏览器都被拒——决定放行的是客户端身份与网络路径，不是 IP 信誉时用它。浏览器里没有目标页时会报错并提示先手动打开。'),
+  expect_text: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .describe('目标断言：最终 HTML 必须包含这些文本（可重复/数组，全部命中才算成功）。缺失时直接报错，而不是把"渲染成功但没有目标块"当结果交出去；渲染时同时透传给 save_page，让它按引擎升档。用于下拉清单、商品名、价格这类"有没有真的抓到"的判据。'),
+  wait_selector: z
+    .string()
+    .optional()
+    .describe('渲染时等该 CSS 选择器可见再取 DOM（走 save_page 通路；零依赖 chrome dump-dom 没有等待钩子，给了它会改用 save_page）。异步清单、懒加载区块用它替代盲等。'),
+  post_wait_ms: z
+    .number()
+    .optional()
+    .describe('取 DOM 前额外等待毫秒数（save_page 默认 1000）。数据在 load 之后才到的页面用它补齐，与 wait_selector 一起用更稳。'),
 };
 const shapeHtml = {
   html_content: z.string().describe('Raw HTML source code string'),
@@ -146,13 +162,14 @@ server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, e
   content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
-server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, browser_brand, python_bin, save_html, render_engine, cdp_url }) => ({
+server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, browser_brand, python_bin, save_html, render_engine, cdp_url, expect_text, wait_selector, post_wait_ms }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
       format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
       proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, browserBrand: browser_brand, pythonBin: python_bin, saveHtml: save_html, renderEngine: render_engine, cdpUrl: cdp_url,
+      expectTexts: toTexts(expect_text), waitSelector: wait_selector, postWaitMs: post_wait_ms,
     }),
   }],
 }));
@@ -166,13 +183,14 @@ server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async
   content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
 }));
 
-server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, browser_brand, python_bin, cdp_url }) => ({
+server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, browser_brand, python_bin, cdp_url, expect_text, wait_selector, post_wait_ms }) => ({
   content: [{
     type: 'text',
     text: await handleSource(url, {
       mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
       format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
       proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, browserBrand: browser_brand, pythonBin: python_bin, cdpUrl: cdp_url,
+      expectTexts: toTexts(expect_text), waitSelector: wait_selector, postWaitMs: post_wait_ms,
     }),
   }],
 }));

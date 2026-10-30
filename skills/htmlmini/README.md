@@ -10,6 +10,20 @@
 - 静态抓取成功但正文极短（< 200 字符且 HTML ≥ 5 KB）时默认报错，提示改用 `--render=always`，避免把应用壳 / 离线页当成正文；确认页面本来就这么短时加 `--allow-empty`。`title` / `skeleton` 不受此检查影响。
 - 页面数据由后端接口下发（SPA、白标商城、后台面板）时，先提取可见字段，再按[案例 11](references/usage-cases.md#11-后端接口--xhr-数据源)查页面自己的 XHR/fetch 接口核对；渲染文本只作展示校验，接口也不是公开契约。
 
+## 核心用例
+
+按"最先要解决的事"排，不按功能清单排；完整场景与坑见 [references/usage-cases.md](references/usage-cases.md)。
+
+| 场景 | 命令 | 说明 |
+|---|---|---|
+| 文章、博客、文档（最常用） | `htmlmini "<URL>" -o page.md` | 默认 Markdown，Defuddle 正文 |
+| 静态 200 但正文要等水合 | `htmlmini "<URL>" --render=always` | 强制执行 JS；拿到 `engine=static` 会自动换浏览器层重跑 |
+| 异步清单 / 下拉框 / 懒加载（特色） | `htmlmini "<URL>" --render=always --wait-selector '<目标块>' --expect-text '<必有文本>'` | 等目标节点出现并断言真的抓到，缺了直接失败 |
+| 403 / 挑战 / 自动化被拦 | `htmlmini "<URL>" --render` 或 `--render=always --render-engine chrome-late` | 静态优先，挑战站点走晚接入引擎 |
+| 面板、仪表盘、设计稿 | `htmlmini page.html -u` | 按可访问语义出组件清单（标签/按钮/字段/表格） |
+| 要结构不要摘要 | `htmlmini page.html --mode html --attrs semantic` | 保留 DOM 顺序与表格/表单状态 |
+| 抓一次、多视图复用 | `htmlmini "<URL>" --render=always --save-html page.html` | 之后 `htmlmini page.html -m` / `-u` 不再联网 |
+
 ## 为什么是这个选型（结论）
 
 JS 静态提取这条线上，[Defuddle](https://github.com/kepano/defuddle)（Obsidian 团队维护）已经是上位选择：相对 Mozilla Readability，对代码块/LaTeX/现代 SPA 更宽容，还有站点抽取器注册表。没有直接 drop-in 更强的 JS 方案。
@@ -152,6 +166,11 @@ htmlmini "https://example.com/app" --render --python-bin auto
 # 渲染一次、多视图复用：留下原文 + 页面 URL，之后各模式读该文件，不重复渲染
 htmlmini "https://example.com/app" --render=always --save-html app.html -m
 htmlmini app.html -u
+
+# 目标断言 + 等待：异步清单/懒加载块别盲等，等选择器出现并断言目标文本，
+# 缺了就报错，不把"渲染成功但没有目标块"当结果
+htmlmini "https://example.com/list" --render=always \
+  --wait-selector '#nodeSelector option' --expect-text '<清单里必有的文本>'
 
 # 已知该站需要层 2：钉住引擎，不再每次重跑注定失败的 static / playwright（显式即严格，缺件直接报错）
 htmlmini "https://example.com/app" --render --render-engine scrapling --python-bin auto

@@ -240,6 +240,7 @@ flowchart TD
 判据与取法：
 
 - 先看 `--json` 的 `engine` 或日志 `[read] … engine=`：`static` = 没执行 JS；`playwright` / `chrome-late` / `chrome-dump` = 执行了。`static` 时不要继续换模式，先解决"渲染没落地"。
+- 一条命令取全量：`htmlmini "<URL>" --render=always --wait-selector '#nodeSelector option' --expect-text '<清单里必有的文本>' --save-html page.html`——等目标块出现再断言，缺了直接失败。
 - 动态块通常有单一数据源：直接抓页面自己取的同目录文件或接口 JSON，比开浏览器更准、更省（本例一次静态请求就得到 92 条）。
 - 要 DOM 全量就 `--save-html` 落盘后按节点取，别指望正文模式给控件值。
 - 站点侧根治：把清单内联进 HTML 或构建期预渲染，抓取端就不必为一块数据跑 JS。
