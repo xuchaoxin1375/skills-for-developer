@@ -91,20 +91,31 @@ curl 默认不会把 HTTP 403 判为进程失败，下载交付可用 `--fail` �
 
 GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-remaining`、`x-ratelimit-reset` 与 `retry-after`。官方规则要求等待指定冷却；已确认次级限流且无等待值时至少等 1 分钟，后续再指数退避。供应商明确规则优先于通用退避起点，不能将所有 403 当作网络不通。
 
-## 无代理的 GitHub 文件加速
+## GitHub 加速镜像
 
-可从 [GitHub 文件加速](https://yishijie.gitlab.io/ziyuan/) 与 [gh-proxy 镜像站点收集](https://github.com/hunshcn/gh-proxy/issues/116) 发现候选；列表收录不证明当下可用。服务可能有 URL 白名单、文件大小、地域、配额及访问频次限制，引用前核验目标，不维护“永久可用”的域名清单。
+加速镜像用于公开 GitHub 资源的取回：raw 单文件、Release 资产、archive 压缩包，以及部分服务支持的只读 git 传输。它只解决"取得到、取得快"，不解决权限、私有资源和推送，所以按资源类型与体积选路，不按"哪个站点还活着"选。
 
-对支持的公开 GitHub 文件，可按服务规则把加速前缀包裹在完整原链接之前。例如候选形式 `https://gh-proxy.com/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`；这是 GitHub 资源加速，不是通用文档代理。Release、archive、raw、网页和 git clone 各自验证，不能从一种推断另一种可用。
+| 资源 | 首选 | 回退 | 说明 |
+| --- | --- | --- | --- |
+| raw 单文件、文档、KB 级小资产 | 已核验代理 | 有界直连 → 已核验加速前缀 | 流量小，代理额度消耗可忽略 |
+| Release 资产、archive、数 MB 以上的安装包 | 已核验加速镜像 | 有界直连 → 代理（仅在有额度余量时） | 大流量默认不占代理额度；实测代理可能更快，按当次样本选路 |
+| 只读克隆、`ls-remote` | 代理 → SSH 443 | 支持 git 传输的加速前缀 → 有界直连 | 先用 `ls-remote` 核验该站是否支持 git 传输；克隆后把 remote 改回原站，推送一律原站 |
+| 仓库网页、REST API | 代理 / 直连 | — | 加速前缀不适用 |
 
-- 记录原始 URL、加速 URL、测试日期、执行位置、路线、HTTP/退出码、最终 URL、耗时及内容核验方式。引用事实仍指向原始官方来源，取回路径另记。
-- 同一公开文件可比较原站与加速结果的 SHA-256；下载产物优先对照官方签名/校验值。原站不可达且无可信校验时，只能说明“文件取回”，不能声称与原文一致。
+没有可用代理时，小文件走有界直连、失败再试加速前缀；大文件直接用已核验的加速镜像。
+
+用法：按服务规则把完整原链接放在前缀之后，例如 `https://gh-proxy.com/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`。这是 GitHub 资源加速，不是通用文档代理；Release、archive、raw、网页和 git 传输各自核验，不能从一种推断另一种可用。
+
+- 每次使用记录原始 URL、加速 URL、日期、执行位置、路线、HTTP/退出码、最终 URL、耗时与大小；有官方校验值时比对 SHA-256。原站不可达且无可信校验时只能说"文件取回"，不能声称与原文一致。
+- 小样本测速只用于当次选路，不写成"某站更快"的长期结论；同一入口的表现随文件大小、时段与并发变化。一个文件可用只覆盖该目标与当时出口。
+- 候选可从 [GitHub 文件加速](https://yishijie.gitlab.io/ziyuan/) 与 [gh-proxy 镜像站点收集](https://github.com/hunshcn/gh-proxy/issues/116) 发现；列表收录不证明当下可用，不维护"永久可用"的域名清单。
 - 第三方公共服务只用于适合公开分发的资源，不向其转发私有仓库、令牌、Cookie 或签名下载 URL；不关闭 TLS 校验来掩盖证书错误。
-- 一个小文件可用只覆盖该目标与当时出口；生产、WSL/容器、其他平台、大文件和 git clone 的状态另行验证。限流后遵守冷却，不能逐个镜像轮询同一受限站点。
+- 403/429 明确限流时遵守冷却，不轮换镜像绕过；WAF 挑战页按错误分流转 `resilient-browser-fetch`，不默认套加速前缀。
+- 加速取回失败（404、白名单拒绝、超时）先确认原始链接与服务支持范围，再换候选或回退路线；生产环境不依赖第三方公共加速，发布物走官方渠道或自有镜像。
 
 ## GitHub 与 Git 客户端
 
-GitHub 的网页/raw、git 传输（`clone`/`fetch`/`push`）和 LFS 对象是不同入口，可达性互不推断。文件加速只服务文件取回，不能当 remote 或 clone 源；推送走原站，不经第三方加速。
+GitHub 的网页/raw、git 传输（`clone`/`fetch`/`push`）和 LFS 对象是不同入口，可达性互不推断。加速镜像的 git 传输支持需逐站核验（`ls-remote` 可通不代表 `clone` 稳定），推送一律走原站。
 
 - **代理**：有可用代理时用本次命令的 `-c http.proxy=<代理URL> -c https.proxy=<代理URL>`，不改全局 `http.proxy` 或 `url.*.insteadOf`。git 经 libcurl 读 `http_proxy`/`https_proxy`/`NO_PROXY`，但 `NO_PROXY` 排除目标或客户端自有配置会让它静默改路；用 `GIT_TRACE=1` 或 `GIT_CURL_VERBOSE=1` 看实际请求，输出含目标地址与代理，贴出前去掉凭据。代理地址带用户名密码时用进程环境变量传入，避免出现在命令行与进程列表。
 - **SSH**：22 端口在国内常被阻断。先 `ssh -T -p 443 git@ssh.github.com` 验证，可用时用 `GIT_SSH_COMMAND='ssh -p 443 -o HostName=ssh.github.com'` 或本次 `-c core.sshCommand=...`；`~/.ssh/config` 属于全局配置，用户未要求不改。
