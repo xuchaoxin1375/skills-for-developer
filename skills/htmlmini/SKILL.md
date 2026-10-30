@@ -90,6 +90,7 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 按症状走，不要先怀疑页面没内容：
 
 - **输出只剩区块标题/正文为空**：先判断是否客户端渲染；是则按[案例 4](references/usage-cases.md#4-静态-200正文要水合)用 `--render=always` 渲染一次，确认水合后的 DOM 有没有正文。仍为空（或本来就是静态页）再按[案例 5](references/usage-cases.md#5-输出只剩区块标题)查 JSON-LD 与内联 state。任何模式的输出都不含 `<script>`，"输出里没有"不等于"页面里没有"。
+- **渲染后下拉框/列表仍是空的**：先看 `[read] … engine=` 或 `--json` 的 `engine`——`static` 说明渲染被 save_page 的静态层顶掉（旧版本），钉 `--render-engine playwright` 重跑。engine 已是浏览器层时，多半是数据在快照之后才到，或 `<option>`、分页、懒加载列表被正文模式当样板剔除：调大 `--render-timeout-ms`，并优先抓页面自己取的数据源（同目录数据文件、接口 JSON，见[案例 4](references/usage-cases.md#4-静态-200正文要水合)）。
 - **`ui` 清单末尾被截断或长段落整条缺失**：预算与长文本上限见[案例 3](references/usage-cases.md#3-面板仪表盘设计稿)；换 `markdown` / `text`，或按锚点切出目标片段再喂一次 `ui`。
 - **403/5xx/挑战页**：先加 `--render`，静态失败才回退浏览器；静态 200 但仍被挑战或需要求解时，走 `resilient-browser-fetch` 的 save_page 落盘后再提取。渲染后仍是挑战空壳时 htmlmini 会直接点名挑战特征并按[案例 6](references/usage-cases.md#6-静态-4035xx-或挑战特征)继续，不会让你反复 `--render=always`。本地引擎与有头浏览器都不行、或页面需要你的登录态时，用自己浏览器导出 HTML 再提取；第三方 reader 与归档辅助路线（含免费额度与边界）见 [references/aux-readers.md](references/aux-readers.md)，使用前需用户同意。404/超时/断网直接报错。
 - **两个渲染通路都失败、或日志里解释器不像是装了引擎的那个**：没显式指定 `--python-bin` 时，htmlmini 已会自动扫描本机环境：默认解释器不具备挑战求解能力就**先换到装了层 2/3 的那个环境**（日志 `[render]` 打印"改用更强环境"），它仍失败再回退默认解释器重试一次（日志打印两次用的解释器）。仍失败时才手动收窄：`--python-bin auto` 固定为扫描结果，或用 `<resilient-browser-fetch>/scripts/check_environment.py --list-envs` 找出带 scrapling/cloak-cdp 的那个环境再指名路径；不要因为默认 `python` 缺引擎就下"页面取不到"的结论。需要整机资源全景时先跑 [resource-inventory](../resource-inventory/SKILL.md)。
@@ -113,11 +114,11 @@ URL 状态：静态 200 但正文为空加 `--render=always`；静态 403/5xx �
 - 同一 URL 是否只抓一次，后续模式复用落盘文件？
 - 论坛、列表、评论区是否用站点自身的总数或分页接口核对覆盖范围，而不是拿渲染后的节点数当全量？
 - 客户端渲染页空输出时，是否先 `--render=always`、再查内嵌数据，而不是写成“页面未提供”？挑战特征明显时，是否换求解通路而不是反复渲染？渲染失败时，是否先看自动升档后的解释器与日志，而不是直接判定“页面取不到”？
-- 字段不全或数值可疑时，是否核对页面自带的结构化数据/接口 JSON，而不是只信渲染文本或猜接口？
+- 字段不全或数值可疑时，是否核对页面自带的结构化数据/接口 JSON，而不是只信渲染文本或猜接口？动态块（下拉项、清单）是否先找页面自己取的数据源？
 - 写选择器/字段契约时，是否回到原始或渲染 DOM 核对，而没有把剥掉属性的骨架当契约？
 
 ## 按需深入
 
-- [references/usage-cases.md](references/usage-cases.md)：按页面类型与症状取命令。文章 1、营销/定价 2、面板 3、水合 4、内嵌数据 5、403/5xx 6、批量 7、大纲 8、结构 9、非 HTML 10、后端接口 11、论坛/列表 12。
+- [references/usage-cases.md](references/usage-cases.md)：按页面类型与症状取命令。文章 1、营销/定价 2、面板 3、水合 4、内嵌数据 5、403/5xx 6、批量 7、大纲 8、结构 9、非 HTML 10、后端接口 11、论坛/列表 12、晚接入 13、应用错误态 14、WAF 拒绝 15、同目录数据源 16。
 - [README.md](README.md)：安装、模式与体积对照、与内建 fetch 的取舍、日志、MCP、架构。
 - 同站批量渲染与并发：`resilient-browser-fetch` 的 `references/batch-workflows.md`。

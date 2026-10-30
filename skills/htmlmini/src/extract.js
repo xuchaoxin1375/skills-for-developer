@@ -750,7 +750,7 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   return html;
 }
 
-export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, info = null } = {}) {
+export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TIMEOUT_MS, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, info = null, forceRender = false } = {}) {
   const { script, engines, solver, python } = await renderCapability(pythonBin, { renderTimeoutMs });
   // 记下实际用的解释器：渲染失败时要能回退到默认环境（更强环境可能没装浏览器二进制）。
   if (info) info.python = python;
@@ -793,8 +793,38 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
 
   // 有求解引擎、需要开窗、本机没有 Chrome、显式钉了引擎，或要接管用户已开着的浏览器时，save_page 更合适；
   // 层 1 与 Chrome 同能力时优先零依赖通路。接管路线没有零依赖版本(必须走 CDP), 所以 cdpUrl 强制走 save_page。
+  const runSave = (engineOverride) => runSavePage(url, {
+    script,
+    proxy,
+    renderTimeoutMs,
+    headful,
+    pythonBin,
+    python,
+    renderEngine: engineOverride ?? renderEngine,
+    cdpUrl,
+    chromeBin,
+    browserBrand,
+    info,
+    solver,
+  });
+  // render=always 的语义是"必须执行 JS"。save_page 的 auto 阶梯以 static 层起步，页面 200 时
+  // 它先"成功"，交回未水合 HTML；这时换浏览器层重跑一次，而不是把没跑脚本的 DOM 当结果。
+  const ensureHydrated = async (html) => {
+    if (!forceRender || !info || info.engine !== 'static') return html;
+    const engine = pickHydrationEngine({ engines, renderTimeoutMs });
+    if (!engine) {
+      throw new Error(
+        'render=always: save_page 的 auto 阶梯用 static 层返回了未执行 JS 的页面，本机也没有可用的浏览器层'
+        + '（playwright / nodriver / 求解引擎）；安装 playwright，或改用 --render-engine chrome-late',
+      );
+    }
+    log.info('render', `render=always: save_page 用 static 层返回了未执行 JS 的页面，改用 ${engine} 重渲染`);
+    // 只清上一轮的结果，保留 info.python（升档逻辑要用它判断当前解释器）。
+    for (const k of ['status', 'engine', 'notes']) delete info[k];
+    return await runSave(engine);
+  };
   if (canSavePage && (pinned || solver || headful || !found || cdpUrl)) {
-    return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info, solver });
+    return await ensureHydrated(await runSave());
   }
   if (found) {
     try {
@@ -804,13 +834,13 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
       // 零依赖通路崩了（进程退出码异常、超时等）时，同能力的 save_page 值得再试一次。
       log.info('render', `chrome 通路失败，改用 save_page 重试: ${chromeErr.message}`);
       try {
-        return await runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info, solver });
+        return await ensureHydrated(await runSave());
       } catch (saveErr) {
         throw new Error(`${chromeErr.message}; save_page 回退也失败: ${saveErr.message}`);
       }
     }
   }
-  if (canSavePage) return runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info, solver });
+  if (canSavePage) return await ensureHydrated(await runSave());
   const alternative = await findCapablePython(['playwright']).catch(() => null);
   if (headful) {
     throw new Error(
@@ -995,6 +1025,21 @@ export function resolveSavePageEngine({ renderEngine = null, solver = false, ren
   const engine = renderEngine ?? 'auto';
   if (engine === 'auto' && solver && renderTimeoutMs < MIN_SOLVER_TIMEOUT_MS) return 'playwright';
   return engine;
+}
+
+/**
+ * `render=always` 要的是"执行过 JS 的 DOM"，但 save_page 的 auto 阶梯以 `static` 层起步：
+ * 页面返回 200 时它先算成功，交回的是没跑脚本的 HTML（异步 fetch 的清单、客户端渲染的正文都不在）。
+ * 拿到 static 结果时换一个真正的浏览器层重跑一次；engines 为 null 表示旧版脚本不报引擎清单，
+ * 按层 1（playwright）试。求解引擎要够预算，否则返回 null，由调用方报错而不是静默交出未水合页面。
+ */
+export function pickHydrationEngine({ engines = null, renderTimeoutMs = RENDER_TIMEOUT_MS } = {}) {
+  if (engines === null) return 'playwright';
+  const browser = engines.filter((name) => BROWSER_ENGINES.includes(name));
+  for (const name of ['playwright', 'nodriver']) if (browser.includes(name)) return name;
+  const solver = browser.find((name) => SOLVER_ENGINES.includes(name));
+  if (solver) return renderTimeoutMs >= MIN_SOLVER_TIMEOUT_MS ? solver : null;
+  return null;
 }
 
 async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info = null, solver = false }) {
@@ -1222,6 +1267,7 @@ export async function readWithRender(
       ...(bin == null ? {} : { pythonBin: bin }),
       ...(renderEngine == null ? {} : { renderEngine }),
       ...(cdpUrl == null ? {} : { cdpUrl }),
+      ...(render === 'always' ? { forceRender: true } : {}),
     });
     return guardRendered({ html, source, contentType: 'text/html', rendered: true });
   };

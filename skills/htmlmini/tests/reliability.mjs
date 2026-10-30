@@ -16,6 +16,7 @@ import {
   findSolverPython,
   isInterpreterRetryable,
   pickStrongerPython,
+  pickHydrationEngine,
   pythonBinOverride,
   resetEnvScanCache,
   resolveSavePageEngine,
@@ -1126,6 +1127,76 @@ open(out, 'w', encoding='utf-8').write(
   ok(resolveSavePageEngine({ solver: false, renderTimeoutMs: 9000 }) === 'auto', '没有求解引擎时不受预算影响');
   ok(resolveSavePageEngine({ renderEngine: 'scrapling', solver: true, renderTimeoutMs: 300000 }) === 'scrapling', '显式钉引擎优先于预算');
   ok(resolveSavePageEngine({ renderEngine: 'auto', solver: true, renderTimeoutMs: 300000 }) === 'auto', '显式 auto 等同默认');
+}
+
+// ---- 13f. render=always 不能由 save_page 的 static 层交差（那是没执行 JS 的页面） ----
+{
+  let py = null;
+  try {
+    py = await findPython();
+  } catch {
+    py = null;
+  }
+  if (!py) {
+    console.log('skip hydration-retry tests (no python)');
+  } else {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-t13f-'));
+    const saved = {};
+    try {
+      const calls = path.join(dir, 'calls.log');
+      const stub = path.join(dir, 'stub_hydrate.py');
+      // 模拟 save_page 的真实阶梯：--engine auto 先由 static 层"成功"，交回未水合 HTML；
+      // 只有浏览器层才给执行过 JS 的正文。
+      await writeFile(
+        stub,
+        `import json, os, sys
+argv = sys.argv[1:]
+out = argv[argv.index('--out') + 1]
+engine = argv[argv.index('--engine') + 1] if '--engine' in argv else 'auto'
+open(os.environ['STUB_CALLS'], 'a', encoding='utf-8').write(engine + '\\n')
+if engine == 'auto':
+    html = ('<!doctype html><html><head><title>静态壳</title></head><body><article><h1>静态壳</h1><p>'
+            + '静态抓取拿到正文但下拉列表是空的。' * 20 + '</p></article></body></html>')
+else:
+    html = ('<!doctype html><html><head><title>水合页</title></head><body><article><h1>水合页</h1><p>'
+            + '水合后的正文包含异步加载的清单。' * 20
+            + '</p><select id="nodeSelector"><option>gh-proxy.com</option></select></article></body></html>')
+open(out, 'w', encoding='utf-8').write(html)
+json.dump({'status': 200, 'engine': 'static' if engine == 'auto' else engine},
+          open(out + '.meta.json', 'w', encoding='utf-8'))
+`,
+        'utf8',
+      );
+      for (const k of ['HTMLMINI_RENDER_SCRIPT', 'STUB_CALLS']) saved[k] = process.env[k];
+      process.env.HTMLMINI_RENDER_SCRIPT = stub;
+      process.env.STUB_CALLS = calls;
+
+      const hydrated = await runExtract(`${base}/article`, 'markdown', { render: 'always', renderTimeoutMs: 90000 });
+      const first = (await readFile(calls, 'utf8')).trim().split('\n');
+      ok(hydrated.includes('水合后的正文'), 'render=always 拿到执行过 JS 的正文');
+      ok(first.length === 2 && first[1] === 'playwright', 'static 层交差后改用 playwright 重渲染');
+
+      await writeFile(calls, '');
+      await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 90000 });
+      const fallback = (await readFile(calls, 'utf8')).trim().split('\n');
+      ok(fallback.length === 1 && fallback[0] === 'auto', '非 always 的回退路径不为水合多跑一次');
+    } finally {
+      for (const k of Object.keys(saved)) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+}
+
+// ---- 13g. 水合重试的引擎挑选：静态清单为空时不静默交差 ----
+{
+  ok(pickHydrationEngine({ engines: ['static', 'playwright'] }) === 'playwright', '有 playwright 时用它重渲染');
+  ok(pickHydrationEngine({ engines: null }) === 'playwright', '旧版脚本不报引擎清单时按层 1 试');
+  ok(pickHydrationEngine({ engines: ['static', 'scrapling'], renderTimeoutMs: 90000 }) === 'scrapling', '没有纯渲染层时用求解引擎');
+  ok(pickHydrationEngine({ engines: ['static', 'scrapling'], renderTimeoutMs: 9000 }) === null, '求解引擎预算不够时明确失败');
+  ok(pickHydrationEngine({ engines: ['static'] }) === null, '没有浏览器层时明确失败');
 }
 
 // ---- 14. Chrome 直渲通路：零依赖回退 / headful 限制 / save_page 优先 ----
