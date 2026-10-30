@@ -22,12 +22,21 @@ def test_save_example_builds_module_options() -> None:
         expect_text=["Example"],
         save_cookies=None,
         save_snapshot=None,
+        wait_selector="#list li",
+        post_wait_ms=1500,
     )
     options = save_example.build_fetch_options(args)
     assert options.discover_proxy
     assert options.expected_texts == ("Example",)
     assert options.wall_timeout_ms == 600_000
     assert options.playwright_api == "patchright"
+    assert options.wait_selector == "#list li"
+    assert options.post_wait_ms == 1500
+
+    del args.wait_selector, args.post_wait_ms
+    defaults = save_example.build_fetch_options(args)
+    assert defaults.wait_selector is None
+    assert defaults.post_wait_ms == 1000
 
 
 def test_extract_visible_text_ignores_scripts_and_styles() -> None:

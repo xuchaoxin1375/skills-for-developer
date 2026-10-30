@@ -1692,6 +1692,8 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   ok(textAt >= 0 && guarded[textAt + 1] === '甲清单' && guarded.filter((a) => a === '--expect-text').length === 2, '目标断言逐条透传 --expect-text');
   ok(guarded[guarded.indexOf('--wait-selector') + 1] === '#nodeSelector option', '选择器等待透传 --wait-selector');
   ok(guarded[guarded.indexOf('--post-wait-ms') + 1] === '1500', '额外等待透传 --post-wait-ms');
+  ok(guarded[guarded.indexOf('--timeout-ms') + 1] === '60000', '等选择器时页面超时压到渲染预算');
+  ok(withoutBin[withoutBin.indexOf('--timeout-ms') + 1] === '300000', '不等选择器时保留原页面超时');
   ok(!savePageArgs(base).includes('--expect-text'), '未给断言时不带 --expect-text');
 }
 

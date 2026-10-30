@@ -240,7 +240,8 @@ flowchart TD
 判据与取法：
 
 - 先看 `--json` 的 `engine` 或日志 `[read] … engine=`：`static` = 没执行 JS；`playwright` / `chrome-late` / `chrome-dump` = 执行了。`static` 时不要继续换模式，先解决"渲染没落地"。
-- 一条命令取全量：`htmlmini "<URL>" --render=always --wait-selector '<目标块>' --expect-text '<只在目标块里出现的文本>' --save-html page.html`——等目标块出现再断言，缺了直接失败。
+- 一条命令取全量：`htmlmini "<URL>" --render=always --wait-selector '<目标容器>:has(<子元素>)' --expect-text '<只在目标块里出现的文本>' --save-html page.html`——等目标块出现再断言，缺了直接失败。
+- `--wait-selector` 等的是**可见**：闭合 `<select>` 里的 `<option>` 没有布局，等它只会等到超时；等容器本身并加 `:has(option)`（如 `#nodeSelector:has(option)`），或直接用 `--expect-text`。
 - 断言文本要选**只在目标块里出现**的：正文示例、导航、页脚里也有的词，静态 HTML 就能命中，等于没断言。
 - 要控件值或清单本身就用 `--mode html` 或 `--save-html` 后按节点取；正文模式不给控件值。断言命中但输出里没有时，htmlmini 会提示换模式。
 - 数据源是可选捷径，不是通用做法：只有打开页面就能在开发者工具 Network 里看到那个请求、或数据 URL 直接写在可见源码里时，才值得直接抓；需要逆推压缩脚本、拼参数、试鉴权时不值得，分析成本通常高于一次渲染。接口取数的完整做法见[案例 11](#11-后端接口--xhr-数据源)。

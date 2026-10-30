@@ -1013,7 +1013,10 @@ export function savePageArgs({
   // -X utf8 + PYTHONUTF8：子进程日志强制 UTF-8 输出，本侧按 UTF-8 增量解码、
   // 逐行透传（Windows 控制台查看侧按 powershell-pitfalls 的 UTF-8 模板设置）。
   // --engine 透传：显式指定时 save_page 只用该层（不再自动升档），已知站点可省掉注定失败的升档。
-  const args = ['-X', 'utf8', script, url, '--out', out, '--engine', engine, '--timeout-ms', String(renderTimeoutMs)];
+  // 等选择器时把页面超时压到渲染预算（60s）：save_page 用 timeout_ms 当 wait_for_selector
+  // 的超时，默认 300s 会让一个写错/永远不可见的选择器干等五分钟。
+  const pageTimeoutMs = waitSelector ? Math.min(renderTimeoutMs, 60_000) : renderTimeoutMs;
+  const args = ['-X', 'utf8', script, url, '--out', out, '--engine', engine, '--timeout-ms', String(pageTimeoutMs)];
   // 渲染预算同时透传给引擎: 客户端渲染的应用常在静态壳上停很久, chrome-late 这类
   // "接入后等渲染稳定"的引擎要拿到同样的上限, 否则会在半渲染状态下被读走。
   // 上限取 60s: 够 SPA 水合, 又不至于把外层预算全耗在等一个永不稳定的 DOM 上。

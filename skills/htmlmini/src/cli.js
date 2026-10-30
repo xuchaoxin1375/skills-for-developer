@@ -131,7 +131,10 @@ ${engineList()}
                                或 --save-html，不让人误以为抓取失败
     --wait-selector <选择器>   渲染时等该 CSS 选择器可见再取 DOM（save_page 通路的
                                playwright / scrapling / chrome-late 等；零依赖 chrome
-                               dump-dom 没有等待钩子，给了它会改用 save_page）
+                               dump-dom 没有等待钩子，给了它会改用 save_page）。
+                               等的是"可见"：闭合 <select> 里的 <option> 没有布局，
+                               等它会等到超时；改等容器并加 :has(option)，或用
+                               断言文本代替
     --post-wait-ms <毫秒>      取 DOM 前额外等待（save_page 默认 1000）；数据在 load
                                之后才到的页面用它补齐，与 --wait-selector 一起用更稳
     -o, --output <文件>        结果写文件而不是 stdout（文件末尾恰好一个换行；

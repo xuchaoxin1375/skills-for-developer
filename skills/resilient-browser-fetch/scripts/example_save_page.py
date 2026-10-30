@@ -25,6 +25,7 @@ from resilient_fetch import (
 def build_fetch_options(args: argparse.Namespace) -> FetchOptions:
     """Translate example CLI arguments into the reusable module options."""
 
+    post_wait_ms = getattr(args, "post_wait_ms", None)
     return FetchOptions(
         url=args.url,
         proxy=args.proxy,
@@ -43,6 +44,8 @@ def build_fetch_options(args: argparse.Namespace) -> FetchOptions:
         cdp_navigate=bool(getattr(args, "cdp_navigate", False)),
         executable_path=getattr(args, "executable_path", None),
         browser_brand=getattr(args, "browser_brand", None),
+        wait_selector=getattr(args, "wait_selector", None),
+        **({} if post_wait_ms is None else {"post_wait_ms": post_wait_ms}),
     )
 
 
@@ -65,6 +68,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wall-timeout-ms", type=int, help=WALL_TIMEOUT_HELP)
     parser.add_argument("--headful", action="store_true")
     parser.add_argument("--expect-text", action="append", default=[])
+    parser.add_argument(
+        "--wait-selector",
+        help="渲染时等该 CSS 选择器可见再取 DOM(异步清单、懒加载块)。",
+    )
+    parser.add_argument(
+        "--post-wait-ms",
+        type=int,
+        help="取 DOM 前额外等待毫秒数;不传沿用默认 1000。",
+    )
     parser.add_argument(
         "--settle-ms",
         type=int,
