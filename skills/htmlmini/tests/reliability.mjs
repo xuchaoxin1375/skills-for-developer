@@ -1757,16 +1757,16 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   ok(formOptionsSection('<html><body><p>没有表单</p></body></html>') === '', '没有可选项时不追加空章节');
 
   const asHtml = formOptionsSection(FORM, { format: 'html' });
-  ok(asHtml.includes('<select aria-label="镜像">\n<option value="https://gh-proxy.com">gh-proxy.com</option>\n</select>'), 'html 形式把下拉框写成 <select>，保留 value');
-  ok(asHtml.includes('<optgroup label="华北">\n  <option value="bj">北京</option>\n</optgroup>'), 'html 形式保留 optgroup 分组');
+  ok(asHtml.includes('<select aria-label="镜像">\n<option>gh-proxy.com</option>\n</select>'), 'html 形式把下拉框写成 <select>，默认不带 value');
+  ok(asHtml.includes('<optgroup label="华北">\n  <option>北京</option>\n</optgroup>'), 'html 形式保留 optgroup 分组');
   ok(asHtml.includes('- 套餐（2 项）') && !asHtml.includes('<input'), 'html 形式只改下拉框，单选仍按列表');
 
-  // value 与格式正交：--keep-values 在列表里补 "文本（value）"，html 形式默认带 value。
+  // value 与格式正交：--keep-values 在列表里补 "文本（value）"，html 形式补 value 属性。
   const withValues = formOptionsSection(FORM, { values: true });
   ok(withValues.includes('    - 北京（bj）') && withValues.includes('  - 基础版（1）'), '--keep-values 在列表里补 value（option 与单选都算）');
   ok(!withValues.includes('  - 请选择（'), '空 value 不补空括号');
-  const htmlNoValues = formOptionsSection(FORM, { format: 'html', values: false });
-  ok(htmlNoValues.includes('<option>北京</option>') && !htmlNoValues.includes('value="bj"'), 'html 形式也可以不带 value，两者互不绑定');
+  const htmlValues = formOptionsSection(FORM, { format: 'html', values: true });
+  ok(htmlValues.includes('<option value="bj">北京</option>') && htmlValues.includes('<option value="https://gh-proxy.com">gh-proxy.com</option>'), 'html 形式加 values 才带 value 属性');
 
   // details：抽取器把它压平成"摘要 + 正文"，--keep-details 按文本比对包回原位。
   const DETAILS = `<html><head><title>折叠</title></head><body>
@@ -1795,6 +1795,9 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
     ok(/--keep-options 追加 \d+ 条/.test(kept.stderr), '追加时日志写明条数');
     const keptHtml = await cli([file, '-m', '--extractor', 'semantic', '--keep-options=html']);
     ok(keptHtml.code === 0 && keptHtml.stdout.includes('<select aria-label="镜像">'), '--keep-options=html 输出真正的 <select>');
+    ok(!keptHtml.stdout.includes('value='), 'html 形式默认不带 value');
+    const keptHtmlValues = await cli([file, '-m', '--extractor', 'semantic', '--keep-options=html', '--keep-values']);
+    ok(keptHtmlValues.stdout.includes('<option value="https://gh-proxy.com">gh-proxy.com</option>'), 'html + --keep-values 才带 value 属性');
     const keptValues = await cli([file, '-m', '--extractor', 'semantic', '--keep-options', '--keep-values']);
     ok(keptValues.code === 0 && keptValues.stdout.includes('  - 北京（bj）'), '--keep-values 让列表带上 value');
     const valuesAlone = await cli([file, '-m', '--keep-values']);

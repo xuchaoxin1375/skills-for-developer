@@ -161,8 +161,8 @@ ${engineList()}
                                正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：
                                下拉框/optgroup/datalist/单选多选的选项按页面顺序列出。
                                默认 list 只写显示文本（文本为空才用 value）；html 把下拉框
-                               写成真正的 <select>（保留 value/selected，查看器支持表单控件
-                               时才有交互）；都不截断
+                               写成真正的 <select>（保留 selected；value 默认不带，要带
+                               加 --keep-values，查看器支持表单控件时才有交互）；都不截断
     --keep-values              选项同时输出 value（option/datalist/单选多选），写成
                                "文本（value）"；默认只写文本。与 --keep-options 一起用
     --keep-details             把正文里被压平的 <details> 原位包回 HTML（FAQ/手风琴页）。

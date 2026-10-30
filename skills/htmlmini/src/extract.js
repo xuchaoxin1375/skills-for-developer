@@ -2418,7 +2418,7 @@ const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
  * 交互。datalist 没有配套输入框时不可见、单选多选离开表单也点不动，它们仍按列表输出。
  * values 与 format 正交：列表里写成 `文本（value）`，`<select>` 里保留/去掉 value 属性。
  */
-export function formOptionsSection(html, { format = 'list', values = format === 'html' } = {}) {
+export function formOptionsSection(html, { format = 'list', values = false } = {}) {
   const doc = parseOnce(html);
   const blocks = [];
 

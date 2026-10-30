@@ -165,15 +165,17 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 
 - 覆盖 `select`（含 `optgroup` 分组）、`datalist` 候选、`radio` / `checkbox`（同 `name` 一组，组名取 `fieldset` 的 `legend`，已选项标 `[已选]`）。
 - 列表只写显示文本：`<option value="https://x">x</option>` 输出 `- x`。value 是提交用的编码值，读正文时是噪声；只有选项本身没有文本（图片、色块）时才退回 value。
-- 要连 value 一起看，加 `--keep-values`：写成 `北京（bj）`。它与格式无关——列表、单选/多选、datalist 的选项同样适用。`--keep-options=html` 默认就带 value 属性（保留 HTML 元素就保留它的 value）；`--keep-values` 在那里是冗余的，不会重复写。
-- 需要 value 属性本身，或想让支持 HTML 的查看器显示真正的下拉框，用 `--keep-options=html`：
+- 要连 value 一起看，加 `--keep-values`：列表里写成 `北京（bj）`，`<select>` 里保留 `value="…"`。默认两种形式都不带 value（html 只保留 `selected`）；它与格式无关，单选/多选、datalist 的选项同样适用。
+- 需要 value 属性、或想让支持 HTML 的查看器显示真正的下拉框，用 `--keep-options=html`：
 
 ```html
 <select aria-label="加速源">
-<option value="https://gh-proxy.com">gh-proxy.com</option>
-<option value="https://ghproxy.net" selected>ghproxy.net</option>
+<option>gh-proxy.com</option>
+<option selected>ghproxy.net</option>
 </select>
 ```
+
+  加上 `--keep-values` 就变成 `<option value="https://gh-proxy.com">gh-proxy.com</option>`。
 
   只有 `select` 写成控件；`datalist`（没有配套输入框时不可见）和单选/多选（离开表单点不动）仍按列表输出。
 

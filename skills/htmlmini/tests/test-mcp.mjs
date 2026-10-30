@@ -155,6 +155,7 @@ const keptHtml = await rpc('tools/call', {
   arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: 'html' },
 });
 if (!keptHtml.result.content[0].text.includes('<select aria-label="城市">')) throw new Error('keep_options:"html" did not emit a real <select>');
+if (keptHtml.result.content[0].text.includes('value=')) throw new Error('keep_options:"html" should omit value by default');
 const DETAILS = `<html><head><title>折叠</title></head><body><p>开头。</p>
 <details><summary>问题一</summary><p>答案一。</p></details><p>结尾。</p></body></html>`;
 const keptDetails = await rpc('tools/call', {
