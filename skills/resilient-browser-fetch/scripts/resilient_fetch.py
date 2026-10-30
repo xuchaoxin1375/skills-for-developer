@@ -2264,7 +2264,12 @@ def run_isolated_engine(engine: str, config: dict[str, Any], wall_timeout_ms: in
         return FetchResult(html=page_html, **metadata)
 
 
-def save_success(result: FetchResult, out: Path, attempts: list[dict[str, Any]]) -> None:
+def save_success(
+    result: FetchResult,
+    out: Path,
+    attempts: list[dict[str, Any]],
+    proxy: str | None = None,
+) -> None:
     atomic_write_text(out, result.html)
     encoded = result.html.encode("utf-8", errors="replace")
     metadata = asdict(result)
@@ -2274,6 +2279,8 @@ def save_success(result: FetchResult, out: Path, attempts: list[dict[str, Any]])
             "saved_to": str(out.resolve()),
             "bytes_utf8": len(encoded),
             "sha256": hashlib.sha256(encoded).hexdigest(),
+            # 实际出口（含 --discover-proxy 自己发现的）：调用方要能核对走的是直连还是代理。
+            "proxy": proxy,
             "attempts": attempts,
         }
     )
@@ -3096,15 +3103,17 @@ def save_page(options: FetchOptions, out: str | Path) -> FetchOutcome:
         outcome.result,
         output,
         [attempt.as_metadata() for attempt in outcome.attempts],
+        outcome.proxy,
     )
     notes = f" | notes={','.join(outcome.result.notes)}" if outcome.result.notes else ""
     logging.info(
-        "成功保存: %s | engine=%s | status=%s | bytes=%s | elapsed=%ss%s",
+        "成功保存: %s | engine=%s | status=%s | bytes=%s | elapsed=%ss | proxy=%s%s",
         output,
         outcome.result.engine,
         outcome.result.status,
         len(outcome.result.html.encode("utf-8", errors="replace")),
         outcome.result.elapsed_sec,
+        outcome.proxy or "direct",
         notes,
     )
     return outcome

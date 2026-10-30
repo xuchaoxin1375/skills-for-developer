@@ -392,7 +392,18 @@ def test_save_success_writes_html_and_metadata(tmp_path: Path) -> None:
     assert metadata["bytes_utf8"] == len(encoded)
     assert metadata["sha256"] == hashlib.sha256(encoded).hexdigest()
     assert metadata["attempts"] == attempts
+    assert metadata["proxy"] is None
     assert "html" not in metadata
+
+
+def test_save_success_records_effective_proxy(tmp_path: Path) -> None:
+    result = make_result()
+    output = tmp_path / "page.html"
+
+    subject.save_success(result, output, [], "http://127.0.0.1:7897")
+
+    metadata = json.loads((tmp_path / "page.html.meta.json").read_text(encoding="utf-8"))
+    assert metadata["proxy"] == "http://127.0.0.1:7897"
 
 
 def test_worker_main_serializes_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

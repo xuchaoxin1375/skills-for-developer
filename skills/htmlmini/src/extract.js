@@ -1183,6 +1183,9 @@ async function readRenderMeta(out) {
     const info = {};
     if (Number.isFinite(meta?.status)) info.status = meta.status;
     if (meta?.engine) info.engine = String(meta.engine);
+    // 没传 --proxy 时 save_page 会自己发现代理；实际出口只有 meta 知道，
+    // 不回读就会把"走了代理"报成 proxy=none。
+    if (meta?.proxy) info.proxy = String(meta.proxy);
     if (Array.isArray(meta?.notes) && meta.notes.length) info.notes = meta.notes.map(String);
     return info;
   } catch {
@@ -1235,7 +1238,8 @@ export async function readWithRender(
       : unknown
         ? paintStatus(`status=unknown${staticNote}`, NaN)
         : '';
-    log.info('read', `${statusLabel ? `${statusLabel} ` : ''}${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${r.rendered ? ' via browser render' : ''}`);
+    const autoProxy = info.proxy && !proxy ? ` [proxy: ${info.proxy} (auto)]` : '';
+    log.info('read', `${statusLabel ? `${statusLabel} ` : ''}${r.source ?? source} ${fmtBytes(r.html.length)} in ${fmtMs(Date.now() - tRead)}${r.rendered ? ' via browser render' : ''}${autoProxy}`);
     if (unknown) {
       log.info(
         'read',
@@ -1244,7 +1248,7 @@ export async function readWithRender(
           : 'status unknown: save_page 的 meta.json 未给出 status（渲染成功但缺少元数据）',
       );
     }
-    log.debug('read', `source=${r.source ?? source} status=${Number.isFinite(status) ? status : 'unknown'} contentType=${r.contentType ?? 'unknown'}${r.engine ? ` engine=${r.engine}` : ''}${remote ? ` render=${render === 'always' ? 'always' : render ? 'allowed' : 'static-only'} proxy=${describeProxy(source, proxy)}` : ''}`);
+    log.debug('read', `source=${r.source ?? source} status=${Number.isFinite(status) ? status : 'unknown'} contentType=${r.contentType ?? 'unknown'}${r.engine ? ` engine=${r.engine}` : ''}${remote ? ` render=${render === 'always' ? 'always' : render ? 'allowed' : 'static-only'} proxy=${info.proxy ?? describeProxy(source, proxy)}` : ''}`);
     // 目标断言：抓取端的"成功"不能只看状态码。文本缺失时明确失败，
     // 不把"拿到了页面但没有目标块"当成结果交出去。
     if (expectTexts.length) {
@@ -1295,7 +1299,7 @@ export async function readWithRender(
   // 渲染一次并做挑战判定；bin 为空表示沿用默认解释器（PATH 的 python/python3）。
   const renderHtml = async (bin) => {
     // 只清上一轮渲染的结果，保留静态回退时记下的状态码（info.staticStatus）。
-    for (const k of ['status', 'engine', 'notes', 'python']) delete info[k];
+    for (const k of ['status', 'engine', 'notes', 'python', 'proxy']) delete info[k];
     const html = await renderViaBrowser(source, {
       proxy,
       info,
@@ -2485,6 +2489,15 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
   log.debug('extract', `mode=${mode} requested=${res.requested} used=${res.used} reduction=${res.stats.reductionPct}% title="${res.title ?? ''}"`);
   if (sibling) res.meta = sibling.meta;
   const info = { source: url, status: fetchStatus, rendered, engine, fetchedAt, mode };
+  // 断言的是"HTML 里有没有"，用户要的常是"输出里有没有"：控件值、清单、表格列会被正文模式
+  // 当样板剔除。命中了却不在输出里时明确提示，否则会被误读成抓取失败。
+  if (expectTexts.length && mode !== 'title' && mode !== 'skeleton') {
+    const notInOutput = expectTexts.filter((t) => !String(res.content ?? '').includes(t));
+    if (notInOutput.length) {
+      info.expectTextsNotInOutput = notInOutput;
+      log.info('extract', `--expect-text 命中的文本不在 ${mode} 输出里（${notInOutput.map((t) => JSON.stringify(t)).join(', ')}）：内容在 HTML 里，只是该模式不收（控件值/清单/表格列常见）；要它请用 --mode html 或 --save-html`);
+    }
+  }
   if (mode === 'json') {
     // JSON 模式下哨兵行会破坏可解析性，来源改由字段承载（与文本模式的起止行等价）。
     res.source = url;

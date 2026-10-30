@@ -136,7 +136,7 @@ const shapeUrl = {
   expect_text: z
     .union([z.string(), z.array(z.string())])
     .optional()
-    .describe('目标断言：最终 HTML 必须包含这些文本（可重复/数组，全部命中才算成功）。缺失时直接报错，而不是把"渲染成功但没有目标块"当结果交出去；渲染时同时透传给 save_page，让它按引擎升档。用于下拉清单、商品名、价格这类"有没有真的抓到"的判据。'),
+    .describe('目标断言：最终 HTML 必须包含这些文本（可重复/数组，全部命中才算成功）。缺失时直接报错，而不是把"渲染成功但没有目标块"当结果交出去；渲染时同时透传给 save_page，让它按引擎升档。用于下拉清单、商品名、价格这类"有没有真的抓到"的判据。命中的文本若不在当前 mode 的输出里（控件值/清单常被剔除），改用 mode:"html" 或 save_html 取原文。'),
   wait_selector: z
     .string()
     .optional()

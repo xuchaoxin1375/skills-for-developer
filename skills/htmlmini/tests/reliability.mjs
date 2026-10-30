@@ -32,6 +32,7 @@ import {
   renderViaBrowser,
   resolveProxy,
   runExtract,
+  runExtractDetailed,
   savePageUsable,
   skeletonFromMarkdown,
   tryTrafilatura,
@@ -1167,7 +1168,8 @@ else:
             + '水合后的正文包含异步加载的清单。' * 20
             + '</p><select id="nodeSelector"><option>gh-proxy.com</option></select></article></body></html>')
 open(out, 'w', encoding='utf-8').write(html)
-json.dump({'status': 200, 'engine': 'static' if engine == 'auto' else engine},
+json.dump({'status': 200, 'engine': 'static' if engine == 'auto' else engine,
+          'proxy': 'http://127.0.0.1:7897'},
           open(out + '.meta.json', 'w', encoding='utf-8'))
 `,
         'utf8',
@@ -1206,6 +1208,11 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
       const waited = (await readFile(calls, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
       ok(waited.length === 1 && waited[0].wait_selector === '#nodeSelector option' && waited[0].post_wait_ms === '1500', '等待参数透传到 save_page');
       ok(!existsSync(chromeMarker), '给了 --wait-selector 时不退到 chrome dump-dom');
+
+      // 没传 --proxy 时 save_page 自己发现代理；实际出口要从 meta 回读，不能报成 none。
+      const meta = {};
+      await renderViaBrowser(`${base}/always502`, { info: meta, pythonBin: py, renderTimeoutMs: 90000 });
+      ok(meta.proxy === 'http://127.0.0.1:7897', '回读 save_page meta 的实际出口');
     } finally {
       for (const k of Object.keys(saved)) {
         if (saved[k] === undefined) delete process.env[k];
@@ -1239,6 +1246,18 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   ok(missing && /missing expected text/.test(missing.message) && missing.expectedTextMissing === true, '目标文本缺失时明确失败');
   ok(!isInterpreterRetryable(missing), '目标文本缺失不触发解释器升档');
   ok(/--render=always/.test(missing.message), '静态缺文本时提示先渲染');
+}
+
+// ---- 13i. 断言命中但输出里没有：提示换模式，而不是让人以为抓取失败 ----
+{
+  const html = '<!doctype html><html><head><title>清单页</title></head><body><article><h1>清单页</h1>'
+    + `<p>${'这是一段足够长的正文，用来确保抽取结果不会被判定成空壳页面。'.repeat(4)}</p>`
+    + '<select id="nodeSelector"><option>only-in-select.example</option></select></article></body></html>';
+  const md = await runExtractDetailed('content', 'markdown', { forceContent: html, expectTexts: ['only-in-select.example'] });
+  ok(!md.output.includes('only-in-select.example'), 'markdown 输出不含 select 选项');
+  ok(md.info.expectTextsNotInOutput?.length === 1, '断言命中但不在输出里时记到 info');
+  const ui = await runExtractDetailed('content', 'ui', { forceContent: html, expectTexts: ['only-in-select.example'] });
+  ok(ui.output.includes('only-in-select.example') && !ui.info.expectTextsNotInOutput, 'ui 收下控件值后不再提示');
 }
 
 // ---- 14. Chrome 直渲通路：零依赖回退 / headful 限制 / save_page 优先 ----

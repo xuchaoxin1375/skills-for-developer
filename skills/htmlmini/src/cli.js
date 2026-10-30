@@ -126,7 +126,9 @@ ${engineList()}
                                缺失时直接报错，不把"渲染成功但没有目标块"当成结果；
                                静态抓取与渲染后都会校验，渲染时同时透传给 save_page，
                                让它按引擎升档而不是提前交差。用于下拉清单、商品名、
-                               价格这类"有没有真的抓到"的判据
+                               价格这类"有没有真的抓到"的判据。命中了但当前模式的
+                               输出里没有（控件值/清单常被剔除）会提示换 --mode html
+                               或 --save-html，不让人误以为抓取失败
     --wait-selector <选择器>   渲染时等该 CSS 选择器可见再取 DOM（save_page 通路的
                                playwright / scrapling / chrome-late 等；零依赖 chrome
                                dump-dom 没有等待钩子，给了它会改用 save_page）

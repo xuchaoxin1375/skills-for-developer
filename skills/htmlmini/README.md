@@ -18,7 +18,7 @@
 |---|---|---|
 | 文章、博客、文档（最常用） | `htmlmini "<URL>" -o page.md` | 默认 Markdown，Defuddle 正文 |
 | 静态 200 但正文要等水合 | `htmlmini "<URL>" --render=always` | 强制执行 JS；拿到 `engine=static` 会自动换浏览器层重跑 |
-| 异步清单 / 下拉框 / 懒加载（特色） | `htmlmini "<URL>" --render=always --wait-selector '<目标块>' --expect-text '<必有文本>'` | 等目标节点出现并断言真的抓到，缺了直接失败 |
+| 异步清单 / 下拉框 / 懒加载（特色） | `htmlmini "<URL>" --render=always --wait-selector '<目标块>' --expect-text '<只在目标块里出现的文本>' --save-html page.html` | 等目标节点出现并断言真的抓到，缺了直接失败；控件值只在 HTML 里 |
 | 403 / 挑战 / 自动化被拦 | `htmlmini "<URL>" --render` 或 `--render=always --render-engine chrome-late` | 静态优先，挑战站点走晚接入引擎 |
 | 面板、仪表盘、设计稿 | `htmlmini page.html -u` | 按可访问语义出组件清单（标签/按钮/字段/表格） |
 | 要结构不要摘要 | `htmlmini page.html --mode html --attrs semantic` | 保留 DOM 顺序与表格/表单状态 |
@@ -206,6 +206,7 @@ htmlmini app.html --json
 `--profile-dir`（会积累缓存涨磁盘，不跨进程共用，用后确认再删）。
 
 `--render` 只在静态 403/5xx 时触发（404/超时/断网直接抛错）；静态返回 200 但正文要等客户端水合的页面（SPA、白标商城商品页等）默认拿不到正文，用 `--render=always`（MCP `render:"always"`）强制渲染，代价是每页都启浏览器。`--render=always` 的语义是"必须执行 JS"：save_page 的 auto 阶梯以 `static` 层起步，页面 200 时它会先交回未执行脚本的 HTML，htmlmini 发现 `engine=static` 就换浏览器层重跑一次（日志点名），不把未水合 DOM 当结果。`--mode ui` 的文本条目默认只收 ≤150 字符，超长段落整条丢弃并在输出末尾记账；需要完整长正文改用 `--mode markdown` / `--mode text`，或加 `--text-max 0` 取消上限。
+`--expect-text` 断言的是 HTML 里有没有；命中却不在当前模式的输出里时（控件值、清单、表格列常被当样板剔除），会提示改用 `--mode html` 或 `--save-html`，不让人误以为抓取失败。渲染通路的实际出口（含 save_page 自己发现的代理）在收尾日志里标出，不传 `--proxy` 时也不会把"走了代理"报成 `none`。
 渲染日志以 `htmlmini: [render]` 为前缀实时打到 stderr（子进程经 `-X utf8` + `PYTHONUTF8=1` 强制 UTF-8 输出；Windows 控制台查看中文时按 powershell-pitfalls 的 UTF-8 模板设置输出编码）。`save_page` 的真实 URL 即原 URL，直接提取即可。
 
 ## MCP 接入
