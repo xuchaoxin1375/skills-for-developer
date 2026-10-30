@@ -56,6 +56,7 @@ description: >
 代理、超时、错误分流、GitHub 加速与 Git 客户端路线见 [references/network-access.md](references/network-access.md)；
 本机代理登记见 [references/proxy-registry.md](references/proxy-registry.md)；
 候选枚举与探测见 `scripts/probe_local_proxies.py`（纯标准库，按进程名匹配并探测其自身监听端口，默认 5 秒预算、超时记不可判定；`--match` 可加自定义进程名正则，`--copy` 直接给出可粘贴的代理环境变量行，`--watch SEC` 常驻报变化；`--json` 的 `usable[]` 直接给可用入口的 url/出口/来源，读它比过滤 `candidates[]` 省事）；
+GitHub 加速镜像的候选核验见 `scripts/check_github_mirrors.py`（纯标准库，按 raw、archive、Release Range、git 传输四类有界探测并给速度；内置种子只作起点，超时记不可判定）；
 带日期的本机记录见 [references/local-observations.md](references/local-observations.md)。
 搜索与抓取的并发、频率、重试预算及共享冷却遵循 `agentic-web-search`。
 

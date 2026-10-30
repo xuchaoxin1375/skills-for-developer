@@ -106,6 +106,14 @@ GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-rema
 
 用法：按服务规则把完整原链接放在前缀之后，例如 `https://gh-proxy.com/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`。这是 GitHub 资源加速，不是通用文档代理；Release、archive、raw、网页和 git 传输各自核验，不能从一种推断另一种可用。
 
+**发现与核验**
+
+- 取候选：两个收录页、用户提供的前缀、已知种子；收录页不是实时状态，种子也不保证可用。
+- 有界探测：按 raw、archive、Release（Range 前若干字节）、git 传输四类分别测；`scripts/check_github_mirrors.py` 一次给出可用性与速度，默认沿用当前进程网络环境，可用 `--direct` 或 `--proxy` 指定路线。
+- 判据：状态码、内容特征（ZIP 魔数、正文非 HTML 错误页）、字节数与耗时；超时记为不可判定，放宽超时复测，不当成"不支持该资源"。
+- 选路：每类取当次最快且可用的前缀；同类只用一个，不并发轮询多个镜像。
+- 全不可用：按主表回退代理与有界直连，失败作为当次事实记录，不据此写"镜像已死"。
+
 - 每次使用记录原始 URL、加速 URL、日期、执行位置、路线、HTTP/退出码、最终 URL、耗时与大小；有官方校验值时比对 SHA-256。原站不可达且无可信校验时只能说"文件取回"，不能声称与原文一致。
 - 小样本测速只用于当次选路，不写成"某站更快"的长期结论；同一入口的表现随文件大小、时段与并发变化。一个文件可用只覆盖该目标与当时出口。
 - 候选可从 [GitHub 文件加速](https://yishijie.gitlab.io/ziyuan/) 与 [gh-proxy 镜像站点收集](https://github.com/hunshcn/gh-proxy/issues/116) 发现；列表收录不证明当下可用，不维护"永久可用"的域名清单。

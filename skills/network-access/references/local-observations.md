@@ -255,3 +255,17 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 本次代理比加速快 2–4 倍；加速可用但不是最快路线，不能据此写死“镜像更快”。选路按当次样本，加速的主要收益是不占代理额度、大文件可直连。
 - `ls-remote` 经加速前缀成功，说明该实例支持 git 智能 HTTP 读取；本次未测 `clone`、大仓库与推送。
 - 未验证：其他加速实例、大文件长时间稳定性、并发与限流、跨日波动、私有资源。
+
+## 2026-10-30 加速镜像核验脚本两轮对照
+
+执行环境：国内 Windows；`check_github_mirrors.py --direct --timeout 8 --workers 3`，目标为 raw 单文件、archive、Release 前 262144 字节与 `ls-remote`，两轮间隔约数分钟。
+
+| 前缀 | 第一轮 | 第二轮 |
+| --- | --- | --- |
+| `https://gh-proxy.com/` | raw/archive/release 可用（release 80 KB/s），git 可用（4 refs） | raw/archive/release 可用（90 KB/s），git 超时 |
+| `https://ghproxy.net/` | raw/git 可用，archive/release 超时 | 四类可用（release 10.8 KB/s） |
+| `https://ghfast.top/` | 四类全超时 | 四类全超时 |
+
+- 同一前缀两轮结果不同，印证超时只能记不可判定；脚本据此把超时与内容特征不符分开报告。
+- `ghfast.top` 两轮全超时，本次判为不可用，但不足以断言长期失效。
+- 未验证：完整大文件下载、并发与限流、跨日波动、其他网络环境。
