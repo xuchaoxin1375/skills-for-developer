@@ -14,6 +14,7 @@ import {
   findCapablePython,
   findPython,
   findSolverPython,
+  formOptionsSection,
   isInterpreterRetryable,
   pickStrongerPython,
   pickHydrationEngine,
@@ -39,7 +40,6 @@ import {
 } from '../src/extract.js';
 import { setLogLevel } from '../src/log.js';
 import { markSource, padPayload } from '../src/output.js';
-
 // 进程内断言只看返回值；子进程 CLI 会各自按默认级别打日志（下面显式断言）。
 setLogLevel('quiet');
 
@@ -1724,6 +1724,52 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   ok(guarded[guarded.indexOf('--timeout-ms') + 1] === '60000', '等选择器时页面超时压到渲染预算');
   ok(withoutBin[withoutBin.indexOf('--timeout-ms') + 1] === '300000', '不等选择器时保留原页面超时');
   ok(!savePageArgs(base).includes('--expect-text'), '未给断言时不带 --expect-text');
+}
+
+// ---- 17. --keep-options：正文模式丢控件值，显式把可选项追加成列表 ----
+{
+  const FORM = `<html><head><title>表单</title></head><body>
+    <p>正文</p>
+    <label for="city">城市</label>
+    <select id="city">
+      <option value="">请选择</option>
+      <optgroup label="华北"><option value="bj">北京</option></optgroup>
+      <optgroup label="华东"><option value="sh">上海</option></optgroup>
+    </select>
+    <fieldset><legend>套餐</legend>
+      <label><input type="radio" name="plan" value="1">基础版</label>
+      <label><input type="radio" name="plan" value="2" checked>专业版</label>
+    </fieldset>
+    <datalist id="browsers"><option value="Chrome"></option></datalist>
+    <select aria-label="镜像"><option value="https://gh-proxy.com">gh-proxy.com</option></select>
+  </body></html>`;
+  const section = formOptionsSection(FORM);
+  ok(section.startsWith('## 表单选项\n\n- 城市（3 项）'), '选项清单以组名 + 条数起头');
+  ok(section.includes('  - 华北\n    - 北京（bj）'), 'optgroup 缩进一层，value 与文本不同时附括号');
+  ok(section.includes('  - 请选择\n'), '空 value 不留空括号');
+  ok(section.includes('- 套餐（2 项）\n  - 基础版\n  - 专业版 [已选]'), '单选组取 fieldset legend 并标注已选');
+  ok(section.includes('- #browsers（1 项）\n  - Chrome'), 'datalist 候选也算可选项');
+  ok(section.trimEnd().endsWith('- 镜像（1 项）\n  - gh-proxy.com') && !section.includes('gh-proxy.com（'), 'value 只是加了协议前缀时不重复写');
+  ok(section.indexOf('- 城市') < section.indexOf('- 套餐'), '按文档顺序输出，不按控件类型分组');
+  ok(formOptionsSection('<html><body><p>没有表单</p></body></html>') === '', '没有可选项时不追加空章节');
+
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-opts-'));
+  try {
+    const file = path.join(dir, 'form.html');
+    await writeFile(file, FORM);
+    // 强制 semantic：auto 遇到表单页会回退 ui 清单，自己就把选项列了一部分，看不出追加效果。
+    const plain = await cli([file, '-m', '--extractor', 'semantic']);
+    ok(!plain.stdout.includes('表单选项') && !plain.stdout.includes('gh-proxy.com'), '默认不追加选项清单');
+    const kept = await cli([file, '-m', '--extractor', 'semantic', '--keep-options']);
+    ok(kept.code === 0 && kept.stdout.includes('## 表单选项') && kept.stdout.includes('北京（bj）'), '--keep-options 追加选项清单');
+    ok(/--keep-options 追加 \d+ 条/.test(kept.stderr), '追加时日志写明条数');
+    const htmlMode = await cli([file, '--mode', 'html', '--keep-options']);
+    ok(htmlMode.code === 0 && !htmlMode.stdout.includes('表单选项') && htmlMode.stderr.includes('只作用于'), 'html 模式不追加，并说明原因');
+    const asJson = await cli([file, '--json', '--keep-options']);
+    ok(asJson.code === 0 && JSON.parse(asJson.stdout).content.includes('正文'), '--json 不受影响，仍是合法 JSON');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 await new Promise((resolve) => server.close(resolve));

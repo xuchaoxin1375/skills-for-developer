@@ -2,8 +2,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, RENDER_ENGINE_CHOICES, assertUsableResult, extractHtml, readSiblingMeta, readWithRender, runExtract, renderResult, saveSourceHtml } from './extract.js';
-import { log } from './log.js';
+import { ATTR_POLICIES, EXTRACTORS, FORMAT_POLICIES, MODES, RENDER_ENGINE_CHOICES, runExtract, runExtractDetailed } from './extract.js';
 import { VERSION } from './version.js';
 
 const modeEnum = z.enum(MODES);
@@ -24,43 +23,43 @@ const textMaxDesc =
   '仅对 mode "ui"（或 extractor "ui"）有效：单条文本的字符上限。默认 150；更长的段落（商品描述、FAQ 正文、条款）会从清单里剔除，输出里会报告剔除了多少条。设 0 表示不限制——当界面清单是唯一视图、长段落本身重要时用它。';
 const allowEmptyDesc =
   '即使结果像"客户端渲染应用壳"（正文不足 200 字符而 HTML 不小于 5 KB）也保留。默认 false：这类页面报错并提示改用 render:"always"，因为静态 HTML 里还没有正文。';
+const keepOptionsDesc =
+  '正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：下拉框、optgroup、datalist、单选/多选的选项按页面顺序列成列表，显示文本与 value 不同时把 value 附在括号里。默认 false：正文模式不收控件值，页面若把清单放在表单里（镜像列表、地区、套餐）就会丢。';
 const toTexts = (v) => (v == null ? undefined : Array.isArray(v) ? v : [v]);
 
-async function handleSource(src, { mode, extractor, attrs, format, pruneEmpty, textMax, allowEmpty, proxy, render, renderTimeoutMs, headful, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts, waitSelector, postWaitMs }) {
-  const { html, source, contentType, rendered } = await readWithRender(
-    src,
-    {
-      ...(proxy === undefined ? {} : { proxy }),
-      ...(render ? { render } : {}),
-      ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
-      ...(headful ? { headful: true } : {}),
-      ...(chromeBin == null ? {} : { chromeBin }),
-      ...(browserBrand == null ? {} : { browserBrand }),
-      ...(pythonBin == null ? {} : { pythonBin }),
-      ...(renderEngine == null ? {} : { renderEngine }),
-      ...(cdpUrl == null ? {} : { cdpUrl }),
-      ...(expectTexts && expectTexts.length ? { expectTexts } : {}),
-      ...(waitSelector == null ? {} : { waitSelector }),
-      ...(postWaitMs == null ? {} : { postWaitMs }),
-      allowEmpty: allowEmpty === true,
-    },
-  );
-  if (saveHtml) {
-    // 与 CLI 同口径：校验之前先落盘原文，挑战空壳报错时也留得下可复用的文件。
-    const saved = await saveSourceHtml(html, { source, outPath: saveHtml, rendered: rendered === true, contentType });
-    if (!saved) log.info('write', `save_html only applies to URL input (got ${source === 'stdin' ? 'stdin' : 'a local file'}); nothing written`);
-  }
-  const sibling = await readSiblingMeta(source);
-  const url = /^https?:/i.test(source)
-    ? source
-    : sibling && /^https?:/i.test(sibling.url)
-      ? sibling.url
-      : 'file:///' + (source === 'stdin' ? 'stdin' : source.replaceAll('\\', '/'));
-  const res = await extractHtml(html, { url, extractor, contentType, attrs, format, pruneEmpty, textMax, fetchCss: rendered === true, ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
-  assertUsableResult(res, html.length, { allowEmpty, mode });
-  if (sibling) res.meta = sibling.meta;
-  return renderResult(res, mode);
+/**
+ * MCP 与 CLI 共用同一条抽取管线（runExtractDetailed）：两边各写一份的话，
+ * 新增参数（如 --keep-options）只会在一侧生效，mode 与 extractor 的对应关系也会漂移。
+ */
+async function handleSource(src, options) {
+  const { output } = await runExtractDetailed(src, options.mode ?? 'markdown', options);
+  return output;
 }
+
+/** 工具参数（snake_case）→ 管线选项（camelCase）：三个工具与三个别名共用同一份映射。 */
+const toOptions = (a) => ({
+  mode: a.mode ?? 'markdown',
+  extractor: a.extractor ?? 'auto',
+  attrs: a.attrs ?? 'semantic',
+  format: a.format ?? 'compact',
+  pruneEmpty: a.prune_empty ?? false,
+  textMax: a.text_max,
+  allowEmpty: a.allow_empty ?? false,
+  keepOptions: a.keep_options ?? false,
+  proxy: a.proxy,
+  render: a.render ?? false,
+  renderTimeoutMs: a.render_timeout_ms,
+  headful: a.headful ?? false,
+  chromeBin: a.chrome_bin,
+  browserBrand: a.browser_brand,
+  pythonBin: a.python_bin,
+  saveHtml: a.save_html,
+  renderEngine: a.render_engine,
+  cdpUrl: a.cdp_url,
+  expectTexts: toTexts(a.expect_text),
+  waitSelector: a.wait_selector,
+  postWaitMs: a.post_wait_ms,
+});
 
 const server = new McpServer({
   name: 'htmlmini',
@@ -83,6 +82,7 @@ const shapeFile = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
+  keep_options: z.boolean().optional().describe(keepOptionsDesc),
 };
 const shapeUrl = {
   url: z.string().describe('http(s) URL'),
@@ -93,6 +93,7 @@ const shapeUrl = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
+  keep_options: z.boolean().optional().describe(keepOptionsDesc),
   proxy: z
     .string()
     .optional()
@@ -155,48 +156,24 @@ const shapeHtml = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
+  keep_options: z.boolean().optional().describe(keepOptionsDesc),
 };
 
 // 正确命名（v2）。旧拼写 htmmini_* 保留为别名以兼容已配置的客户端。
-server.tool('htmlmini_extract_file', fileDesc, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty, text_max, allow_empty }) => ({
-  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
-}));
+// 参数映射只有 toOptions 一份：别名工具与正式名共用同一套 shape，行为不会分叉。
+const toolResult = async (promise) => ({ content: [{ type: 'text', text: await promise }] });
 
-server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, browser_brand, python_bin, save_html, render_engine, cdp_url, expect_text, wait_selector, post_wait_ms }) => ({
-  content: [{
-    type: 'text',
-    text: await handleSource(url, {
-      mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
-      format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
-      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, browserBrand: browser_brand, pythonBin: python_bin, saveHtml: save_html, renderEngine: render_engine, cdpUrl: cdp_url,
-      expectTexts: toTexts(expect_text), waitSelector: wait_selector, postWaitMs: post_wait_ms,
-    }),
-  }],
-}));
+server.tool('htmlmini_extract_file', fileDesc, shapeFile, async (args) => toolResult(handleSource(args.path, toOptions(args))));
 
-server.tool('htmlmini_extract_html', htmlDesc, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty, text_max, allow_empty }) => ({
-  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
-}));
+server.tool('htmlmini_extract_url', urlDesc, shapeUrl, async (args) => toolResult(handleSource(args.url, toOptions(args))));
+
+server.tool('htmlmini_extract_html', htmlDesc, shapeHtml, async (args) => toolResult(runExtract(null, args.mode ?? 'markdown', { ...toOptions(args), forceContent: args.html_content })));
 
 const aliasNote = 'Deprecated alias of the htmlmini_* tool (kept for backward compatibility).';
-server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async ({ path, mode, extractor, attrs, format, prune_empty, text_max }) => ({
-  content: [{ type: 'text', text: await handleSource(path, { mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
-}));
+server.tool('htmmini_extract_file', `${aliasNote} ${fileDesc}`, shapeFile, async (args) => toolResult(handleSource(args.path, toOptions(args))));
 
-server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async ({ url, mode, extractor, attrs, format, prune_empty, text_max, allow_empty, proxy, render, render_timeout_ms, headful, chrome_bin, browser_brand, python_bin, cdp_url, expect_text, wait_selector, post_wait_ms }) => ({
-  content: [{
-    type: 'text',
-    text: await handleSource(url, {
-      mode: mode ?? 'markdown', extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic',
-      format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false,
-      proxy, render: render ?? false, renderTimeoutMs: render_timeout_ms, headful: headful ?? false, chromeBin: chrome_bin, browserBrand: browser_brand, pythonBin: python_bin, cdpUrl: cdp_url,
-      expectTexts: toTexts(expect_text), waitSelector: wait_selector, postWaitMs: post_wait_ms,
-    }),
-  }],
-}));
+server.tool('htmmini_extract_url', `${aliasNote} ${urlDesc}`, shapeUrl, async (args) => toolResult(handleSource(args.url, toOptions(args))));
 
-server.tool('htmmini_extract_html', `${aliasNote} ${htmlDesc}`, shapeHtml, async ({ html_content, mode, extractor, attrs, format, prune_empty, text_max, allow_empty }) => ({
-  content: [{ type: 'text', text: await runExtract(null, mode ?? 'markdown', { forceContent: html_content, extractor: extractor ?? 'auto', attrs: attrs ?? 'semantic', format: format ?? 'compact', pruneEmpty: prune_empty ?? false, textMax: text_max, allowEmpty: allow_empty ?? false }) }],
-}));
+server.tool('htmmini_extract_html', `${aliasNote} ${htmlDesc}`, shapeHtml, async (args) => toolResult(runExtract(null, args.mode ?? 'markdown', { ...toOptions(args), forceContent: args.html_content })));
 
 await server.connect(new StdioServerTransport());

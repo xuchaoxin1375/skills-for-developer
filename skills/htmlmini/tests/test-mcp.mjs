@@ -132,5 +132,17 @@ const alias = await rpc('tools/call', {
 if (!alias.result.content[0].text.includes('刷新')) throw new Error('alias call failed');
 console.log('ok - 别名调用可用');
 
+if (!urlProps.keep_options) throw new Error('extract_url missing keep_options param');
+const FORM = `<html><head><title>表单</title></head><body><p>正文</p>
+<label for="c">城市</label><select id="c"><option value="bj">北京</option><option value="sh">上海</option></select>
+</body></html>`;
+const kept = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: true },
+});
+const keptText = kept.result.content[0].text;
+if (!keptText.includes('## 表单选项') || !keptText.includes('- 北京')) throw new Error('keep_options did not append the option list');
+console.log('ok - keep_options 把下拉选项追加成列表');
+
 child.kill();
 process.exit(0);

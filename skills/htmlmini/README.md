@@ -19,6 +19,7 @@
 | 文章、博客、文档（最常用） | `htmlmini "<URL>" -o page.md` | 默认 Markdown，Defuddle 正文 |
 | 静态 200 但正文要等水合 | `htmlmini "<URL>" --render=always` | 强制执行 JS；拿到 `engine=static` 会自动换浏览器层重跑 |
 | 异步清单 / 下拉框 / 懒加载（特色） | `htmlmini "<URL>" --render=always --wait-selector '<目标块>' --expect-text '<只在目标块里出现的文本>' --save-html page.html` | 等目标节点出现并断言真的抓到，缺了直接失败；控件值只在 HTML 里 |
+| 清单藏在表单控件里（特色） | `htmlmini page.html -m --keep-options` | 正文模式默认丢控件值；追加"表单选项"：下拉框/optgroup/datalist/单选多选 |
 | 403 / 挑战 / 自动化被拦 | `htmlmini "<URL>" --render` 或 `--render=always --render-engine chrome-late` | 静态优先，挑战站点走晚接入引擎 |
 | 面板、仪表盘、设计稿 | `htmlmini page.html -u` | 按可访问语义出组件清单（标签/按钮/字段/表格） |
 | 要结构不要摘要 | `htmlmini page.html --mode html --attrs semantic` | 保留 DOM 顺序与表格/表单状态 |
@@ -143,6 +144,27 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 | `debug` | `--verbose` | 追加细节：source/contentType/proxy/render、引擎链结果、`reduction%`、标题 |
 
 级别也可用环境变量 `HTMLMINI_LOG=quiet|info|debug` 预设，CLI 开关覆盖环境变量；MCP 侧只认环境变量。时间戳用 `HTMLMINI_LOG_TIME=0` 关闭。慢的阶段（网络抓取、`--render` 回退、`pretty` 重排）都会先报开始再报耗时，所以长时间等待不会静默。
+
+### 表单可选项（`--keep-options`）
+
+正文模式（`markdown` / `text` / `skeleton`）只留正文，表单控件里的值会被当样板剔除。页面把清单放进下拉框、单选或多选时（镜像列表、地区、套餐），导出后就只剩使用说明。加 `--keep-options` 把可选项追加到正文末尾：
+
+```text
+## 表单选项
+
+- 加速源（92 项）
+  - gh-proxy.com
+  - ghproxy.net
+
+- 套餐（2 项）
+  - 基础版
+  - 专业版 [已选]
+```
+
+- 覆盖 `select`（含 `optgroup` 分组）、`datalist` 候选、`radio` / `checkbox`（同 `name` 一组，组名取 `fieldset` 的 `legend`，已选项标 `[已选]`）。
+- 显示文本与 `value` 不同才把 `value` 附在括号里（`北京（bj）`）；`value` 只是给文本加了协议前缀或尾斜杠时不重复写。
+- 按页面顺序输出，不去重、不截断：选项数就是输出长度，几千项的下拉框会让输出明显变长。
+- 只作用于正文模式：`--mode html` 原文里本来就有，`--mode ui` 的"表单字段"只列前 10 条且整行截断，`--json` 不受影响。MCP 对应 `keep_options: true`。
 
 ## 与 resilient-browser-fetch 的流水线
 

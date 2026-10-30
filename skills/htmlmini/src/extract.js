@@ -15,6 +15,8 @@ import { VERSION } from './version.js';
 const execFileAsync = promisify(execFile);
 
 export const MODES = ['markdown', 'skeleton', 'text', 'json', 'title', 'ui', 'html'];
+/** 正文类模式：结果是 markdown 正文，`--keep-options` 只在它们后面追加选项清单。 */
+const TEXT_MODES = new Set(['markdown', 'text', 'skeleton']);
 export const EXTRACTORS = ['auto', 'defuddle', 'trafilatura', 'semantic', 'ui', 'sanitize', 'passthrough'];
 /** html 模式的属性策略：none 清空全部属性 | semantic（默认）保留语义属性 | all 保留全部属性。 */
 export const ATTR_POLICIES = ['none', 'semantic', 'all'];
@@ -2402,6 +2404,91 @@ export function assertUsableResult(res, htmlChars, { allowEmpty = false, mode = 
   );
 }
 
+/**
+ * `--keep-options`：把表单控件的可选项整理成 markdown 列表。
+ * 正文模式按设计丢掉控件值（下拉框/单选的选项、datalist 候选），可这些值常是页面真正
+ * 要给的内容（镜像列表、地区、套餐）。这里按页面顺序收一遍，由调用方追加到正文后面：
+ * 不依赖具体抽取引擎，defuddle/trafilatura/内置转换器都不影响结果。
+ * 不去重、不截断：选项数就是输出长度，页面上有上千项时输出会很长。
+ */
+export function formOptionsSection(html) {
+  const doc = parseOnce(html);
+  const blocks = [];
+
+  // 选项值只在和显示文本不同时补在括号里；`<option value="https://x">x</option>` 这种
+  // 只是给文本加了协议/尾斜杠的值不重复写，而 `value="1"` 这种编码值不会丢。
+  const optionLine = (opt, indent) => {
+    const text = collectText(opt);
+    const value = (opt.getAttribute('value') ?? '').trim();
+    if (!text && !value) return '';
+    const bare = value.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    const same = text === value || (text && bare === text.replace(/\/+$/, ''));
+    const shown = !text || !value || same ? text || value : `${text}（${value}）`;
+    return `${indent}- ${shown}`;
+  };
+
+  const selectBlock = (el, tag) => {
+    const options = [...el.querySelectorAll('option')];
+    if (!options.length) return '';
+    const label = fieldLabel(doc, el) || (tag === 'select' ? '下拉框' : '候选项');
+    const lines = [`- ${label}（${options.length} 项）`];
+    let group = null;
+    for (const opt of options) {
+      const parent = opt.parentElement;
+      const parentTag = parent && parent.tagName ? parent.tagName.toLowerCase() : '';
+      const groupLabel = parentTag === 'optgroup' ? (parent.getAttribute('label') ?? '').trim() : '';
+      if (groupLabel !== group) {
+        if (groupLabel) lines.push(`  - ${groupLabel}`);
+        group = groupLabel;
+      }
+      const line = optionLine(opt, group ? '    ' : '  ');
+      if (line) lines.push(line);
+    }
+    return lines.join('\n');
+  };
+
+  // 单选/多选：同 name 归一组，组名取 fieldset legend，其次 name。
+  // 单个控件没有可见标签时不拿 name/id 充数（那是分组名），退回 value，仍没有就跳过。
+  const choiceBlock = (els, name) => {
+    const items = [];
+    for (const el of els) {
+      const value = (el.getAttribute('value') ?? '').trim();
+      const id = el.getAttribute('id');
+      const named = fieldLabel(doc, el);
+      const text = named && named !== name && named !== (id ? `#${id}` : null) ? named : value;
+      if (!text) continue;
+      const checked = el.hasAttribute('checked') ? ' [已选]' : '';
+      const line = `  - ${text}${checked}`;
+      if (!items.includes(line)) items.push(line);
+    }
+    if (!items.length) return '';
+    const fieldset = typeof els[0].closest === 'function' ? els[0].closest('fieldset') : null;
+    const legend = fieldset ? collectText(fieldset.querySelector('legend')) : '';
+    return [`- ${legend || name || '选项组'}（${items.length} 项）`, ...items].join('\n');
+  };
+
+  // 单趟按文档顺序走：下拉框/候选清单与单选组交错时，输出顺序与页面一致。
+  const done = new Set();
+  for (const el of doc.querySelectorAll('select, datalist, input')) {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'select' || tag === 'datalist') {
+      const block = selectBlock(el, tag);
+      if (block) blocks.push(block);
+      continue;
+    }
+    const type = (el.getAttribute('type') ?? '').toLowerCase();
+    if (type !== 'radio' && type !== 'checkbox') continue;
+    const name = (el.getAttribute('name') ?? '').trim();
+    if (done.has(name)) continue;
+    done.add(name);
+    const els = [...doc.querySelectorAll(`input[type="${type}"]`)].filter((e) => ((e.getAttribute('name') ?? '').trim()) === name);
+    const block = choiceBlock(els, name);
+    if (block) blocks.push(block);
+  }
+
+  return blocks.length ? `## 表单选项\n\n${blocks.join('\n\n')}` : '';
+}
+
 export function renderResult(res, mode) {
   switch (mode) {
     case 'json':
@@ -2427,7 +2514,7 @@ export async function runExtract(source, mode = 'markdown', options = {}) {
  * 与 runExtract 相同，但把来源信息（URL、状态码、是否渲染、抓取时刻）一起返回，
  * 供调用方做来源标记或 JSON 字段；CLI 用它生成起止行。
  */
-export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
+export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -2488,6 +2575,20 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
   // 取到内容之后再记时刻：哨兵行的 fetched 表示"这份载荷什么时候拿到的"，不是命令启动时间。
   fetchedAt = timestamp();
   const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, fetchCss: rendered || Boolean(sibling && /^https?:/i.test(sibling.url)), ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
+  // 可选项在正文模式里被当控件样板丢掉，但常是页面要给的清单；追加在正文之后，
+  // 与抽取引擎无关（defuddle/trafilatura 内建的 select 处理不归我们控制）。
+  if (keepOptions) {
+    if (TEXT_MODES.has(mode)) {
+      const section = formOptionsSection(html);
+      if (section) {
+        const body = String(res.content ?? '').replace(/\n+$/, '');
+        res.content = body ? `${body}\n\n${section}` : section;
+        log.info('extract', `--keep-options 追加 ${section.split('\n').filter((l) => /^\s*- /.test(l)).length} 条可选项`);
+      }
+    } else {
+      log.info('extract', `--keep-options 只作用于 ${[...TEXT_MODES].join('/')}；${mode} 模式自带结构，忽略`);
+    }
+  }
   assertUsableResult(res, html.length, { allowEmpty, mode });
   log.debug('extract', `mode=${mode} requested=${res.requested} used=${res.used} reduction=${res.stats.reductionPct}% title="${res.title ?? ''}"`);
   if (sibling) res.meta = sibling.meta;
