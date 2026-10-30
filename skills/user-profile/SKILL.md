@@ -1,7 +1,9 @@
 ---
 name: user-profile
 description: >
-  全局偏好记录,重点阅读并实践,任何会话都要确保读取这里的常驻默认值：优先由全局 AGENTS.md 显式加载.
+  个人常驻默认值与会话前置检查：网络选路、shell 与 PowerShell 执行底线（Windows 下首次
+  PowerShell 调用前先加载 powershell-pitfalls，单行抓取也算）、脚本与 UTF-8 约定，以及转调
+  其他 skill 的指针。任何会话动手前先读，优先由全局 AGENTS.md 显式加载。
 ---
 # User Profile（个人常驻默认值）
 
@@ -18,7 +20,7 @@ description: >
   需代理先读 `~/.config/proxy-resources.json`，无可用代理直接问用户，不盲试端口、不静默放弃。
 - **Shell 选择**：Windows 下优先 PowerShell，其次 git-bash，cmd.exe 不推荐（仅作最后回退）；
   工具侧默认 shell 是 cmd 时，命令显式包一层 `powershell -NoProfile -Command` 调用。
-- **PowerShell**：带逻辑的片段一律用 PowerShell，运行前先加载 `powershell-pitfalls`。任何可能输出非 ASCII 的调用（含读文件、`Get-ChildItem` 枚举、`Select-String` 结果）同次先设输出编码再输出；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；退出码 0 或纯英文输出不能证明读取正确。**不要给原生命令的输出接 PowerShell 管道/重定向**（`| Select-Object` / `| Out-String` / `| Out-File`）——实测这条链的保真不稳定，出现过"设了编码反而更乱"；要筛选就让程序自己筛（`--format`、原生 `grep`），要落盘就用程序的 `--out` 参数或字节闸门。**多段 CLI 串成链时**每一跳都要过 PowerShell 的文本解码，漏设一次整条链失真，优先改成"文件接力"。非 ASCII 安全前缀（幂等，贴片段最前）：
+- **PowerShell**：Windows 下**第一次发出 PowerShell 调用之前**加载 `powershell-pitfalls`——单行 `curl`、`Get-Content`、`python` 片段都算，别因为"只是抓一行"跳过；带逻辑的片段一律用 PowerShell。任何可能输出非 ASCII 的调用（含读文件、`Get-ChildItem` 枚举、`Select-String` 结果）同次先设输出编码再输出；必需操作加 `-ErrorAction Stop`；原生命令紧跟查 `$LASTEXITCODE`；退出码 0 或纯英文输出不能证明读取正确。**不要给原生命令的输出接 PowerShell 管道/重定向**（`| Select-Object` / `| Out-String` / `| Out-File`）——实测这条链的保真不稳定，出现过"设了编码反而更乱"；要筛选就让程序自己筛（`--format`、原生 `grep`），要落盘就用程序的 `--out` 参数或字节闸门。**多段 CLI 串成链时**每一跳都要过 PowerShell 的文本解码，漏设一次整条链失真，优先改成"文件接力"。非 ASCII 安全前缀（幂等，贴片段最前）：
 
   ```powershell
   [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -43,7 +45,7 @@ description: >
 
 动词命中即加载：
 
-1. 写PowerShell 命令/脚本/片段/防乱码/执行多段 CLI 链式管道: `powershell-pitfalls`；
+1. 发出任何 PowerShell 调用（含单行抓取/读取/解析）前加载 `powershell-pitfalls`；防乱码与多段 CLI 链式管道同属其域；
 2. 任何外链抓取（尤其 GitHub raw/网页）或请求失败/出网慢/镜像: `network-access`（先读代理登记与同站观测；搜索成功不证明抓取路线可用）；
 3. 验收/复现/回归/门禁/交付质量: `ai-verified-delivery`；
 4. 测试代码/编写测试: `web-app-testing`

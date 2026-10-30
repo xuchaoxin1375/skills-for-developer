@@ -113,6 +113,39 @@ $nativeExit = $LASTEXITCODE
   会直接报 `Unexpected attribute 'CmdletBinding'` / `Unexpected token 'param'`。
   探针只能插在 `param()` 块**之后**。
 
+### 把脚本正文交给解释器：别把 here-string 当 stdin
+
+`python -c "..."` 的代码在参数里，能正常执行；`python - ...` 里的 `-` 表示**从标准输入读程序**，而 here-string 只是被当成一个命令行参数，不会进入 stdin。解释器于是在等一个永远不来的 EOF：命令不返回、不报错、CPU 空闲，看起来就像死循环。
+
+```powershell
+# 卡住：- 指 stdin，@"..."@ 只是参数
+python -X utf8 - $dir @"
+print("hi")
+"@
+
+# 可行：代码走 -c，参数照常跟在后面
+python -X utf8 -c 'print("hi")' $dir
+```
+
+判据：命令长时间无输出且无退出码，先怀疑"进程在等 stdin"，不要先去改逻辑。想显式喂 stdin 时注意 PowerShell 没有 `<` 输入重定向（报 `The '<' operator is reserved for future use`），要么走管道，要么换临时文件。
+
+正文超过几行，或含非 ASCII、引号、`$` 时，直接写成脚本文件再执行，让引号层与 stdin 层一起消失：
+
+```powershell
+python -X utf8 C:/path/to/task.py $dir 参数
+```
+
+### 别拿自动变量当普通变量
+
+`$home`、`$profile`、`$host`、`$pid`、`$input`、`$args`、`$error`、`$psitem` 由 PowerShell 提供，多数只读；赋值当场失败，脚本在第一个配置块就中断：
+
+```powershell
+$home = [ordered]@{ a = 'https://example.com' }   # Cannot overwrite variable HOME because it is read-only or constant.
+$pages = [ordered]@{ a = 'https://example.com' }  # 用业务含义命名，避开自动变量
+```
+
+命名哈希表、集合与循环变量时避开这些名字。报错指向赋值语句本身，不要在别处找原因。
+
 ### 别名与命令冲突
 
 | 想用的 cmd 写法 | pwsh 下实际发生 | 改用 |
@@ -140,5 +173,6 @@ $nativeExit = $LASTEXITCODE
 - 2026-10-21：`File.WriteAllText(..., [Text.Encoding]::UTF8)` 在 5.1 与 7 都写出 `EF BB BF`（`GetPreamble()` 均 3 字节）；`Export-Csv` 未指定编码时 5.1 把中文写成 `??`（ASCII，信息丢失），7 写 UTF-8 无 BOM。
 - 使用 Python argv 记录器：两者直接调用均保留带空格参数；5.1 丢掉空参数和内嵌引号，pwsh 的本次调用保留。两者 `Start-Process -ArgumentList` 数组的带空格项都被拆为两个参数。
 - 2026-10-28：`.psm1` 以 CRLF 保存时，here-string 拼出的远端命令带 CR，bash 与 zsh 都拒绝解析（`unexpected end of file` / `parse error near`）；同一份字节交 `bash -n`、`zsh -n` 可复现，去 CR 后通过。同一环境用 argv 记录器对比：5.1.26100 把参数内的双引号全部移除，7.5.4 完整保留。
+- 2026-10-30：`python -X utf8 - "$dir" @"..."@` 在 pwsh 7 下挂住不返回（`-` 读 stdin，here-string 只作参数）；改用 `-c` 或脚本文件后正常。同环境 `$home = [ordered]@{...}` 报 `Cannot overwrite variable HOME because it is read-only or constant`，`< NUL` 报 `The '<' operator is reserved for future use`。
 
 以上验证本机版本及目标程序，不证明所有包装器、PowerShell 7 小版本或第三方 CLI 有相同参数行为。需要兼容 5.1 的代码也不能直接照抄 `&&`/`||` 等新版本语法。

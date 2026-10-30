@@ -2,9 +2,8 @@
 name: powershell-pitfalls
 description: >
   预防与排查 Windows PowerShell 5.1 / pwsh 7 的编码乱码、分层体检与校准、
-  静默失败、退出码、启动/profile、引号与参数、路径和输出流问题。在 agent 使用 PowerShell
-  读取非 ASCII 文件、选择外壳启动方式、编写或运行任何 PowerShell 脚本片段
-  （.ps1 文件或行内片段）时使用。
+  静默失败、退出码、启动/profile、引号与参数、路径和输出流问题。Windows 上发出任何
+  PowerShell 调用（.ps1 文件、行内片段、单行下载/读取/解析、多段 CLI 链式管道）之前先加载。
   仅用原生 read 查看文本无需加载；不处理 Linux shell 问题。
 ---
 
@@ -15,7 +14,7 @@ description: >
 ## 工作流程
 
 1. 按任务选择工具；普通文本查看优先用可靠的原生读取工具，不为加载此 skill 改用 shell。
-2. 必须用 PowerShell 时，确认实际外壳、版本和启动方式；避免无必要的嵌套 shell。
+2. **第一次发出 PowerShell 调用之前加载本 skill**：单行 `curl`、`Get-Content`、`python` 片段同样算，别因为"只是一行抓取"跳过；随后确认实际外壳、版本和启动方式，避免无必要的嵌套 shell。
 3. 出错后先做最小复现，修复后检查实际结果与退出码；退出码 0、英文输出或手动终端正常都不足以证明工具读取正确。
 
 ## 文件读取与输出编码（agent 读文件前）
@@ -93,6 +92,7 @@ python -c "from pathlib import Path; import json; print(json.dumps(Path('docs/ex
 | 用户要求工具输出原文；交互式 help 乱码 | [工具输出原文](references/encoding-read.md#用户要求工具输出原文)；[help 与分页器](references/encoding-read.md#交互式-help-乱码检查分页器) |
 | 启动/profile 集成、5.1 与 pwsh 兼容差异 | [启动方式与版本差异](references/startup-and-version.md) |
 | 跨层引号、别名、精确路径、写入、原生参数、并发 runspace 或 Junction | [文件与程序调用](references/files-and-invocation.md) |
+| 命令卡住不返回、疑似死循环、进程在等 stdin；`python -` 收代码；赋值报只读变量 | [文件与程序调用](references/files-and-invocation.md#把脚本正文交给解释器别把-here-string-当-stdin) |
 | 静默失败、异常未捕获、退出码或返回对象混入日志 | [错误与输出契约](references/errors-and-output.md) |
 
 ## 验证与维护
