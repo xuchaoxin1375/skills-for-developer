@@ -227,3 +227,11 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - `npm_config_noproxy=registry.npmmirror.com,cdn.npmmirror.com` 在黑洞代理下仍 200，说明 npm 的 `noproxy` 会放行指定域名，可用于"国内镜像直连、其余走代理"。
 - 本机 `fetch-timeout=300000`（默认 5 分钟）：单请求打嗝会被放大成"卡住不动"，随后才报 ETIMEDOUT；诊断期建议 `--fetch-timeout=30000 --fetch-retries=5`。
 - 未复现持续性 ETIMEDOUT（无用户项目路径），以上只证明本机当前到 npm 生态各源可达、且间歇性单请求停顿存在。未验证：具体项目的 `.npmrc`/锁文件固定源、install 脚本额外下载、Git/VCS 依赖、跨日稳定性。
+
+## 2026-10-30 GitHub git 传输直连可用
+
+执行环境：国内 Windows；同一仓库已有 `origin`（Gitee）与 `github` 两个远端，均为 HTTPS。未加任务级代理参数，沿用进程现有环境，未做出口回显。
+
+- `git fetch github main`、`git push github main` 均退出码 0，`ls-remote` 返回与本地 HEAD 一致的 SHA；同期 `fetch`/`push` Gitee 同样成功。
+- 与 2026-10-21 的 raw 直连观测（12 秒超时）对照：文件入口与 git 传输入口可达性不同，不能互推；本次只证明 fetch/push 小改动可用。
+- 未验证：`clone`、大仓库与大文件、SSH 22/443、LFS 对象、代理路线对照、跨日与其他网络环境。
