@@ -24,7 +24,9 @@ const textMaxDesc =
 const allowEmptyDesc =
   '即使结果像"客户端渲染应用壳"（正文不足 200 字符而 HTML 不小于 5 KB）也保留。默认 false：这类页面报错并提示改用 render:"always"，因为静态 HTML 里还没有正文。';
 const keepOptionsDesc =
-  '正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：下拉框、optgroup、datalist、单选/多选的选项按页面顺序列成列表，显示文本与 value 不同时把 value 附在括号里。默认 false：正文模式不收控件值，页面若把清单放在表单里（镜像列表、地区、套餐）就会丢。';
+  '正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：下拉框、optgroup、datalist、单选/多选的选项按页面顺序列成列表。默认 false：正文模式不收控件值，页面若把清单放在表单里（镜像列表、地区、套餐）就会丢。传 "list" 或 true 只写显示文本（文本为空才用 value）；传 "html" 把下拉框写成真正的 <select> 并保留 value/selected，供支持 HTML 表单控件的查看器交互。';
+const keepDetailsDesc =
+  '把正文里被压平的 <details> 原位包回 HTML 块（FAQ、手风琴页），保留折叠结构。需要能在正文里定位到该段并比对成功；定位不到时保持纯文本，不会错包或丢内容。仅 markdown 模式生效。';
 const toTexts = (v) => (v == null ? undefined : Array.isArray(v) ? v : [v]);
 
 /**
@@ -45,7 +47,8 @@ const toOptions = (a) => ({
   pruneEmpty: a.prune_empty ?? false,
   textMax: a.text_max,
   allowEmpty: a.allow_empty ?? false,
-  keepOptions: a.keep_options ?? false,
+  keepOptions: a.keep_options === true ? 'list' : a.keep_options ?? false,
+  keepDetails: a.keep_details ?? false,
   proxy: a.proxy,
   render: a.render ?? false,
   renderTimeoutMs: a.render_timeout_ms,
@@ -82,7 +85,8 @@ const shapeFile = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
-  keep_options: z.boolean().optional().describe(keepOptionsDesc),
+  keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_details: z.boolean().optional().describe(keepDetailsDesc),
 };
 const shapeUrl = {
   url: z.string().describe('http(s) URL'),
@@ -93,7 +97,8 @@ const shapeUrl = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
-  keep_options: z.boolean().optional().describe(keepOptionsDesc),
+  keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_details: z.boolean().optional().describe(keepDetailsDesc),
   proxy: z
     .string()
     .optional()
@@ -156,7 +161,8 @@ const shapeHtml = {
   prune_empty: z.boolean().optional().describe(pruneEmptyDesc),
   text_max: z.number().optional().describe(textMaxDesc),
   allow_empty: z.boolean().optional().describe(allowEmptyDesc),
-  keep_options: z.boolean().optional().describe(keepOptionsDesc),
+  keep_options: z.union([z.boolean(), z.enum(['list', 'html'])]).optional().describe(keepOptionsDesc),
+  keep_details: z.boolean().optional().describe(keepDetailsDesc),
 };
 
 // 正确命名（v2）。旧拼写 htmmini_* 保留为别名以兼容已配置的客户端。

@@ -145,9 +145,11 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 
 级别也可用环境变量 `HTMLMINI_LOG=quiet|info|debug` 预设，CLI 开关覆盖环境变量；MCP 侧只认环境变量。时间戳用 `HTMLMINI_LOG_TIME=0` 关闭。慢的阶段（网络抓取、`--render` 回退、`pretty` 重排）都会先报开始再报耗时，所以长时间等待不会静默。
 
-### 表单可选项（`--keep-options`）
+### 表单可选项与折叠块（`--keep-options` / `--keep-details`）
 
-正文模式（`markdown` / `text` / `skeleton`）只留正文，表单控件里的值会被当样板剔除。页面把清单放进下拉框、单选或多选时（镜像列表、地区、套餐），导出后就只剩使用说明。加 `--keep-options` 把可选项追加到正文末尾：
+正文模式（`markdown` / `text` / `skeleton`）只留正文：表单控件里的值和 `<details>` 的折叠结构都会被抹平。页面把清单放进下拉框、单选或多选时（镜像列表、地区、套餐），导出后就只剩使用说明。
+
+`--keep-options` 在正文末尾追加一节：
 
 ```text
 ## 表单选项
@@ -162,9 +164,33 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 ```
 
 - 覆盖 `select`（含 `optgroup` 分组）、`datalist` 候选、`radio` / `checkbox`（同 `name` 一组，组名取 `fieldset` 的 `legend`，已选项标 `[已选]`）。
-- 显示文本与 `value` 不同才把 `value` 附在括号里（`北京（bj）`）；`value` 只是给文本加了协议前缀或尾斜杠时不重复写。
-- 按页面顺序输出，不去重、不截断：选项数就是输出长度，几千项的下拉框会让输出明显变长。
-- 只作用于正文模式：`--mode html` 原文里本来就有，`--mode ui` 的"表单字段"只列前 10 条且整行截断，`--json` 不受影响。MCP 对应 `keep_options: true`。
+- 列表只写显示文本：`<option value="https://x">x</option>` 输出 `- x`。value 是提交用的编码值，读正文时是噪声；只有选项本身没有文本（图片、色块）时才退回 value。
+- 需要 value 属性本身，或想让支持 HTML 的查看器显示真正的下拉框，用 `--keep-options=html`：
+
+```html
+<select aria-label="加速源">
+<option value="https://gh-proxy.com">gh-proxy.com</option>
+<option value="https://ghproxy.net" selected>ghproxy.net</option>
+</select>
+```
+
+  只有 `select` 写成控件；`datalist`（没有配套输入框时不可见）和单选/多选（离开表单点不动）仍按列表输出。
+
+`--keep-details` 把被压平的 `<details>` 原位包回 HTML：
+
+```html
+<details>
+<summary>常见问题一</summary>
+
+答案一：这里是被折叠的内容。
+
+</details>
+```
+
+- 做法是"摘要行 + 逐行文本比对"：从摘要所在行开始累加，直到与 `<details>` 的文本完全一致才替换。定位或比对失败就保持纯文本——宁可不折叠，也不会错包别的段落或让内容丢失（日志会报保留/跳过各几个）。
+- 只在 `markdown` 模式生效（`text` 会剥掉 HTML）；嵌套 `<details>` 只包最外层。
+- 查看器支持度不一样：GitHub 渲染 `<details>`，但会过滤 `<select>` 等表单控件；VS Code、Obsidian、Typora 之类大多能显示。要"到处都能读"用默认列表，要交互再用 `=html`。
+- 只作用于正文模式：`--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断；`--json` 不受影响。MCP 对应 `keep_options: "list" | "html"`、`keep_details: true`。
 
 ## 与 resilient-browser-fetch 的流水线
 

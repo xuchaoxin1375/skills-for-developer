@@ -157,9 +157,14 @@ ${engineList()}
                                （空 div/span/nav/header…；table/form/pre 结构保留）
     --allow-empty              保留"像客户端渲染壳"的结果（正文 < 200 字符且 HTML >= 5 KB）。
                                默认报错并提示改用 --render=always
-    --keep-options             正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：
-                               下拉框/optgroup/datalist/单选/多选的选项按页面顺序列出，
-                               显示文本与 value 不同时把 value 附在括号里；不截断
+    --keep-options[=list|html]
+                               正文模式（markdown/text/skeleton）末尾追加"## 表单选项"：
+                               下拉框/optgroup/datalist/单选多选的选项按页面顺序列出。
+                               默认 list 只写显示文本（文本为空才用 value）；html 把下拉框
+                               写成真正的 <select>（保留 value/selected，查看器支持表单控件
+                               时才有交互）；都不截断
+    --keep-details             把正文里被压平的 <details> 原位包回 HTML（FAQ/手风琴页）。
+                               需能在正文里定位到该段并比对成功，否则保持纯文本
     --noproxy                  强制直连，忽略环境代理
     --quiet                    只输出错误（进度日志静音）
     --verbose                  额外细节：解析/抽取内部信息、耗时、体积
@@ -228,8 +233,10 @@ ${ENV_HELP.map((line) => `  ${line}`).join('\n')}
   python ../resilient-browser-fetch/scripts/resilient_fetch.py --url "https://example.com/app" --out app.html --engine chrome-late
   htmlmini app.html --json
 
-  # 12) 表单里的可选项（下拉框/单选/datalist）正文模式不收，需要时追加成列表
-  htmlmini "https://example.com/tool" -m --keep-options
+  # 12) 表单可选项与折叠块：正文模式不收控件值，details 会被压平
+  htmlmini "https://example.com/tool" -m --keep-options         # 追加列表（只写显示文本）
+  htmlmini "https://example.com/tool" -m --keep-options=html    # 下拉框写成真正的 <select>
+  htmlmini "https://example.com/faq" -m --keep-details          # details 原位包回 HTML
 
 常见症状与对策 (TROUBLESHOOTING)
   403（静态抓取）             → 加 --render（只在 403/5xx 时回退渲染）。
@@ -322,6 +329,7 @@ let pruneEmpty = false;
 let textMax = 150;
 let allowEmpty = false;
 let keepOptions = false;
+let keepDetails = false;
 let logLevelOverride = null;
 // 来源哨兵行：默认关（HTML 注释风格）。显式 `--source-marks` 或 HTMLMINI_SOURCE_MARKS=1 才加。
 let sourceMarks = process.env.HTMLMINI_SOURCE_MARKS === '1';
@@ -460,8 +468,14 @@ for (let i = 0; i < argv.length; i++) {
     }
   } else if (a === '--allow-empty') {
     allowEmpty = true;
-  } else if (a === '--keep-options') {
-    keepOptions = true;
+  } else if (a === '--keep-options' || a === '--keep-options=list' || a === '--keep-options=html') {
+    // 可选值只认 `=` 形式：空格形式会把下一个参数（通常是输入路径）当值吞掉。
+    keepOptions = a === '--keep-options=html' ? 'html' : 'list';
+  } else if (a.startsWith('--keep-options=')) {
+    log.error(`--keep-options 取值只能是 list 或 html，got "${a.slice('--keep-options='.length)}"`);
+    process.exit(2);
+  } else if (a === '--keep-details') {
+    keepDetails = true;
   } else if (a === '--no-source-marks' || a === '--no-marks') {
     sourceMarks = false;
   } else if (a === '--source-marks' || a === '--marks') {
@@ -564,7 +578,7 @@ if (source === '-' && process.stdin.isTTY) {
 
 try {
   const startedAt = Date.now();
-  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }), ...(keepOptions ? { keepOptions: true } : {}) });
+  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }), ...(keepOptions ? { keepOptions } : {}), ...(keepDetails ? { keepDetails: true } : {}) });
   // JSON 模式不包哨兵行（否则不再可解析），来源由 JSON 里的 source/fetchStatus/fetchedAt 字段承载。
   const out = mode === 'json' || !sourceMarks ? raw : markSource(raw, info);
   const total = `total ${fmtMs(Date.now() - startedAt)}`;

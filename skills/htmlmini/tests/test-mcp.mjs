@@ -133,6 +133,7 @@ if (!alias.result.content[0].text.includes('刷新')) throw new Error('alias cal
 console.log('ok - 别名调用可用');
 
 if (!urlProps.keep_options) throw new Error('extract_url missing keep_options param');
+if (!urlProps.keep_details) throw new Error('extract_url missing keep_details param');
 const FORM = `<html><head><title>表单</title></head><body><p>正文</p>
 <label for="c">城市</label><select id="c"><option value="bj">北京</option><option value="sh">上海</option></select>
 </body></html>`;
@@ -142,7 +143,20 @@ const kept = await rpc('tools/call', {
 });
 const keptText = kept.result.content[0].text;
 if (!keptText.includes('## 表单选项') || !keptText.includes('- 北京')) throw new Error('keep_options did not append the option list');
-console.log('ok - keep_options 把下拉选项追加成列表');
+if (keptText.includes('（bj）')) throw new Error('keep_options should not print option values by default');
+const keptHtml = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: FORM, mode: 'markdown', extractor: 'semantic', keep_options: 'html' },
+});
+if (!keptHtml.result.content[0].text.includes('<select aria-label="城市">')) throw new Error('keep_options:"html" did not emit a real <select>');
+const DETAILS = `<html><head><title>折叠</title></head><body><p>开头。</p>
+<details><summary>问题一</summary><p>答案一。</p></details><p>结尾。</p></body></html>`;
+const keptDetails = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: DETAILS, mode: 'markdown', extractor: 'defuddle', keep_details: true },
+});
+if (!keptDetails.result.content[0].text.includes('<details>\n<summary>问题一</summary>')) throw new Error('keep_details did not wrap the flattened <details>');
+console.log('ok - keep_options(list/html) 与 keep_details 可用');
 
 child.kill();
 process.exit(0);

@@ -271,9 +271,28 @@ htmlmini page.html -m --keep-options
 ```
 
 - 覆盖 `select`（含 `optgroup`）、`datalist`、`radio` / `checkbox`（同 `name` 一组，组名取 `fieldset` 的 `legend`，已选项标 `[已选]`）。
-- 显示文本与 `value` 不同才附在括号里（`北京（bj）`）；`value` 只是给文本加了协议前缀或尾斜杠时不重复写。
+- 列表只写显示文本：`<option value="https://x">x</option>` 输出 `- x`，value 是提交用的编码值，读正文时是噪声；选项本身没有文本（图片、色块）时才退回 value。
+- 需要 value 属性、或想让支持 HTML 的查看器显示真正的下拉框，用 `--keep-options=html`：下拉框写成 `<select>`（保留 `value`/`selected`），`datalist` 与单选/多选仍按列表（没有配套表单时不可见也点不动）。
 - 按页面顺序输出，不去重、不截断：几千项的下拉框会让输出明显变长，先确认是否真要全量。
-- `--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断，要全量仍用这个开关。MCP 对应 `keep_options: true`。
+- `--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断，要全量仍用这个开关。MCP 对应 `keep_options: "list" | "html"`。
+
+折叠块是同一类问题：抽取器把 `<details>` 压成"摘要 + 正文"的普通段落，折叠结构没了。加 `--keep-details` 会在原位包回 HTML：
+
+```html
+<details>
+<summary>常见问题一</summary>
+
+答案一：这里是被折叠的内容。
+
+</details>
+```
+
+判据与边界：
+
+- 只在 `markdown` 模式生效；做法是从摘要行起逐行累加文本，与 `<details>` 的文本完全一致才替换，日志报"原位保留 N 个 / M 个定位失败"。
+- 定位或比对失败就保持纯文本：宁可少一层折叠，也不把别的段落错包进来。抽取器改写、打乱或丢掉了 details 内部内容时（常见于侧栏/导航里的折叠块）就会这样。
+- 查看器支持度不同：GitHub 渲染 `<details>` 但过滤 `<select>` 等表单控件；VS Code / Obsidian / Typora 大多能显示两者。给 LLM 或纯文本消费时用默认列表更省事。
+- 嵌套 `<details>` 只包最外层。
 
 ## 通用坑
 

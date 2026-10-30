@@ -34,6 +34,7 @@ import {
   resolveProxy,
   runExtract,
   runExtractDetailed,
+  wrapDetails,
   savePageUsable,
   skeletonFromMarkdown,
   tryTrafilatura,
@@ -1726,7 +1727,7 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   ok(!savePageArgs(base).includes('--expect-text'), '未给断言时不带 --expect-text');
 }
 
-// ---- 17. --keep-options：正文模式丢控件值，显式把可选项追加成列表 ----
+// ---- 17. --keep-options / --keep-details：控件值与被压平的折叠块 ----
 {
   const FORM = `<html><head><title>表单</title></head><body>
     <p>正文</p>
@@ -1742,16 +1743,38 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
     </fieldset>
     <datalist id="browsers"><option value="Chrome"></option></datalist>
     <select aria-label="镜像"><option value="https://gh-proxy.com">gh-proxy.com</option></select>
+    <select aria-label="图片选项"><option value="red"><img src="red.png" alt=""></option></select>
   </body></html>`;
   const section = formOptionsSection(FORM);
   ok(section.startsWith('## 表单选项\n\n- 城市（3 项）'), '选项清单以组名 + 条数起头');
-  ok(section.includes('  - 华北\n    - 北京（bj）'), 'optgroup 缩进一层，value 与文本不同时附括号');
-  ok(section.includes('  - 请选择\n'), '空 value 不留空括号');
+  ok(section.includes('  - 华北\n    - 北京'), 'optgroup 缩进一层，列表只写显示文本');
+  ok(!section.includes('（bj）') && !section.includes('（sh）'), '列表默认不输出 value');
+  ok(section.includes('  - 请选择\n'), '空 value 的选项照常列文本');
   ok(section.includes('- 套餐（2 项）\n  - 基础版\n  - 专业版 [已选]'), '单选组取 fieldset legend 并标注已选');
   ok(section.includes('- #browsers（1 项）\n  - Chrome'), 'datalist 候选也算可选项');
-  ok(section.trimEnd().endsWith('- 镜像（1 项）\n  - gh-proxy.com') && !section.includes('gh-proxy.com（'), 'value 只是加了协议前缀时不重复写');
+  ok(section.includes('- 图片选项（1 项）\n  - red'), '选项没有文本时退回 value（图片选项）');
   ok(section.indexOf('- 城市') < section.indexOf('- 套餐'), '按文档顺序输出，不按控件类型分组');
   ok(formOptionsSection('<html><body><p>没有表单</p></body></html>') === '', '没有可选项时不追加空章节');
+
+  const asHtml = formOptionsSection(FORM, { format: 'html' });
+  ok(asHtml.includes('<select aria-label="镜像">\n<option value="https://gh-proxy.com">gh-proxy.com</option>\n</select>'), 'html 形式把下拉框写成 <select>，保留 value');
+  ok(asHtml.includes('<optgroup label="华北">\n  <option value="bj">北京</option>\n</optgroup>'), 'html 形式保留 optgroup 分组');
+  ok(asHtml.includes('- 套餐（2 项）') && !asHtml.includes('<input'), 'html 形式只改下拉框，单选仍按列表');
+
+  // details：抽取器把它压平成"摘要 + 正文"，--keep-details 按文本比对包回原位。
+  const DETAILS = `<html><head><title>折叠</title></head><body>
+    <p>开头。</p>
+    <details><summary>问题一</summary><p>答案一。</p></details>
+    <details open><summary>问题二</summary><ul><li>要点甲</li><li>要点乙</li></ul></details>
+    <p>结尾。</p></body></html>`;
+  const flat = '开头。\n\n问题一\n\n答案一。\n\n问题二\n- 要点甲\n- 要点乙\n\n结尾。';
+  const wrapped = wrapDetails(flat, DETAILS);
+  ok(wrapped.wrapped === 2 && wrapped.skipped === 0, '定位成功时两个 details 都被包回');
+  ok(wrapped.markdown.includes('<details>\n<summary>问题一</summary>\n\n答案一。\n\n</details>'), '包回原位，摘要进 <summary>，内容留在块内');
+  ok(wrapped.markdown.includes('<details open>\n<summary>问题二</summary>'), 'open 状态保留');
+  ok(wrapped.markdown.indexOf('<details>') < wrapped.markdown.indexOf('结尾。'), '块位置不变，不挪到末尾');
+  const lost = wrapDetails('开头。\n\n结尾。', DETAILS);
+  ok(lost.wrapped === 0 && lost.skipped === 2 && lost.markdown === '开头。\n\n结尾。', '正文里定位不到时保持纯文本，不乱包');
 
   const dir = await mkdtemp(path.join(os.tmpdir(), 'htmlmini-opts-'));
   try {
@@ -1761,12 +1784,25 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
     const plain = await cli([file, '-m', '--extractor', 'semantic']);
     ok(!plain.stdout.includes('表单选项') && !plain.stdout.includes('gh-proxy.com'), '默认不追加选项清单');
     const kept = await cli([file, '-m', '--extractor', 'semantic', '--keep-options']);
-    ok(kept.code === 0 && kept.stdout.includes('## 表单选项') && kept.stdout.includes('北京（bj）'), '--keep-options 追加选项清单');
+    ok(kept.code === 0 && kept.stdout.includes('## 表单选项') && kept.stdout.includes('  - 北京'), '--keep-options 追加选项清单');
     ok(/--keep-options 追加 \d+ 条/.test(kept.stderr), '追加时日志写明条数');
+    const keptHtml = await cli([file, '-m', '--extractor', 'semantic', '--keep-options=html']);
+    ok(keptHtml.code === 0 && keptHtml.stdout.includes('<select aria-label="镜像">'), '--keep-options=html 输出真正的 <select>');
+    const bad = await cli([file, '--keep-options=xml']);
+    ok(bad.code === 2 && bad.stderr.includes('list 或 html'), '非法取值退出 2');
     const htmlMode = await cli([file, '--mode', 'html', '--keep-options']);
     ok(htmlMode.code === 0 && !htmlMode.stdout.includes('表单选项') && htmlMode.stderr.includes('只作用于'), 'html 模式不追加，并说明原因');
     const asJson = await cli([file, '--json', '--keep-options']);
     ok(asJson.code === 0 && JSON.parse(asJson.stdout).content.includes('正文'), '--json 不受影响，仍是合法 JSON');
+
+    const detailsFile = path.join(dir, 'details.html');
+    await writeFile(detailsFile, DETAILS);
+    // 用 defuddle：它把 details 压平成"摘要 + 正文"，正是这个开关要修的状态。
+    const details = await cli([detailsFile, '-m', '--extractor', 'defuddle', '--keep-details']);
+    ok(details.code === 0 && /--keep-details 原位保留 2 个/.test(details.stderr), '--keep-details 在 CLI 上生效并记账');
+    ok(details.stdout.includes('<details open>\n<summary>问题二</summary>'), 'CLI 输出里 details 是 HTML 块');
+    const detailsText = await cli([detailsFile, '-t', '--keep-details']);
+    ok(detailsText.code === 0 && detailsText.stderr.includes('只作用于 markdown'), 'text 模式忽略并说明原因');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

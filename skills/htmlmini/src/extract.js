@@ -2404,32 +2404,70 @@ export function assertUsableResult(res, htmlChars, { allowEmpty = false, mode = 
   );
 }
 
+/** HTML 转义：保留为 HTML 的元素要能安全写回 markdown（文本与属性共用）。 */
+const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 /**
- * `--keep-options`：把表单控件的可选项整理成 markdown 列表。
+ * `--keep-options`：把表单控件的可选项整理成列表（或把下拉框写成真正的 `<select>`）。
  * 正文模式按设计丢掉控件值（下拉框/单选的选项、datalist 候选），可这些值常是页面真正
  * 要给的内容（镜像列表、地区、套餐）。这里按页面顺序收一遍，由调用方追加到正文后面：
  * 不依赖具体抽取引擎，defuddle/trafilatura/内置转换器都不影响结果。
  * 不去重、不截断：选项数就是输出长度，页面上有上千项时输出会很长。
+ *
+ * format='html' 只改变 `<select>`：写成 `<select>` 后，支持 HTML 表单控件的查看器能直接
+ * 交互。datalist 没有配套输入框时不可见、单选多选离开表单也点不动，它们仍按列表输出。
  */
-export function formOptionsSection(html) {
+export function formOptionsSection(html, { format = 'list' } = {}) {
   const doc = parseOnce(html);
   const blocks = [];
 
-  // 选项值只在和显示文本不同时补在括号里；`<option value="https://x">x</option>` 这种
-  // 只是给文本加了协议/尾斜杠的值不重复写，而 `value="1"` 这种编码值不会丢。
+  const optionHtml = (opt) => {
+    const text = collectText(opt);
+    const value = (opt.getAttribute('value') ?? '').trim();
+    const attrs = [];
+    if (value) attrs.push(`value="${escapeHtml(value)}"`);
+    if (opt.hasAttribute('selected')) attrs.push('selected');
+    if (opt.hasAttribute('disabled')) attrs.push('disabled');
+    return `<option${attrs.length ? ` ${attrs.join(' ')}` : ''}>${escapeHtml(text || value)}</option>`;
+  };
+
+  const selectHtml = (el) => {
+    const attrs = [];
+    const label = fieldLabel(doc, el);
+    if (label) attrs.push(`aria-label="${escapeHtml(label)}"`);
+    const name = (el.getAttribute('name') ?? '').trim();
+    if (name) attrs.push(`name="${escapeHtml(name)}"`);
+    if (el.hasAttribute('multiple')) attrs.push('multiple');
+    const lines = [`<select${attrs.length ? ` ${attrs.join(' ')}` : ''}>`];
+    for (const child of [...el.children]) {
+      const childTag = child.tagName ? child.tagName.toLowerCase() : '';
+      if (childTag === 'optgroup') {
+        const gl = (child.getAttribute('label') ?? '').trim();
+        lines.push(`<optgroup${gl ? ` label="${escapeHtml(gl)}"` : ''}>`);
+        for (const opt of child.querySelectorAll('option')) lines.push(`  ${optionHtml(opt)}`);
+        lines.push('</optgroup>');
+      } else if (childTag === 'option') {
+        lines.push(optionHtml(child));
+      }
+    }
+    lines.push('</select>');
+    return lines.join('\n');
+  };
+
+  // 列表只取显示文本：`<option value="https://x">x</option>` 的 value 是提交用的编码值，
+  // 读正文时是噪声。文本为空（选项是图片/纯色块等非文本内容）才退回 value，否则语义就没了。
+  // 需要 value 属性本身时用 --keep-options=html，那里按原样保留。
   const optionLine = (opt, indent) => {
     const text = collectText(opt);
     const value = (opt.getAttribute('value') ?? '').trim();
-    if (!text && !value) return '';
-    const bare = value.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-    const same = text === value || (text && bare === text.replace(/\/+$/, ''));
-    const shown = !text || !value || same ? text || value : `${text}（${value}）`;
-    return `${indent}- ${shown}`;
+    const shown = text || value;
+    return shown ? `${indent}- ${shown}` : '';
   };
 
   const selectBlock = (el, tag) => {
     const options = [...el.querySelectorAll('option')];
     if (!options.length) return '';
+    if (format === 'html' && tag === 'select') return selectHtml(el);
     const label = fieldLabel(doc, el) || (tag === 'select' ? '下拉框' : '候选项');
     const lines = [`- ${label}（${options.length} 项）`];
     let group = null;
@@ -2489,6 +2527,82 @@ export function formOptionsSection(html) {
   return blocks.length ? `## 表单选项\n\n${blocks.join('\n\n')}` : '';
 }
 
+/**
+ * `--keep-details`：把正文里被压平的 `<details>` 重新包成 HTML 块。
+ * 抽取器会把 details 压成"摘要 + 正文"的普通段落，折叠结构随之消失。这里在 markdown 里
+ * 按摘要行定位，从该行起累加文本直到与 details 的文本完全一致，才把这一段包回
+ * `<details><summary>…</summary>…</details>`。定位或比对失败就保持纯文本：宁可不折叠，
+ * 也不能错包别人的段落或让内容丢失。只处理最外层 details，嵌套的随外层一起被包住。
+ */
+export function wrapDetails(markdown, html) {
+  const doc = parseOnce(html);
+  const targets = [...doc.querySelectorAll('details')].filter((el) => {
+    const parent = el.parentElement;
+    return !(parent && parent.tagName && parent.tagName.toLowerCase() === 'details');
+  });
+  if (!targets.length) return { markdown, wrapped: 0, skipped: 0 };
+
+  // 比对时抹掉 markdown 标记与全部空白：`- 要点`、`**加粗**`、换行折叠都不该影响匹配。
+  const plain = (s) =>
+    stripMarkdown(String(s))
+      .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, '')
+      .replace(/\s+/g, '');
+
+  const lines = markdown.split('\n');
+  const spans = [];
+  let cursor = 0;
+  let skipped = 0;
+  for (const el of targets) {
+    const summaryEl = el.querySelector('summary');
+    const summary = summaryEl ? collectText(summaryEl) : '';
+    const head = plain(summary);
+    const total = plain(collectText(el));
+    if (!head || !total) {
+      skipped += 1;
+      continue;
+    }
+    const start = lines.findIndex((line, i) => i >= cursor && plain(line) === head);
+    if (start < 0) {
+      skipped += 1;
+      continue;
+    }
+    let acc = '';
+    let end = -1;
+    for (let j = start; j < lines.length; j++) {
+      acc += plain(lines[j]);
+      if (acc === total) {
+        end = j;
+        break;
+      }
+      if (acc.length > total.length) break;
+    }
+    if (end < 0) {
+      skipped += 1;
+      continue;
+    }
+    spans.push({ start, end, summary, open: el.hasAttribute('open') });
+    cursor = end + 1;
+  }
+
+  let out = lines;
+  for (const span of spans.reverse()) {
+    const before = out.slice(0, span.start);
+    const after = out.slice(span.end + 1);
+    const inner = out.slice(span.start + 1, span.end + 1);
+    while (inner.length && !inner[0].trim()) inner.shift();
+    while (inner.length && !inner[inner.length - 1].trim()) inner.pop();
+    const block = [];
+    // HTML 块要到空行才结束：前后贴着的段落必须隔开，否则会被一起吞进 <details>。
+    if (before.length && before[before.length - 1].trim()) block.push('');
+    block.push(`<details${span.open ? ' open' : ''}>`, `<summary>${escapeHtml(span.summary)}</summary>`);
+    if (inner.length) block.push('', ...inner, '');
+    block.push('</details>');
+    if (after.length && after[0].trim()) block.push('');
+    out = [...before, ...block, ...after];
+  }
+  return { markdown: out.join('\n'), wrapped: spans.length, skipped };
+}
+
 export function renderResult(res, mode) {
   switch (mode) {
     case 'json':
@@ -2514,7 +2628,7 @@ export async function runExtract(source, mode = 'markdown', options = {}) {
  * 与 runExtract 相同，但把来源信息（URL、状态码、是否渲染、抓取时刻）一起返回，
  * 供调用方做来源标记或 JSON 字段；CLI 用它生成起止行。
  */
-export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
+export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = false, keepDetails = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -2575,11 +2689,21 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
   // 取到内容之后再记时刻：哨兵行的 fetched 表示"这份载荷什么时候拿到的"，不是命令启动时间。
   fetchedAt = timestamp();
   const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, fetchCss: rendered || Boolean(sibling && /^https?:/i.test(sibling.url)), ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
+  // 被压平的 <details> 先按原位包回 HTML，再追加选项清单：后者加在末尾，不影响前面的定位。
+  if (keepDetails) {
+    if (mode === 'markdown') {
+      const r = wrapDetails(res.content, html);
+      res.content = r.markdown;
+      log.info('extract', `--keep-details 原位保留 ${r.wrapped} 个 <details>${r.skipped ? `，${r.skipped} 个定位失败保持纯文本` : ''}`);
+    } else {
+      log.info('extract', `--keep-details 只作用于 markdown；${mode} 模式会丢掉 HTML 结构，忽略`);
+    }
+  }
   // 可选项在正文模式里被当控件样板丢掉，但常是页面要给的清单；追加在正文之后，
   // 与抽取引擎无关（defuddle/trafilatura 内建的 select 处理不归我们控制）。
   if (keepOptions) {
     if (TEXT_MODES.has(mode)) {
-      const section = formOptionsSection(html);
+      const section = formOptionsSection(html, { format: keepOptions === 'html' ? 'html' : 'list' });
       if (section) {
         const body = String(res.content ?? '').replace(/\n+$/, '');
         res.content = body ? `${body}\n\n${section}` : section;
