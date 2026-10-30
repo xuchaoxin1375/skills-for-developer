@@ -60,7 +60,7 @@
 1. 确认用户要建议还是实施，检查现有差异及目标规则；没有必要不扩展到无关 skill。
 2. 按 [真源工作流程](../SKILL.md#工作流程)及相关维护 skill 选择主流程，记录关键采纳/未采纳或冲突依据。普通微小修改无需额外建立大型追踪资料。
 3. 修改归属文件及必要引用。描述、职责或维护入口变化时同步 README；若影响分发，依真源规范用现有链接脚本处理。
-4. 校验最终文件的结构、引用和差异；按变更类型追加下表检查。仓库侧至少运行 `python scripts/check-skills.py --no-harness --strict` 与 `python scripts/check-links.py`，本机分发另跑链接脚本。工具报告的通过范围需明确，不能因某项检查绿就宣称所有能力已验证。
+4. 校验最终文件的结构、引用和差异；按变更类型追加下表检查。仓库侧至少运行 `python scripts/check-skills.py --no-harness --strict` 与 `python scripts/check-links.py`，本机分发另跑链接脚本。工具报告的通过范围需明确，不能因某项检查绿就宣称所有能力已验证。`bash scripts/install-hooks.sh` 可让 pre-commit 自动执行这两项（`git commit --no-verify` 临时跳过）。
 5. 交付可定位改动、实际验证及限制。提交与推送按有效授权，不用文档审查制造新的审批步骤。
 
 | 变更类型 | 适用验证 |

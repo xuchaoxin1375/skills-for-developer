@@ -14,6 +14,7 @@
 """
 
 import argparse
+import difflib
 import re
 import sys
 import urllib.parse
@@ -103,8 +104,11 @@ def check(repo: Path):
                         errors.append(f"{f.relative_to(repo)}:{no} 锚点目标不是文件: {target}")
                         continue
                     frag = urllib.parse.unquote(frag)
-                    if frag not in anchors(path):
-                        errors.append(f"{f.relative_to(repo)}:{no} 锚点不存在: {target}")
+                    available = anchors(path)
+                    if frag not in available:
+                        close = difflib.get_close_matches(frag, available, n=1, cutoff=0.6)
+                        hint = f"（最接近: #{close[0]}）" if close else ""
+                        errors.append(f"{f.relative_to(repo)}:{no} 锚点不存在: {target}{hint}")
     print(f"检查 {checked} 个内部链接，{len(errors)} 个问题")
     for e in errors:
         print(f"ERROR: {e}")

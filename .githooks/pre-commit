@@ -1,0 +1,21 @@
+#!/bin/sh
+# 提交前自检：仓库结构与索引 + Markdown 相对链接/锚点。
+# 启用：bash scripts/install-hooks.sh（Windows 也可 powershell -File scripts/install-hooks.ps1）
+# 临时跳过：git commit --no-verify
+set -e
+
+run_py() {
+    if command -v python >/dev/null 2>&1; then python "$@"
+    elif command -v python3 >/dev/null 2>&1; then python3 "$@"
+    elif command -v py >/dev/null 2>&1; then py -3 "$@"
+    else
+        echo "pre-commit: 未找到 Python（python/python3/py），跳过自检" >&2
+        return 0
+    fi
+}
+
+root=$(git rev-parse --show-toplevel) || exit 1
+cd "$root" || exit 1
+
+run_py scripts/check-skills.py --no-harness --strict
+run_py scripts/check-links.py
