@@ -2,7 +2,7 @@
 name: network-access
 description: >
   任何外链抓取、联网下载或代理/镜像配置之前先加载本 skill：出站访问的默认入口，不等超时或失败才用。
-  适用于抓外网网页、GitHub raw（raw.githubusercontent.com）单文件、仓库页面与 git clone、官方文档、API 文档、搜索结果里的正文链接；装 pip/uv/npm/pnpm/Yarn/conda 依赖、跑 playwright install / scrapling install、下载浏览器；配国内镜像源、加速前缀、代理，或确认抓取工具的实际出口。
+  适用于抓外网网页、GitHub raw（raw.githubusercontent.com）单文件、仓库页面与 git clone/fetch/push、官方文档、API 文档、搜索结果里的正文链接；装 pip/uv/npm/pnpm/Yarn/conda 依赖、跑 playwright install / scrapling install、下载浏览器；配国内镜像源、加速前缀、代理，或确认抓取工具的实际出口。
   先读本机代理登记与同站观测再发请求，按直连/代理/镜像选路并设耗时上限；同一 URL 同路线超时或失败后换路线，不原样重发，超时、403、5xx、429 限流按错误分流处理。技术方案要说明国内试验与海外生产网络影响时也用。
   纯本地文件读写、纯代码问题、纯概念写作不加载；浏览器截图/操作、HTML 提取、PowerShell 编码、测试设计分别按对应 skill 处理，涉及外链时仍先按本 skill 选路。
 ---
@@ -24,6 +24,7 @@ description: >
 | 国内 Playwright/Scrapling 浏览器制品 | 已核验的国内制品镜像/内部库 → 已登记代理访问官方 CDN → 直连诊断；大包默认不耗代理额度，镜像只需覆盖包锁定的 revision，核验与回退按 [浏览器安装](references/browser-installation.md)，包源不代替浏览器源 |
 | 国内 GitHub/官方文档，有可用代理 | 代理访问原站；已知直连可用可直接使用，代理失败时核验协议、出口和目标响应 |
 | 国内 GitHub 公开文件，无代理 | 核验可用的文件加速服务；不支持的资源尝试有界直连或官方替代下载渠道 |
+| 国内 GitHub 仓库操作（clone/fetch/push） | 已登记代理 → SSH 443 → 有界直连；文件加速不适用于 git 传输，推送走原站 |
 | 国内普通文档/其他资源，无代理 | 有界直连 → 已核验且内容对应的官方镜像/替代渠道；GitHub 加速前缀不适用于任意 URL |
 | 海外生产服务器 | 原站直连优先，按真实出口验证；失败再诊断，不能假定海外一定可达或继承本机代理 |
 
@@ -51,7 +52,7 @@ description: >
 - **必须**：外网慢/403/5xx先做双路有界探测与错误分流（见 `references/network-access.md`“错误分流”）；仅当正文确认为 WAF/挑战/区域拦截且需渲染取证时才转 `resilient-browser-fetch`，不一见 403 就上浏览器。例：代理 `curl` 已 200 取回正文即直接交付，不启动浏览器。
 - **必须**：引用镜像/加速服务前核验对应目标及适用范围，保留原始来源；未能核验时明确说明。例：一个 raw 文件可下载，不能证明整站文档或 git clone 都可用。
 
-代理、超时、错误分流及 GitHub 加速细节见 [references/network-access.md](references/network-access.md)；
+代理、超时、错误分流、GitHub 加速与 Git 客户端路线见 [references/network-access.md](references/network-access.md)；
 本机代理登记见 [references/proxy-registry.md](references/proxy-registry.md)；
 候选枚举与探测见 `scripts/probe_local_proxies.py`（纯标准库，按进程名匹配并探测其自身监听端口，默认 5 秒预算、超时记不可判定；`--match` 可加自定义进程名正则，`--copy` 直接给出可粘贴的代理环境变量行，`--watch SEC` 常驻报变化；`--json` 的 `usable[]` 直接给可用入口的 url/出口/来源，读它比过滤 `candidates[]` 省事）；
 带日期的本机记录见 [references/local-observations.md](references/local-observations.md)。
@@ -83,6 +84,7 @@ pip/uv/npm/pnpm/Yarn/conda 的配置、并发与超时、额外下载及验收�
 - [ ] 普通慢/403/5xx是否先分流：裸 403 先补浏览器头有界重测，仍失败再判权限/挑战/限流，未一见 403 就上浏览器？
 - [ ] 已有同站观测时，是否直接沿用其中被证实的层与路线，不逐层复现 403？
 - [ ] 镜像/加速是否核验对应目标、内容与适用范围，保留原始来源并注明未验证范围？
+- [ ] GitHub 的 clone/fetch/push 是否按 git 传输单独核验，没有拿 raw 或文件加速可用当证据？
 - [ ] 是否确认包管理器版本、有效配置和失败阶段，区分索引、包文件与额外下载？
 - [ ] 目标环境缺包管理器时是否用受控方式取得（如随 Node 分发的 Corepack）并说明版本与来源，未静默换管理器、未擅自做全局改动？
 - [ ] 是否使用任务级配置，保留私有源绑定、锁文件与完整性校验？

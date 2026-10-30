@@ -102,6 +102,16 @@ GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-rema
 - 第三方公共服务只用于适合公开分发的资源，不向其转发私有仓库、令牌、Cookie 或签名下载 URL；不关闭 TLS 校验来掩盖证书错误。
 - 一个小文件可用只覆盖该目标与当时出口；生产、WSL/容器、其他平台、大文件和 git clone 的状态另行验证。限流后遵守冷却，不能逐个镜像轮询同一受限站点。
 
+## GitHub 与 Git 客户端
+
+GitHub 的网页/raw、git 传输（`clone`/`fetch`/`push`）和 LFS 对象是不同入口，可达性互不推断。文件加速只服务文件取回，不能当 remote 或 clone 源；推送走原站，不经第三方加速。
+
+- **代理**：有可用代理时用本次命令的 `-c http.proxy=<代理URL> -c https.proxy=<代理URL>`，不改全局 `http.proxy` 或 `url.*.insteadOf`。git 经 libcurl 读 `http_proxy`/`https_proxy`/`NO_PROXY`，但 `NO_PROXY` 排除目标或客户端自有配置会让它静默改路；用 `GIT_TRACE=1` 或 `GIT_CURL_VERBOSE=1` 看实际请求，输出含目标地址与代理，贴出前去掉凭据。代理地址带用户名密码时用进程环境变量传入，避免出现在命令行与进程列表。
+- **SSH**：22 端口在国内常被阻断。先 `ssh -T -p 443 git@ssh.github.com` 验证，可用时用 `GIT_SSH_COMMAND='ssh -p 443 -o HostName=ssh.github.com'` 或本次 `-c core.sshCommand=...`；`~/.ssh/config` 属于全局配置，用户未要求不改。
+- **传输量**：只读浏览用 `--depth 1` 或 `--filter=blob:none`；要在该仓库提交或比对历史时用完整克隆，浅克隆的历史不完整。
+- **中断**：`early EOF`、`RPC failed`、`The remote end hung up unexpectedly` 多为连接被掐断或超时，换路线（直连↔代理↔SSH 443）重试一次即可；`http.postBuffer` 只在有据时调整，不当作通用解法。
+- **push 被拒**：`non-fast-forward` 先 fetch 比较两侧提交（对齐判定见 `skill-authoring-sync`）；403/422 多为凭据、token 权限、分支保护或必需检查，换网络无效；不 `--force`。
+
 ## 依据与验证记录
 
 - [curl 手册](https://curl.se/docs/manpage.html)：代理变量、`--proxy`、`--noproxy`、连接/总耗时与重试语义。
