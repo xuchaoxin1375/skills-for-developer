@@ -3,7 +3,7 @@ name: browser-automation
 description: >
   检查本地可用浏览器及自动化工具，定位 Chrome/Edge/Chromium 的安装路径，按任务选择浏览器操作方案和测试运行框架，并指导自动化执行。
   用于浏览器发现、Scoop/便携浏览器复用、普通浏览器与 Playwright/Puppeteer/Selenium/MCP 工具选型、人工或无头截图、shot-quick/shot_scroll、点击填写导航与状态等待、CDP/远程浏览器会话、接管用户已登录的浏览器会话，以及截图卡住、浏览器进程残留、超时与资源回收排障。
-  测试覆盖、断言设计和回归维护走 web-app-testing，UI 缺陷分析走 frontend-qa，playwright install/scrapling install 及国内下载受阻走 network-access；不因只查浏览器便启动完整测试或 UI 验收。
+  测试覆盖、断言设计和回归维护走 web-app-testing，UI 缺陷分析走 frontend-qa，playwright install/scrapling install 及国内下载受阻走 network-access；不因只查浏览器便启动完整测试或 UI 验收；需要过挑战页、处理拦截或保存渲染后 HTML 时走 resilient-browser-fetch。
 ---
 
 ## 浏览器发现、方案决策与自动化操作

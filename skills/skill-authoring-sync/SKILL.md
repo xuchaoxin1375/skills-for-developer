@@ -1,10 +1,10 @@
 ---
 name: skill-authoring-sync
 description: >
-  在 agent harness 中新建自定义 skill 并同步到真源仓库集中管理：skill 真源提交、治理规则的定义与修改，
+  在 agent harness 中维护自定义 skill 真源（含新建后的落地）：实体提交、治理规则的定义与修改、链接分发与跨机同步，
   以及把本机 harness 配置偏好（如 OpenCode TUI `cli.json`）回写真源、按真源恢复本机配置。
   当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、说“同步配置”“同步 opencode 设置/偏好”，
-  或复盘/同步/分发/校验/查变更已有 skill，以及需要定位真源仓库、避免在任意目录全盘搜索时使用此 Skill。
+  或复盘/同步/分发/校验/查变更已有 skill，以及需要定位真源仓库、避免在任意目录全盘搜索时使用此 Skill。从零描述能力与行为评估用社区版 skill-creator；从材料提炼规则用 reference-to-skill；单次实战补丁用 skill-patcher。
 ---
 
 # Skill 新建与真源同步规范

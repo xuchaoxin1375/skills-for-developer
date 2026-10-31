@@ -5,7 +5,7 @@ description: >
   按能力分层选择 HTTP、Playwright/Patchright、Scrapling、指纹底座或有头浏览器，缺件降级而不是整体失败；
   也用于同站会话复用、真实浏览器会话接管、保存渲染后的 HTML 快照，以及 Windows/macOS/Linux/WSL/容器中的浏览器依赖与图形环境排障。
   当 network-access 判定为挑战页，或普通抓取拿不到正文、被拦截、需要渲染后的 DOM 时使用。
-  选路与代理/镜像走 network-access，本 skill 不做首跳选路；页面结构侦查与批量字段提取先用 htmlmini。
+  选路与代理/镜像走 network-access，本 skill 不做首跳选路；页面结构侦查与批量字段提取先用 htmlmini；浏览器发现、截图与登录态下的常规交互走 browser-automation。
 ---
 
 # 稳健浏览器采集

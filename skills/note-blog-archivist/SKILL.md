@@ -2,7 +2,7 @@
 name: note-blog-archivist
 description: >
   将一份已定稿的经验结论沉淀到本地笔记/博客仓库：定位笔记总目录，在现有文档中找合适位置最小追加或按目录规则新建文档，省去手动归类。当用户说存笔记、记一笔、沉淀经验、放到博客、经验库时使用。
-  仅接收单份已定稿内容；多份文档或草稿的合并、去重、择优、改写归doc-rewrite-review，纯排版归markdown-style，从零调研成文归tech-learning-research，多来源提炼成可复用规则归reference-to-skill。
+  仅接收单份已定稿内容；多份文档或草稿的合并、去重、择优、改写归 doc-rewrite-review，纯排版归 markdown-style，从零调研成文归 tech-learning-research，多来源提炼成可复用规则归 reference-to-skill；项目仓库的文档规划、缺口审查与治理文件归 project-docs。
 ---
 
 # 笔记与博客归档
@@ -23,7 +23,7 @@ description: >
 2. **定位总目录**：按以下顺序确定 `<notes-root>`，每次最多给 3 个候选并标出推荐项，经用户确认后再写：
    - 用户本次明确指定的目录；
    - 本次会话已确认过的映射；
-   - 就近探测：当前工作区同级与父级中的 `blogs`、`notes`、`knowledge` 类目录，以及惯例位置（Windows 侧形如 `%USERPROFILE%` 与各盘根下的 `repos\blogs`，Linux/macOS 侧形如 `$HOME` 下的 `repos/blogs`）。系统内存在指向笔记仓库的快捷方式或软链接时，先解析它，命中即停，不做重复探测。
+   - 就近探测：当前工作区同级与父级中的 `blogs`、`notes`、`knowledge` 类目录，以及惯例位置（Windows 侧形如 `%USERPROFILE%` 与各盘根下的 `repos/blogs`，Linux/macOS 侧形如 `$HOME` 下的 `repos/blogs`）。系统内存在指向笔记仓库的快捷方式或软链接时，先解析它，命中即停，不做重复探测。
    找不到可信候选时停下询问，不猜写，不自动创建总目录。
 3. **选落点**：先用关键词在正文维度出候选清单，再读少量命中密度最高的文档确认，最后才用文件名、标题与目录语义筛；短关键词在目录名、文件名上噪声大，正文维度更容易定位真实主题。
    - 工具优先 `rg`：`rg -l` 出候选文件清单，需要排序时用 `rg -c` 按命中行数取前几篇精读，避免批量读整篇；文件名或目录名维度用 `rg --files` 管道过滤即可，`fd` 仅作为目录名检索的可选增强，缺失时跳过而不另找替代。

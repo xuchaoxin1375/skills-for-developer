@@ -4,7 +4,7 @@ description: >
   合并多份文档、草稿或多方回答，去重取优并保留独有细节；对现成文档做实质性改写、审校与结构重整，
   把讨论、聊天、纪要整理成正式文档，或把教程与系列文档扩写为可读版本。
   用户要求合并两份以上材料、按子话题重整目录、润色改写现成正文，或补术语解释、命令注释、示例输出与验收口径时使用。
-  只调排版走 markdown-style；单份定稿存笔记仓库走 note-blog-archivist；从零调研成文走 tech-learning-research；多来源提炼规则走 reference-to-skill。
+  只调排版走 markdown-style；单份定稿存笔记仓库走 note-blog-archivist；从零调研成文走 tech-learning-research；多来源提炼规则走 reference-to-skill；项目文档的规划、缺口审查与仓库治理文件走 project-docs。
 ---
 
 # 文档改写与审校

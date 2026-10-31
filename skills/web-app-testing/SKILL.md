@@ -4,7 +4,7 @@ description: >
   前后端 Web 应用的测试规划、用例编写与长期维护。用于建立测试体系、判断该测什么和何时写测试，
   或在新功能、缺陷修复、重构、API/数据库变化中设计自动化测试、单元/组件/集成测试与 Playwright E2E/回归用例；
   也用于审查无效断言、过度 Mock、测试数据隔离、不稳定测试、测试运行器并发/资源预算与 CI 分层。
-  纯静态文案/样式微调不默认新增测试；浏览器发现、浏览器工具/运行器选型与自动化操作转 browser-automation，UI 缺陷诊断转 frontend-qa，安装下载转 network-access，交付定级与证据门禁转 ai-verified-delivery。
+  纯静态文案/样式微调不默认新增测试；浏览器发现、浏览器工具/运行器选型与自动化操作转 browser-automation，UI 缺陷诊断转 frontend-qa，安装下载转 network-access，交付定级与证据门禁转 ai-verified-delivery；偶发失败与性能回归的根因诊断转 diagnosing-bugs。
 ---
 
 ## Web 应用测试

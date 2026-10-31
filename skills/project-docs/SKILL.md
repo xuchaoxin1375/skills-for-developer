@@ -4,7 +4,7 @@ description: >
   为程序与仓库规划并编写配套文档：按项目规模确定最小文档集，按顺序写 README、--help、配置与 API 参考、
   CHANGELOG、ADR、部署与 Runbook，并用读者视角验收；也用于审查现有项目的文档缺口、重复与过时。
   当用户要求写 README、补文档、判断项目该配哪些文档、交付前检查文档，或新建程序、新增功能后需要同步文档时使用。
-  排版与格式迁移走 markdown-style，代码注释与 docstring 走 code-comments，已有文档改写合并走 doc-rewrite-review。
+  排版与格式迁移走 markdown-style，代码注释与 docstring 走 code-comments，已有文档改写合并走 doc-rewrite-review；仓库治理文件（LICENSE、SECURITY、分支保护）走 repo-gov。
 ---
 
 # 为程序配文档

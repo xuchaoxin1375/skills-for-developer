@@ -2,7 +2,7 @@
 name: frontend-qa
 description: >
   存量 Web 前端缺陷诊断与视觉验收。用于页面空白、布局溢出/响应式、弹窗/焦点、可读性/对比度、无障碍 axe、表单、导航、深色模式、CLS/LCP/INP、跨平台、欺骗模式、AGENTS.md UI 约束及 DoD/CI 门禁，也用于 Agent 查看截图判断 UI 缺陷。
-  新建或美化界面先走 frontend-design；单独浏览器发现、截图工具使用与自动化操作走 browser-automation；测试用例与回归体系走 web-app-testing；安装下载走 network-access。
+  新建或美化界面先走 frontend-design；单独浏览器发现、截图工具使用与自动化操作走 browser-automation；测试用例与回归体系走 web-app-testing；安装下载走 network-access；响应式改造方案与断点设计走 adaptive-responsive-guide，粘性定位细节走 sticky-position；UI 侧 DoD 检查留在本 skill，交付定级与跨阶段质量门禁走 ai-verified-delivery。
 ---
 
 # Frontend  QA（存量前端缺陷诊断与验收门禁）
