@@ -76,7 +76,7 @@
 - 变更历史：直接看 `git log`；本仓库不维护独立 CHANGELOG，提交信息按 Conventional Commits 记录目的与影响。
 - [Skill 编写、提炼与维护协作](docs/skill-authoring-workflow.md)：`reference-to-skill`、社区版 `skill-creator`、`skill-patcher` 与 `skill-authoring-sync` 的职责、引用方式和维护取舍，含社区版/系统版区分与验证边界。
 - [Skill 触发评测](skills/skill-authoring-sync/references/trigger-eval.md)：正负例取样、子代理判定 prompt、判据、记录格式与案例库；改 description 时使用。
-- [Skill 编写参考（格式、元描述与多 skill 冲突）](docs/skill-authoring-reference.md)：公开规范与客户端实现汇总、description 写法与触发评测入口、多 skill 的归属与裁决；非规范正本。
+- [Skill 编写参考（格式、元描述与多 skill 冲突）](docs/skill-authoring-reference.md)：公开规范与客户端实现汇总、description 写法与触发评测入口、职责矩阵与冲突处置、保存位置、跨平台与评测指标；非规范正本。
 - [skill-up 行为评测试点](docs/skill-up-pilot.md)：范围、用例、验收与决策规则；未纳入默认流程。
 - [测试相关 Skill 的职责与维护边界](skills/web-app-testing/references/skill-boundaries.md)：测试设计、交付等级与证据、UI 专项、工具打包和仓库 CI 的唯一维护位置；含构建应用时的 skill 组合顺序，按需协作并复用计划与有效证据。
 - [测试层、测试阶段与责任](skills/web-app-testing/references/coverage-and-layers.md#测试层测试阶段与责任)：区分测试层、开发侧验证与独立测试阶段；单元/组件/CI 通过不等于系统、验收或准出结论，独立复核也不等于独立测试。
