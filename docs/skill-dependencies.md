@@ -84,13 +84,17 @@ python -X utf8 scripts/check-skill-deps.py --strict
 
 新机部署时先装一组，覆盖大多数带运行时的 skill。它们不是每个 skill 的硬门槛，但缺了会退化到在线回退、人工路径或能力不全；命令按本机包管理器调整，不自动执行。
 
+git、ripgrep 与 fd 是基础命令行工具的推荐项（`required: false`）：缺失只显示 `OPTIONAL`、不阻断部署，部署脚本会在结束时检测三者是否可用并提示安装命令。Playwright 属 `standard` 套餐的推荐项，Scrapling 属 `full` 套餐的推荐项，缺失同样只警告。
+
+rust/cargo、go 等通用运行时只在 `resource-inventory` 的运行时报里扫描，不进入依赖套餐，部署时既不推荐也不计为缺失。
+
 按偏好选套餐：
 
 | 套餐 | 内容 | 适合 |
 |---|---|---|
-| `minimal` | Python、Node、浏览器、git | 想尽量少装，接受 npx/dlx/kroki 回退 |
-| `standard`（默认） | `minimal` + pnpm、mmdc（全局）、PowerShell 7（仅 Windows） | 日常使用；mmdc 直接可用，减少回退判断 |
-| `full` | `standard` + uv、jq | 想一次装齐常用全局 CLI |
+| `minimal` | Python、Node、浏览器、git、ripgrep、fd（git/ripgrep/fd 为推荐项，缺失只警告） | 想尽量少装，接受 npx/dlx/kroki 回退 |
+| `standard`（默认） | `minimal` + pnpm、mmdc（全局）、PowerShell 7（仅 Windows）、Playwright（推荐项） | 日常使用；mmdc 直接可用，减少回退判断 |
+| `full` | `standard` + uv、jq、Scrapling（推荐项） | 想一次装齐常用全局 CLI 与抓取能力 |
 
 ```bash
 python -X utf8 scripts/check-skill-deps.py --profile standard
@@ -107,12 +111,16 @@ python -X utf8 scripts/check-skill-deps.py --list-profiles
 | minimal | Python 3.10+ | resource-inventory、resilient-browser-fetch、mermaid-render-fix、network-access、opencode-provider-config | `winget install Python.Python.3.12` | `brew install python@3.12` / `sudo apt install python3` |
 | minimal | Node.js 18+（含 npm/npx） | htmlmini | `winget install OpenJS.NodeJS.LTS` | `brew install node` / `sudo apt install nodejs` |
 | minimal | Chrome / Edge / Chromium | browser-automation、mermaid-render-fix、frontend-qa | `winget install Google.Chrome`（或使用系统 Edge） | `brew install --cask google-chrome` / `sudo apt install chromium` |
-| minimal | git | skill-authoring-sync、仓库同步与变更检查 | `winget install Git.Git` | `brew install git` / `sudo apt install git` |
+| minimal | git（推荐） | skill-authoring-sync、仓库同步与变更检查 | `winget install Git.Git` | `brew install git` / `sudo apt install git` |
+| minimal | ripgrep（推荐，命令 `rg`） | 代码与文档全文检索、agent 的 grep 检索 | `winget install BurntSushi.ripgrep.MSVC` | `brew install ripgrep` / `sudo apt install ripgrep` |
+| minimal | fd（推荐，Debian/Ubuntu 命令为 `fdfind`） | 跨平台高性能文件/目录搜索，按名称批量定位文件 | `winget install sharkdp.fd` | `brew install fd` / `sudo apt install fd-find` |
 | standard | pnpm（项目依赖管理器） | htmlmini 项目安装、mermaid-render-fix 的单次拉起 | `corepack enable` 后 `corepack prepare pnpm@latest --activate` | 同左 |
 | standard | mmdc（全局） | mermaid-render-fix 直接渲染，省去首次下载与回退判断 | `$env:PUPPETEER_SKIP_DOWNLOAD='true'; npm i -g @mermaid-js/mermaid-cli` | `PUPPETEER_SKIP_DOWNLOAD=true npm i -g @mermaid-js/mermaid-cli` |
 | standard | PowerShell 7（仅 Windows） | powershell-pitfalls、Windows 脚本示例 | `winget install Microsoft.PowerShell` | 不适用；非 Windows 不安装也不启动 pwsh |
+| standard | Playwright（推荐，命令 `playwright`） | browser-automation、web-app-testing、ai-verified-delivery 的自动化、截图与 E2E | `python -m pip install playwright; python -m playwright install chromium` | `python3 -m pip install playwright && python3 -m playwright install chromium` |
 | full | uv | resource-inventory、resilient-browser-fetch 的 Python 环境与引擎 | `winget install astral-sh.uv` | `brew install uv` / `curl -LsSf https://astral.sh/uv/install.sh -o uv-install.sh && sh uv-install.sh` |
 | full | jq | opencode-provider-config 的手工 JSON 过滤 | `winget install jqlang.jq` | `brew install jq` / `sudo apt install jq` |
+| full | Scrapling（推荐，命令 `scrapling`） | resilient-browser-fetch 的层 2 抓取与挑战页求解 | `uv tool install "scrapling[fetchers]"` 后用 `scrapling install` 装浏览器 | 同左（`uv tool install 'scrapling[fetchers]'`） |
 
 安装后验证：
 
@@ -126,6 +134,9 @@ python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
 安装影响与替代：
 
 - 这些命令会联网下载并写入用户或系统目录，可能修改 PATH；Python/Node 安装包通常几十 MB，浏览器更大。先说明再执行，不静默安装。
+- git、ripgrep、fd 属推荐项：缺失不阻断部署；git 用于跨机器同步与变更检查，rg/fd 缺失时可用 grep、Select-String 与 find、Get-ChildItem 替代。
+- Scrapling 属 `full` 套餐的推荐项：缺失只警告；首次使用还要 `scrapling install` 下载浏览器，体积与耗时较大，按需装。`scrapling[fetchers]` 会带入 playwright 的 Python 包；用 `uv tool install` 时只在工具环境内，独立的 `playwright` CLI 与浏览器仍需按 `standard` 的 Playwright 项安装。
+- Playwright 属 `standard` 套餐的推荐项：缺失只警告；`playwright install chromium` 会下载浏览器，已有系统 Chrome/Edge 时也可先复用。
 - pnpm 只用于项目依赖；全局命令（如 `mmdc`）按治理用 `npm i -g`，不推荐 `pnpm add -g`（全局 bin 常不在 PATH）。
 - `standard` 与 `full` 默认全局安装 mmdc；`minimal` 不装，仍可用 `npx`/`pnpm dlx` 单次拉起。
 - PowerShell 7 只在 Windows 套餐中检查和推荐；非 Windows 不启动 `pwsh`，相关依赖项显示 `SKIP`。
@@ -133,7 +144,8 @@ python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
 
 按需安装、不放进基线的项：
 
-- Playwright/Scrapling：浏览器自动化、E2E 与挑战页采集，按项目或任务装；优先复用系统 Chrome/Edge。它们不放进全局套餐。
+- Playwright：`standard` 已作为推荐项列出；只做静态抓取、或项目内已有 playwright 时可跳过，优先复用系统 Chrome/Edge。
+- Scrapling：`full` 已作为推荐项列出；只做静态正文抓取或已装进项目虚拟环境时无需全局安装，按 `resilient-browser-fetch` 的分层说明使用。
 - `mmdc`：已含在 `standard`/`full`；选 `minimal` 或临时任务时用 `pnpm dlx`/`npx` 单次拉起。
 - `uv`/conda：`full` 含 uv；需要独立 Python 环境或引擎层时按 `resilient-browser-fetch` 的分层说明使用。
 - 国内下载受阻时按 `network-access` 选镜像或代理，不把某次可达的源写成永久默认值。

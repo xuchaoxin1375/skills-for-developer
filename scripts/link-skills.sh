@@ -582,5 +582,23 @@ if [[ $VERIFY_ONLY -eq 1 ]]; then
 fi
 
 if [[ $VERIFY_ONLY -eq 0 && $UNLINK -eq 0 ]]; then
-  echo "提示：推荐依赖套餐见 docs/skill-dependencies.md#部署基线；检查命令 python3 -X utf8 scripts/check-skill-deps.py --profile standard"
+  # 推荐工具：只检测并提示，不自动安装；缺失不阻断部署
+  check_basic_tool() {
+    local label=$1 hint=$2
+    local name located
+    shift 2
+    for name in "$@"; do
+      if located=$(command -v "$name" 2>/dev/null); then
+        echo "推荐工具 $label 可用：$located"
+        return 0
+      fi
+    done
+    echo "建议安装 $label（推荐，缺失不阻断）：$hint"
+  }
+  check_basic_tool git 'sudo apt install git（macOS: brew install git）' git
+  check_basic_tool 'ripgrep（rg）' 'sudo apt install ripgrep（macOS: brew install ripgrep）' rg
+  check_basic_tool fd 'sudo apt install fd-find（命令名 fdfind；macOS: brew install fd）' fd fdfind
+  check_basic_tool Scrapling 'uv tool install "scrapling[fetchers]"（再运行 scrapling install）' scrapling
+  check_basic_tool Playwright 'python3 -m pip install playwright && python3 -m playwright install chromium' playwright
+  echo "提示：推荐依赖套餐见 docs/skill-dependencies.md#部署基线；检查命令 python3 -X utf8 scripts/check-skill-deps.py --profile standard（完整套餐 --profile full 另含 uv、jq、Scrapling）"
 fi

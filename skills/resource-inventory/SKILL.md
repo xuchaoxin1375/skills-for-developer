@@ -1,7 +1,7 @@
 ---
 name: resource-inventory
 description: >
-  本机资源体检与复用：一次汇总运行时（Node/Python/pnpm/uv/conda/git 等）、Python 解释器与可用引擎层、
+  本机资源体检与复用：一次汇总运行时（Node/Python/pnpm/uv/conda/git/ripgrep/fd/scrapling/playwright 等）、Python 解释器与可用引擎层、
   浏览器候选、代理登记与实际入口、项目已有的测试与包管理工具，让安装、选型或排障前先读报告，
   避免重复装依赖、凭猜测探测和片面误判环境。
   当任务需要知道本机有什么、准备装依赖或浏览器前先探测、怀疑环境判断不完整、换机器或新环境排查，

@@ -88,6 +88,7 @@ skills-for-developer/
    并在链接脚本的命令登记分支补入口（sh 的 `skill_command_name` /
    `skill_command_entry`，ps1 的 `Get-SkillCommandName` /
    `Get-SkillCommandEntry`）；部署时会自动推荐安装依赖、默认装成命令。
+   部署结束时链接脚本还会检测推荐工具 git、ripgrep、fd、Playwright、Scrapling 是否可用，缺失只提示安装命令（推荐项，不阻断）。
 5. **验证同步**：链接脚本全量 `-VerifyOnly` 通过；skill 在 harness 可见/可加载。
 6. **跨机器**：`git push` 推实体；其他机器 `pull` 后跑一遍自己平台的链接脚本。
    **不要把链接本体提交到 git**。

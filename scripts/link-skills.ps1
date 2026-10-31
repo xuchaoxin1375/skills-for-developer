@@ -632,5 +632,28 @@ if ($VerifyOnly) {
 }
 
 if (-not $VerifyOnly -and -not $Unlink) {
-  Write-Host '提示：推荐依赖套餐见 docs/skill-dependencies.md#部署基线；检查命令 python -X utf8 scripts/check-skill-deps.py --profile standard'
+  # 推荐工具：只检测并提示，不自动安装；缺失不阻断部署
+  $basicTools = @(
+    @{ Label = 'git'; Commands = @('git'); Install = 'winget install Git.Git' }
+    @{ Label = 'ripgrep（rg）'; Commands = @('rg'); Install = 'winget install BurntSushi.ripgrep.MSVC' }
+    @{ Label = 'fd'; Commands = @('fd', 'fdfind'); Install = 'winget install sharkdp.fd' }
+    @{ Label = 'Scrapling'; Commands = @('scrapling'); Install = 'uv tool install "scrapling[fetchers]"（再运行 scrapling install）' }
+    @{ Label = 'Playwright'; Commands = @('playwright'); Install = 'python -m pip install playwright; python -m playwright install chromium' }
+  )
+  foreach ($tool in $basicTools) {
+    $located = $null
+    foreach ($command in $tool.Commands) {
+      $found = Get-Command $command -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($found) {
+        $located = $found
+        break
+      }
+    }
+    if ($located) {
+      Write-Host "推荐工具 $($tool.Label) 可用：$($located.Source)"
+    } else {
+      Write-Host "建议安装 $($tool.Label)（推荐，缺失不阻断）：$($tool.Install)"
+    }
+  }
+  Write-Host '提示：推荐依赖套餐见 docs/skill-dependencies.md#部署基线；检查命令 python -X utf8 scripts/check-skill-deps.py --profile standard（完整套餐 --profile full 另含 uv、jq、Scrapling）'
 }

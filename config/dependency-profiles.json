@@ -4,20 +4,20 @@
   "profiles": {
     "minimal": {
       "label": "最小可用",
-      "description": "运行时、浏览器与 git；不装全局 CLI，接受 npx/dlx/kroki 回退。",
-      "tools": ["python", "node", "browser", "git"]
+      "description": "运行时、浏览器与基础命令行工具（git、ripgrep、fd，均按推荐处理）；不装全局 CLI，接受 npx/dlx/kroki 回退。",
+      "tools": ["python", "node", "browser", "git", "ripgrep", "fd"]
     },
     "standard": {
       "label": "常用全局",
-      "description": "在最小套餐上补 pnpm、mmdc、PowerShell 7（仅 Windows）；日常使用减少回退判断。",
+      "description": "在最小套餐上补 pnpm、mmdc、PowerShell 7（仅 Windows）与 Playwright（推荐项）；日常使用减少回退判断。",
       "extends": "minimal",
-      "tools": ["pnpm", "mmdc", "powershell"]
+      "tools": ["pnpm", "mmdc", "powershell", "playwright"]
     },
     "full": {
       "label": "完整全局",
-      "description": "在标准套餐上补 uv 与 jq；想一次装齐常用全局 CLI 时使用。",
+      "description": "在标准套餐上补 uv、jq 与 Scrapling（推荐项）；想一次装齐常用全局 CLI 与抓取能力时使用。",
       "extends": "standard",
-      "tools": ["uv", "jq"]
+      "tools": ["uv", "jq", "scrapling"]
     }
   },
   "tools": {
@@ -78,7 +78,8 @@
       "requirement": {
         "id": "git",
         "kind": "command",
-        "name": "git"
+        "name": "git",
+        "required": false
       },
       "install": {
         "windows": "winget install Git.Git",
@@ -87,6 +88,42 @@
       },
       "impact": "约 50 MB；多数开发机已有。",
       "alternative": "只读使用 skill 时可以先不装。"
+    },
+    "ripgrep": {
+      "label": "ripgrep（rg）",
+      "why": "代码与文档全文检索、批量定位 skill 与配置；agent 的 grep 检索依赖它",
+      "requirement": {
+        "id": "ripgrep",
+        "kind": "command",
+        "name": "rg",
+        "required": false
+      },
+      "install": {
+        "windows": "winget install BurntSushi.ripgrep.MSVC",
+        "linux": "sudo apt install ripgrep",
+        "macos": "brew install ripgrep"
+      },
+      "impact": "约 5 MB 单文件二进制，不修改系统服务；多数发行版与开发环境已有。",
+      "alternative": "缺失时可用 grep、Select-String 或宿主工具替代，但忽略规则与速度较弱。"
+    },
+    "fd": {
+      "label": "fd",
+      "why": "跨平台高性能文件/目录搜索，按名称批量定位文件比 find 更快更直观",
+      "requirement": {
+        "id": "fd",
+        "required": false,
+        "alternatives": [
+          { "kind": "command", "name": "fd" },
+          { "kind": "command", "name": "fdfind" }
+        ]
+      },
+      "install": {
+        "windows": "winget install sharkdp.fd",
+        "linux": "sudo apt install fd-find",
+        "macos": "brew install fd"
+      },
+      "impact": "约 3 MB 单文件二进制；Debian/Ubuntu 的包名为 fd-find，装后命令是 fdfind。",
+      "alternative": "缺失时可用 find、Get-ChildItem 或宿主搜索工具替代。"
     },
     "pnpm": {
       "label": "pnpm（项目依赖管理器）",
@@ -169,6 +206,40 @@
       },
       "impact": "约 1 MB；Windows 默认没有。",
       "alternative": "用 python3 -m json.tool 或 PowerShell ConvertFrom-Json。"
+    },
+    "scrapling": {
+      "label": "Scrapling（抓取/挑战页求解框架）",
+      "why": "resilient-browser-fetch 的层 2 引擎；挑战页、动态渲染与反爬场景的抓取能力",
+      "requirement": {
+        "id": "scrapling",
+        "kind": "command",
+        "name": "scrapling",
+        "required": false
+      },
+      "install": {
+        "windows": "uv tool install \"scrapling[fetchers]\"",
+        "linux": "uv tool install 'scrapling[fetchers]'",
+        "macos": "uv tool install 'scrapling[fetchers]'"
+      },
+      "impact": "需 Python 与联网；首次还要 scrapling install 下载浏览器，可能数百 MB。",
+      "alternative": "不装时按 resilient-browser-fetch 分层降级到 Playwright/HTTP；也可装进项目虚拟环境。"
+    },
+    "playwright": {
+      "label": "Playwright（浏览器自动化/截图）",
+      "why": "browser-automation、web-app-testing、ai-verified-delivery 的浏览器自动化、截图与 E2E 验收",
+      "requirement": {
+        "id": "playwright",
+        "kind": "command",
+        "name": "playwright",
+        "required": false
+      },
+      "install": {
+        "windows": "python -m pip install playwright; python -m playwright install chromium",
+        "linux": "python3 -m pip install playwright && python3 -m playwright install chromium",
+        "macos": "python3 -m pip install playwright && python3 -m playwright install chromium"
+      },
+      "impact": "Python 包约 5 MB；浏览器约 100–300 MB，写入 Playwright 缓存目录。",
+      "alternative": "已有系统 Chrome/Edge 时可直接复用；项目内用 pnpm/npm 安装，或装进项目虚拟环境。Scrapling 的 fetchers 会附带 playwright 包，但 CLI 与浏览器仍需单独安装。"
     }
   }
 }
