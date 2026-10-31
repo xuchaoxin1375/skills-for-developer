@@ -70,6 +70,7 @@
 - [WSL 复用 Windows 侧 OpenCode 配置](docs/wsl-opencode-reuse.md)：完整配置（含模型配置）在 WSL 侧的复用范围、方式选型、密钥红线与验证（复用后默认不测活）；skill 分发仍走链接脚本。
 - [Skill 仓库治理](docs/skill-governance.md)：规则归属、职责划分、变更流程与分级验证。
 - [Skill 依赖声明与部署基线](docs/skill-dependencies.md)：`dependencies.json` 格式、检查命令与新机推荐依赖。
+- [第三方 skill 推荐名单](config/third-party-skills.txt)：上游仓库、固定版本、升级保留文件；实体不入本仓库，部署时询问，按需同步。
 - [插件制品（OpenCode 插件）](docs/plugins.md)：插件真源布局、链接分发、装载规则（入口文件/发现路径/静默失败/全局键占用/location 路由）、通用验证清单与 skill 分工。
 - [Skill 内容与语言规范](docs/skill-content-guidelines.md)：约束强度、正文与参考落点、指令措辞、术语、例子和写作复核。
 - 变更历史：直接看 `git log`；本仓库不维护独立 CHANGELOG，提交信息按 Conventional Commits 记录目的与影响。
@@ -89,7 +90,7 @@
 
 | Harness          | Windows skills 目录                                                   | Linux skills 目录                        | 说明                                                             |
 | ---------------- | --------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------- |
-| Agents 通用      | `%DSH_AGENTS_HOME%/skills`（默认 `%USERPROFILE%/.agents/skills`） | `${DSH_AGENTS_HOME:-~/.agents}/skills` | 全量链接；Pi 等标准兼容 harness 共用，第三方实体不动             |
+| Agents 通用      | `%DSH_AGENTS_HOME%/skills`（默认 `%USERPROFILE%/.agents/skills`） | `${DSH_AGENTS_HOME:-~/.agents}/skills` | 全量链接；Pi 等标准兼容 harness 共用；第三方实体由 `third-party-skills.py` 管理 |
 | OpenCode         | `%USERPROFILE%/.config/opencode/skills`                             | `~/.config/opencode/skills`            | 全量链接仓库中的 skill                                           |
 | Codex            | `%USERPROFILE%/.codex/skills`                                       | `~/.codex/skills`                      | 全量链接; 自带的`.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude           | `%USERPROFILE%/.claude/skills`                                      | `~/.claude/skills`                     | 全量链接                                                         |
@@ -119,6 +120,11 @@ powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Include doc-re
 # 推荐 skill（依赖显式安装 / 依赖与命令都不装）
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -ApplyRecommendedSkills
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipRecommendedSkills
+
+# 第三方 skill（默认询问 No；显式安装 / 跳过 / 同步版本）
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -ApplyThirdPartySkills
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipThirdPartySkills
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SyncThirdPartySkills
 
 # 移除本仓库创建的链接 (实体不受影响)
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Unlink
@@ -150,6 +156,11 @@ cd ~/repos/skills-for-developer
 ./scripts/link-skills.sh --apply-recommended-skills  # 显式安装依赖（代理执行同一次带上）
 ./scripts/link-skills.sh --skip-recommended-skills   # 依赖与命令都不装（含 verify 中的对应检查）
 
+# 第三方 skill（名单见 config/third-party-skills.txt，默认询问 No）：
+./scripts/link-skills.sh --apply-third-party-skills  # 显式安装，不询问
+./scripts/link-skills.sh --skip-third-party-skills   # 跳过安装与校验
+./scripts/link-skills.sh --sync-third-party-skills   # 安装缺失并更新到名单版本
+
 # 插件链接（symlink 到 ~/.config/opencode/plugins/<name>）
 ./scripts/link-plugins.sh
 ./scripts/link-plugins.sh --verify-only
@@ -159,6 +170,30 @@ cd ~/repos/skills-for-developer
 链接脚本会顺手清理**指向本仓库、但目标已不存在的悬空链接**（skill 重命名或删除后的残留）；
 `--verify-only` 会把它计为异常并给出重跑提示。指向别处的链接与 harness 自带内容不动；
 `--include` 时只清理名单内的名字。`check-skills.py` 也会把本仓库的悬空链接报为 ERROR。
+
+## 第三方 skill 推荐
+
+`skills/` 只存本仓库自定义的真源；第三方 skill 不复制进来，统一登记在
+`config/third-party-skills.txt`。每条记录为
+`name | repo | kind | ref | preserve | description`，当前登记 `anysearch` v3.1.1。
+
+- 部署时交互询问，**默认 No**（第三方上游代码，安装前可先看名单与仓库）；非交互环境默认跳过。
+  显式安装用 `-ApplyThirdPartySkills` / `--apply-third-party-skills`。
+- 实体只放一份：第三方共享根目录 `$THIRD_PARTY_SKILLS_HOME/<name>`
+  （默认 `~/.local/share/skills-for-developer/third-party/<name>`）；各已登记的 harness 目录都用
+  Junction/symlink 指向它，避免 Key 与 `runtime.conf` 出现多份副本。
+  默认不放在仓库内，避免 `git clean -xdf` 误删第三方实体与 `.env`；如确需仓库内共享根，可把
+  `THIRD_PARTY_SKILLS_HOME` 指向仓库内的 `third-party/`（`.gitignore` 已预留），安装器按同一路径管理。
+- 升级由名单 `ref` 驱动。改 `ref` 后运行 `-SyncThirdPartySkills` / `--sync-third-party-skills`，
+  或 `python -X utf8 scripts/third-party-skills.py sync`。`preserve` 列出的文件
+  （如 anysearch 的 `.env`、`runtime.conf`）在升级时保留。安装器下载 GitHub archive 并解压，
+  不执行 `git clone`；上游 submodule/LFS 不会自动获取，这类第三方需单独评估。
+- 安装器只接受 HTTPS GitHub archive，拒绝路径穿越与符号链接，并在发现 `SHA256SUMS.txt`
+  时校验其中列出的文件。
+- 卸载：`python -X utf8 scripts/third-party-skills.py uninstall --name anysearch`
+  （实体移入 `~/.third-party-skills-backup/`，不直接删除）。
+- 查看状态：`python -X utf8 scripts/third-party-skills.py status`；
+  校验已装条目与本机链接：`... verify`。
 
 ## 部署清单（新机 / 首次 / 代理执行）
 
@@ -176,9 +211,11 @@ cd ~/repos/skills-for-developer
    `--apply-recommended-skills` 显式安装）；命令（`htmlmini`）默认装成直接可调用
    （Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH），
    用 `--skip-recommended-skills` 两者都不装。
+   第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
+   非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本。
    插件（`plugins/`）单独跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
 3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——缺才复制；不一致只提示，由人或代理对比后合并，不直接覆盖。
-4. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径与五 harness 安装数全过，见「结构校验」。
+4. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径、第三方名单与各 harness 安装数全过，见「结构校验」。
 5. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」；插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`）。
 6. **服务端计数对照**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
 
@@ -212,7 +249,7 @@ powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipRecommende
 改 skill 后跑一遍零依赖的 `scripts/check-skills.py`（Windows/Linux 通用）：
 
 ```powershell
-# 全量：frontmatter + README 索引 + 红线路径 + 五 harness 安装数
+# 全量：frontmatter + README 索引 + 红线路径 + 各 harness 安装数
 python3 scripts/check-skills.py
 
 # 只查仓库侧（含 CI，不碰 harness）

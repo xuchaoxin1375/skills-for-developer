@@ -1,0 +1,18 @@
+# 第三方 skill 推荐名单（实体不入本仓库，不参与 skills/ 链接分发）。
+# 实体根目录：$THIRD_PARTY_SKILLS_HOME
+# （默认 ~/.local/share/skills-for-developer/third-party）。
+#
+# 部署时由 scripts/link-skills.ps1 / link-skills.sh 询问是否安装；交互默认 No，
+# 非交互默认跳过。显式安装/同步：
+#   python -X utf8 scripts/third-party-skills.py install
+#   python -X utf8 scripts/third-party-skills.py sync
+#   python -X utf8 scripts/third-party-skills.py status
+#
+# 字段（| 分隔，共 6 列）：
+#   name | repo | kind | ref | preserve | description
+#   kind: tag | branch
+#   preserve: 升级时保留的 skill 内相对文件，逗号分隔，可空
+#
+# 名称不得与 skills/ 下的自定义 skill 重名。修改 ref 即切换推荐版本；
+# 用户主动要求“同步第三方 skill”时运行 sync。
+anysearch | anysearch-ai/anysearch-skill | tag | v3.1.1 | .env,runtime.conf | 统一实时搜索：网页/垂直领域/批量搜索与整页提取

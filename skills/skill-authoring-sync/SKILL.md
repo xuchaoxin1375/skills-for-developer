@@ -83,7 +83,8 @@ skills-for-developer/
 3. **更新索引**：在仓库 `README.md` “Skill 目录”表追加一行（一句话说明 + 关键词）。
 4. **本机分发**：Windows 跑 `scripts\link-skills.ps1`（可先 `-VerifyOnly` 预检，
    可用 `-Include <name>` 只处理新 skill）；Linux 跑 `./scripts/link-skills.sh`。
-   如 skill 需外部依赖或提供 CLI 命令：将其加入 `config/recommended-skills.txt`，
+   如 skill 需外部依赖或提供 CLI 命令：将其加入 `config/recommended-skills.txt`
+   （仅限本仓库自定义 skill；第三方走 `config/third-party-skills.txt`），
    并在链接脚本的命令登记分支补入口（sh 的 `skill_command_name` /
    `skill_command_entry`，ps1 的 `Get-SkillCommandName` /
    `Get-SkillCommandEntry`）；部署时会自动推荐安装依赖、默认装成命令。
@@ -108,6 +109,24 @@ skills-for-developer/
 1. 在子模块内提交并推送。detached HEAD 时用 `git push origin HEAD:<branch>`，不要依赖本地陈旧分支。
 2. 回到主仓库 `git add skills/<name>` 更新指针，与相关描述、README 改动一起提交。
 3. 推送主仓库后确认 `git submodule status` 无 `+`/`-` 前缀。
+
+### 第三方 skill 推荐名单
+
+`skills/` 只收本仓库自定义真源。第三方 skill 登记在 `config/third-party-skills.txt`，
+实体不入库，也不在仓库内建指向上游的链接。
+
+- 每行 `name | repo | kind | ref | preserve | description`；名称不得与自定义 skill 重名，
+  `ref` 推荐固定到 tag，`branch` 只用于有意跟踪上游。
+- 部署由链接脚本询问，默认 **No**；非交互用 `-ApplyThirdPartySkills` /
+  `--apply-third-party-skills`，同步版本用 `-SyncThirdPartySkills` / `--sync-third-party-skills`。
+- 安装器 `scripts/third-party-skills.py` 把实体放到独立共享根目录
+  `$THIRD_PARTY_SKILLS_HOME/<name>`（默认 `~/.local/share/skills-for-developer/third-party/<name>`），
+  各已登记的 harness 目录都建链接；升级时保留 `preserve` 列出的本地文件（如 `.env`、`runtime.conf`）。
+  第三方共享根目录与自定义真源 `skills/` 分离，不占用任何 harness 的 skills 目录；默认不放仓库内，
+  避免 `git clean` 误删 `.env`，需要时用 `THIRD_PARTY_SKILLS_HOME` 指向仓库内的 `third-party/`
+  （`.gitignore` 已预留）。
+- 用户要求“同步第三方 skill”时，先核对或更新名单 `ref`，再运行 sync；不要手工把上游实体
+  复制进 harness 目录，也不要把它加入 `config/recommended-skills.txt`。
 
 ### OpenCode 插件
 
@@ -194,6 +213,8 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 4. 抽查正文：描述的触发条件在对应请求下能命中加载，含 skill 变更/查变更触发。
 5. `git status` 确认无链接本体被误暂存；涉及跨机器同步时，按「跨机器同步与对齐判定」核对远端，不以 `git status -sb` 代替。
 6. 查变更请求已在真源用 `git status`/`log`/`diff` 核对，未用 harness 时间判定。
+7. 涉及第三方名单时，`python -X utf8 scripts/third-party-skills.py verify` 通过；
+   未安装的条目只提示，不计失败。
 
 ## 红线
 

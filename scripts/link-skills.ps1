@@ -13,6 +13,11 @@
     - Agents 通用: $env:DSH_AGENTS_HOME\skills (默认 $env:USERPROFILE\.agents\skills)
     - DeepSeek Harness (dsh): $env:DSH_HOME\skills (默认 $env:USERPROFILE\.dsh\skills)
 
+  第三方 skill 登记在 config/third-party-skills.txt, 实体不入本仓库,
+  由 scripts/third-party-skills.py 安装到 $env:THIRD_PARTY_SKILLS_HOME
+  (默认 $env:USERPROFILE\.local\share\skills-for-developer\third-party),
+  并在各 harness 目录建链接。
+
   幂等, 可反复执行。只管理仓库中存在的 skill 名, 并顺手清理指向本仓库
   但目标已不存在的悬空链接 (重命名/删除 skill 的残留);
   不会动 harness 自带内容 (如 Codex 的 .system/、AGENTS.md)。
@@ -44,6 +49,15 @@
 .PARAMETER SkipRecommendedSkills
   跳过推荐 skill 的依赖与命令安装（含 VerifyOnly 中的对应检查)。
 
+.PARAMETER ApplyThirdPartySkills
+  安装/更新 config/third-party-skills.txt 中登记的第三方 skill，不询问。
+
+.PARAMETER SkipThirdPartySkills
+  跳过第三方 skill 的安装与校验。
+
+.PARAMETER SyncThirdPartySkills
+  同步第三方 skill：安装缺失，并在名单 ref 变化时更新；保留 preserve 文件。
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -ApplyRecommendedCli
 
@@ -53,6 +67,8 @@
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -VerifyOnly
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Include doc-rewrite-review,htmlmini
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -SyncThirdPartySkills
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -63,7 +79,10 @@ param(
   [switch]$ApplyRecommendedCli,
   [switch]$SkipRecommendedCli,
   [switch]$ApplyRecommendedSkills,
-  [switch]$SkipRecommendedSkills
+  [switch]$SkipRecommendedSkills,
+  [switch]$ApplyThirdPartySkills,
+  [switch]$SkipThirdPartySkills,
+  [switch]$SyncThirdPartySkills
 )
 
 $ErrorActionPreference = 'Stop'
@@ -390,6 +409,41 @@ function Remove-SkillCommand([string]$Skill) {
   }
 }
 
+# --- 第三方 skill（名单见 config/third-party-skills.txt；实体不入本仓库） ---
+
+function Get-ThirdPartySkillNames {
+  # 返回名单与 -Include 交集后的名称；实体由 third-party-skills.py 管理。
+  $listFile = Join-Path $RepoRoot 'config\third-party-skills.txt'
+  if (-not (Test-Path -LiteralPath $listFile -PathType Leaf)) { return @() }
+  $out = @()
+  foreach ($raw in (Get-Content -LiteralPath $listFile -Encoding UTF8)) {
+    $line = ($raw -split '#', 2)[0].Trim()
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    $name = ($line -split '\|')[0].Trim()
+    if ([string]::IsNullOrWhiteSpace($name)) { continue }
+    if ($Include -and $Include.Count -gt 0 -and -not ($Include -contains $name)) { continue }
+    $out += $name
+  }
+  return $out
+}
+
+function Get-PythonCommand {
+  foreach ($exe in @('python', 'python3')) {
+    $cmd = Get-Command $exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $cmd) { return $cmd.Source }
+  }
+  return $null
+}
+
+function Get-ThirdPartyArgs([string]$Action, [string[]]$Names) {
+  $script = Join-Path $RepoRoot 'scripts\third-party-skills.py'
+  $pyArgs = @('-X', 'utf8', $script, $Action)
+  foreach ($n in @($Names)) {
+    if (-not [string]::IsNullOrWhiteSpace($n)) { $pyArgs += @('--name', $n) }
+  }
+  return $pyArgs
+}
+
 if (-not $Unlink -and -not $VerifyOnly) {
   # 推荐 cli.json: 缺失或与真源不一致时, 交互终端下询问是否应用;
   # 非交互环境默认跳过 (用 -ApplyRecommendedCli 显式应用)。
@@ -452,6 +506,45 @@ if (-not $Unlink -and -not $VerifyOnly) {
       }
     }
   }
+
+  # 第三方 skill：实体不入库，交互默认 No；非交互默认跳过。
+  $tpNames = @(Get-ThirdPartySkillNames)
+  if ($tpNames.Count -gt 0) {
+    if ($SkipThirdPartySkills) {
+      Write-Host "已跳过第三方 skill（-SkipThirdPartySkills）：$($tpNames -join ', ')"
+    } elseif ($SyncThirdPartySkills) {
+      Write-Host "== 第三方 skill 同步：$($tpNames -join ', ') =="
+      $py = Get-PythonCommand
+      if ($null -eq $py) {
+        Write-Warning '未找到 Python，跳过第三方 skill 同步（需要 Python 3.6+）。'
+      } else {
+        $tpArgs = @(Get-ThirdPartyArgs 'sync' $tpNames)
+        & $py @tpArgs
+        if ($LASTEXITCODE -ne 0) { Write-Warning "第三方 skill 同步失败（退出码 $LASTEXITCODE）。" }
+      }
+    } else {
+      $doTp = $false
+      if ($ApplyThirdPartySkills) {
+        $doTp = $true
+      } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+        $ans = Read-Host "是否安装/更新第三方 skill（$($tpNames -join ', ')；来自上游，默认 No）？[y/N]"
+        $doTp = $ans -match '^(y|Y|yes|YES)$'
+      } else {
+        Write-Host '非交互环境，跳过第三方 skill（用 -ApplyThirdPartySkills 或 -SyncThirdPartySkills）。'
+      }
+      if ($doTp) {
+        Write-Host "== 第三方 skill：$($tpNames -join ', ') =="
+        $py = Get-PythonCommand
+        if ($null -eq $py) {
+          Write-Warning '未找到 Python，跳过第三方 skill 安装（需要 Python 3.6+）。'
+        } else {
+          $tpArgs = @(Get-ThirdPartyArgs 'install' $tpNames)
+          & $py @tpArgs
+          if ($LASTEXITCODE -ne 0) { Write-Warning "第三方 skill 安装失败（退出码 $LASTEXITCODE）。" }
+        }
+      }
+    }
+  }
 }
 
 if ($Unlink) {
@@ -461,6 +554,9 @@ if ($Unlink) {
   } else {
     foreach ($s in @(Get-RecommendedSkills)) { Remove-SkillCommand $s }
     Write-Host '注：推荐 skill 的依赖目录（如 node_modules）已保留，按需手工删除。'
+  }
+  if (@(Get-ThirdPartySkillNames).Count -gt 0) {
+    Write-Host '注：第三方 skill 不在 -Unlink 范围；卸载用 python -X utf8 scripts/third-party-skills.py uninstall --name <name>'
   }
 }
 
@@ -503,6 +599,23 @@ if ($VerifyOnly) {
           Write-Host "推荐 skill [$s] 命令 OK：$cmd"
         } else {
           Write-Warning "推荐 skill [$s] 命令缺失（期望 $shim 可用，重跑链接脚本安装）"
+          $failures++
+        }
+      }
+    }
+  }
+
+  if (-not $SkipThirdPartySkills) {
+    $tpNames = @(Get-ThirdPartySkillNames)
+    if ($tpNames.Count -gt 0) {
+      $py = Get-PythonCommand
+      if ($null -eq $py) {
+        Write-Host '未找到 Python，跳过第三方 skill 校验。'
+      } else {
+        $tpArgs = @(Get-ThirdPartyArgs 'verify' $tpNames)
+        & $py @tpArgs
+        if ($LASTEXITCODE -ne 0) {
+          Write-Warning '第三方 skill 校验失败（运行 -SyncThirdPartySkills，或用 status 查看细节）。'
           $failures++
         }
       }

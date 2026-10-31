@@ -25,9 +25,15 @@
 #   scripts/link-skills.sh --skip-recommended-cli   # 跳过推荐 cli.json
 #   scripts/link-skills.sh --apply-recommended-skills  # 直接安装推荐 skill 依赖，不询问
 #   scripts/link-skills.sh --skip-recommended-skills   # 跳过推荐 skill 依赖与命令安装
+#   scripts/link-skills.sh --apply-third-party-skills  # 安装名单中的第三方 skill，不询问
+#   scripts/link-skills.sh --skip-third-party-skills   # 跳过第三方 skill 安装与校验
+#   scripts/link-skills.sh --sync-third-party-skills   # 同步第三方 skill（安装缺失并更新版本）
 #
 # 推荐 skill（config/recommended-skills.txt，需外部依赖或命令安装的复杂 skill，
 # 当前为 htmlmini）：依赖安装走询问/显式开关，命令默认装到 ~/.local/bin。
+# 第三方 skill（config/third-party-skills.txt）：实体不入本仓库，交互默认 No，
+# 实体放 $THIRD_PARTY_SKILLS_HOME/<name>（默认 ~/.local/share/skills-for-developer/third-party），
+# 各已登记的 harness 目录都用链接指向它。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -48,6 +54,9 @@ APPLY_RECOMMENDED=0
 SKIP_RECOMMENDED=0
 APPLY_REC_SKILLS=0
 SKIP_REC_SKILLS=0
+APPLY_TP=0
+SKIP_TP=0
+SYNC_TP=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,9 +66,12 @@ while [[ $# -gt 0 ]]; do
     --skip-recommended-cli) SKIP_RECOMMENDED=1; shift ;;
     --apply-recommended-skills) APPLY_REC_SKILLS=1; shift ;;
     --skip-recommended-skills) SKIP_REC_SKILLS=1; shift ;;
+    --apply-third-party-skills) APPLY_TP=1; shift ;;
+    --skip-third-party-skills) SKIP_TP=1; shift ;;
+    --sync-third-party-skills) SYNC_TP=1; shift ;;
     --include) INCLUDE="${2:-}"; shift 2 ;;
     --include=*) INCLUDE="${1#--include=}"; shift ;;
-    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
 done
@@ -354,6 +366,97 @@ deploy_recommended_skills() {
   done
 }
 
+third_party_names() {
+  # 输出第三方名单与 --include 交集后的名称，每行一个。
+  local f="$REPO_ROOT/config/third-party-skills.txt"
+  [[ -f "$f" ]] || return 0
+  local line name w hit
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    name="${line%%|*}"
+    name="$(printf '%s' "$name" | tr -d '[:space:]')"
+    [[ -z "$name" ]] && continue
+    if [[ -n "$INCLUDE" ]]; then
+      hit=0
+      IFS=',' read -ra WANT <<< "$INCLUDE"
+      for w in "${WANT[@]}"; do
+        [[ "$name" == "$w" ]] && hit=1
+      done
+      [[ $hit -eq 0 ]] && continue
+    fi
+    printf '%s\n' "$name"
+  done < "$f"
+}
+
+python_bin() {
+  if command -v python3 >/dev/null 2>&1; then
+    command -v python3
+  elif command -v python >/dev/null 2>&1; then
+    command -v python
+  fi
+}
+
+deploy_third_party_skills() {
+  # 第三方 skill：交互默认 No；非交互默认跳过；实体由 Python 安装器管理。
+  [[ $UNLINK -eq 1 || $VERIFY_ONLY -eq 1 ]] && return 0
+  mapfile -t TP < <(third_party_names)
+  [[ ${#TP[@]} -eq 0 ]] && return 0
+  if [[ $SKIP_TP -eq 1 ]]; then
+    echo "已跳过第三方 skill（--skip-third-party-skills）：${TP[*]}"
+    return 0
+  fi
+  local action="install"
+  [[ $SYNC_TP -eq 1 ]] && action="sync"
+  if [[ $SYNC_TP -eq 0 && $APPLY_TP -eq 0 ]]; then
+    if [[ -t 0 ]]; then
+      local ans
+      read -r -p "是否安装/更新第三方 skill（${TP[*]}；来自上游，默认 No）？[y/N] " ans
+      if [[ ! "$ans" =~ ^[yY]([eE][sS])?$ ]]; then
+        echo "已跳过第三方 skill。"
+        return 0
+      fi
+    else
+      echo "非交互环境，跳过第三方 skill（用 --apply-third-party-skills 或 --sync-third-party-skills）。"
+      return 0
+    fi
+  fi
+  local py
+  py="$(python_bin)"
+  if [[ -z "$py" ]]; then
+    echo "未找到 Python，跳过第三方 skill（需要 Python 3.6+）。" >&2
+    return 0
+  fi
+  echo "== 第三方 skill（${action}）：${TP[*]} =="
+  local args=(-X utf8 "$REPO_ROOT/scripts/third-party-skills.py" "$action")
+  local s
+  for s in "${TP[@]}"; do args+=(--name "$s"); done
+  if ! "$py" "${args[@]}"; then
+    echo "第三方 skill ${action} 失败。" >&2
+  fi
+}
+
+verify_third_party_skills() {
+  # --verify-only 时校验第三方 skill；未安装只提示，不阻断。
+  [[ $VERIFY_ONLY -eq 1 ]] || return 0
+  [[ $SKIP_TP -eq 1 ]] && return 0
+  mapfile -t TP < <(third_party_names)
+  [[ ${#TP[@]} -eq 0 ]] && return 0
+  local py
+  py="$(python_bin)"
+  if [[ -z "$py" ]]; then
+    echo "未找到 Python，跳过第三方 skill 校验。"
+    return 0
+  fi
+  local args=(-X utf8 "$REPO_ROOT/scripts/third-party-skills.py" verify)
+  local s
+  for s in "${TP[@]}"; do args+=(--name "$s"); done
+  if ! "$py" "${args[@]}"; then
+    echo "第三方 skill 校验失败（运行 --sync-third-party-skills，或用 status 查看）。" >&2
+    failures=$((failures + 1))
+  fi
+}
+
 unlink_recommended_commands() {
   # --unlink 时同步移除本仓库安装的命令；依赖目录（node_modules）保留
   [[ $UNLINK -eq 1 ]] || return 0
@@ -369,6 +472,10 @@ unlink_recommended_commands() {
   done
   if [[ $VERIFY_ONLY -eq 0 ]]; then
     echo "注：推荐 skill 的依赖目录（如 node_modules）已保留，按需手工删除。"
+  fi
+  mapfile -t TP_HINT < <(third_party_names)
+  if [[ ${#TP_HINT[@]} -gt 0 ]]; then
+    echo "注：第三方 skill 不在 --unlink 范围；卸载用 python -X utf8 scripts/third-party-skills.py uninstall --name <name>"
   fi
 }
 
@@ -438,6 +545,7 @@ apply_recommended_cli() {
 
 apply_recommended_cli
 deploy_recommended_skills
+deploy_third_party_skills
 unlink_recommended_commands
 
 check_global_agents() {
@@ -463,6 +571,7 @@ check_global_agents() {
 
 check_global_agents
 verify_recommended_skills
+verify_third_party_skills
 
 if [[ $VERIFY_ONLY -eq 1 ]]; then
   if [[ $failures -gt 0 ]]; then

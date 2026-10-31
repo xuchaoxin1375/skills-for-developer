@@ -20,6 +20,10 @@ temp.*
 # Local-only: never committed, never synced across machines.
 .workspaces/
 
+# 第三方 skill 共享根的可选仓库内位置（THIRD_PARTY_SKILLS_HOME 指向这里时）。
+# 实体与 .env 一律不入库；默认位置是 ~/.local/share/skills-for-developer/third-party/。
+third-party/
+
 # Codex local artifact: may regenerate <skill>/agents/openai.yaml at runtime.
 # Keep it untracked; source of truth stays in SKILL.md.
 **/agents/openai.yaml

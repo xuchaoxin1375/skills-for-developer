@@ -8,12 +8,13 @@
   2. README 索引：每个 skill 在 README.md 有 `skills/<name>` 入口，
      且该行有说明与关键词列（过短时给警告）。
   3. 红线路径：skill 正文/引用/示例/配套脚本不得出现仓库外真实路径。
-  4. 各 harness 安装数：每个真源 skill 在 5 个 harness 侧都是指向真源的链接。
+  4. 各 harness 安装数：每个真源 skill 在已登记的 harness 侧都是指向真源的链接。
   5. 推荐部署名单：config/recommended-skills.txt 的名字须有对应真源目录；
      含 package.json（需依赖安装）却不在名单中的给出提醒。
-  6. 依赖声明：skills/*/dependencies.json 的结构与字段校验，见
+  6. 第三方推荐名单：config/third-party-skills.txt 的格式、重名与真源冲突。
+  7. 依赖声明：skills/*/dependencies.json 的结构与字段校验，见
      docs/skill-dependencies.md；含 package.json 却未声明依赖时给出提醒。
-  7. references 孤儿：references/ 下未被 skill 内文本引用的文件给警告。
+  8. references 孤儿：references/ 下未被 skill 内文本引用的文件给警告。
 
 内部 Markdown 链接与锚点由 scripts/check-links.py 单独校验。
 
@@ -376,6 +377,76 @@ def read_recommended(repo):
     return names
 
 
+def read_third_party(repo):
+    """读取第三方名单并做结构校验，返回 (rows, errors, warnings)。
+
+    rows 为 dict 列表；文件缺失或不可读时 rows 为空并给 warning。
+    """
+    p = repo / "config" / "third-party-skills.txt"
+    try:
+        text = p.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as exc:
+        return [], [], [f"config/third-party-skills.txt 不存在或不可读，跳过第三方名单检查（{exc}）"]
+
+    rows, errors, warnings = [], [], []
+    seen = set()
+    repo_name = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+    ref_name = re.compile(r"^[A-Za-z0-9._/-]+$")
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = [x.strip() for x in line.split("|")]
+        if len(parts) != 6:
+            errors.append(
+                f"config/third-party-skills.txt:{lineno}: 需要 6 列"
+                f"（name|repo|kind|ref|preserve|description），实际 {len(parts)} 列"
+            )
+            continue
+        name, repo_name_value, kind, ref, preserve_raw, description = parts
+        bad = False
+        if not KEBAB.match(name):
+            errors.append(f"config/third-party-skills.txt:{lineno}: 名称不是 kebab-case: {name!r}")
+            bad = True
+        if name in seen:
+            errors.append(f"config/third-party-skills.txt:{lineno}: 名称重复: {name}")
+            bad = True
+        seen.add(name)
+        if not repo_name.match(repo_name_value):
+            errors.append(f"config/third-party-skills.txt:{lineno}: repo 需为 owner/name: {repo_name_value!r}")
+            bad = True
+        if kind not in {"tag", "branch"}:
+            errors.append(f"config/third-party-skills.txt:{lineno}: kind 只能是 tag 或 branch: {kind!r}")
+            bad = True
+        if not ref or not ref_name.match(ref) or ".." in ref:
+            errors.append(f"config/third-party-skills.txt:{lineno}: ref 不合法: {ref!r}")
+            bad = True
+        if preserve_raw:
+            for item in preserve_raw.split(","):
+                item = item.strip().replace("\\", "/")
+                if not item or item.startswith("/") or ".." in item.split("/"):
+                    errors.append(
+                        f"config/third-party-skills.txt:{lineno}: preserve 必须是 skill 内相对路径: {item!r}"
+                    )
+                    bad = True
+                    break
+        if not description:
+            errors.append(f"config/third-party-skills.txt:{lineno}: description 不能为空")
+            bad = True
+        if not bad:
+            rows.append(
+                {
+                    "name": name,
+                    "repo": repo_name_value,
+                    "kind": kind,
+                    "ref": ref,
+                    "preserve": preserve_raw,
+                    "description": description,
+                }
+            )
+    return rows, errors, warnings
+
+
 def harness_targets():
     home = Path.home()
     agents = Path(
@@ -442,11 +513,13 @@ def main(argv=None):
     warnings.extend(pw)
 
     # 推荐部署名单（只在全量检查时核对，--include 过滤后名单天然不全）
+    rec = []
     if not want:
-        rec = read_recommended(repo)
-        if rec is None:
+        rec_names = read_recommended(repo)
+        if rec_names is None:
             warnings.append("config/recommended-skills.txt 不存在或不可读，跳过推荐名单检查")
         else:
+            rec = rec_names
             have = {s.name for s in skills}
             for n in rec:
                 if n not in have:
@@ -454,6 +527,18 @@ def main(argv=None):
             for s in skills:
                 if (s / "package.json").is_file() and s.name not in rec:
                     warnings.append(f"{s.name} 含 package.json（需依赖安装？）但不在推荐名单中")
+
+    # 第三方推荐名单：结构始终校验；全量检查时再核对与真源/推荐名单的重名。
+    tp_rows, tp_errors, tp_warnings = read_third_party(repo)
+    errors.extend(tp_errors)
+    warnings.extend(tp_warnings)
+    if not want:
+        have = {s.name for s in skills}
+        for row in tp_rows:
+            if row["name"] in have:
+                errors.append(f"第三方名单 {row['name']} 与 skills/ 下的自定义 skill 重名")
+            if row["name"] in rec:
+                errors.append(f"第三方名单 {row['name']} 同时出现在 config/recommended-skills.txt")
 
     # README 索引
     readme = repo / "README.md"
