@@ -177,7 +177,8 @@ cd ~/repos/skills-for-developer
 
 `skills/` 只存本仓库自定义的真源；第三方 skill 不复制进来，统一登记在
 `config/third-party-skills.txt`。每条记录为
-`name | repo | kind | ref | preserve | description`，当前登记 `anysearch` v3.1.1。
+`name | repo | kind | ref | preserve | description`，当前登记 `anysearch` v3.1.1 与
+`union-search-skill`（跟踪上游 `master`）。
 
 - 部署时交互询问，**默认 No**（第三方上游代码，安装前可先看名单与仓库）；非交互环境默认跳过。
   显式安装用 `-ApplyThirdPartySkills` / `--apply-third-party-skills`。
@@ -216,7 +217,7 @@ cd ~/repos/skills-for-developer
    `--apply-recommended-skills` 显式安装）；命令（`htmlmini`）默认装成直接可调用
    （Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH），
    用 `--skip-recommended-skills` 两者都不装。
-   第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
+   第三方 skill（`config/third-party-skills.txt`，当前为 anysearch 与 union-search-skill）交互询问**默认 No**；
    非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本。
    插件（`plugins/`）单独跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
 3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——缺才复制；不一致只提示，由人或代理对比后合并，不直接覆盖。

@@ -16,3 +16,4 @@
 # 名称不得与 skills/ 下的自定义 skill 重名。修改 ref 即切换推荐版本；
 # 用户主动要求“同步第三方 skill”时运行 sync。
 anysearch | anysearch-ai/anysearch-skill | tag | v3.1.1 | .env,runtime.conf | 统一实时搜索：网页/垂直领域/批量搜索与整页提取
+union-search-skill | runningZ1/union-search-skill | branch | master | .env,local_dev_doc | 联合搜索：GitHub/YouTube/微信/知乎/播客等平台、通用引擎与 AI 搜索，网页正文提取、图片与音视频下载
