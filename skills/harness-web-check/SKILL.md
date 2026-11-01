@@ -50,7 +50,7 @@ description: 检查模型在agent harness中的联网搜索工具是否正确配
 
 ## 协作边界
 
-- **检索质量**、查询预算、来源与引用核验按[agentic-web-search](../agentic-web-search/SKILL.md)；本skill只用最小探针判断配置与调用，不扩成主题研究。
+- **检索质量**、查询预算、来源与引用核验按[agentic-web-search](../agentic-web-search/SKILL.md)；渠道顺位、可用性核对与降级决策按 `user-profile` 与该 skill 的“渠道选择与回退”，本skill只判定失败层与实际路径，不扩成主题研究。
 - **网络与网页内容**：外链请求前按[network-access](../network-access/SKILL.md)选路；需提取网页结构时用htmlmini，遇挑战页再按resilient-browser-fetch分流。搜索服务出网与本机抓取出网分别记录。
 - **配置修改**：OpenCode字段按opencode及V2官方文档；模型能力与协议按[opencode-provider-config](../opencode-provider-config/SKILL.md)，Codex专属字段按codex-model-config，不复制其参数清单。
 - **子代理与付费回退**遵循当前全局治理授权；授权不能从免费渠道自动延伸到订阅或其他供应商，也不因加载本skill自动启动子代理。
