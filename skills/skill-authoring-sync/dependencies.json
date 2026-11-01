@@ -2,6 +2,15 @@
   "schemaVersion": 1,
   "requirements": [
     {
+      "id": "python",
+      "alternatives": [
+        { "kind": "runtime", "name": "python", "minVersion": "3.10" },
+        { "kind": "runtime", "name": "python3", "minVersion": "3.10" }
+      ],
+      "required": false,
+      "hint": "仓库校验与精选上游 clone 的链接工具需要 Python 3.10+；缺失时不可声称已验证上游链接"
+    },
+    {
       "id": "git",
       "kind": "command",
       "name": "git",

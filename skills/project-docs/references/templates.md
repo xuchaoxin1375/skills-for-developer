@@ -70,7 +70,7 @@
 
 ## ADR
 
-使用 [domain-modeling 的 ADR 模板与记录约定](../../domain-modeling/references/records.md#架构决策记录)，优先沿用项目现有格式，不在本文件保留第二份模板。
+优先沿用项目现有格式；上游 `domain-modeling` 自带简短模板。项目确需结构化记录时裁剪 [本地可选模板](../../swe-gov/references/decision-records.md)，不在本文件保留第二份。
 
 ## Runbook
 

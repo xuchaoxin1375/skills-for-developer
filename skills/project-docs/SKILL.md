@@ -75,7 +75,7 @@ description: >
 
 **CHANGELOG**：`Unreleased` 置顶；按 Added、Changed、Deprecated、Removed、Fixed、Security 归类；最新版本在前并标日期；弃用先公告再移除；发布说明从 CHANGELOG 派生，不贴 `git log`。
 
-**架构与 ADR**：C4 前两层（系统上下文、容器）通常够用，一张图配一段文字；ADR 的必要性、字段、模板和历史维护采用 [记录约定](../domain-modeling/references/records.md#架构决策记录)，不在此另定状态与更新政策。
+**架构与 ADR**：C4 前两层（系统上下文、容器）通常够用，一张图配一段文字；主动建模使用上游 `domain-modeling`，本地历史维护与可选结构化模板见 [决策记录](../swe-gov/references/decision-records.md)，不在此另定一套政策。
 
 **CONTRIBUTING**：一条命令搭好环境并列出工具版本；测试、lint、格式化命令与 CI 检查项；提交与评审约定；把"改行为、配置或接口要同步文档与 CHANGELOG"写进完成定义。
 

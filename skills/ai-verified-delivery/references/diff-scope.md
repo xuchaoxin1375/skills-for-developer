@@ -1,5 +1,7 @@
 ## 差异范围与快照
 
+这是本地交付与评审调用方的快照约定，不是上游 `code-review` 的补丁。需要验证或评审未提交、仅暂存内容时读取；上游的 `git diff <fixed-point>...HEAD` 只覆盖提交差异，不能据此宣布工作区无改动。
+
 先确认用户要评审什么，再选择命令；占位符必须替换为本次解析后的提交身份。分支可能移动，评审时记录解析结果，不在中途悄悄换基准。
 
 ### 范围选择
@@ -11,7 +13,7 @@
 | 仅暂存 | `git diff --cached <base-sha>`；文件内容从 index 快照读取 | 工作区同一文件可能有额外修改，不能直接把磁盘内容当暂存版 |
 | 完整工作区变更 | `git diff <base-sha>`，再结合状态清单读取约定范围内的新增文件 | diff 不包含普通未跟踪文件，也不能单独表达暂存与未暂存的区别 |
 
-用 `git status --short --untracked-files=all` 核对路径集合；需要机器解析时使用 `git status --porcelain=v1 -z --untracked-files=all` 的 NUL 分隔输出，避免空格或非 ASCII 路径被拆错。完整差异范围参照 [交付侧差异约定](../../ai-verified-delivery/references/verify-and-templates.md#统一验证入口契约)，评审不重建输入指纹政策。
+用 `git status --short --untracked-files=all` 核对路径集合；需要机器解析时使用 `git status --porcelain=v1 -z --untracked-files=all` 的 NUL 分隔输出，避免空格或非 ASCII 路径被拆错。完整差异范围参照 [统一验证入口契约](verify-and-templates.md#统一验证入口契约)，评审不重建输入指纹政策。
 
 未跟踪文件按用户范围读取，不用 `git add` 让它们出现在 diff 中。忽略的密钥、运行产物和个人文件不自动纳入；发现疑似秘密时只报告脱敏位置与风险，不复制内容。二进制或无法读取的文件列明未评范围，不能默认为已审。
 

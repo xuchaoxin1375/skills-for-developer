@@ -65,7 +65,7 @@
 - **OpenCode V2**：`disable-model-invocation: true` 或 `metadata.opencode/autoinvoke: false` 可从模型可选列表隐藏；两者同时存在时后者优先。隐藏不等于权限隔离，仍可按 ID 显式加载。用户入口与实际支持的命令形式按 [V2 skills 文档](https://opencode.ai/v2/docs/skills)核验，不从 Claude 的 `/name` 形式推断。
 - **Claude Code**：用户调用用 `disable-model-invocation: true`；方法默认省略。
 - **Codex**：用户调用用 `agents/openai.yaml` 的 `policy.allow_implicit_invocation: false`；方法默认省略该 policy。跨 harness 的同一技能保持意图一致，不只改某一家的开关。
-- **安装来源独立于调用方式**：原样上游、中文适配和本地自有都需要核对触发、调用元数据、同名覆盖与依赖；不要同名重复安装。只写“手动优先”不是配置成仅用户调用；未核实支持的 harness 明说未验证，不声称开关已生效。
+- **安装来源独立于调用方式**：上游保持其触发与调用元数据，不为中文检索或本地编排改写；本地自有 skill 才按本规范调整。安装前核对同名覆盖与依赖，不能同名重复安装。只写“手动优先”不是配置成仅用户调用；未核实支持的 harness 明说未验证，不声称开关已生效。
 
 ## 写作复核
 

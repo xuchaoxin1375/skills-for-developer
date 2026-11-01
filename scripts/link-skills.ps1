@@ -126,10 +126,21 @@ $skills = Get-ChildItem -Path $skillsDir -Directory | Where-Object {
 if ($Include -and $Include.Count -gt 0) {
   $skills = $skills | Where-Object { $Include -contains $_.Name }
 }
-if (-not $skills -or $skills.Count -eq 0) {
+$upstreamSelected = $false
+$upstreamConfigFile = Join-Path $RepoRoot 'config\upstream-skills.json'
+if (-not $SkipThirdPartySkills -and -not $Unlink -and (Test-Path -LiteralPath $upstreamConfigFile -PathType Leaf)) {
+  $upstreamConfigData = Get-Content -LiteralPath $upstreamConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
+  foreach ($repository in $upstreamConfigData.repositories) {
+    foreach ($name in $repository.skills.PSObject.Properties.Name) {
+      if (-not $Include -or $Include -contains $name) { $upstreamSelected = $true }
+    }
+  }
+}
+if ((-not $skills -or $skills.Count -eq 0) -and -not $upstreamSelected) {
   Write-Error '没有可处理的 skill (skills/ 下需要有含 SKILL.md 的子目录)。'
   exit 1
 }
+$skills = @($skills | Where-Object { $null -ne $_ })
 
 foreach ($s in (Get-ChildItem -Path $skillsDir -Directory)) {
   if (-not (Test-Path (Join-Path $s.FullName 'SKILL.md') -PathType Leaf)) {
@@ -618,6 +629,29 @@ if ($VerifyOnly) {
           Write-Warning '第三方 skill 校验失败（运行 -SyncThirdPartySkills，或用 status 查看细节）。'
           $failures++
         }
+      }
+    }
+  }
+}
+
+if (-not $Unlink -and -not $SkipThirdPartySkills) {
+  $upstreamConfig = Join-Path $RepoRoot 'config\upstream-skills.json'
+  if (Test-Path -LiteralPath $upstreamConfig -PathType Leaf) {
+    $py = Get-PythonCommand
+    if ($null -eq $py) {
+      Write-Warning 'Python missing; upstream clone links were NOT checked.'
+      $failures++
+    } elseif ($VerifyOnly -or $PSCmdlet.ShouldProcess($upstreamConfig, 'Link selected upstream skills (no network)')) {
+      $upstreamArgs = @('-X', 'utf8', (Join-Path $RepoRoot 'scripts\link-upstream-skills.py'), '--repo-root', $RepoRoot)
+      if ($VerifyOnly) { $upstreamArgs += '--verify-only' }
+      foreach ($name in @($Include)) {
+        if (-not [string]::IsNullOrWhiteSpace($name)) { $upstreamArgs += @('--include', $name) }
+      }
+      & $py @upstreamArgs
+      if ($LASTEXITCODE -ne 0) {
+        Write-Warning 'Upstream clone link check failed; see docs/upstream-skills.md.'
+        $failures++
+        if (-not $VerifyOnly) { exit 1 }
       }
     }
   }

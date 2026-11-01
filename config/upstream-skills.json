@@ -1,0 +1,18 @@
+{
+  "repositories": [
+    {
+      "url": "https://github.com/mattpocock/skills.git",
+      "directory": "third-party/mattpocock-skills",
+      "revision": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d",
+      "skills": {
+        "grill-me": "skills/productivity/grill-me",
+        "grill-with-docs": "skills/engineering/grill-with-docs",
+        "grilling": "skills/productivity/grilling",
+        "domain-modeling": "skills/engineering/domain-modeling",
+        "codebase-design": "skills/engineering/codebase-design",
+        "code-review": "skills/engineering/code-review",
+        "diagnosing-bugs": "skills/engineering/diagnosing-bugs"
+      }
+    }
+  ]
+}

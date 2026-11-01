@@ -1,6 +1,6 @@
 # skills-for-developer
 
-本地 skills 唯一真源仓库（跨平台：Windows + Linux 共用）。实体只存这里，各 agent harness 侧通过链接引用，不存副本（Windows 用 **Junction**，Linux 用 **symlink**）。
+自有 skills 的唯一真源仓库（跨平台：Windows + Linux 共用）。自有实体在 `skills/`，上游实体独立管理；各 agent harness 侧通过链接引用，不存适配副本（Windows 用 **Junction**，Linux 用 **symlink**）。
 
 ## 日常 AI 编程先看这里
 
@@ -8,24 +8,24 @@
 
 | 当前问题 | 主入口 | 不要顺带启动 |
 |---|---|---|
-| 想法还不清楚，先把方案问透 | [grilling](skills/grilling/SKILL.md) | 已有明确规格时不重新访谈 |
-| 业务术语、状态或关系说不清 | [domain-modeling](skills/domain-modeling/SKILL.md) | 只读术语表不启动建模，不批量改名 |
-| 模块接口难用、薄包装太多、修改扩散 | [codebase-design](skills/codebase-design/SKILL.md) | 不默认扫描全仓或直接重构 |
+| 想法还不清楚，先把方案问透 | 上游 `grill-me` → `grilling` | 讨论并留术语/决策时选 `grill-with-docs`；已有规格先复用 |
+| 业务术语、状态或关系说不清 | 上游 `domain-modeling` | 只读术语表不启动建模，不批量改名 |
+| 模块接口难用、薄包装太多、修改扩散 | 上游 `codebase-design` | 本地调用方不因此扩成全仓治理 |
 | 明确要求测试驱动实现 | 已安装且可用的 `tdd` | 不因引用而安装整套上游流程 |
 | 需要测试覆盖、真实集成与回归 | [web-app-testing](skills/web-app-testing/SKILL.md) | 不另建验收等级或重复计划 |
-| 难 bug 或性能回归需要定位 | [diagnosing-bugs](skills/diagnosing-bugs/SKILL.md) | 不凭猜测直接改实现 |
-| 评审 PR、提交或未提交差异 | [code-review](skills/code-review/SKILL.md) | 不默认修复、提交或启动并行代理 |
+| 难 bug 或性能回归需要定位 | 上游 `diagnosing-bugs` | 不凭猜测直接改实现 |
+| 评审提交差异 | 上游 `code-review` | 未提交/暂存范围按本地快照约定另核；评审不等于验收 |
 | 判断是否真的做完、证据是否足够 | [ai-verified-delivery](skills/ai-verified-delivery/SKILL.md) | 不重跑版本与范围匹配的评审/测试 |
 
 跨模块工程约束和长期运行用 `swe-gov`，仓库配置用 `repo-gov`，配套文档用 `project-docs`；前端、网络与环境问题仍按下方领域索引选取。详细职责只在 [共用边界表](skills/web-app-testing/references/skill-boundaries.md)维护。
 
 ### 用户调用与模型调用
 
-上表核心方法保持**模型可调用，也可由用户显式指定**；这表示允许按需选用，不表示每次都自动执行。调用方式的元数据与 harness 差异统一见 [调用规则](skills/skill-authoring-sync/references/writing-for-agents.md#harness-调用差异)。
+上表方法保持**模型可调用，也可由用户显式指定**；`grill-me`、`grill-with-docs` 保留上游的**用户调用入口**配置。调用类型不授予写入、费用或发布权限。元数据与 harness 差异见 [调用规则](skills/skill-authoring-sync/references/writing-for-agents.md#harness-调用差异)。
 
 Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入口**不由本仓库自动安装或替你启动；方法引用不能绕过显式调用意图。需要这类流程时再单独评估，不能因为入口没安装就强制装整包。
 
-`grilling`、`diagnosing-bugs` 已保留上游来源；`codebase-design`、`domain-modeling`、`code-review` 是本地独立维护的中文适配版，各自带来源与 MIT 许可。外部独立安装的 `tdd` 不在本仓库真源中，本仓库不自动改写或升级它。避免再安装同名上游副本覆盖适配版。
+这七个 Matt skill 采用独立 clone + 精选链接，**上游原样管理，不再维护本地同名适配版**。选择、安装与更新见 [上游 skill](docs/upstream-skills.md)，来源版本及目录由 `config/upstream-skills.json` 维护。`tdd` 保持原有独立安装，不自动改写或升级；重合处只调整自有 skill。
 
 ## Skill 目录（检索入口）
 
@@ -42,21 +42,16 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 | `skills/scripting-best-practices`    | Shell / Python / Node 脚本与小工具 CLI 的编写、审查与重构规范：快速失败、输入校验、`--help` 与退出码、长选项为主并给常用短选项、批量覆盖/下发的幂等与预检、UTF-8 与跨平台换行、多脚本交付；语言细则按需读 `references/`（原 opencode） | 写脚本、审脚本、重构`.sh` / `.bash` / `.py` / `.mjs` / `.js`、Node CLI、排查脚本健壮性、UTF-8 编码默认、批量下发、覆盖写入、预检门禁、强制覆盖、幂等判定、长选项、短选项、--help、退出码、多脚本交付 |
 | `skills/resilient-browser-fetch`     | 稳健网页采集：抓取需渲染页面、Cloudflare/Turnstile/Akamai 挑战页、拦截页与人工验证；按能力分层选 HTTP、Playwright/Patchright、Scrapling、指纹底座或有头浏览器，缺件降级；含会话复用、HTML 快照、浏览器依赖与图形环境排障；选路走 network-access（原 codex） | 反爬、Cloudflare、Turnstile、Akamai、SEC-CPT、SBSD、边缘封禁、Reference #、抓取、采集、挑战页、挑战窗口、404/410、会话复用、同站探针、HTML 快照、保存网页、图片保留 URL、离线存档、Scrapling 环境安装、Playwright、Patchright、CloakBrowser、nodriver、chrome-late、晚接入、接入时机、cdp-attach、接管浏览器、复用真实浏览器会话、软错误页、批量晚接入、控制面、真实浏览器会话复用、同类方案对比、DrissionPage、浏览器回收、AGPL、不做首跳选路 |
 | `skills/htmlmini`                    | 网页核心骨架提取：总结、分析、审查页面，或从 URL/本地快照取表格、榜单、分数、规格；默认不整份读 HTML；CLI+MCP 双形态，可用时作为普通 web_fetch 的上位替代，本地提取不限次数、按缺口选模式并复用快照，含渲染/接口分流；写或改页面代码与设计评审归 frontend-design/frontend-qa，批量采集归 resilient-browser-fetch（原 claude） | html、URL、网页、页面、设计稿、面板、仪表盘、总结、分析、审查、查看、看一下、提取、取数、分数、表格、榜单、web_fetch 上位替代、页面取数、后端接口、XHR、JSON 接口、落盘 HTML 快照、调研取数、正则/脚本解析 HTML、爬虫侦察（契约另核） |
-| `skills/skill-authoring-sync` | 自定义 skill 真源、链接分发、跨机同步与配置偏好归属；新建必要性、内容规范及写作入口；调用方式与安装来源分别核对，细则见 writing-for-agents | 新建/修改/安装/同步 skill、真源、链接、配置偏好、用户调用、模型调用、description、AGENTS.md 写作 |
+| `skills/skill-authoring-sync` | 自定义 skill 真源、分发与跨机同步；第三方保持上游原样，现成 CLI 或独立 clone 精选链接，不保存同名适配版；调用方式与安装来源分开核对 | 新建/修改/安装/同步 skill、真源、上游原样、clone、精选链接、用户调用、模型调用、AGENTS.md 写作 |
 | `skills/repo-gov`                     | 公开/私有仓库治理与安全提交：按用途选配 README、LICENSE、.gitignore/.gitattributes、CONTRIBUTING、SECURITY、行为准则与模板；提交前检查、密钥/大文件审计、分支与评审保护、CI 与依赖/构建供应链控制；应用架构转 swe-gov，文档内容转 project-docs | 初始化仓库、新建仓库、LICENSE、许可证选择、SECURITY、CONTRIBUTING、.gitignore、.gitattributes、提交检查、CI、分支保护、供应链、审计密钥、repo-gov、仓库治理 |
 | `skills/swe-gov` | 长期应用的跨模块约束、数据/状态归属、契约兼容、运行恢复和维护；局部接口设计归 codebase-design，术语/ADR 记录归 domain-modeling，差异评审归 code-review | 工程治理、共享契约、状态归属、兼容迁移、异步任务、SLO、恢复、技术债、文档一致性、门禁设计 |
 | `skills/tech-learning-research`      | 技术话题系统讲解、联网调研与选型推荐：研究范围与取证覆盖面、调研维度清单、方案权衡、详略等级与搜索深度、深度调研的停止门槛、成文与排版收尾；检索执行（查询词、来源分级、预算与限流）归 `agentic-web-search`；产物是笔记/文档/代码时同样先调研，落盘类 skill 不抢触发 | 学习、技术调研、方案对比、选型推荐、做法盘点、research、tutorial、comparison、调研先行 |
-| `skills/grilling` | 设计树逐轮访谈；业务含义与 ADR 按需协作 domain-modeling，已有规格不重问；上游英文正文保留，MIT，见 SOURCE.md | 拷问、grill me、压力测试方案、需求对齐、先别写代码先问我 |
-| `skills/domain-modeling` | 主动澄清业务概念、状态与关系，核对代码和讨论，原位维护术语表与必要 ADR；一般访谈、接口设计和工程约束各归邻近方法 | 统一业务含义、领域术语、状态关系、GLOSSARY.md、ADR、业务建模 |
-| `skills/codebase-design` | 局部模块/接口设计：减少知识泄漏与薄包装，改善深度、局部性和测试边界；不默认全仓扫描、并行代理或直接重构 | 模块接口、深模块、薄包装、修改扩散、seam、可测试性、局部重构方案 |
-| `skills/code-review` | 指定差异的规范/规格分轴评审；覆盖提交、暂存或未提交快照，默认只读；评审不冒充实际测试与最终验收 | 代码评审、PR review、分支/提交评审、未提交代码、暂存快照、需求遗漏、范围扩张 |
 | `skills/markdown-style`              | Markdown 行文风格与排版规范（正本）：只改形式不改实质，标题/列表/表格/代码块/Mermaid 统一用法；文档合并与多文档整合定稿后走本规范收尾（合并本身归 `doc-rewrite-review`）；skill 指令内容与语言按仓库写作规范                                                                                                                   | 排版、风格迁移、规范格式、统一标题、markdown lint、format、合并后排版、统稿排版、章节并入正文、附录并入正文                                                                                                                 |
 | `skills/lightweight-app-builder`     | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、技术选型、打包签名分发，六步流程；与 repo-gov/swe-gov/ai-verified-delivery 分层组合，已有脚本的编写与重构规范转 scripting-best-practices | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、打包分发、轻量应用构建 |
 | `skills/frontend-design`             | Web/桌面小工具界面设计：任务、页面结构、令牌、通用交互与整体交付；共用对比度与截图协议，局部验收优先特写；线框接入 adaptive-responsive-guide，动效设计查 motion.md、技术查 web-animation-guide，存量深查转 frontend-qa；页面代码/配置片段的高亮、行号与复制查 code-display.md                                                                   | 界面丑、布局乱、美化、适配手机、加载动画、文字/图标难辨、对比度、页面可读性、新建改版、交付验收、可用性、UX、代码高亮、行号、源码片段                                                                                                   |
 | `skills/frontend-qa`              | 存量前端 UI 缺陷诊断与视觉验收：Playwright 用户流程、关键态视觉判断、对比度与可读性、溢出/CLS 及 DoD CI 门禁；截图工具和浏览器操作复用 browser-automation，测试用例与回归体系转 web-app-testing | 布局溢出、弹窗关闭、焦点回归、对比度、页面可读性、UI 截图验收、Agent 视觉理解、Playwright 流程验收、axe、DoD、CI 拦截 |
 | `skills/browser-automation` | 本地浏览器与工具预检、路径定位、浏览器操作方案及测试运行器决策；指导交互、等待、下载与会话所有权，区分新建实例、接管已登录会话与托管浏览器，给出只读发现和含总期限/进程树回收的托管截图，保留旧 QA 截图 CLI 委托 | Chrome/Edge/Chromium、浏览器在哪、安装路径、Scoop、便携浏览器、普通浏览器与 Playwright、Puppeteer、Selenium、MCP、工具/框架选型、浏览器自动化、CDP、远程浏览器、接管已登录会话、浏览器归属、shot-quick、shot_scroll、截图卡住、进程残留、资源回收 |
 | `skills/web-app-testing` | Web 测试覆盖、断言、真实 API/存储与浏览器回归、隔离和 CI 维护；可用的 tdd 管开发循环，code-review 管差异评审，ai-verified-delivery 管最终证据；共用计划不叠加流程 | 测什么、何时写测试、单元/组件/集成/E2E、Playwright、真实集成、Mock 边界、测试隔离、不稳定测试、CI |
-| `skills/diagnosing-bugs`             | 难 bug 与性能回归诊断：先造能变红的反馈回路，再最小化、列可证伪假设、单变量插桩、修复与回归；正文保留上游英文原文（MIT，见 SOURCE.md） | debug、诊断、复现、red loop、最小化、二分、性能回归、偶发 bug、修 bug、先复现再猜 |
 | `skills/arena-preview`               | arena.ai 项目包预览：解压指纹、后台运行、主题与核心文件分析、一屏预览报告；展示截图用于验收时转共用协议                                                                                                                                                                                     | 预览项目包、arena 交付、解压运行、主题分析、跑起来看看                                                                                                                                                        |
 | `skills/distinctive-design-director` | 有辨识度的视觉方向与品味主导的点评打磨：外部种子发散、设计简报收敛、只看成品评审、删减去模板味；落地实现转 frontend-design，存量缺陷与验收转 frontend-qa；对比度与截图行为复用共用规范 | 设计灵感、审美方向、视觉风格、情绪板、视觉发散、界面点评、去模板化、去除AI味、design inspiration、UI critique |
 | `skills/powershell-pitfalls`         | PowerShell 5.1/pwsh 执行与排障：**首次 PowerShell 调用前加载**（含单行抓取/读取/解析）、脚本片段编写与运行、读取选择、编码保真与校准、启动和安全底线，诊断与版本细节按需读取；原生 read 常规查看无需加载 | PowerShell 读文件、编写脚本、Get-Content/type/cat、UTF-8、默认UTF-8输出、NoProfile、profile、PowerShell 开发测试、退出码、原生参数、Start-Process、LiteralPath、管道输出、中文乱码、编码体检、BOM、引号、别名、junction、here-string、stdin 挂起、进程不返回、自动变量、首次调用前加载 |
@@ -100,6 +95,7 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 - [Skill 仓库治理](docs/skill-governance.md)：规则归属、职责划分、变更流程与分级验证。
 - [Skill 依赖声明与部署基线](docs/skill-dependencies.md)：`dependencies.json` 格式、检查命令与新机推荐依赖。
 - [第三方 skill 推荐名单](config/third-party-skills.txt)：上游仓库、固定版本、升级保留文件；实体不入本仓库，部署时询问，按需同步。
+- [独立 clone 的上游 skill](docs/upstream-skills.md)：Matt 七个方法/入口的原样管理、精选链接、新机恢复与更新；不与 CLI 或旧安装器重复接管。
 - [插件制品（OpenCode 插件）](docs/plugins.md)：插件真源布局、链接分发、装载规则（入口文件/发现路径/静默失败/全局键占用/location 路由）、通用验证清单与 skill 分工。
 - [Skill 内容与语言规范](docs/skill-content-guidelines.md)：约束强度、正文与参考落点、指令措辞、术语、例子和写作复核。
 - 变更历史：直接看 `git log`；本仓库不维护独立 CHANGELOG，提交信息按 Conventional Commits 记录目的与影响。

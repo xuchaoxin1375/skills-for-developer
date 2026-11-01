@@ -97,7 +97,18 @@ if [[ -n "$INCLUDE" ]]; then
   done
   SKILLS=("${FILTERED[@]}")
 fi
-[[ ${#SKILLS[@]} -gt 0 ]] || { echo "没有可处理的 skill。" >&2; exit 1; }
+if [[ ${#SKILLS[@]} -eq 0 ]]; then
+  upstream_selection=0
+  if [[ $UNLINK -eq 0 && $SKIP_TP -eq 0 && -f "$REPO_ROOT/config/upstream-skills.json" ]]; then
+    selection_py="$(command -v python3 || command -v python || true)"
+    if [[ -n "$selection_py" ]] && "$selection_py" -X utf8 -c \
+      'import json,sys; data=json.load(open(sys.argv[1],encoding="utf-8")); wanted=set(sys.argv[2].split(",")); sys.exit(0 if any(n in wanted for r in data["repositories"] for n in r["skills"]) else 1)' \
+      "$REPO_ROOT/config/upstream-skills.json" "$INCLUDE"; then
+      upstream_selection=1
+    fi
+  fi
+  [[ $upstream_selection -eq 1 ]] || { echo "没有可处理的 skill。" >&2; exit 1; }
+fi
 
 harness_tag() {
   case "$1" in
@@ -572,6 +583,23 @@ check_global_agents() {
 check_global_agents
 verify_recommended_skills
 verify_third_party_skills
+
+if [[ $UNLINK -eq 0 && $SKIP_TP -eq 0 && -f "$REPO_ROOT/config/upstream-skills.json" ]]; then
+  upstream_py="$(python_bin)"
+  if [[ -z "$upstream_py" ]]; then
+    echo "Python missing; upstream clone links were NOT checked." >&2
+    failures=$((failures + 1))
+  else
+    upstream_args=(-X utf8 "$REPO_ROOT/scripts/link-upstream-skills.py" --repo-root "$REPO_ROOT")
+    [[ $VERIFY_ONLY -eq 1 ]] && upstream_args+=(--verify-only)
+    [[ -n "$INCLUDE" ]] && upstream_args+=(--include "$INCLUDE")
+    if ! "$upstream_py" "${upstream_args[@]}"; then
+      echo "Upstream clone link check failed; see docs/upstream-skills.md." >&2
+      failures=$((failures + 1))
+      [[ $VERIFY_ONLY -eq 0 ]] && exit 1
+    fi
+  fi
+fi
 
 if [[ $VERIFY_ONLY -eq 1 ]]; then
   if [[ $failures -gt 0 ]]; then

@@ -20,7 +20,8 @@ temp.*
 # Local-only: never committed, never synced across machines.
 .workspaces/
 
-# 第三方 skill 共享根的可选仓库内位置（THIRD_PARTY_SKILLS_HOME 指向这里时）。
+# 第三方独立 clone 与共享实体；来源/版本/精选路径只登记到 config/。
+# Matt clone: third-party/mattpocock-skills（不是 submodule，不提交实体或链接）。
 # 实体与 .env 一律不入库；默认位置是 ~/.local/share/skills-for-developer/third-party/。
 third-party/
 

@@ -3,6 +3,7 @@ name: skill-authoring-sync
 description: >
   在 agent harness 中维护自定义 skill 真源（含新建后的落地）：实体提交、治理规则的定义与修改、链接分发与跨机同步，
   以及把本机 harness 配置偏好（如 OpenCode TUI `cli.json`）回写真源、按真源恢复本机配置。
+  第三方保持上游原样，支持现成 CLI 单项安装或独立 clone 精选链接，重合处只调整自有 skill。
   当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、说“同步配置”“同步 opencode 设置/偏好”，
   或复盘/同步/分发/校验/查变更已有 skill，以及需要定位真源仓库、避免在任意目录全盘搜索时使用此 Skill。从零描述能力与行为评估用社区版 skill-creator；从材料提炼规则用 reference-to-skill；单次实战补丁用 skill-patcher。
 ---
@@ -11,11 +12,13 @@ description: >
 
 你是负责 skill 全生命周期的工程师：新建、评审、分发、同步，所有操作可审计、可回放。
 
-**核心原则：真源唯一、无副本**。实体只存真源仓库
+**核心原则：真源唯一、无副本**。自有实体只存真源仓库
 `skills-for-developer/skills/<skill-name>/`；各 harness 侧一律放
 **链接**（Windows Junction、Linux symlink），不存实体。任何修改直接改真源，
 改完即对本机所有 harness 生效；跨机器靠 `git push/pull` 同步实体，
 每台机器跑一遍自己平台的链接脚本即可。
+
+第三方实体不适用自有目录与改写规则，按下文“第三方 skill 推荐名单”保持原样并独立管理。
 
 ## 定位真源仓库
 
@@ -113,11 +116,14 @@ skills-for-developer/
 
 ### 第三方 skill 推荐名单
 
-`skills/` 只收本仓库自定义真源。第三方 skill 登记在 `config/third-party-skills.txt`，
-实体不入库，也不在仓库内建指向上游的链接。
+`skills/` 只收本仓库自定义真源。第三方原样管理，实体不入库。**不翻译或改写上游 description、调用元数据、正文、引用与脚本**；有重合先调整自有 skill 和调用方，不保存同名适配分支。
+
+优先复用现成平台/CLI 的按名安装；不顺畅时允许独立 clone 后选择性链接。clone 放在被忽略的 `third-party/` 下，来源、固定提交与精选目录登记到 `config/upstream-skills.json`，由 `scripts/link-upstream-skills.py` 只做链接与校验，不下载、更新或改写上游。具体恢复与更新见 [上游 skill](../../docs/upstream-skills.md)。同一 skill 只由一种方式管理，不重复登记到下面的旧安装器名单。
+
+旧安装器管理的第三方继续登记在 `config/third-party-skills.txt`，下列名单与共享根规则仅适用于这些条目。
 
 - **试用与登记分开**：登记是长期承诺（跟踪 `ref`、维护 `preserve`、部署时询问安装），不是安装记录。
-  安装器以名单为入口，需先有条目才能装；安装完成、链接可用后立即询问用户是否保留/推荐，
+  旧安装器以名单为入口，需先有条目才能装；现成 CLI 可以直接单项试用。安装完成、链接可用后立即询问用户是否保留/推荐，
   未获确认就撤回条目，只保留共享实体与 harness 链接供本地试用，并说明撤回后 `sync`/`verify`
   不再管理它（不自动升级，需重新登记或手工更新）。
 - 每行 `name | repo | kind | ref | preserve | description`；名称不得与自定义 skill 重名，
@@ -126,7 +132,7 @@ skills-for-developer/
   `--apply-third-party-skills`，同步版本用 `-SyncThirdPartySkills` / `--sync-third-party-skills`。
 - 安装器 `scripts/third-party-skills.py` 把实体放到独立共享根目录
   `$THIRD_PARTY_SKILLS_HOME/<name>`（默认 `~/.local/share/skills-for-developer/third-party/<name>`），
-  各已登记的 harness 目录都建链接；升级时保留 `preserve` 列出的本地文件（如 `.env`、`runtime.conf`）。
+  各已登记的 harness 目录都建链接；升级时只保留 `preserve` 列出的运行配置（如 `.env`、`runtime.conf`），不借此保留方法或代码补丁。
   第三方共享根目录与自定义真源 `skills/` 分离，不占用任何 harness 的 skills 目录；默认不放仓库内，
   避免 `git clean` 误删 `.env`，需要时用 `THIRD_PARTY_SKILLS_HOME` 指向仓库内的 `third-party/`
   （`.gitignore` 已预留）。

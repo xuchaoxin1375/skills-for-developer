@@ -26,7 +26,7 @@
 
 架构决策记录（Architecture Decision Record，ADR）用于影响结构、关键质量属性或难以逆转的选择。普通局部实现无需逐条建 ADR；相关旧决策先读，当前前提变化可以重新评估。
 
-ADR 是否值得记录、字段、模板和生命周期统一采用 [domain-modeling 的记录约定](../../domain-modeling/references/records.md#架构决策记录)。本文件保留架构取舍的判断，记录方法不另维护一份；普通脚本或小工具按真实取舍裁剪，不为格式补空文档。
+主动建模与 ADR 记录方法使用已安装的上游 `domain-modeling`；本地历史维护和可选结构化模板见 [决策记录](decision-records.md)。项目原有格式优先，不因加载本 skill 重建上游模板或补空文档。
 
 ### API、消息与数据契约
 
