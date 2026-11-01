@@ -26,7 +26,7 @@ OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可�
 筛选规则：
 
 - 对话模型才配进 OpenCode；嵌入（`*-embed*`）、重写、翻译、安全审查（`*content-safety*`）类模型不适合做 agent，直接跳过。
-- 网关常同时暴露多种协议（`supported_endpoint_types` 含 `anthropic`/`openai`/`openai-response`），只取模型 `id`；默认走 OpenAI Chat 协议，需要 Responses 协议时按第 4 步做模型级覆盖。
+- 网关常同时暴露多种协议（`supported_endpoint_types` 含 `anthropic`/`openai`/`openai-response`），只取模型 `id`。协议按模型族优先：GPT/OpenAI 系声明 `openai-response` 时走 Responses，Claude 系声明 `anthropic` 时走 Messages，两者都没有才回落 OpenAI Chat；切换方式见第 4 步。
 - 同一网关域名常并存多把 key，各自对应不同渠道分组、模型目录互不相交：已有该域名的 provider 时，先拿新旧 key 各拉一次 `/v1/models` 比对，再决定新增还是覆盖。新 key 暴露的是既有 provider 里没有的模型组，就新建 provider 并配独立 `env` 变量名（与既有 key 错开），不覆盖既有 key——覆盖会让旧 provider 静默丢掉一半模型。例：同域名旧 key 只暴露通用对话组，新 key 另开专用系列，两组并存。
 
 ### 2. 网络诊断（直连超时时按序排查）
@@ -139,6 +139,21 @@ curl -s -m 30 -A "Mozilla/5.0" https://openrouter.ai/api/v1/models \
 
 Responses 路由的默认值与 Chat 不同（`store`、`include` 等），`opencode run` 回 `OK` 只说明文本通路可用；要做 agent 还必须补一次工具调用验证（让模型读一个内容含唯一标记的文件回显该标记），不能据 Chat 路由的旧结论推断。
 
+**Claude 走 Anthropic Messages**：网关声明 `anthropic` 时，provider 级 `package` 用 `@opencode/ai/providers/anthropic-compatible`（同组 Claude 模型共用，不必逐个覆盖）：
+
+```jsonc
+{
+  "providers": {
+    "<providerID>": {
+      "package": "@opencode/ai/providers/anthropic-compatible",
+      "settings": { "baseURL": "https://<域名>/v1" }
+    }
+  }
+}
+```
+
+该客户端只在 baseURL 后拼 `/messages`，所以 `baseURL` 必须自带 `/v1`——写成裸域名会打到 `/messages` 而 404。鉴权用 `x-api-key` 并自动带 `anthropic-version`。切换后同样用抓包法确认落在 `/v1/messages`，再 `opencode run` 验证链路。
+
 **服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值——该命令只读，读 `service.json` 的 `env` 块，与 live 进程快照、shell 变量分属三层，细节见 [references/service-env.md](references/service-env.md)）：
 
 ```bash
@@ -205,6 +220,7 @@ opencode service start   # set env 本身也会重启服务
 - [ ] 只验可用性时选了候选里最便宜的一档，未拿旗舰模型做连通性抽查。
 - [ ] 验证请求为单轮极简 prompt（无 system/历史），`opencode run` 在干净临时目录执行，未注入项目上下文。
 - [ ] 需要 Responses 协议时只对目标模型写 `package`，未改 provider 级；已直连 `/v1/responses` 确认 200，且 `opencode api get /api/model` 解析到 responses 包。
+- [ ] 声明 `anthropic` 的网关已用 `anthropic-compatible`，`baseURL` 带 `/v1`，抓包确认请求落在 `/v1/messages`。
 - [ ] 切协议的模型已用请求 path（抓包）或等价手段确认真的打 `/v1/responses`，未仅凭回复文本相同判成功；agent 场景另做过一次工具调用验证。
 - [ ] 直连验证的请求体走文件（`--data-binary "@…"`），限时用执行器超时参数而非 `timeout` 前缀。
 - [ ] 三步验证（get env → models → run）全部通过，配置文件原有内容未被覆盖。
