@@ -17,6 +17,7 @@ description: >
 **边界**：
 
 - 需要把检索结果写成完整报告、教程或选型文档时，成文与详略规范遵循 `tech-learning-research`；研究维度划分与覆盖面由该 Skill 决定，本 Skill 只负责检索与取证策略。两者同时加载时，检索机制（查询、来源分级、预算、停止条件、限流）以本 Skill 为准，产出形态与详略以该 Skill 为准。
+- 工具是否下发、搜索配置是否正确、模型是否真正调用的验收归[harness-web-check](../harness-web-check/SKILL.md)；本Skill负责检索质量，不以配置检查代替搜索证据。
 - 只做文档排版收尾时遵循 `markdown-style`；需要改写文档时转 `doc-rewrite-review`。
 - 国内访问外网慢、超时、403 或 5xx 时，网络环境、跨平台代理及镜像核验遵循 `network-access`；请求频率与限流冷却仍遵循本 Skill。
 - 搜索服务可用不等于正文抓取路线可用：搜索成功只证明检索出口；正文抓取前按 `network-access` 读代理登记与同站观测，同一 URL 同路线超时或传输错误一次后换路线，不原样重发。
