@@ -256,6 +256,15 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - `ls-remote` 经加速前缀成功，说明该实例支持 git 智能 HTTP 读取；本次未测 `clone`、大仓库与推送。
 - 未验证：其他加速实例、大文件长时间稳定性、并发与限流、跨日波动、私有资源。
 
+## 2026-11-01 小仓库直连 clone 与 archive 下载可用
+
+执行环境：国内 Windows PowerShell；进程未设 `HTTP(S)_PROXY`，未指定代理或加速前缀。
+
+- `git ls-remote https://github.com/<owner>/<repo>` 返回 HEAD 与分支引用，退出码 0；随后 `git clone --depth 1` 同一公开小仓库退出码 0，耗时未单独计时，未触发超时。
+- 同期用第三方 skill 安装器（urllib 直连）下载同仓库 `archive/refs/heads/master.zip` 成功；archive 入口与 git 传输入口在本次均可用。
+- 与 2026-10-30 的 fetch/push 直连观测一致，仍不能据此推断 raw 文件入口——2026-10-21 raw 直连曾 12 秒超时。
+- 未验证：大仓库、LFS、clone 中断恢复、代理与加速前缀对照、跨日与其他网络环境。
+
 ## 2026-10-30 加速镜像核验脚本两轮对照
 
 执行环境：国内 Windows；`check_github_mirrors.py --direct --timeout 8 --workers 3`，目标为 raw 单文件、archive、Release 前 262144 字节与 `ls-remote`，两轮间隔约数分钟。
