@@ -152,7 +152,7 @@ Responses 路由的默认值与 Chat 不同（`store`、`include` 等），`open
 }
 ```
 
-该客户端只在 baseURL 后拼 `/messages`，所以 `baseURL` 必须自带 `/v1`——写成裸域名会打到 `/messages` 而 404。鉴权用 `x-api-key` 并自动带 `anthropic-version`。切换后同样用抓包法确认落在 `/v1/messages`，再 `opencode run` 验证链路。
+该客户端只在 baseURL 后拼 `/messages`，所以 `baseURL` 必须自带 `/v1`——写成裸域名会打到 `/messages` 而 404。鉴权用 `x-api-key` 并自动带 `anthropic-version`。切换后同样用抓包法确认落在 `/v1/messages`，再直连 `/v1/messages` 验证（用户要求经 harness 时才用 `opencode run`）。
 
 **服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值——该命令只读，读 `service.json` 的 `env` 块，与 live 进程快照、shell 变量分属三层，细节见 [references/service-env.md](references/service-env.md)）：
 
@@ -169,16 +169,16 @@ opencode service start   # set env 本身也会重启服务
 
 服务端 env 的高频底线：`set env` 会重启服务，变量名与取值定稿后一次合并写入；改前先 `opencode service get env` 抄下既有值，代理变量只增合并不覆盖；`NO_PROXY` 保持逗号分隔并含回环。按域名分流、密钥错位、变量名占用、大小写代理变量、写入丢失、存储与生效分离、live 未生效等排障细节，见 [references/service-env.md](references/service-env.md)。
 
-### 5. 端到端验证（按序，缺一不可）
+### 5. 端到端验证（按序）
 
 先定测哪个模型再动手：请求里已点名模型就只测它；用户只给了地址和密钥时，拉完 `/v1/models` 后**问一次**要测哪个 id，不要自行挑一个代他决定，更不要按分组顺序逐个试。候选按成本升序排列并标出最便宜的一档——只验可用性时选最便宜的即可；用户明说要用作日常主模型时，才把能力旗舰放首位。用户说"都不测/先不测"就停在配置与目录校验，并在交付里写明未做真实调用验证。
 
 1. `opencode service get env` —— 密钥、代理变量齐全（打码展示）。
 2. `opencode models | findstr <providerID>` —— 配置被识别、模型全部列出。
-3. `opencode run -m <provider>/<model> "OK"` —— 真实调用，默认限时 10 秒（可酌情放宽到 15 秒）：超时即判该模型当前时段可靠性不佳，不换长超时重试翻案（见约束/规范）；同时 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。在干净的空临时目录执行（`workdir` 指向空目录），避免项目 `AGENTS.md`、skill 清单被注入——注入的上下文既费 token，也会让"只回 OK"的抽查跑偏。
-4. 直接打 `/v1/chat/completions`（该模型已切 Responses 协议时改打 `/v1/responses`，参数换成 `max_output_tokens`），只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）：请求体只放一条单轮 user 消息（如 `OK`），不带 system、历史与工具定义；`max_tokens` 取够产出短答的最小值（如 64，需要看完整回答时才上调），可用性抽查不套 512 的大预算。核对 HTTP 200 与 `usage` 有输出 tokens；内容核验以 `choices[0].message.content` 非空为准，推理模型小预算会 `length` 且 content 为 null（思考占用了输出预算），此时 HTTP 200 且 `usage.completion_tokens` 非零即判通路可用。官方 Console 免费模型（`opencode/*-free`）**不能**用直连 curl 判定：免费档按客户端身份放行，非 OpenCode 客户端一律 403 `FreeTierError`，这类模型改用 `opencode run -m opencode/<id>-free` 验证；Go 模型直连需带 `x-opencode-session`。
+3. 直连轻量请求（默认，也是唯一的必需调用）：直接打 `/v1/chat/completions`（该模型已切 Responses 协议时改打 `/v1/responses`，参数换成 `max_output_tokens`；`anthropic-compatible` 打 `/v1/messages`，body 用 `messages[].content` 与 `max_tokens`），只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）。请求体只放一条单轮 user 消息（一句话问候或 `OK`），不带 system、历史与工具定义；`max_tokens` 取够产出短答的最小值（如 16–64），可用性抽查不套 512 的大预算。核对 HTTP 200 与 `usage` 有输出 tokens；内容核验以 `choices[0].message.content`（Messages 协议为 `content[].text`）非空为准，推理模型小预算会 `length` 且 content 为 null（思考占用了输出预算），此时 HTTP 200 且 `usage` 输出 tokens 非零即判通路可用。直连不经 harness，不携带 AGENTS.md、skill 清单等上下文，token 消耗只有个位数到几十。
    - 请求体先写成文件再用 `--data-binary "@<文件>"`：PowerShell 里内联 `-d "{\"model\":…}"` 经转义常被拆坏，网关回 400 `invalid JSON request body`，看起来像密钥或协议问题，实际只是引号被吃掉。
    - 限时用执行器的超时参数（或 curl 的 `-m`）施加；Windows 下别写成 `timeout 10 <命令>`——那里的 `timeout` 是系统自带的等待命令，不认这种用法，直接报 "Invalid syntax. Default option is not allowed more than '1' time(s)"，命令根本没跑。
+4. `opencode run -m <provider>/<model> "OK"`（**可选**，仅用户明确要求经 agent harness 验证时；或官方 Console 免费模型必须按客户端身份放行）：它会注入全局 `AGENTS.md`、skill 清单与工具定义，单次实测约上万 token（缓存读 + 输出），不要拿它当默认可用性抽查。执行时放在空临时目录并只发一个词，默认限时 10 秒（可酌情放宽到 15 秒）；超时即判该模型当前时段可靠性不佳，不换长超时重试翻案（见约束/规范），同时查 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。官方免费档直连一律 403 `FreeTierError`，Go 模型直连需带 `x-opencode-session`。
 
 改过 `limit` 时追加一步：`opencode api get /api/model` 取服务解析后的目录，确认目标模型的 `limit.context` 已是新值。`opencode models` 只列模型 ID、不显示 limit，不能用来验证。
 
@@ -197,7 +197,7 @@ opencode service start   # set env 本身也会重启服务
 - **必须**：改服务级 env 前先 `opencode service get env` 抄下既有值；`HTTP(S)_PROXY`/`NO_PROXY` 对设备上所有 provider 全局生效，只增合并不覆盖。例：设备原有模型靠既有代理变量连通，新接入照模板覆盖后旧模型静默断链。
 - **必须**：重启 opencode 服务前先双查代理环境（`get env` ＋ live 进程 environ），只在旧进程快照里的代理一重启就丢；重启用 detached 方式，事后核验新进程 environ 里 PROXY 仍在。例：模型靠 HTTPS_PROXY 连网，裸 restart 后集体断链，查 environ 才发现新进程没继承。
 - **必须**：只实测本次接入要用的模型（用户点名的那个），分组内其余模型不逐一验可用性与速度。用户没点名就先问一次，不自行代表他选。例：分组 20 个模型只用 2 个，就只测那 2 个，不跑完 20 个。
-- 验证成本按目的分层：只验可用性时选分组里最便宜的对话模型，单轮极简 prompt、小 `max_tokens`，不拿旗舰模型做连通性抽查、不扩大输出预算。例：同一分组里旗舰与轻量档并存，连通性抽查用轻量档即可。
+- 验证成本按目的分层：默认用直连极简请求，不经 agent harness（`opencode run` 会注入全局 AGENTS.md 与 skill 清单，单次约上万 token）；只验可用性时选分组里最便宜的对话模型，单轮极简 prompt、小 `max_tokens`，不拿旗舰模型做连通性抽查、不扩大输出预算。例：同一分组里旗舰与轻量档并存，连通性抽查用轻量档即可。
 - **必须**：单模型验证默认限时 10 秒，可酌情放宽到 15 秒；超时即判该模型当前时段可靠性不佳，不改配置不删条目，换时段复测即可。例：12 秒回的模型放宽到 15 秒重测；仍超时也不动配置，其他时段可能就通了。
 - skill 正文与示例中不得出现真实密钥、真实域名（用 `<…>` 占位）与本机绝对路径。
 
@@ -218,13 +218,13 @@ opencode service start   # set env 本身也会重启服务
 - [ ] `limit` 来自数据源或官方文档，并经交叉核验；覆盖已有/内置模型时只写 `limit`，且已用 `opencode api get /api/model` 确认解析值。
 - [ ] 只实测本次接入要用的模型，默认限时 10 秒（最多放宽到 15 秒）；用户未点名时已问过一次，未自行挑模型、未逐组遍历。
 - [ ] 只验可用性时选了候选里最便宜的一档，未拿旗舰模型做连通性抽查。
-- [ ] 验证请求为单轮极简 prompt（无 system/历史），`opencode run` 在干净临时目录执行，未注入项目上下文。
+- [ ] 验证请求为单轮极简 prompt（无 system/历史）；默认只走直连，未在用户未要求时跑 `opencode run` 的 harness 测试。
 - [ ] 需要 Responses 协议时只对目标模型写 `package`，未改 provider 级；已直连 `/v1/responses` 确认 200，且 `opencode api get /api/model` 解析到 responses 包。
 - [ ] 声明 `anthropic` 的网关已用 `anthropic-compatible`，`baseURL` 带 `/v1`，抓包确认请求落在 `/v1/messages`。
 - [ ] 切协议的模型已用请求 path（抓包）或等价手段确认真的打 `/v1/responses`，未仅凭回复文本相同判成功；agent 场景另做过一次工具调用验证。
 - [ ] 直连验证的请求体走文件（`--data-binary "@…"`），限时用执行器超时参数而非 `timeout` 前缀。
-- [ ] 三步验证（get env → models → run）全部通过，配置文件原有内容未被覆盖。
+- [ ] 三步验证（get env → models → 直连极简请求）全部通过，配置文件原有内容未被覆盖；`opencode run` 仅在用户要求或官方免费模型时执行过。
 
 ## 验证协议
 
-接入成功的判定：`opencode models` 出现 `<providerID>/<modelID>`，且 `opencode run -m <providerID>/<默认模型>` 返回模型正常回复；只对本次接入要用的每个模型各做一次直接 API 调用确认 `content` 可产出（可用性抽查用单轮极简 prompt 与小 `max_tokens`，content 为空但 `usage` 有输出时按通路可用判定），每次默认限时 10 秒（可酌情放宽到 15 秒）。后台服务 live 陈旧且会话内重启无效时，以存储侧齐全＋ `--standalone` 同配置验证通过为准，后台侧待外部重启后重验。
+接入成功的判定：`opencode models` 出现 `<providerID>/<modelID>`，且对本次接入要用的每个模型各做一次直连极简请求确认通路（单轮问候或 `OK`、无 system/历史、小 `max_tokens`，`content` 为空但 `usage` 有输出时按可用判定），每次默认限时 10 秒（可酌情放宽到 15 秒）。`opencode run` 的 harness 验证只在用户明确要求或官方免费模型必须按客户端身份放行时做，不作为默认成功判据。后台服务 live 陈旧且会话内重启无效时，以存储侧齐全＋ `--standalone` 同配置验证通过为准，后台侧待外部重启后重验。
