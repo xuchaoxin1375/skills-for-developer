@@ -11,7 +11,7 @@ description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网�
 - 已内置 catalog 的供应商改用自定义 baseURL 时，直接覆盖 `settings.baseURL` 即可，不必新建 provider。
 - 不适用于 OAuth 型供应商（Copilot 等），走 `/connect` 交互流程。
 - 通用用法与 V2 配置形状以 `opencode` skill 和官方 V2 文档为准；本 skill 负责第三方接入与模型参数落地，不沿用 V1 字段。
-- 联网搜索工具的可见性与实际调用验收归[harness-web-check](../harness-web-check/SKILL.md)；仅当证据指向供应商协议或模型能力配置时，再由本skill局部修复。
+- 联网搜索工具的可见性与实际调用验收归[harness-web-check](../harness-web-check/SKILL.md)；模型订阅、平台托管搜索与供应商原生工具的归属按[搜索适配说明](../harness-web-check/references/opencode.md#模型订阅与平台托管搜索)分别核实，不从套餐或Responses通路推断。仅当证据指向供应商协议或模型能力配置时，再由本skill局部修复。
 
 ## 核心用例
 
