@@ -11,8 +11,9 @@ description: >
 
 ### 工具与输出偏好
 
-- **搜索渠道**：优先使用已配置的独立搜索，默认 `anysearch`；不可用或能力不匹配时，才考虑 Tavily 或 harness 的其他独立搜索入口。按实际后端而非工具名称区分，切换仍受本轮授权与请求预算约束。
-- **供应商托管搜索**：默认禁用模型/供应商 API 随附的 `web_search` / `web_search_preview`；OpenCode 不自动启用、配置或下发，独立搜索不可用也不自动回退。原因是适配编排复杂，搜索轮次还可能影响前缀缓存复用。确需使用时，说明费用与当前供应商、协议及 harness 的适配情况，取得本轮明确同意；这不禁用 Responses 协议、普通函数工具或独立搜索。
+- **搜索渠道**：用户明确配置并可用的搜索渠道优先；没有指定渠道时，优先使用 harness 自己暴露、可观察调用与返回的独立搜索入口。两者不可用或能力不匹配时，才考虑已安装的搜索工具 skill(如 `anysearch`、Tavily)，不因历史默认覆盖用户的当前选择。切换仍受本轮授权与请求预算约束，未实测的渠道只标为已配置或未测，不称已验证可用。
+- **供应商托管搜索**：默认不使用模型/供应商 API 随附的搜索工具，包括 Responses 的 `web_search` / `web_search_preview`；不自动启用、配置、下发或在独立搜索失败时静默回退。优先级适用于 GPT 和其他模型，不因协议或模型切换改变。原因是这条路径的调用、计费与取证不够透明；确需使用时，先说明实际路径、费用及供应商/协议/harness 适配情况，取得本轮明确同意。这不禁用普通 Responses 文本与函数调用，也不把 harness 独立搜索或 Console 的 Hosted Web Search 仅凭名称归为模型供应商托管搜索。
+- **搜索透明性**：路径归属与配置层禁用的证据按 `harness-web-check`；偏好/skill 是行为约束，不报告成配置层硬禁用。
 - **Windows shell**：优先 PowerShell，其次 git-bash，cmd.exe 仅作最后回退；带逻辑的 Windows 片段用 PowerShell，启动与执行细节按 `powershell-pitfalls`。
 - **路径**：优先使用 `/`；Windows 特殊路径和目标工具兼容性例外见 [路径分隔符](../powershell-pitfalls/references/files-and-invocation.md#路径分隔符优先用-)。
 - **自建工具版本**：脚本/小工具采用本地日期时间 `YYYY.MM.DD.HHmm`，不手搓语义化版本；唯一真源在 `package.json` 的 `version`，其余位置运行时读取，并提供重打入口(如 `pnpm stamp`)。四段号仅用于本地 link/安装，不发布到只接受三段 semver 的 npm registry。
