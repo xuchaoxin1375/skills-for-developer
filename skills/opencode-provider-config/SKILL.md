@@ -1,6 +1,6 @@
 ---
 name: opencode-provider-config
-description: 把第三方 AI API（中转站/NewAPI/one-api 渠道/自定义 OpenAI 兼容网关）接入 OpenCode 的完整流程：获取模型列表、网络与 DNS 诊断、联网查模型参数、写 providers 配置、把模型切到 Responses 协议、设置服务环境变量与代理、端到端验证。凡是用户给出 API 地址+密钥要求"接入 opencode"、"配置自定义供应商/模型"、"添加中转站"、"第三方模型接入"、"配置 provider"，或需要在 OpenCode 中新增非内置模型、切换模型到 responses/openai-response 协议、调整已有或内置模型的上下文（limit）、查 /v1/models 列表、用 models.dev 查模型上下文参数时使用本 skill。
+description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）接入 OpenCode V2，或补全、审查已有模型参数：获取模型列表、核实输入输出模态与工具能力、思考等级与 variants、上下文及输出上限，写 providers 配置、选择协议、设置服务环境与按授权验证。用于接入第三方供应商/模型、配置 provider、切换 Responses/Messages、调整已有或内置模型的 capabilities/limit/reasoning、查 /v1/models 或 models.dev；不要求重新接入或必须提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
 ---
 
 # OpenCode 自定义供应商模型接入流程
@@ -10,6 +10,17 @@ description: 把第三方 AI API（中转站/NewAPI/one-api 渠道/自定义 Ope
 - 第三方中转站（NewAPI / one-api / uni-api 等 OpenAI 兼容网关）接入 OpenCode V2。
 - 已内置 catalog 的供应商改用自定义 baseURL 时，直接覆盖 `settings.baseURL` 即可，不必新建 provider。
 - 不适用于 OAuth 型供应商（Copilot 等），走 `/connect` 交互流程。
+- 通用用法与 V2 配置形状以 `opencode` skill 和官方 V2 文档为准；本 skill 负责第三方接入与模型参数落地，不沿用 V1 字段。
+
+## 核心用例
+
+| 目标 | 最短入口 |
+| --- | --- |
+| 新网关接入 | 取实际可用模型 ID → 核实参数 → 选协议并写配置 → 目录校验；真实调用另按授权验证。 |
+| 已有模型补模态、工具或思考档位 | 不重接供应商、不重写密钥；按[模型参数配置](references/model-parameters.md)只覆盖目标模型所缺字段。 |
+| 只改上下文或输出上限 | 核对该渠道的真实上限，局部改 `limit`，再核对服务解析后的值。 |
+
+联网前用 `network-access` 选路；需搜索时用 `agentic-web-search` 定策略。只补参数时可从第 3 步开始，不强制重新拉带鉴权目录或更改服务环境。真实模型调用与本地抓包均需用户明确授权；未授权就停在文档与目录校验，不将未测写成通过。
 
 ## 工作流程
 
@@ -26,7 +37,7 @@ OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可�
 筛选规则：
 
 - 对话模型才配进 OpenCode；嵌入（`*-embed*`）、重写、翻译、安全审查（`*content-safety*`）类模型不适合做 agent，直接跳过。
-- 网关常同时暴露多种协议（`supported_endpoint_types` 含 `anthropic`/`openai`/`openai-response`），只取模型 `id`。协议按模型族优先：GPT/OpenAI 系声明 `openai-response` 时走 Responses，Claude 系声明 `anthropic` 时走 Messages，两者都没有才回落 OpenAI Chat；切换方式见第 4 步。
+- 网关常同时暴露多种协议（`supported_endpoint_types` 含 `anthropic`/`openai`/`openai-response`），保留模型 `id` 及协议、能力等元数据，但不将网关原字段直接贴进 OpenCode 配置。协议按模型族优先：GPT/OpenAI 系声明 `openai-response` 时走 Responses，Claude 系声明 `anthropic` 时走 Messages，两者都没有才回落 OpenAI Chat；切换方式见第 4 步。
 - 同一网关域名常并存多把 key，各自对应不同渠道分组、模型目录互不相交：已有该域名的 provider 时，先拿新旧 key 各拉一次 `/v1/models` 比对，再决定新增还是覆盖。新 key 暴露的是既有 provider 里没有的模型组，就新建 provider 并配独立 `env` 变量名（与既有 key 错开），不覆盖既有 key——覆盖会让旧 provider 静默丢掉一半模型。例：同域名旧 key 只暴露通用对话组，新 key 另开专用系列，两组并存。
 
 ### 2. 网络诊断（直连超时时按序排查）
@@ -41,23 +52,23 @@ OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可�
 
 ### 3. 联网查模型参数
 
-数据源按序取用，一个源查全即停；字段冲突时以供应商官方文档为最终权威。所有大 JSON 一律先落盘、按模型名过滤出目标条目再读，不把整段响应拖进上下文。
+先确认网关 ID 对应的上游模型、版本与渠道限制，再按下表找参数线索。上游官方规格说明模型能力，网关文档说明该渠道暴露的能力，配置取两者共同支持的范围；聚合目录不能证明另一网关也支持同样的窗口、模态或思考档位。所有大 JSON 一律先落盘、按模型名过滤出目标条目再读，不把整段响应拖进上下文。
 
-**首选**：本 skill 自带零依赖脚本 `scripts/model_info.py`（纯标准库，多源自动回退，jsdelivr 超时自动落回 raw）：Windows `python <本skill目录>/scripts/model_info.py <模型名>`（部分机器是 `py`），*nix `python3 <本skill目录>/scripts/model_info.py <模型名>`；`--source all` 跨源合并，`--json` 输出供程序读取，无命中退出码 1、全源失败退出码 2。脚本不可用或需自定义时再手工取（下表与示例）。
+**快速查线索**：本 skill 自带零依赖脚本 `scripts/model_info.py`；Windows 用 `python -X utf8 <本skill目录>/scripts/model_info.py <模型名>`，*nix 用 `python3 <本skill目录>/scripts/model_info.py <模型名>`，选项见脚本 `--help`。它只摘要部分目录字段，不列出思考等级、开关、预算或全部定价，也不生成 V2 配置；`reasoning=true` 不能当作支持任意档位。脚本对 models.dev 的解析使用旧字段，遇到 V2 `capabilities` 形状或空字段时要回原条目核对，不能把空值当不支持。脚本不可用或需自定义时再手工取（下表与示例）。
 
 一次要查多个模型时先 `--source openrouter`：全源模式会逐个卡在 litellm/jsdelivr 超时上，几个模型就能跑成分钟级且可能整体超时；openrouter 通常一个文件覆盖多数主流模型，命中即停，只对没命中的模型再补 `--source all` 或官方文档。
 
 | 数据源（按序） | 关键字段 | 可达性与取法 |
 | --- | --- | --- |
 | `https://openrouter.ai/api/v1/models` | `data[]`：`context_length`、`architecture.input_modalities`/`output_modalities`、`top_provider.max_completion_tokens`、`supported_parameters`（含 `tools`/`reasoning`）、定价 | 无需鉴权，单文件约 0.8MB，通常直连最快，以实测为准 |
-| `https://models.dev/api.json` | `prov.models[id]`：`limit.context`/`limit.output`、`modalities`、`tool_call`、`reasoning` | 文件数 MB 常偏慢；慢或 403 时改走代理 |
+| `https://models.dev/api.json` | 先辨版本：V2 关注 `capabilities`（输入输出、工具、reasoning 控制）与 `limit`；旧条目可能是 `modalities`、`tool_call`、布尔 `reasoning`，不能照抄为 V2 配置 | 文件数 MB 常偏慢；慢或 403 时改走代理 |
 | LiteLLM JSON `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json` | 键=模型名（常带 `provider/` 前缀）：`max_input_tokens`、`max_output_tokens`、`mode`、`supports_function_calling`/`supports_vision`/`supports_reasoning`、定价 | raw 直连常超时/截断：走代理，或 jsdelivr 镜像 `https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json`；新模型可能滞后 |
 | 供应商官方文档/发布博客 | 权威兜底；国产供应商站点国内直连可达 | 搜索或按 `network-access` 抓取 |
 
 - 下载统一 `curl -A "Mozilla/5.0"`（脚本 HTTP 库常被 403）；解析前校验 JSON 完整性，截断文件解析报 Unterminated string，重取即可。
 - 平台解析差异：Windows PowerShell 必须写 `curl.exe`（`curl` 是 `Invoke-WebRequest` 别名），用 `ConvertFrom-Json` 过滤（`jq`/`python3` 非默认安装，Windows 上常只有 `py`/`python`）；*nix 用 `curl` + `jq`（或 `python3`）。
-- 把 `limit.context`/`limit.output` 写进配置的 `limit` 字段；工具调用（agent 必需）、reasoning 与输入模态（图片等）决定模型能否上岗。
-- 三源都没有的模型（新发布/小众）用保守值（如 context 128000、output 32000），后续按实际报错再调。
+- 新建模型或补全能力时，按[模型参数配置](references/model-parameters.md)完成“证据 → V2 字段 → 解析值”核对，覆盖输入/输出模态、工具、思考控制及 token 上限；定价、采样和协议兼容字段按需补，不为凑齐而猜填。
+- 无可靠规格时明确标未知，向网关查证；不能把通用的 128K/32K 或 OpenCode 自定义模型回退值称为该模型的真实能力。临时限制须说明依据与未验证范围，已有 catalog 的可靠值不因查不到新资料而覆盖。
 
 Windows 过滤示例（PowerShell）：
 
@@ -94,6 +105,12 @@ curl -s -m 30 -A "Mozilla/5.0" https://openrouter.ai/api/v1/models \
         "<modelID>": {                      // 键 = opencode 模型 ID
           "name": "展示名",
           "modelID": "<网关侧模型名>",       // 与键不同时才写
+          // 以下仅示范结构；须按该模型与渠道的已核实规格替换
+          "capabilities": {
+            "tools": true,
+            "input": ["text"],
+            "output": ["text"]
+          },
           "limit": { "context": 1048576, "output": 131072 }
         }
       }
@@ -171,6 +188,8 @@ opencode service start   # set env 本身也会重启服务
 
 ### 5. 端到端验证（按序）
 
+本节真实请求仅在用户明确授权验证时执行；仅补参数或未授权时，只做相关的配置/目录校验，并按[参数验收](references/model-parameters.md#验收与交付)报告未测范围。本节及协议切换段落中的请求、工具调用和抓包检查均受此边界约束；所谓必需调用只适用于已授权的通路验证，不是修改配置的前提。
+
 先定测哪个模型再动手：请求里已点名模型就只测它；用户只给了地址和密钥时，拉完 `/v1/models` 后**问一次**要测哪个 id，不要自行挑一个代他决定，更不要按分组顺序逐个试。候选按成本升序排列并标出最便宜的一档——只验可用性时选最便宜的即可；用户明说要用作日常主模型时，才把能力旗舰放首位。用户说"都不测/先不测"就停在配置与目录校验，并在交付里写明未做真实调用验证。
 
 1. `opencode service get env` —— 密钥、代理变量齐全（打码展示）。
@@ -180,7 +199,7 @@ opencode service start   # set env 本身也会重启服务
    - 限时用执行器的超时参数（或 curl 的 `-m`）施加；Windows 下别写成 `timeout 10 <命令>`——那里的 `timeout` 是系统自带的等待命令，不认这种用法，直接报 "Invalid syntax. Default option is not allowed more than '1' time(s)"，命令根本没跑。
 4. `opencode run -m <provider>/<model> "OK"`（**可选**，仅用户明确要求经 agent harness 验证时；或官方 Console 免费模型必须按客户端身份放行）：它会注入全局 `AGENTS.md`、skill 清单与工具定义，单次实测约上万 token（缓存读 + 输出），不要拿它当默认可用性抽查。执行时放在空临时目录并只发一个词，默认限时 10 秒（可酌情放宽到 15 秒）；超时即判该模型当前时段可靠性不佳，不换长超时重试翻案（见约束/规范），同时查 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。官方免费档直连一律 403 `FreeTierError`，Go 模型直连需带 `x-opencode-session`。
 
-改过 `limit` 时追加一步：`opencode api get /api/model` 取服务解析后的目录，确认目标模型的 `limit.context` 已是新值。`opencode models` 只列模型 ID、不显示 limit，不能用来验证。
+改过模型参数时追加一步：`opencode api get /api/model` 取服务解析后的目录，只筛目标模型，核对本次变更的能力、上限、variants、settings 与 package，具体判据见[参数验收](references/model-parameters.md#验收与交付)。`opencode models` 只列 ID，不能证明参数正确；目录校验也不能证明网关实际接受这些参数。
 
 ## OpenCode 官方套餐（opencode / opencode-go）
 
@@ -203,6 +222,8 @@ opencode service start   # set env 本身也会重启服务
 
 ## 自检
 
+按本次修改范围检查；真实请求与抓包项目仅适用于已获授权的验证，未执行项标明未测，不为勾齐清单擅自调用。
+
 - [ ] 模型列表经过筛选，只配对话模型。
 - [ ] 本地直连不通时代理已持久化到服务端，不是只在当前 shell export。
 - [ ] `NO_PROXY` 为逗号分隔、含回环；多入口分流时直连域名已加入，代理端口来自实测或用户告知。
@@ -215,7 +236,7 @@ opencode service start   # set env 本身也会重启服务
 - [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染。
 - [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体；`api_key_expired` 按 Console 新建 `oc_sk_…` 处理，未去改 `auth.json`。
 - [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败。
-- [ ] `limit` 来自数据源或官方文档，并经交叉核验；覆盖已有/内置模型时只写 `limit`，且已用 `opencode api get /api/model` 确认解析值。
+- [ ] 本次参数来自可对应的上游规格与渠道证据，未知值未猜填；已有模型只覆盖目标字段，并核对服务解析值；模态、工具与思考档位按[参数验收](references/model-parameters.md#验收与交付)检查。
 - [ ] 只实测本次接入要用的模型，默认限时 10 秒（最多放宽到 15 秒）；用户未点名时已问过一次，未自行挑模型、未逐组遍历。
 - [ ] 只验可用性时选了候选里最便宜的一档，未拿旗舰模型做连通性抽查。
 - [ ] 验证请求为单轮极简 prompt（无 system/历史）；默认只走直连，未在用户未要求时跑 `opencode run` 的 harness 测试。
@@ -223,8 +244,8 @@ opencode service start   # set env 本身也会重启服务
 - [ ] 声明 `anthropic` 的网关已用 `anthropic-compatible`，`baseURL` 带 `/v1`，抓包确认请求落在 `/v1/messages`。
 - [ ] 切协议的模型已用请求 path（抓包）或等价手段确认真的打 `/v1/responses`，未仅凭回复文本相同判成功；agent 场景另做过一次工具调用验证。
 - [ ] 直连验证的请求体走文件（`--data-binary "@…"`），限时用执行器超时参数而非 `timeout` 前缀。
-- [ ] 三步验证（get env → models → 直连极简请求）全部通过，配置文件原有内容未被覆盖；`opencode run` 仅在用户要求或官方免费模型时执行过。
+- [ ] 本次相关的配置与目录校验已完成，原有无关内容未被覆盖；真实请求仅在授权后执行，未测能力与窗口极限已明确说明。
 
 ## 验证协议
 
-接入成功的判定：`opencode models` 出现 `<providerID>/<modelID>`，且对本次接入要用的每个模型各做一次直连极简请求确认通路（单轮问候或 `OK`、无 system/历史、小 `max_tokens`，`content` 为空但 `usage` 有输出时按可用判定），每次默认限时 10 秒（可酌情放宽到 15 秒）。`opencode run` 的 harness 验证只在用户明确要求或官方免费模型必须按客户端身份放行时做，不作为默认成功判据。后台服务 live 陈旧且会话内重启无效时，以存储侧齐全＋ `--standalone` 同配置验证通过为准，后台侧待外部重启后重验。
+先区分完成范围：仅补参数时，按[参数验收](references/model-parameters.md#验收与交付)核对配置及目录，并报告未做真实调用；新接入未获调用授权时，只能报告“配置已识别、通路未验证”。获准验证通路后，确认 `opencode models` 出现目标 ID，并对本次指定模型做直连极简请求，按第 5 步判定，不扩大到整组模型。`opencode run` 仍需授权，不作为默认抽查。通路通过不等于模态、工具、所有思考档位与最大窗口均已验证。后台服务 live 陈旧且会话内重启无效时，区分存储侧与 live 状态；只有获准执行的 `--standalone` 同配置验证实际通过时才报告其结果，后台侧待外部重启后重验。
