@@ -53,7 +53,7 @@ OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可�
 
 ### 3. 联网查模型参数
 
-先确认网关 ID 对应的上游模型、版本与渠道限制，再按下表找参数线索。上游官方规格说明模型能力，网关文档说明该渠道暴露的能力，配置取两者共同支持的范围；聚合目录不能证明另一网关也支持同样的窗口、模态或思考档位。所有大 JSON 一律先落盘、按模型名过滤出目标条目再读，不把整段响应拖进上下文。
+先确认网关 ID 对应的上游模型、版本与已知渠道限制，再按下表找参数线索。思考档位按[公开档位配置基线](references/model-parameters.md#公开档位配置基线)处理，不把缺少第三方声明当作缩减依据；窗口、模态等其他参数仍分别核实，聚合目录只作线索。所有大 JSON 一律先落盘、按模型名过滤出目标条目再读，不把整段响应拖进上下文。
 
 **快速查线索**：本 skill 自带零依赖脚本 `scripts/model_info.py`；Windows 用 `python -X utf8 <本skill目录>/scripts/model_info.py <模型名>`，*nix 用 `python3 <本skill目录>/scripts/model_info.py <模型名>`，选项见脚本 `--help`。它只摘要部分目录字段，不列出思考等级、开关、预算或全部定价，也不生成 V2 配置；`reasoning=true` 不能当作支持任意档位。脚本对 models.dev 的解析使用旧字段，遇到 V2 `capabilities` 形状或空字段时要回原条目核对，不能把空值当不支持。脚本不可用或需自定义时再手工取（下表与示例）。
 
@@ -237,7 +237,7 @@ opencode service start   # set env 本身也会重启服务
 - [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染。
 - [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体；`api_key_expired` 按 Console 新建 `oc_sk_…` 处理，未去改 `auth.json`。
 - [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败。
-- [ ] 本次参数来自可对应的上游规格与渠道证据，未知值未猜填；已有模型只覆盖目标字段，并核对服务解析值；模态、工具与思考档位按[参数验收](references/model-parameters.md#验收与交付)检查。
+- [ ] 思考档位按[公开档位配置基线](references/model-parameters.md#公开档位配置基线)配置；其他参数有对应依据，未知值未猜填；已有模型只覆盖目标字段，并按[参数验收](references/model-parameters.md#验收与交付)核对服务解析值。
 - [ ] 只实测本次接入要用的模型，默认限时 10 秒（最多放宽到 15 秒）；用户未点名时已问过一次，未自行挑模型、未逐组遍历。
 - [ ] 只验可用性时选了候选里最便宜的一档，未拿旗舰模型做连通性抽查。
 - [ ] 验证请求为单轮极简 prompt（无 system/历史）；默认只走直连，未在用户未要求时跑 `opencode run` 的 harness 测试。
