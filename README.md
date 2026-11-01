@@ -11,7 +11,7 @@
 | 想法还不清楚，先把方案问透 | 上游 `grill-me` → `grilling` | 讨论并留术语/决策时选 `grill-with-docs`；已有规格先复用 |
 | 业务术语、状态或关系说不清 | 上游 `domain-modeling` | 只读术语表不启动建模，不批量改名 |
 | 模块接口难用、薄包装太多、修改扩散 | 上游 `codebase-design` | 本地调用方不因此扩成全仓治理 |
-| 明确要求测试驱动实现 | 已安装且可用的 `tdd` | 不因引用而安装整套上游流程 |
+| 明确要求测试驱动实现 | 上游 `tdd` | 不因引用而安装整套上游流程 |
 | 需要测试覆盖、真实集成与回归 | [web-app-testing](skills/web-app-testing/SKILL.md) | 不另建验收等级或重复计划 |
 | 难 bug 或性能回归需要定位 | 上游 `diagnosing-bugs` | 不凭猜测直接改实现 |
 | 评审提交差异 | 上游 `code-review` | 未提交/暂存范围按本地快照约定另核；评审不等于验收 |
@@ -25,7 +25,7 @@
 
 Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入口**不由本仓库自动安装或替你启动；方法引用不能绕过显式调用意图。需要这类流程时再单独评估，不能因为入口没安装就强制装整包。
 
-这七个 Matt skill 采用独立 clone + 精选链接，**上游原样管理，不再维护本地同名适配版**。选择、安装与更新见 [上游 skill](docs/upstream-skills.md)，来源版本及目录由 `config/upstream-skills.json` 维护。`tdd` 保持原有独立安装，不自动改写或升级；重合处只调整自有 skill。
+这八个 Matt skill（含 `tdd`）统一采用独立 clone + 精选链接，**上游原样管理，不再维护本地同名适配版或零散 CLI 安装**。选择、安装与更新见 [上游 skill](docs/upstream-skills.md)，来源版本及目录由 `config/upstream-skills.json` 维护；重合处只调整自有 skill。
 
 ## Skill 目录（检索入口）
 
@@ -95,7 +95,7 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 - [Skill 仓库治理](docs/skill-governance.md)：规则归属、职责划分、变更流程与分级验证。
 - [Skill 依赖声明与部署基线](docs/skill-dependencies.md)：`dependencies.json` 格式、检查命令与新机推荐依赖。
 - [第三方 skill 推荐名单](config/third-party-skills.txt)：上游仓库、固定版本、升级保留文件；实体不入本仓库，部署时询问，按需同步。
-- [独立 clone 的上游 skill](docs/upstream-skills.md)：Matt 七个方法/入口的原样管理、精选链接、新机恢复与更新；不与 CLI 或旧安装器重复接管。
+- [独立 clone 的上游 skill](docs/upstream-skills.md)：Matt 方法/入口的原样管理、精选链接、新机恢复与更新；不与 CLI 或旧安装器重复接管。
 - [插件制品（OpenCode 插件）](docs/plugins.md)：插件真源布局、链接分发、装载规则（入口文件/发现路径/静默失败/全局键占用/location 路由）、通用验证清单与 skill 分工。
 - [Skill 内容与语言规范](docs/skill-content-guidelines.md)：约束强度、正文与参考落点、指令措辞、术语、例子和写作复核。
 - 变更历史：直接看 `git log`；本仓库不维护独立 CHANGELOG，提交信息按 Conventional Commits 记录目的与影响。

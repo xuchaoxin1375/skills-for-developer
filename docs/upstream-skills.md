@@ -15,8 +15,9 @@
 | `codebase-design` | 方法 | 深模块、接口与测试边界的设计语言 |
 | `code-review` | 方法 | 对固定起点到 HEAD 的提交差异做规范/规格分轴评审 |
 | `diagnosing-bugs` | 方法 | 用反馈回路、最小化和可证伪假设定位难 bug |
+| `tdd` | 方法 | 红—绿—重构的小步测试驱动开发 |
 
-独立安装的 `tdd` 不因本组迁移被改写或升级。`to-spec`、`to-tickets`、`implement-spec` 等未纳入本组；依赖提示不等于获准安装整包、配置工单系统或启动外部操作。
+`tdd` 已从原先的独立 CLI 安装迁入同一 clone，迁移前四个文件与选定上游版本逐字节一致，没有改写或升级内容。`to-spec`、`to-tickets`、`implement-spec` 等未纳入本组；依赖提示不等于获准安装整包、配置工单系统或启动外部操作。
 
 ### 现成 CLI 与 clone 两种方式
 
@@ -31,7 +32,7 @@ npx skills add mattpocock/skills --skill grill-me -g -a opencode claude-code cod
 本组最终采用 **clone + 精选链接**：
 
 - 上游实体：`third-party/mattpocock-skills/`，由 `.gitignore` 忽略；不要对它运行 `git clean -xdf`。
-- 来源、固定提交与七个源目录：`config/upstream-skills.json`；只登记要暴露的 skill，不链接整库。
+- 来源、固定提交与精选源目录：`config/upstream-skills.json`；只登记要暴露的 skill，不链接整库。
 - 分发：`scripts/link-upstream-skills.py` 复用现有链接工具的 Junction/symlink 与备份机制，不联网、不 clone、不更新源码。
 - 现有 `link-skills.ps1` / `link-skills.sh` 也会调用它，沿用 Include 与 VerifyOnly 筛选；SkipThirdPartySkills 会跳过。原有 Unlink 仍只处理自有 skill，本组用下面的独立 unlink 命令。
 - 默认创建缺失链接，冲突时报错；`--replace` 才会迁移冲突链接/实体，实体先备份。校验会拒绝提交、来源或精选 skill 内容漂移。
@@ -63,6 +64,6 @@ python -X utf8 scripts/link-upstream-skills.py --verify-only
 
 ### 迁移验证范围
 
-本机曾尝试 skills CLI 1.7.4 的远端克隆、archive 与本地路径安装；最终按用户选择改为独立 clone，已撤销这七个 CLI 安装登记，避免双重管理。原有其他 CLI 登记与 `tdd` 保留。
+本机曾尝试 skills CLI 1.7.4 的远端克隆、archive 与本地路径安装；最终按用户选择改为独立 clone。八个 Matt skill（含原先独立安装的 `tdd`）均已撤销 CLI 登记，统一通过同一 clone 分发，其他来源的 CLI 登记保留。迁移前的旧实体有离线备份，不参与 harness 的 skill 发现。
 
 链接和源码检查能证明路径、版本与文件对应，不证明模型一定正确触发或完整执行上游方法。`grill-me`、`grill-with-docs` 保留仅用户调用配置，不出现在模型自动选择列表是预期；各 harness 的用户入口仍需实际交互验收。

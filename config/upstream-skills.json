@@ -11,7 +11,8 @@
         "domain-modeling": "skills/engineering/domain-modeling",
         "codebase-design": "skills/engineering/codebase-design",
         "code-review": "skills/engineering/code-review",
-        "diagnosing-bugs": "skills/engineering/diagnosing-bugs"
+        "diagnosing-bugs": "skills/engineering/diagnosing-bugs",
+        "tdd": "skills/engineering/tdd"
       }
     }
   ]
