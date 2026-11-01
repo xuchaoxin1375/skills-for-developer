@@ -269,7 +269,7 @@ flowchart TD
 - **请求调度与错误引导**：共享配额、并发、429 冷却与重试上限由工具层执行；错误区分临时限流与配额耗尽，并返回冷却时间与剩余预算。
 - **命名空间与降级边界清晰**：`web_search`、`web_fetch`、`news_search` 职责不重叠；浏览器只作动态内容兜底，不默认承担搜索，也不绕过登录、权限或站点规则。
 - **日期与时效语义**：`{{current_date}}` 由调用方动态注入；`freshness` / `time_range` 只约束候选，缓存参数只约束取回，均不能替代来源权威性判断。
-- **工具 skill 只作执行器**：第三方搜索/抓取 skill（如 `anysearch`、Tavily 一类）负责执行与出口，查询计划、轮次、来源分级、预算与验收由本 Skill 决定；不修改第三方 skill 正文来承载本仓库规则，编排要求写在本仓库的自定义 skill 里。
+- **工具 skill 只作执行器**：第三方搜索/抓取 skill（如 `anysearch`、Tavily 一类）负责执行与出口，查询计划、轮次、来源分级、预算与验收由本 Skill 决定；不修改第三方 skill 正文来承载本仓库规则，编排要求写在本仓库的自定义 skill 里。人工体验与自动化的常用命令见 [references/cli-recipes.md](references/cli-recipes.md)。
 
 ---
 
