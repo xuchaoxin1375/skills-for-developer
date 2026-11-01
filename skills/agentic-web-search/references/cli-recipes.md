@@ -163,3 +163,22 @@ tvly search "OpenAI latest news" --max-results 2
 ## 其他渠道
 
 Tavily 已安装时命令是 `tvly`（不是 `tavily`），`tvly --status` 可查认证；OAuth 或 API key 都算已配置。它属于第一档备用：anysearch 不可用或额度明确耗尽时再切换，不并发抢同一个问题。
+
+### 实测：同一查询的渠道差异（2026-11）
+
+查询 `glm latest release`。这里的 “GLM” 同时是 OpenGL 数学库、统计模型和智谱模型家族的缩写，属于歧义压力测试：
+
+| 渠道与参数 | 结果质量 | 观察 |
+| --- | --- | --- |
+| anysearch 默认，5 条 | 差 | 前 5 条多为 C++ GLM 与统计 GLM，没有 GLM-5.3 官方页 |
+| anysearch `--max_results 10` | 更差 | 多出的仍是同名库与论文；加条数不修正排序 |
+| anysearch `--zone intl --language en` | 无变化 | 输出与默认逐字节相同；区域/语言不解决实体歧义 |
+| anysearch 改写 `GLM-5.3 Z.ai release` | 好 | 官方博客、GIGAZINE、Reddit；点明实体后恢复正常 |
+| anysearch 中文 `智谱 GLM 最新版本 --zone cn` | 很好 | 官方中文文档占多数 |
+| tvly 默认，5 条 | 中 | 官方文档与 Wikipedia，但夹着 Yahoo 重复和旧片段 |
+| tvly `--topic news --time-range month` | 好 | 最新 5.3 / 5.3-Flash 与媒体报道；仍有一条 5.5 猜测 |
+| tvly `--depth advanced` | 中 | 更慢（2.79s 对 0.91s），未改善相关性，仍有重复 |
+| harness `websearch` 原查询 | 好但杂 | 覆盖面最大、官方 release notes 在首条；夹杂 SEO 与“5.5”猜测 |
+| harness `websearch` 改写 `GLM-5.3 Z.ai release notes` | 最好 | 官方博客、文档与发布记录为主，噪声最少 |
+
+结论：本例差距主要来自**查询是否点明实体与版本**，其次才是渠道与参数。`--max_results` 与 `--depth advanced` 不修正歧义，`--topic` / `--time-range` 对“latest”类问题收益最大，`--zone` / `--language` 只在语言路由时有用。这是单查询快照，不外推到所有主题。
