@@ -60,11 +60,12 @@
 
 ## harness 调用差异
 
-- 自动触发只依赖 `description`；正文里的“何时使用”不参与冷启动检索。
-- **OpenCode**：`metadata.opencode/autoinvoke: "false"` 让技能不出现在自动选择里；`metadata.opencode/slash: "true"` 暴露为 `/name` 命令。
-- **Claude Code**：`disable-model-invocation: true` 表示只允许人工触发。
-- **Codex**：用 `agents/openai.yaml` 的 `policy.allow_implicit_invocation: false`。
-- 跨 harness 的 skill 不写死某一家的字段；按 harness 追加元数据，正文保持通用。
+- **模型可调用**的方法以 `description` 作为冷启动线索，也可由用户显式指定；正文里的“何时使用”不参与冷启动检索。能够独立复用的设计、访谈、测试或评审方法通常保持此默认，不因被一个完整流程引用就改成手动入口。
+- **用户调用**的入口适合用户决定何时启动的整套编排，例如批量发布工单或并行实现规格。若在目标 harness 中不能由模型加载，依赖它的方法只能提示用户显式启动，不通过读文件绕过调用限制。模型调用与用户调用不等于低风险与高风险；两类都不授予写入、费用或发布权限。
+- **OpenCode V2**：`disable-model-invocation: true` 或 `metadata.opencode/autoinvoke: false` 可从模型可选列表隐藏；两者同时存在时后者优先。隐藏不等于权限隔离，仍可按 ID 显式加载。用户入口与实际支持的命令形式按 [V2 skills 文档](https://opencode.ai/v2/docs/skills)核验，不从 Claude 的 `/name` 形式推断。
+- **Claude Code**：用户调用用 `disable-model-invocation: true`；方法默认省略。
+- **Codex**：用户调用用 `agents/openai.yaml` 的 `policy.allow_implicit_invocation: false`；方法默认省略该 policy。跨 harness 的同一技能保持意图一致，不只改某一家的开关。
+- **安装来源独立于调用方式**：原样上游、中文适配和本地自有都需要核对触发、调用元数据、同名覆盖与依赖；不要同名重复安装。只写“手动优先”不是配置成仅用户调用；未核实支持的 harness 明说未验证，不声称开关已生效。
 
 ## 写作复核
 

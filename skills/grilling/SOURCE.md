@@ -10,6 +10,7 @@
 - frontmatter 的 `description` 改为中文触发描述，并补充与 `tech-learning-research`、`ai-verified-delivery/tdd` 的边界。
 - 正文保留上游英文原文；仅增加一条本地说明。
 - 未改写流程、阈值与示例。
+- 本地协作说明补充 domain-modeling 的条件调用、已有规格复用及委派不可用时的主代理回退；不改写上游正文。
 
 ## 更新
 

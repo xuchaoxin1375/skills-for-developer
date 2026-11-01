@@ -4,13 +4,14 @@ description: >
   设计拷问：动手前按设计树逐轮提问，把方案的分支、依赖和取舍问穿，直到双方对要做什么达成一致。
   用于 “grill me”、压力测试方案/设计、需求对齐、方案评审、动手前想清楚边界与失败模式，
   也用于用户说“先别写代码，先问我”“帮我把这个想法问清楚”。
-  只做技术调研/选型报告走 tech-learning-research；已有明确 spec 直接实现走 ai-verified-delivery/tdd。
+  业务术语与 ADR 维护配合 domain-modeling；只做技术调研走 tech-learning-research；已有明确规格不重新访谈。
 ---
 
 # Grilling
 
 > 本地说明：正文保留上游英文原文，便于与上游 diff；触发描述已本地化。上游 main @ `5beb35b`（CHANGELOG 1.3.1，2026-10-19），MIT，见 [SOURCE.md](SOURCE.md) 与 [LICENSE](LICENSE)。
 > 子代理按当前 harness 的 subagent 能力执行；事实查找由代理负责，决策交给用户。
+> 协作：这是模型可调用的访谈方法，不因普通实现任务自动访谈。业务含义需澄清或形成记录时，调用 Skill 工具加载 `domain-modeling`，只补当前分支；已有规格与决定直接复用。子代理受当前权限、费用和资源约束，不可用时由主代理查事实，不向用户转嫁可自行查明的问题。
 
 Interview the user relentlessly until you reach a shared understanding. Map this as a **design tree**: every decision branches into the decisions that hang off it.
 

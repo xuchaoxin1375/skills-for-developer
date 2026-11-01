@@ -4,7 +4,7 @@ description: >
   前后端 Web 应用的测试规划、用例编写与长期维护。用于建立测试体系、判断该测什么和何时写测试，
   或在新功能、缺陷修复、重构、API/数据库变化中设计自动化测试、单元/组件/集成测试与 Playwright E2E/回归用例；
   也用于审查无效断言、过度 Mock、测试数据隔离、不稳定测试、测试运行器并发/资源预算与 CI 分层。
-  纯静态文案/样式微调不默认新增测试；浏览器发现、浏览器工具/运行器选型与自动化操作转 browser-automation，UI 缺陷诊断转 frontend-qa，安装下载转 network-access，交付定级与证据门禁转 ai-verified-delivery；偶发失败与性能回归的根因诊断转 diagnosing-bugs。
+  测试驱动循环按可用的 tdd，代码差异评审归 code-review，交付定级归 ai-verified-delivery；UI 缺陷归 frontend-qa，浏览器操作归 browser-automation，安装归 network-access，难 bug 定位归 diagnosing-bugs。纯静态微调不默认新增测试。
 ---
 
 ## Web 应用测试
@@ -35,6 +35,8 @@ description: >
 ### 什么时候写
 
 先写验收场景与正确结果依据，自动化代码可以先于或伴随实现；不强制所有任务采用测试驱动开发(TDD)。需要持续维护的行为测试应在相应变更合并前完成。
+
+用户明确采用 TDD 且 `tdd` 可用时，调用 Skill 工具加载它管理红—绿开发循环，复用已确认的接口与测试边界。测试覆盖、替身与真实集成的证明范围仍由本 skill 维护；需要调整接口才用 `codebase-design`，不因每轮测试都重新建模或评审。`tdd` 未安装时沿用项目方法并说明，不自动安装上游整套流程。
 
 | 时机 | 应采取的动作 |
 |---|---|

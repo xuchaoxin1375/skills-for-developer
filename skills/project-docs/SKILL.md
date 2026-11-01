@@ -4,7 +4,7 @@ description: >
   为程序与仓库规划并编写配套文档：按项目规模确定最小文档集，按顺序写 README、--help、配置与 API 参考、
   CHANGELOG、ADR、部署与 Runbook，并用读者视角验收；也用于审查现有项目的文档缺口、重复与过时。
   当用户要求写 README、补文档、判断项目该配哪些文档、交付前检查文档，或新建程序、新增功能后需要同步文档时使用。
-  排版与格式迁移走 markdown-style，代码注释与 docstring 走 code-comments，已有文档改写合并走 doc-rewrite-review；仓库治理文件（LICENSE、SECURITY、分支保护）走 repo-gov。
+  主动澄清业务术语或维护 ADR 内容走 domain-modeling；排版走 markdown-style，注释走 code-comments，已有文档改写合并走 doc-rewrite-review；仓库治理文件走 repo-gov。
 ---
 
 # 为程序配文档
@@ -19,6 +19,7 @@ description: >
 - 代码注释、docstring 与 `--help` 的代码侧实现：`code-comments`。
 - 已有文档的改写、合并与去重裁决：`doc-rewrite-review`。
 - 文档生命周期、单一信息源与一致性门禁：`swe-gov`。
+- 主动澄清业务概念、维护术语表及 ADR 内容：`domain-modeling`；这里只决定读者是否需要这些文档，不重启建模访谈。
 - `LICENSE`、`SECURITY.md`、行为准则等仓库合规文件：`repo-gov`。
 - 小工具的整体形态选型与交付：`lightweight-app-builder`。
 
@@ -74,7 +75,7 @@ description: >
 
 **CHANGELOG**：`Unreleased` 置顶；按 Added、Changed、Deprecated、Removed、Fixed、Security 归类；最新版本在前并标日期；弃用先公告再移除；发布说明从 CHANGELOG 派生，不贴 `git log`。
 
-**架构与 ADR**：C4 前两层（系统上下文、容器）通常够用，一张图配一段文字；ADR 一条决策一个文件、只追加、状态只有提议、已接受、已弃用、已被取代，被取代时新旧互相链接。
+**架构与 ADR**：C4 前两层（系统上下文、容器）通常够用，一张图配一段文字；ADR 的必要性、字段、模板和历史维护采用 [记录约定](../domain-modeling/references/records.md#架构决策记录)，不在此另定状态与更新政策。
 
 **CONTRIBUTING**：一条命令搭好环境并列出工具版本；测试、lint、格式化命令与 CI 检查项；提交与评审约定；把"改行为、配置或接口要同步文档与 CHANGELOG"写进完成定义。
 
