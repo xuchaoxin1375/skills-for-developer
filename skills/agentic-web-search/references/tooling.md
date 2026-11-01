@@ -158,7 +158,7 @@ def query_candidates(query: str, current_year: int) -> list[dict]:
 ```json
 {
   "name": "web_search",
-  "description": "搜索互联网获取最新信息。用于时效敏感问题（版本、价格、新闻、人事）。查询应具体、含关键实体与年份，避免使用'最新'等模糊词。每次会话最多调用8次。",
+  "description": "搜索互联网获取最新信息。用于时效敏感问题（版本、价格、新闻、人事）。查询应具体、含关键实体与时间锚点，避免使用'最新'等模糊词。预算模式与额度由任务按渠道成本和有效授权传入，不在此固定会话调用次数。",
   "input_schema": {
     "type": "object",
     "properties": {
