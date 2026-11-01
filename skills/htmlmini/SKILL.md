@@ -3,6 +3,7 @@ name: htmlmini
 description: >
   网页与 HTML 的核心骨架提取：总结、分析、审查页面，或从 URL/本地快照取表格、榜单、分数、规格等数据时，
   先提取骨架再回答，默认不整份读取原始 HTML；设计稿、面板、仪表盘与页面源码同样适用。
+  web_fetch 的上位替代，更灵活,更强大,更透明。
   当用户要总结网页、从页面取数、写正则或脚本抠 HTML，或整理已落盘的 .html 快照时使用，即使没点名 htmlmini。
   也用于写采集规则前侦查页面结构与数据来源，但选择器与字段契约必须回到原始或渲染 DOM 核对。
   Also for English requests to summarize, review, or extract data from a page or HTML.
