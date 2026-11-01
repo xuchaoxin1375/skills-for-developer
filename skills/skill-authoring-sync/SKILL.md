@@ -116,6 +116,10 @@ skills-for-developer/
 `skills/` 只收本仓库自定义真源。第三方 skill 登记在 `config/third-party-skills.txt`，
 实体不入库，也不在仓库内建指向上游的链接。
 
+- **试用与登记分开**：登记是长期承诺（跟踪 `ref`、维护 `preserve`、部署时询问安装），不是安装记录。
+  安装器以名单为入口，需先有条目才能装；安装完成、链接可用后立即询问用户是否保留/推荐，
+  未获确认就撤回条目，只保留共享实体与 harness 链接供本地试用，并说明撤回后 `sync`/`verify`
+  不再管理它（不自动升级，需重新登记或手工更新）。
 - 每行 `name | repo | kind | ref | preserve | description`；名称不得与自定义 skill 重名，
   `ref` 推荐固定到 tag，`branch` 只用于有意跟踪上游。
 - 部署由链接脚本询问，默认 **No**；非交互用 `-ApplyThirdPartySkills` /
