@@ -24,6 +24,7 @@ description: >
 - **路径**：优先使用 `/`；Windows 特殊路径和目标工具兼容性例外见 [路径分隔符](../powershell-pitfalls/references/files-and-invocation.md#路径分隔符优先用-)。
 - **自建工具版本**：脚本/小工具采用本地日期时间 `YYYY.MM.DD.HHmm`，不手搓语义化版本；唯一真源在 `package.json` 的 `version`，其余位置运行时读取，并提供重打入口(如 `pnpm stamp`)。四段号仅用于本地 link/安装，不发布到只接受三段 semver 的 npm registry。
 - **Markdown 文档修改**：修改既有文档时，新增与改动内容按 `markdown-style` 规范执行，不迁就存量不规范写法；仅当明确要求延续原文档风格时才沿用；全文规范化需单独授权。
+- **修改范围对齐**：修改指示或范围模糊不清(包括用户可能未意识到)时，先对齐真实意图与改动边界再动手；不先按自己的理解改一版再解释。范围明确的局部修改不重复确认。
 
 ### 按需入口
 
