@@ -16,7 +16,7 @@ description: >
 
 - **研究与综合**：本skill决定研究问题、覆盖范围、方案权衡和报告详略。
 - **检索执行**：[agentic-web-search](../agentic-web-search/SKILL.md)维护渠道、查询、证据核验、预算、限流与停止机制；本skill不另设调用次数要求。
-- **教学成文**：教程、解释型讲解、需说明工作机制的指南或读者理解困难时，按需读[教学设计与理解对齐](../doc-rewrite-review/references/tutorial-design.md)；工作模型与教学设计采用该正本，不重启改写、合并或落点确认流程。
+- **教学成文**：学习文档、教材、教程、解释型讲解，以及需说明工作机制或理解困难的指南，在编排前读[教学设计与理解对齐](../doc-rewrite-review/references/tutorial-design.md)；按读者与目标选择内容策略、工作模型及学习检查，不重启改写、合并或落点确认流程。
 - **其他产物**：已有正文改写归[doc-rewrite-review](../doc-rewrite-review/SKILL.md)，项目配套文档规划归[project-docs](../project-docs/SKILL.md)，脚本实现归[scripting-best-practices](../scripting-best-practices/SKILL.md)。需要归档定稿时再交[note-blog-archivist](../note-blog-archivist/SKILL.md)。
 - **表现形式**：新写与改写均采用[markdown-style](../markdown-style/SKILL.md)的适用排版规则，不套用其纯排版任务的“内容零改动”判据。
 
