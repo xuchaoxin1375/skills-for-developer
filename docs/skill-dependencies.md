@@ -177,6 +177,7 @@ Python 的默认路径：项目已有声明就沿用（`requirements.txt` → pi
 ## 维护
 
 - 新增或修改依赖时同步更新 `dependencies.json` 与 `hint`，不要只改正文；正文与声明各写一次时，以 `dependencies.json` 为机器检查口径。
+- 涉及联网安装的 `hint` 或正文要写清国内镜像/代理/离线回退与可用性核验，不把某次可达的源写成永久默认；候选发现与回退细节按 `network-access`。
 - `scripts/check-skills.py` 会校验 JSON 结构与字段；格式错误计入错误，含 `package.json` 却缺声明时给出提醒。
 - 检查失败不等于 skill 不可用：可选依赖缺失只警告；准备完整环境时才用 `--strict`。
 - 链接脚本只负责 `package.json` 依赖安装和命令 shim；不读取本文件，也不自动安装。
