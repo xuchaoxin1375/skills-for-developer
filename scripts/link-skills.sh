@@ -213,7 +213,7 @@ for target in "${TARGETS[@]}"; do
             echo "$label 已移除"
           fi
         else
-          echo "$label 是指向别处的链接（$cur），不动" >&2
+          echo "$label 是指向别处的链接（${cur}），不动" >&2
         fi
       else
         echo "$label 无链接，跳过"
@@ -228,7 +228,7 @@ for target in "${TARGETS[@]}"; do
         [[ -f "$link/SKILL.md" ]] || { echo "$label 链接存在但 SKILL.md 不可读" >&2; failures=$((failures + 1)); }
       else
         if [[ $VERIFY_ONLY -eq 1 ]]; then
-          echo "$label 指向错误：$cur（期望 $dest）" >&2
+          echo "$label 指向错误：${cur}（期望 ${dest}）" >&2
           failures=$((failures + 1))
         else
           rm "$link"
@@ -248,11 +248,11 @@ for target in "${TARGETS[@]}"; do
         [[ -e "$backup" ]] && rm -rf "$backup"
         mv "$link" "$backup"
         ln -s "$dest" "$link"
-        echo "$label 实体已备份到 $backup，链接已创建"
+        echo "$label 实体已备份到 ${backup}，链接已创建"
       fi
     else
       if [[ $VERIFY_ONLY -eq 1 ]]; then
-        echo "$label 缺失（期望 -> $dest）" >&2
+        echo "$label 缺失（期望 -> ${dest}）" >&2
         failures=$((failures + 1))
       else
         ln -s "$dest" "$link"
@@ -463,7 +463,7 @@ deploy_third_party_skills() {
       local ans detail="" n
       for n in "${TP[@]}"; do
         [[ -n "$detail" ]] && detail+=", "
-        detail+="$n（$(plan_tp_state "$n")，$(third_party_field "$n" repo)@$(third_party_field "$n" ref)）"
+        detail+="${n}（$(plan_tp_state "$n")，$(third_party_field "$n" repo)@$(third_party_field "$n" ref)）"
       done
       read -r -p "是否安装/更新第三方 skill（${detail}；来自上游，默认 No）？[y/N] " ans
       if [[ ! "$ans" =~ ^[yY]([eE][sS])?$ ]]; then
@@ -681,7 +681,7 @@ print_deploy_plan() {
   local create replace ok missing_dirs state skill need_deps need_cmd name repo ref
   IFS='|' read -r create replace ok missing_dirs <<< "$(plan_link_counts)"
   echo "== 部署计划（只预览，不修改）=="
-  echo "  链接: ${#SKILLS[@]} 个 skill -> ${#TARGETS[@]} 个目录；新建 $create，修正/替换 $replace，已就绪 $ok；缺目录 $missing_dirs"
+  echo "  链接: ${#SKILLS[@]} 个 skill -> ${#TARGETS[@]} 个目录；新建 ${create}，修正/替换 ${replace}，已就绪 ${ok}；缺目录 ${missing_dirs}"
   case "$(plan_cli_state)" in
     same) echo "  cli.json: 已是最新（跳过）" ;;
     missing) echo "  cli.json: 目标不存在（交互默认应用，--apply-recommended-cli 可直接应用）" ;;

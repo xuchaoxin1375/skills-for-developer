@@ -145,14 +145,14 @@ for plugin in "${PLUGINS[@]}"; do
       rm "$link"
       echo "$label 已移除"
     else
-      echo "$label 是指向别处的链接（$cur），不动" >&2
+      echo "$label 是指向别处的链接（${cur}），不动" >&2
     fi
     continue
   fi
 
   if [[ ! -e "$link" && ! -L "$link" ]]; then
     if [[ $VERIFY_ONLY -eq 1 ]]; then
-      echo "$label 缺失（期望 -> $dest）" >&2
+      echo "$label 缺失（期望 -> ${dest}）" >&2
       failures=$((failures + 1))
       continue
     fi
@@ -170,7 +170,7 @@ for plugin in "${PLUGINS[@]}"; do
   if [[ -L "$link" ]]; then
     cur="$(readlink -f "$link")"
     if [[ $VERIFY_ONLY -eq 1 ]]; then
-      echo "$label 指向错误: $cur（期望 $dest）" >&2
+      echo "$label 指向错误: ${cur}（期望 ${dest}）" >&2
       failures=$((failures + 1))
       continue
     fi
@@ -192,7 +192,7 @@ for plugin in "${PLUGINS[@]}"; do
   [[ -e "$backup" ]] && rm -rf "$backup"
   mv "$link" "$backup"
   ln -s "$dest" "$link"
-  echo "$label 实体已备份到 $backup，链接已创建"
+  echo "$label 实体已备份到 ${backup}，链接已创建"
 done
 
 clean_stale_links
