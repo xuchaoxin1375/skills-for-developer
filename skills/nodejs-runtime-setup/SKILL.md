@@ -103,6 +103,7 @@ Node.js **25 起不再分发 Corepack**，`corepack enable` 在 26 上直接报�
 | --- | --- |
 | 需要平台具体命令、镜像地址、profile 写法与校验命令 | [平台安装命令](references/install-commands.md) |
 | 依赖安装慢、镜像选择、代理与超时 | [依赖下载](../network-access/references/dependency-downloads.md) |
+| 依赖安装失败、版本冲突、无匹配 wheel、PEP 668 或构建失败 | [依赖安装失败分诊](../network-access/references/dependency-install-recovery.md) |
 | 先盘点本机已装的运行时与包管理器 | [resource-inventory](../resource-inventory/SKILL.md) |
 
 ## 依据与维护

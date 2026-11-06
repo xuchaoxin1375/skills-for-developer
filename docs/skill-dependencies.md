@@ -133,12 +133,28 @@ python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
 
 期望全部 `OK`；`OPTIONAL` 只表示可选能力未装，不影响必需项。准备完整环境时再用 `--strict`。
 
+### 安装失败与降低试错
+
+先读完整错误，按阶段处理；同一命令不要原样重跑。详细命令、Python 冲突处理与重试预算见 [依赖安装失败分诊](../skills/network-access/references/dependency-install-recovery.md)。
+
+| 现象 | 判断 | 下一步 |
+|---|---|---|
+| `ResolutionImpossible` / `conflicting dependencies` | 依赖图冲突，不是镜像故障 | 在干净 venv 复现；放宽顶层 pin 或加 constraints 后重新解析；不用 `--no-deps` 绕过 |
+| `No matching distribution` / `Could not find a version` | 当前版本、Python 或平台没有可用分发 | 查 `Requires-Python` 与兼容 wheel；换解释器或换有 wheel 的版本，不用 `--ignore-requires-python` |
+| `externally-managed-environment` | 系统 Python 受 PEP 668 保护 | 新建 venv；命令行工具用 `uv tool install` 或 pipx；不默认 `--break-system-packages` |
+| `Failed building wheel` / 缺编译器或头文件 | 构建失败 | 先用 `--only-binary=:all:` 判断有没有 wheel；必须构建时补工具链，不关闭 TLS |
+| timeout / connection reset / 5xx / 很慢 | 下载阶段 | 按 network-access 选路；同路线有限重试，镜像回退官方源一次；不清空缓存或整轮重装 |
+| `pip check` 破损 / 导入失败 | 安装后环境 | 用目标解释器核对版本并重装目标包；不把退出码 0 当成功 |
+
+效率上先跑前面的检查，只补 `MISSING` 或版本不符的项，已 `OK` 的不重装；安装前做一次解析预演（`pip install --dry-run --report ...` 或 `uv pip compile`），每次只改一个变量；只有缓存损坏、哈希异常等证据才全量重装。
+
 安装影响与替代：
 
 - 这些命令会联网下载并写入用户或系统目录，可能修改 PATH；Python/Node 安装包通常几十 MB，浏览器更大。先说明再执行，不静默安装。
 - git、ripgrep、fd 属推荐项：缺失不阻断部署；git 用于跨机器同步与变更检查，rg/fd 缺失时可用 grep、Select-String 与 find、Get-ChildItem 替代。
 - Scrapling 属 `full` 套餐的推荐项：缺失只警告；首次使用还要 `scrapling install` 下载浏览器，体积与耗时较大，按需装。`scrapling[fetchers]` 会带入 playwright 的 Python 包；用 `uv tool install` 时只在工具环境内，独立的 `playwright` CLI 与浏览器仍需按 `standard` 的 Playwright 项安装。
 - Playwright 属 `standard` 套餐的推荐项：缺失只警告；`playwright install chromium` 会下载浏览器，已有系统 Chrome/Edge 时也可先复用。
+- Linux 发行版的系统 Python 可能受 PEP 668 保护：`python -m pip install` 被拒时改用 venv、`uv tool install`、pipx 或发行版包管理器，不把 `--break-system-packages` 写进默认部署命令。
 - pnpm 只用于项目依赖；全局命令（如 `mmdc`）按治理用 `npm i -g`，不推荐 `pnpm add -g`（全局 bin 常不在 PATH）。
 - `standard` 与 `full` 默认全局安装 mmdc；`minimal` 不装，仍可用 `npx`/`pnpm dlx` 单次拉起。
 - PowerShell 7 只在 Windows 套餐中检查和推荐；非 Windows 不启动 `pwsh`，相关依赖项显示 `SKIP`。
@@ -150,7 +166,7 @@ python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
 - Scrapling：`full` 已作为推荐项列出；只做静态正文抓取或已装进项目虚拟环境时无需全局安装，按 `resilient-browser-fetch` 的分层说明使用。
 - `mmdc`：已含在 `standard`/`full`；选 `minimal` 或临时任务时用 `pnpm dlx`/`npx` 单次拉起。
 - `uv`/conda：`full` 含 uv；需要独立 Python 环境或引擎层时按 `resilient-browser-fetch` 的分层说明使用。
-- 国内下载受阻时按 `network-access` 选镜像或代理，不把某次可达的源写成永久默认值。
+- 国内下载受阻时按 `network-access` 选镜像或代理，不把某次可达的源写成永久默认值；先确认失败在解析、可用性、下载还是构建，解析冲突和权限错误不会因换源消失。
 
 ## 维护
 

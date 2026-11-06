@@ -2,6 +2,8 @@
 
 网络路线、Windows/*nix 代理与错误分流见 [network-access.md](network-access.md)。本文件补充包管理器的配置与验证边界；国内镜像为候选，引用前用任务需要的包名、版本和平台核验，海外生产按实际执行位置优先验证官方源。conda 走 channel 映射语义（channel 名 → 镜像 URL），不是 URL 替换，以 `conda config --show channels` 的实际解析为准。
 
+安装失败、版本冲突、无匹配 wheel、构建或 PEP 668 权限错误按[依赖安装失败分诊](dependency-install-recovery.md)处理；本文件只看下载阶段与源配置，不把解析冲突当成镜像故障。
+
 ## 先定位下载阶段
 
 | 阶段 | Python | Node.js | 核验内容 |

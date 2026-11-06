@@ -4,7 +4,7 @@ description: >
   外链抓取、联网下载、Git 远端操作或代理/镜像配置前的网络选路入口。
   普通网页直连可用且稳定时可省代理；国内 Google、OpenAI 或已知直连不稳的站点优先代理，GitHub 按资源类型选择已核验镜像／加速、代理或稳定直连；普通小页面直连约3–5秒仍无有效响应时考虑切代理。
   复用同站观测与本轮结果，按需读取代理登记；超时、403、5xx、429 按错误类型回退，不原样重发或绕过限流。
-  包与浏览器下载、镜像和跨平台配置按需读参考；纯本地操作不加载。HTML 提取、浏览器操作和 PowerShell 编码归各自 skill。
+  包与浏览器下载、安装失败分诊、镜像和跨平台配置按需读参考；纯本地操作不加载。HTML 提取、浏览器操作和 PowerShell 编码归各自 skill。
 ---
 
 ## 网络环境与资源访问
@@ -50,6 +50,7 @@ description: >
 | 代理登记缺失或失效、需要发现候选 | [代理登记](references/proxy-registry.md)；已有脚本 `scripts/probe_local_proxies.py`，参数查其帮助，不另写扫描器 |
 | 需要核验文件加速候选 | `scripts/check_github_mirrors.py` 的帮助；镜像首页可用不代表目标资源可用 |
 | 安装 Python／Node.js／conda 依赖 | [依赖下载](references/dependency-downloads.md)，区分索引、包文件与额外下载 |
+| 依赖安装报错、版本冲突、无匹配 wheel、PEP 668 或反复超时 | [依赖安装失败分诊](references/dependency-install-recovery.md)，先分段再决定换源、改约束或重装 |
 | 安装或下载浏览器制品 | [浏览器安装](references/browser-installation.md)，先复用本机环境，不自动安装 |
 | 只需网页提取、搜索调度或全面资源盘点 | 分别按 [htmlmini](../htmlmini/SKILL.md)、[agentic-web-search](../agentic-web-search/SKILL.md)、[resource-inventory](../resource-inventory/SKILL.md)，不因引用重启完整网络流程 |
 
