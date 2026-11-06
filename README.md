@@ -72,6 +72,7 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 | `skills/user-profile`                | 个人高频默认值：搜索渠道顺位（Tavily 通用首选 → harness 内置搜索 → anysearch 垂直备用 → 供应商托管搜索兜底），含多通道按任务分工、可用性判定与回退边界；配置只作本机案例，托管搜索不静默切换，行为约束不冒充配置硬禁用；含 Windows shell、路径和自建工具版本偏好，由全局 AGENTS.md 在会话动手前加载；领域细则与跨任务授权各归其入口 | 常驻偏好、个人默认值、user-profile、全局偏好、动手前加载、搜索渠道、渠道顺位、多通道分工、回退边界、Tavily 通用搜索、harness 内置搜索、anysearch 垂直备用、托管搜索兜底、设备本地配置、Windows shell、路径、日期版本 |
 | `skills/note-blog-archivist`         | 经验结论沉淀到本地笔记/博客仓库：定位笔记总目录、复用现有文档最小追加或按目录规则新建，省去手动归类；仅接单份已定稿内容，合并/改写不在此列                                                                                                                                                                                                                   | 存笔记、记一笔、沉淀经验、放到博客、经验库、归档笔记、笔记分类、并进现有笔记 |
 | `skills/resource-inventory`          | 本机资源体检与复用：一次聚合当前会话环境、运行时版本、Python 解释器与引擎层、浏览器候选、代理环境变量/登记/实际入口、项目已有测试与包管理工具及已装证据；检测逻辑仍属各域 skill，本 skill 只做聚合与判读，避免重复安装和环境误判 | 本机有什么、环境探测、资源全景、避免重复安装、Python 环境在哪、浏览器在哪、代理入口、测试栈、换机器排查 |
+| `skills/nodejs-runtime-setup`        | Node.js 运行时与 pnpm 安装：按单版本、多版本、团队锁版本选默认方案（官方安装器/winget、fnm、nvm-windows、Volta），区分二进制镜像、registry 与独立下载，给失败模式与回退；覆盖 PATH 冲突、符号链接权限、Corepack 移除后的 pnpm 安装与 EPERM；依赖镜像选路归 network-access | 安装 Node、装 Node.js、node 版本、切换 Node 版本、fnm、nvm-windows、nvm、Volta、pnpm 安装、corepack 不存在、Node 26、Windows 装 Node、国内镜像装 Node、PATH 多个 node、符号链接 1314、npm EPERM |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 

@@ -114,7 +114,7 @@ python -X utf8 scripts/check-skill-deps.py --list-profiles
 | minimal | git（推荐） | skill-authoring-sync、仓库同步与变更检查 | `winget install Git.Git` | `brew install git` / `sudo apt install git` |
 | minimal | ripgrep（推荐，命令 `rg`） | 代码与文档全文检索、agent 的 grep 检索 | `winget install BurntSushi.ripgrep.MSVC` | `brew install ripgrep` / `sudo apt install ripgrep` |
 | minimal | fd（推荐，Debian/Ubuntu 命令为 `fdfind`） | 跨平台高性能文件/目录搜索，按名称批量定位文件 | `winget install sharkdp.fd` | `brew install fd` / `sudo apt install fd-find` |
-| standard | pnpm（项目依赖管理器） | htmlmini 项目安装、mermaid-render-fix 的单次拉起 | `corepack enable` 后 `corepack prepare pnpm@latest --activate` | 同左 |
+| standard | pnpm（项目依赖管理器） | htmlmini 项目安装、mermaid-render-fix 的单次拉起 | `npm i -g pnpm` | 同左 |
 | standard | mmdc（全局） | mermaid-render-fix 直接渲染，省去首次下载与回退判断 | `$env:PUPPETEER_SKIP_DOWNLOAD='true'; npm i -g @mermaid-js/mermaid-cli` | `PUPPETEER_SKIP_DOWNLOAD=true npm i -g @mermaid-js/mermaid-cli` |
 | standard | PowerShell 7（仅 Windows） | powershell-pitfalls、Windows 脚本示例 | `winget install Microsoft.PowerShell` | 不适用；非 Windows 不安装也不启动 pwsh |
 | standard | Playwright（推荐，命令 `playwright`） | browser-automation、web-app-testing、ai-verified-delivery 的自动化、截图与 E2E | `python -m pip install playwright; python -m playwright install chromium` | `python3 -m pip install playwright && python3 -m playwright install chromium` |
@@ -140,7 +140,7 @@ python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
 - pnpm 只用于项目依赖；全局命令（如 `mmdc`）按治理用 `npm i -g`，不推荐 `pnpm add -g`（全局 bin 常不在 PATH）。
 - `standard` 与 `full` 默认全局安装 mmdc；`minimal` 不装，仍可用 `npx`/`pnpm dlx` 单次拉起。
 - PowerShell 7 只在 Windows 套餐中检查和推荐；非 Windows 不启动 `pwsh`，相关依赖项显示 `SKIP`。
-- 不装或装不上时的降级：Python 缺失先换 `py`/`python3`，Mermaid 渲染可直接走 kroki；Node 缺失时 htmlmini 仍可按 `web_fetch` 分流；浏览器缺失时按 browser-automation 的人工截图或 Playwright 缓存；pnpm 缺失时可用 Corepack 在项目内运行。
+- 不装或装不上时的降级：Python 缺失先换 `py`/`python3`，Mermaid 渲染可直接走 kroki；Node 缺失时 htmlmini 仍可按 `web_fetch` 分流；浏览器缺失时按 browser-automation 的人工截图或 Playwright 缓存；pnpm 缺失时用 `npx`/`npm exec` 单次通路，或按 [Node.js 运行时与 pnpm 安装](../skills/nodejs-runtime-setup/SKILL.md) 安装（Node 25+ 已无 Corepack）。
 
 按需安装、不放进基线的项：
 

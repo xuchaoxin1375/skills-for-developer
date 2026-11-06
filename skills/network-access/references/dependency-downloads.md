@@ -16,7 +16,7 @@
 
 优先检查项目声明的包管理器（如 `packageManager`、锁文件）及已安装版本，沿用现有工具。无锁文件、无 `packageManager` 约束且可自由选择时，Node.js 优先用 pnpm：安装用 `pnpm install`（有 `pnpm-lock.yaml` 时加 `--frozen-lockfile`），单次执行用 `pnpm dlx <pkg>` 代替 `npx <pkg>`。**全局工具不跟 pnpm 优先**：用 `npm i -g <pkg>`，pnpm 的全局 bin 目录默认不在 PATH（报 `ERR_PNPM_GLOBAL_BIN_DIR_NOT_IN_PATH`），装完还要改 shell 配置才可用，npm 的全局 bin 通常已在 PATH；只有目标环境已配置好 pnpm 全局 bin 或用户明确要求时才用 `pnpm add -g`。有锁文件或已声明工具时沿用现有工具，不删锁换管理器。单次参数优先于修改用户级配置；长期项目设置需要写明用途和适用环境，不能把本机代理地址提交进项目。
 
-目标环境没装该包管理器时，不要静默改用另一个（锁文件与 `packageManager` 声明随之失效）。Node.js 可先用随 Node 分发的 Corepack 免全局安装地运行：在项目目录执行 `corepack pnpm install --frozen-lockfile`，它会按 `package.json` 的 `packageManager` 取对应版本；需要 `pnpm` 命令常驻时才用 `corepack enable`（在 Node 安装目录写 shim，Windows 下可能需要管理员）。Corepack 下载 pnpm 本体走自己的来源，不受 `npm_config_registry` 影响，慢或不可达时用 `COREPACK_NPM_REGISTRY=<已核验registry>`。需要装全局工具或改 PATH 时，先向用户说明命令与影响再执行。
+目标环境没装该包管理器时，不要静默改用另一个（锁文件与 `packageManager` 声明随之失效）。Node.js 25 起不再分发 Corepack，`corepack` 命令在新版本上不存在；Node.js 24 及更早可先用随 Node 分发的 Corepack 免全局安装地运行：在项目目录执行 `corepack pnpm install --frozen-lockfile`，它会按 `package.json` 的 `packageManager` 取对应版本；需要 `pnpm` 命令常驻时才用 `corepack enable`（在 Node 安装目录写 shim，Windows 下可能需要管理员）。Corepack 下载 pnpm 本体走自己的来源，不受 `npm_config_registry` 影响，慢或不可达时用 `COREPACK_NPM_REGISTRY=<已核验registry>`。安装 Node.js 运行时与 pnpm 本身的方式、版本切换和平台差异见 [Node.js 运行时与 pnpm 安装](../../nodejs-runtime-setup/SKILL.md)。需要装全局工具或改 PATH 时，先向用户说明命令与影响再执行。
 
 | 工具 | 任务级源配置 | 适用边界 |
 | --- | --- | --- |
@@ -86,6 +86,7 @@ CMD 对应 `set "变量名=值"`；Windows 调用 npm/pnpm 时可写 `npm.cmd`/`
 
 - uv 管理的 Python 运行时下载不由 PyPI 镜像控制；按受支持的官方渠道/内部镜像核验 `UV_PYTHON_INSTALL_MIRROR`，或使用任务允许的已有解释器。
 - Playwright / Scrapling 的浏览器安装按 [浏览器安装与国内网络](browser-installation.md) 分阶段处理：包源与制品下载独立，国内制品大包默认先走已核验的制品镜像（免代理、省额度），缺件或校验不过再回退已登记代理访问官方 CDN，核验具体版本、平台与全部制品；系统依赖和实际启动另验。
+- Node.js 运行时（MSI、ZIP、fnm/nvm 安装的二进制）与 pnpm 本体不由 npm registry 提供；安装方式、二进制镜像变量与版本切换见 [Node.js 运行时与 pnpm 安装](../../nodejs-runtime-setup/SKILL.md)。
 - Electron、原生预编译包、node-gyp 头文件、Corepack 和 Git 依赖按各自下载器检查实际目标与代理；不要假定 npm registry 覆盖这些下载，也不硬编码未经核验的第三方专用镜像。
 - `--ignore-scripts` 可帮助判断失败是否在生命周期脚本；诊断跳过脚本不代表依赖安装或应用已完成，正常交付仍需恢复必要步骤并验证运行。
 
