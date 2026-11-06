@@ -74,8 +74,8 @@
 | `[ ... ]` | 可选项 | `[-k <days>]` |
 | `< ... >` | 占位符，需替换 | `<dest_dir>` |
 | `...` | 可重复 | `<source_dir>...` |
-| `a \| b` | 互斥，二选一 | `--json \| --yaml` |
-| `{a \| b}` | 必选其一 | `{start \| stop \| status}` |
+| <code>a &#124; b</code> | 互斥，二选一 | <code>--json &#124; --yaml</code> |
+| <code>{a &#124; b}</code> | 必选其一 | <code>{start &#124; stop &#124; status}</code> |
 | 不加括号的字面量 | 原样输入 | `-o`、`backup` |
 
 ### ADR

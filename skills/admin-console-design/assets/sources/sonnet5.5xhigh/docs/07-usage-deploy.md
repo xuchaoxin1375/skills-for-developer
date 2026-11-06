@@ -78,7 +78,7 @@ src/
 | `#/dashboard/p/<slug>` | 其余导航项的占位页 |
 | 查询参数 `embed=1` | 嵌入模式（由舞台设置，站内跳转自动保留） |
 | 查询参数 `variant=legacy` | 传统方案 |
-| 查询参数 `theme=light\|dark\|system` | 首次加载时的主题 |
+| 查询参数 `theme=light|dark|system` | 首次加载时的主题 |
 
 可以直接用浏览器打开 `#/dashboard/dns/new`，脱离舞台验证真实窗口行为。
 
@@ -88,9 +88,9 @@ src/
 
 | 方向 | 类型 | 载荷 | 作用 |
 | --- | --- | --- | --- |
-| 父 → 子 | `nimbus:theme` | `value: system \| light \| dark` | 同步主题（不写入子页本地存储） |
+| 父 → 子 | `nimbus:theme` | `value: system | light | dark` | 同步主题（不写入子页本地存储） |
 | 父 → 子 | `nimbus:navigate` | `to: string` | 切换场景（hash 路由） |
-| 父 → 子 | `nimbus:sidebar` | `action: pin-expanded \| pin-collapsed \| peek-on \| peek-off` | 驱动侧边栏演示 |
+| 父 → 子 | `nimbus:sidebar` | `action: pin-expanded | pin-collapsed | peek-on | peek-off` | 驱动侧边栏演示 |
 | 子 → 父 | `nimbus:ready` | — | 子页就绪，父页补发主题与路由（iframe 被移动后会重新加载） |
 | 子 → 父 | `nimbus:state` | `path, layout, pinned, expanded, peek, drawer, width, variant` | 上报布局与侧边栏状态，用于浮层状态监视 |
 

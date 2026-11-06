@@ -108,7 +108,7 @@ main "$@"
 | **`local` 声明和赋值分两行** | `local var` 然后 `var=$(cmd)`；写在一行时 `local` 会掩盖命令退出码 |
 | **遍历文件用 glob 不用 `ls`** | `for f in *.log; do`，禁止 `for f in $(ls *.log)` |
 | **禁止使用 `eval`** | 除非完全理解安全影响并有充分理由 |
-| **`cd` 后检查退出码** | `cd "$dir" \|\| die "无法进入目录"` |
+| **`cd` 后检查退出码** | <code>cd "$dir" &#124;&#124; die "无法进入目录"</code> |
 
 引号反面教材：`filename="my file.txt"; rm $filename` 实际执行 `rm my file.txt`；
 `headline="* Headline *"` 不加引号时 `*` 会展开为当前目录文件列表。

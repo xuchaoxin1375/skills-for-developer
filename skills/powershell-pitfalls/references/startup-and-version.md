@@ -73,7 +73,7 @@ help <自定义函数>                      # 分页器路径，单独看
 | `Get-Content -Encoding Default` 读 GBK 文件 | 按系统 ANSI（如 936）解码，正确 | 按 UTF-8 解码，失败 |
 | `-Encoding Byte` / `-AsByteStream` | 支持 `Byte` | 已移除 `Byte`，改用 `-AsByteStream` |
 | `Set-Content -Encoding UTF8` | UTF-8 带 BOM | UTF-8 无 BOM |
-| `&&` / `\|\|` 链接命令 | 不支持 | 支持；与 PowerShell 对象管道不同 |
+| <code>&&</code> / <code>&#124;&#124;</code> 链接命令 | 不支持 | 支持；与 PowerShell 对象管道不同 |
 | 原生命令参数传递 | 旧式传递，空参数/内嵌引号可能变化 | 7.3+ 受 `$PSNativeCommandArgumentPassing` 控制，仍与目标程序有关 |
 | `Write-Host` | 面向控制台，捕获/重定向行为与版本有关 | 同左 |
 

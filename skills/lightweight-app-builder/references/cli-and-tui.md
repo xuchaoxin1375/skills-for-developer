@@ -127,7 +127,7 @@ IFS=$'\n\t'
 | --- | --- |
 | `#!/usr/bin/env bash` | 经 `env` 找 bash，兼容非 `/bin` 路径，不用 `[[ ]]` 等特性时才可用 `sh` |
 | `set -e` / `-u` | 任一命令失败即退出；引用未定义变量即报错，防 `rm -rf ""` 类灾难 |
-| `set -o pipefail` | 管道任一环失败则整条失败，否则 `curl x \| bash` 中 `curl` 失败也被吞掉 |
+| `set -o pipefail` | 管道任一环失败则整条失败，否则 <code>curl x &#124; bash</code> 中 `curl` 失败也被吞掉 |
 | `set -E` | `ERR` trap 可被函数继承 |
 | `IFS=$'\n\t'` | 词分割只按换行制表符，含空格文件名不被拆散 |
 

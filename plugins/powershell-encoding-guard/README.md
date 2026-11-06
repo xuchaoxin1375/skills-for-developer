@@ -159,9 +159,9 @@ level=WARN message="failed to load plugin" target="...powershell-encoding-guard"
 | 编码前置 | 命令不写前缀，直接 `python -c "print('中文测试-插件验证')"` | 输出可读；服务端日志的 `spawning process` 里能看到被前置的两行 |
 | `PYTHONUTF8` 注入 | `[Environment]::GetEnvironmentVariable('PYTHONUTF8','Process')` | `1`；Python 3.13 的 `sys.stdout.encoding` 为 `utf-8`（默认会是 cp936） |
 | 幂等 | 命令自己写前缀 | 日志里前缀只出现一份 |
-| 管道形态 | `git --version \| Select-String git` | 诊断日志记 `risk`，工具结果干净 |
+| 管道形态 | <code>git --version &#124; Select-String git</code> | 诊断日志记 `risk`，工具结果干净 |
 | 重定向形态 | `node -e "..." > out.txt` | 诊断日志记 `risk`，工具结果干净 |
-| 不误报 | `git --version \| more`（native→native） | 无记录、无提示 |
+| 不误报 | <code>git --version &#124; more</code>（native→native） | 无记录、无提示 |
 | 无插件基线 | 清掉 `PYTHONUTF8`、控制台输出编码设 936 后跑同一条 python 命令 | 输出乱码（GBK 字节被按 UTF-8 解码） |
 
 ## 已知边界

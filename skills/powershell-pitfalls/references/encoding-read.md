@@ -130,7 +130,7 @@ python -c "import json,pathlib;print(json.dumps({p:pathlib.Path(p).read_bytes().
 |---|---|
 | `& python -X utf8 -c ... > out.txt`（原生命令直接重定向） | 原始 UTF-8，正确 |
 | `function Emit { & python ... }; Emit > out.txt` | 双重错位 |
-| `& python ... \| Out-File out.txt` | 双重错位 |
+| <code>& python ... &#124; Out-File out.txt</code> | 双重错位 |
 
 分界不是 `>` 本身，而是数据有没有先变成 PowerShell 字符串：7.4+ 的字节保留只覆盖"原生命令 stdout 直接重定向"，经函数、变量、`Out-String` 或 `Out-File` 就回到文本层。5.1 没有这个例外，直接调用同样 MANGLED。校准脚本里 `redirect-*` 测的是文本层路径，`native-redirect` 单独测直接重定向。
 
@@ -182,8 +182,8 @@ python -c "import json,pathlib;print(json.dumps({p:pathlib.Path(p).read_bytes().
 | 去路 | 宿主/文件收到什么 |
 |---|---|
 | 生产者 → stdout（不经 PowerShell 文本层） | 正确 UTF-8 字节 |
-| 生产者 → `\| Out-String` → stdout | 正确 UTF-8 字节（本次全部 8 个 case 均如此，含把 .NET 输出编码设成 936 的） |
-| 生产者 → `\| Out-File -Encoding UTF8` → 文件 | **双重错位**（基线 case） |
+| 生产者 → <code>&#124; Out-String</code> → stdout | 正确 UTF-8 字节（本次全部 8 个 case 均如此，含把 .NET 输出编码设成 936 的） |
+| 生产者 → <code>&#124; Out-File -Encoding UTF8</code> → 文件 | **双重错位**（基线 case） |
 | 生产者 → 自己按字节写文件 | 正确 UTF-8 字节 |
 
 要点：
@@ -217,7 +217,7 @@ python -c "import json,pathlib;print(json.dumps({p:pathlib.Path(p).read_bytes().
 | 子进程**直写 stdout**（不经 PowerShell 文本层） | **稳定正确**（子进程 pwsh 与 agent shell 都正确） |
 | 生产者**自己按字节写文件**（Node `writeFileSync(Buffer)` / Python `write_bytes`） | **稳定正确** |
 | 管道里插**字节闸门**（按原始字节读 stdin 再写文件） | **稳定正确** |
-| **PowerShell 管道/重定向中转**（`\| Select-Object` / `\| Out-String` / `\| Out-File`） | **不保证** |
+| **PowerShell 管道/重定向中转**（<code>&#124; Select-Object</code> / <code>&#124; Out-String</code> / <code>&#124; Out-File</code>） | **不保证** |
 
 关于"中转"这一行的实测细节（**同一配置在不同宿主下结果不同**）：
 
