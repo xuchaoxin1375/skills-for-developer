@@ -36,6 +36,9 @@
   悬空链接 (目标已不存在) 也计为异常。
   有异常时以非零退出码返回 (AGENTS 缺失计异常, 内容不一致只警告)。
 
+.PARAMETER Plan
+  只打印部署计划, 不修改链接、配置或依赖。
+
 .PARAMETER ApplyRecommendedCli
   直接应用仓库推荐的 opencode cli.json (config/opencode/cli.json),
   不询问。原文件先备份为同目录 cli.json.bak-<时间戳>。
@@ -64,6 +67,8 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1
 .EXAMPLE
+  powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Plan
+.EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -VerifyOnly
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Include doc-rewrite-review,htmlmini
@@ -76,6 +81,7 @@ param(
   [string[]]$Include,
   [switch]$Unlink,
   [switch]$VerifyOnly,
+  [switch]$Plan,
   [switch]$ApplyRecommendedCli,
   [switch]$SkipRecommendedCli,
   [switch]$ApplyRecommendedSkills,
@@ -195,6 +201,8 @@ function Remove-StaleRepoLinks([string]$TargetDir) {
 
 $failures = 0
 
+# -Plan 只预览，不创建目录、不改链接。
+if (-not $Plan) {
 foreach ($targetDir in $targets) {
   Write-Host "== $targetDir =="
   if (-not (Test-Path $targetDir -PathType Container)) {
@@ -300,6 +308,7 @@ foreach ($targetDir in $targets) {
   }
 
   Remove-StaleRepoLinks $targetDir
+}
 }
 
 # --- 推荐 skill（需依赖/命令安装，名单见 config/recommended-skills.txt） ---
@@ -455,6 +464,145 @@ function Get-ThirdPartyArgs([string]$Action, [string[]]$Names) {
   return $pyArgs
 }
 
+function Get-PlanLinkCounts {
+  $create = 0; $replace = 0; $ok = 0; $missingDirs = 0
+  foreach ($targetDir in $targets) {
+    if (-not (Test-Path -LiteralPath $targetDir -PathType Container)) { $missingDirs++ }
+    foreach ($skill in @($skills)) {
+      $link = Join-Path $targetDir $skill.Name
+      $dest = $skill.FullName
+      if (-not (Test-Path -LiteralPath $link)) { $create++; continue }
+      $cur = Get-LinkTarget $link
+      if ($null -ne $cur -and ($cur -eq $dest -or $cur -contains $dest)) { $ok++ }
+      else { $replace++ }
+    }
+  }
+  return [pscustomobject]@{ Create = $create; Replace = $replace; Ok = $ok; MissingDirs = $missingDirs }
+}
+
+function Get-PlanCliState {
+  $repoCli = Join-Path (Join-Path (Join-Path $RepoRoot 'config') 'opencode') 'cli.json'
+  if (-not (Test-Path -LiteralPath $repoCli -PathType Leaf)) { return 'absent' }
+  $dstCli = Join-Path (Join-Path $env:USERPROFILE '.config\opencode') 'cli.json'
+  if (-not (Test-Path -LiteralPath $dstCli -PathType Leaf)) { return 'missing' }
+  if ((Get-FileHash -LiteralPath $repoCli).Hash -eq (Get-FileHash -LiteralPath $dstCli).Hash) { return 'same' }
+  return 'different'
+}
+
+function Get-PlanRecState([string]$Skill) {
+  $dir = Join-Path $skillsDir $Skill
+  $needDeps = (Test-Path (Join-Path $dir 'package.json') -PathType Leaf) -and `
+    -not (Test-Path (Join-Path $dir 'node_modules') -PathType Container)
+  $needCmd = $false
+  $cmd = Get-SkillCommandName $Skill
+  $entry = Get-SkillCommandEntry $Skill
+  if (-not [string]::IsNullOrWhiteSpace($cmd) -and -not [string]::IsNullOrWhiteSpace($entry)) {
+    $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
+    $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
+      ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
+    $onPath = $null -ne (Get-Command $cmd -ErrorAction SilentlyContinue)
+    if (-not ($isOurs -and $onPath)) { $needCmd = $true }
+  }
+  return [pscustomobject]@{ Skill = $Skill; NeedDeps = $needDeps; NeedCmd = $needCmd }
+}
+
+function Get-ThirdPartyField([string]$Name, [string]$Field) {
+  $listFile = Join-Path $RepoRoot 'config\third-party-skills.txt'
+  if (-not (Test-Path -LiteralPath $listFile -PathType Leaf)) { return '' }
+  foreach ($raw in (Get-Content -LiteralPath $listFile -Encoding UTF8)) {
+    $line = ($raw -split '#', 2)[0].Trim()
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    $parts = $line -split '\|'
+    if ($parts.Count -lt 6) { continue }
+    if ($parts[0].Trim() -ne $Name) { continue }
+    switch ($Field) {
+      'repo' { return $parts[1].Trim() }
+      'kind' { return $parts[2].Trim() }
+      'ref' { return $parts[3].Trim() }
+    }
+  }
+  return ''
+}
+
+function Get-PlanTpState([string]$Name) {
+  $tpHome = if (-not [string]::IsNullOrWhiteSpace($env:THIRD_PARTY_SKILLS_HOME)) {
+    $env:THIRD_PARTY_SKILLS_HOME
+  } else {
+    Join-Path $env:USERPROFILE '.local\share\skills-for-developer\third-party'
+  }
+  if (Test-Path (Join-Path $tpHome $Name) -PathType Container) { return '已安装' }
+  return '未安装'
+}
+
+function Show-DeployPlan {
+  $counts = Get-PlanLinkCounts
+  Write-Host '== 部署计划（只预览，不修改）=='
+  Write-Host "  链接: $(@($skills).Count) 个 skill -> $($targets.Count) 个目录；新建 $($counts.Create)，修正/替换 $($counts.Replace)，已就绪 $($counts.Ok)；缺目录 $($counts.MissingDirs)"
+  switch (Get-PlanCliState) {
+    'same' { Write-Host '  cli.json: 已是最新（跳过）' }
+    'missing' { Write-Host '  cli.json: 目标不存在（交互默认应用，-ApplyRecommendedCli 可直接应用）' }
+    'different' { Write-Host '  cli.json: 与真源不同（交互默认保留，覆盖前备份）' }
+    'absent' { Write-Host '  cli.json: 仓库没有推荐文件（跳过）' }
+  }
+  foreach ($s in @(Get-RecommendedSkills)) {
+    $st = Get-PlanRecState $s
+    $state = @()
+    if ($st.NeedDeps) { $state += '依赖未安装' }
+    if ($st.NeedCmd) { $state += '命令未安装' }
+    if ($state.Count -eq 0) { $state = @('已就绪') }
+    Write-Host "  推荐 skill [$s]: $($state -join ' ')"
+  }
+  foreach ($n in @(Get-ThirdPartySkillNames)) {
+    $repo = Get-ThirdPartyField $n 'repo'
+    $ref = Get-ThirdPartyField $n 'ref'
+    Write-Host "  第三方 [$n]: $(Get-PlanTpState $n) 来源 $repo@$ref（默认不装）"
+  }
+  if (Test-Path (Join-Path $RepoRoot 'config\upstream-skills.json') -PathType Leaf) {
+    Write-Host '  上游 clone 链接: 由 link-upstream-skills.py 检查/修正'
+  }
+  Write-Host '  未自动处理: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查'
+}
+
+function Show-DeploySummary {
+  Write-Host '== 完成 =='
+  Write-Host "- skill 链接: 已处理 $(@($skills).Count) 个 -> $($targets.Count) 个目录"
+  if ($SkipRecommendedCli) {
+    Write-Host '- cli.json: 已跳过（-SkipRecommendedCli）'
+  } else {
+    switch (Get-PlanCliState) {
+      'same' { Write-Host '- cli.json: 已就绪' }
+      'absent' { Write-Host '- cli.json: 仓库没有推荐文件' }
+      default { Write-Host '- cli.json: 未应用（可重跑并确认，或用 -ApplyRecommendedCli）' }
+    }
+  }
+  if ($SkipRecommendedSkills) {
+    Write-Host '- 推荐 skill: 已跳过（-SkipRecommendedSkills）'
+  } else {
+    foreach ($s in @(Get-RecommendedSkills)) {
+      $st = Get-PlanRecState $s
+      $state = @()
+      if ($st.NeedDeps) { $state += '依赖未安装' }
+      if ($st.NeedCmd) { $state += '命令未安装' }
+      if ($state.Count -eq 0) { Write-Host "- 推荐 skill [$s]: 已就绪" }
+      else { Write-Host "- 推荐 skill [$s]: $($state -join ' ')" }
+    }
+  }
+  if ($SkipThirdPartySkills) {
+    Write-Host '- 第三方 skill: 已跳过（-SkipThirdPartySkills）'
+  } else {
+    foreach ($n in @(Get-ThirdPartySkillNames)) {
+      Write-Host "- 第三方 [$n]: $(Get-PlanTpState $n)"
+    }
+  }
+  Write-Host '- 未处理: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查'
+  Write-Host '  依赖检查: python -X utf8 scripts/check-skill-deps.py --profile standard'
+}
+
+if ($Plan) {
+  Show-DeployPlan
+  exit 0
+}
+
 if (-not $Unlink -and -not $VerifyOnly) {
   # 推荐 cli.json: 缺失或与真源不一致时, 交互终端下询问是否应用;
   # 非交互环境默认跳过 (用 -ApplyRecommendedCli 显式应用)。
@@ -473,8 +621,13 @@ if (-not $Unlink -and -not $VerifyOnly) {
       if ($ApplyRecommendedCli) {
         $doApply = $true
       } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
-        $ans = Read-Host '是否应用仓库推荐的 opencode cli.json (覆盖当前配置, 原文件先备份)? [y/N]'
-        $doApply = $ans -match '^(y|Y|yes|YES)$'
+        if (-not (Test-Path -LiteralPath $dstCli -PathType Leaf)) {
+          $ans = Read-Host '推荐 cli.json 不存在, 是否应用? [Y/n]'
+          $doApply = $ans -match '^([yY]([eE][sS])?)?$'
+        } else {
+          $ans = Read-Host '推荐 cli.json 与当前配置不同 (覆盖前备份), 是否应用? [y/N]'
+          $doApply = $ans -match '^(y|Y|yes|YES)$'
+        }
       } else {
         Write-Host '非交互环境, 跳过推荐 cli.json (用 -ApplyRecommendedCli 应用)。'
       }
@@ -491,29 +644,60 @@ if (-not $Unlink -and -not $VerifyOnly) {
     }
   }
 
-  # 推荐 skill（需依赖/命令）：依赖走询问/显式开关，命令默认安装
+  # 推荐 skill（需依赖/命令）：只对未就绪项询问，依赖与命令合并确认；
+  # 非交互默认跳过依赖，命令仍默认安装
   $recSkills = @(Get-RecommendedSkills)
   if ($recSkills.Count -gt 0) {
     if ($SkipRecommendedSkills) {
       Write-Host "已跳过推荐 skill 部署（-SkipRecommendedSkills）：$($recSkills -join ', ')"
     } else {
-      Write-Host "== 推荐 skill（需依赖/命令）：$($recSkills -join ', ') =="
-      $doDeps = $false
-      if ($ApplyRecommendedSkills) {
-        $doDeps = $true
-      } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
-        $ans = Read-Host '是否安装推荐 skill 的依赖（如 htmlmini 的 pnpm install）？[Y/n]'
-        $doDeps = $ans -match '^([yY]([eE][sS])?)?$'
-      } else {
-        Write-Host '非交互环境，跳过依赖安装（用 -ApplyRecommendedSkills 执行）；命令仍默认安装。'
-      }
+      $recPlan = @()
+      $needAny = $false
+      $needDepsAny = $false
+      $actions = @()
       foreach ($s in $recSkills) {
-        if ($doDeps) {
-          if (-not (Install-RecommendedSkillDeps $s)) {
-            Write-Warning "  [$s] 依赖安装未完成，命令照常安装"
+        $st = Get-PlanRecState $s
+        $recPlan += [pscustomobject]@{ Skill = $s; State = $st }
+        if ($st.NeedDeps -or $st.NeedCmd) {
+          $needAny = $true
+          if ($st.NeedDeps) {
+            $needDepsAny = $true
+            if ($actions -notcontains '依赖') { $actions += '依赖' }
+          }
+          if ($st.NeedCmd -and $actions -notcontains '命令') { $actions += '命令' }
+        }
+      }
+      if (-not $needAny) {
+        Write-Host "推荐 skill 已就绪：$($recSkills -join ', ')"
+      } else {
+        $hint = if ($needDepsAny) { '（依赖安装会联网）' } else { '' }
+        Write-Host "== 推荐 skill（需依赖/命令）：$($recSkills -join ', ') =="
+        $mode = 'skip'
+        if ($ApplyRecommendedSkills) {
+          $mode = 'all'
+        } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+          $ans = Read-Host "安装/创建推荐 skill 的$($actions -join '+')$hint？[Y/n]"
+          if ($ans -match '^([yY]([eE][sS])?)?$') { $mode = 'all' }
+        } else {
+          Write-Host '非交互环境，跳过依赖安装（用 -ApplyRecommendedSkills 执行）；命令仍默认安装。'
+          $mode = 'cmd'
+        }
+        if ($mode -eq 'skip') {
+          Write-Host '已跳过推荐 skill（依赖与命令均未改动）。'
+        } else {
+          foreach ($item in $recPlan) {
+            $s = $item.Skill
+            $st = $item.State
+            if ($mode -eq 'all' -and $st.NeedDeps) {
+              if (-not (Install-RecommendedSkillDeps $s)) {
+                Write-Warning "  [$s] 依赖安装未完成，命令照常安装"
+              }
+            }
+            if ($st.NeedCmd) {
+              Install-SkillCommand $s
+            }
           }
         }
-        Install-SkillCommand $s
       }
     }
   }
@@ -538,7 +722,13 @@ if (-not $Unlink -and -not $VerifyOnly) {
       if ($ApplyThirdPartySkills) {
         $doTp = $true
       } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
-        $ans = Read-Host "是否安装/更新第三方 skill（$($tpNames -join ', ')；来自上游，默认 No）？[y/N]"
+        $tpDetail = @()
+        foreach ($n in $tpNames) {
+          $repo = Get-ThirdPartyField $n 'repo'
+          $ref = Get-ThirdPartyField $n 'ref'
+          $tpDetail += "$n（$(Get-PlanTpState $n)，$repo@$ref）"
+        }
+        $ans = Read-Host "是否安装/更新第三方 skill（$($tpDetail -join ', ')；来自上游，默认 No）？[y/N]"
         $doTp = $ans -match '^(y|Y|yes|YES)$'
       } else {
         Write-Host '非交互环境，跳过第三方 skill（用 -ApplyThirdPartySkills 或 -SyncThirdPartySkills）。'
@@ -689,5 +879,5 @@ if (-not $VerifyOnly -and -not $Unlink) {
       Write-Host "建议安装 $($tool.Label)（推荐，缺失不阻断）：$($tool.Install)"
     }
   }
-  Write-Host '提示：推荐依赖套餐见 docs/skill-dependencies.md#部署基线；检查命令 python -X utf8 scripts/check-skill-deps.py --profile standard（完整套餐 --profile full 另含 uv、jq、Scrapling）'
+  Show-DeploySummary
 }

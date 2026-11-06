@@ -18,6 +18,7 @@
 # 用法：
 #   scripts/link-skills.sh                    # 全量链接（交互终端下会询问是否应用推荐 cli.json
 #                                             # 及推荐 skill 依赖；命令默认安装）
+#   scripts/link-skills.sh --plan             # 只打印部署计划，不修改
 #   scripts/link-skills.sh --verify-only      # 只检查，不修改（含推荐 skill 依赖与命令）
 #   scripts/link-skills.sh --unlink           # 移除本仓库创建的链接与命令（实体、依赖目录不受影响）
 #   scripts/link-skills.sh --include a,b      # 只处理部分 skill（推荐部署同步取交集）
@@ -30,7 +31,8 @@
 #   scripts/link-skills.sh --sync-third-party-skills   # 同步第三方 skill（安装缺失并更新版本）
 #
 # 推荐 skill（config/recommended-skills.txt，需外部依赖或命令安装的复杂 skill，
-# 当前为 htmlmini）：依赖安装走询问/显式开关，命令默认装到 ~/.local/bin。
+# 当前为 htmlmini）：只对未就绪项询问，依赖与命令合并确认；
+# 非交互默认跳过依赖，命令仍装到 ~/.local/bin。
 # 第三方 skill（config/third-party-skills.txt）：实体不入本仓库，交互默认 No，
 # 实体放 $THIRD_PARTY_SKILLS_HOME/<name>（默认 ~/.local/share/skills-for-developer/third-party），
 # 各已登记的 harness 目录都用链接指向它。
@@ -49,6 +51,7 @@ TARGETS=(
 
 VERIFY_ONLY=0
 UNLINK=0
+PLAN=0
 INCLUDE=""
 APPLY_RECOMMENDED=0
 SKIP_RECOMMENDED=0
@@ -61,6 +64,7 @@ SYNC_TP=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --verify-only) VERIFY_ONLY=1; shift ;;
+    --plan) PLAN=1; shift ;;
     --unlink) UNLINK=1; shift ;;
     --apply-recommended-cli) APPLY_RECOMMENDED=1; shift ;;
     --skip-recommended-cli) SKIP_RECOMMENDED=1; shift ;;
@@ -71,7 +75,7 @@ while [[ $# -gt 0 ]]; do
     --sync-third-party-skills) SYNC_TP=1; shift ;;
     --include) INCLUDE="${2:-}"; shift 2 ;;
     --include=*) INCLUDE="${1#--include=}"; shift ;;
-    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
 done
@@ -178,6 +182,8 @@ clean_stale_links() {
 
 failures=0
 
+# --plan 只预览，不创建目录、不改链接。
+if [[ $PLAN -eq 0 ]]; then
 for target in "${TARGETS[@]}"; do
   echo "== $target =="
   if [[ ! -d "$target" ]]; then
@@ -257,6 +263,7 @@ for target in "${TARGETS[@]}"; do
 
   clean_stale_links "$target"
 done
+fi
 
 # --- 推荐 skill（需依赖/命令安装，名单见 config/recommended-skills.txt） ---
 
@@ -349,7 +356,7 @@ remove_skill_command() {
 }
 
 deploy_recommended_skills() {
-  # 链接完成后的推荐部署：依赖走询问/显式开关，命令默认安装
+  # 链接完成后的推荐部署：只对未就绪项询问，依赖与命令合并成一个决策。
   [[ $UNLINK -eq 1 || $VERIFY_ONLY -eq 1 ]] && return 0
   mapfile -t REC < <(recommended_skills)
   [[ ${#REC[@]} -eq 0 ]] && return 0
@@ -357,23 +364,55 @@ deploy_recommended_skills() {
     echo "已跳过推荐 skill 部署（--skip-recommended-skills）：${REC[*]}"
     return 0
   fi
+  local s line need_deps need_cmd need_any=0 need_deps_any=0
+  local action="" hint=""
+  local -a REC_PLAN=()
+  for s in "${REC[@]}"; do
+    line="$(plan_rec_line "$s")"
+    REC_PLAN+=("$line")
+    IFS='|' read -r s need_deps need_cmd <<< "$line"
+    if [[ $need_deps -eq 1 || $need_cmd -eq 1 ]]; then
+      need_any=1
+      if [[ $need_deps -eq 1 ]]; then
+        need_deps_any=1
+        [[ -n "$action" ]] && action+="+"
+        action+="依赖"
+      fi
+      if [[ $need_cmd -eq 1 ]]; then
+        [[ -n "$action" ]] && action+="+"
+        action+="命令"
+      fi
+    fi
+  done
+  if [[ $need_any -eq 0 ]]; then
+    echo "推荐 skill 已就绪：${REC[*]}"
+    return 0
+  fi
+  [[ $need_deps_any -eq 1 ]] && hint="（依赖安装会联网）"
   echo "== 推荐 skill（需依赖/命令）：${REC[*]} =="
-  local do_deps=0
+  local do_all=0
   if [[ $APPLY_REC_SKILLS -eq 1 ]]; then
-    do_deps=1
+    do_all=1
   elif [[ -t 0 ]]; then
     local ans
-    read -r -p "是否安装推荐 skill 的依赖（如 htmlmini 的 pnpm install）？[Y/n] " ans
-    [[ "$ans" =~ ^([yY]([eE][sS])?)?$ ]] && do_deps=1
+    read -r -p "安装/创建推荐 skill 的${action}${hint}？[Y/n] " ans
+    [[ "$ans" =~ ^([yY]([eE][sS])?)?$ ]] && do_all=1
   else
     echo "非交互环境，跳过依赖安装（用 --apply-recommended-skills 执行）；命令仍默认安装。"
+    do_all=2
   fi
-  local s
-  for s in "${REC[@]}"; do
-    if [[ $do_deps -eq 1 ]]; then
+  if [[ $do_all -eq 0 ]]; then
+    echo "已跳过推荐 skill（依赖与命令均未改动）。"
+    return 0
+  fi
+  for line in "${REC_PLAN[@]}"; do
+    IFS='|' read -r s need_deps need_cmd <<< "$line"
+    if [[ $do_all -eq 1 && $need_deps -eq 1 ]]; then
       deploy_skill_deps "$s" || echo "  [$s] 依赖安装未完成，命令照常安装" >&2
     fi
-    install_skill_command "$s" || true
+    if [[ $need_cmd -eq 1 ]]; then
+      install_skill_command "$s" || true
+    fi
   done
 }
 
@@ -421,8 +460,12 @@ deploy_third_party_skills() {
   [[ $SYNC_TP -eq 1 ]] && action="sync"
   if [[ $SYNC_TP -eq 0 && $APPLY_TP -eq 0 ]]; then
     if [[ -t 0 ]]; then
-      local ans
-      read -r -p "是否安装/更新第三方 skill（${TP[*]}；来自上游，默认 No）？[y/N] " ans
+      local ans detail="" n
+      for n in "${TP[@]}"; do
+        [[ -n "$detail" ]] && detail+=", "
+        detail+="$n（$(plan_tp_state "$n")，$(third_party_field "$n" repo)@$(third_party_field "$n" ref)）"
+      done
+      read -r -p "是否安装/更新第三方 skill（${detail}；来自上游，默认 No）？[y/N] " ans
       if [[ ! "$ans" =~ ^[yY]([eE][sS])?$ ]]; then
         echo "已跳过第三方 skill。"
         return 0
@@ -536,8 +579,13 @@ apply_recommended_cli() {
     do_apply=1
   elif [[ -t 0 ]]; then
     local ans
-    read -r -p "是否应用仓库推荐的 opencode cli.json（覆盖当前配置，原文件先备份）？[y/N] " ans
-    [[ "$ans" =~ ^[yY]([eE][sS])?$ ]] && do_apply=1
+    if [[ ! -f "$dst" ]]; then
+      read -r -p "推荐 cli.json 不存在，是否应用？[Y/n] " ans
+      [[ "$ans" =~ ^([yY]([eE][sS])?)?$ ]] && do_apply=1
+    else
+      read -r -p "推荐 cli.json 与当前配置不同（覆盖前备份），是否应用？[y/N] " ans
+      [[ "$ans" =~ ^[yY]([eE][sS])?$ ]] && do_apply=1
+    fi
   else
     echo "非交互环境，跳过推荐 cli.json（用 --apply-recommended-cli 应用）。"
     return 0
@@ -553,6 +601,157 @@ apply_recommended_cli() {
     echo "推荐 cli.json 已应用。"
   fi
 }
+
+plan_link_counts() {
+  # 输出 create|replace|ok|missing_dirs，供 --plan 与完成摘要复用。
+  local target skill link dest create=0 replace=0 ok=0 missing_dirs=0
+  for target in "${TARGETS[@]}"; do
+    [[ -d "$target" ]] || missing_dirs=$((missing_dirs + 1))
+    for skill in "${SKILLS[@]}"; do
+      link="$target/$skill"
+      dest="$SKILLS_DIR/$skill"
+      if [[ -L "$link" ]]; then
+        if [[ "$(readlink "$link")" == "$dest" ]]; then
+          ok=$((ok + 1))
+        else
+          replace=$((replace + 1))
+        fi
+      elif [[ -e "$link" ]]; then
+        replace=$((replace + 1))
+      else
+        create=$((create + 1))
+      fi
+    done
+  done
+  printf '%s|%s|%s|%s\n' "$create" "$replace" "$ok" "$missing_dirs"
+}
+
+plan_cli_state() {
+  local repo_cli="$REPO_ROOT/config/opencode/cli.json"
+  local dst="$HOME/.config/opencode/cli.json"
+  [[ -f "$repo_cli" ]] || { echo absent; return 0; }
+  [[ -f "$dst" ]] || { echo missing; return 0; }
+  if cmp -s "$repo_cli" "$dst"; then echo same; else echo different; fi
+}
+
+plan_rec_line() {
+  # 输出 skill|need_deps|need_cmd；只读状态，不安装。
+  local skill="$1" dir="$SKILLS_DIR/$1" cmd entry link
+  local need_deps=0 need_cmd=0
+  if [[ -f "$dir/package.json" && ! -d "$dir/node_modules" ]]; then
+    need_deps=1
+  fi
+  cmd="$(skill_command_name "$skill")"
+  entry="$(skill_command_entry "$skill")"
+  if [[ -n "$cmd" && -n "$entry" ]]; then
+    link="$HOME/.local/bin/$cmd"
+    if [[ ! -f "$link" ]] || ! grep -qF "$entry" "$link" 2>/dev/null \
+      || ! command -v "$cmd" >/dev/null 2>&1; then
+      need_cmd=1
+    fi
+  fi
+  printf '%s|%s|%s\n' "$skill" "$need_deps" "$need_cmd"
+}
+
+third_party_field() {
+  # 从第三方名单读取字段：third_party_field <name> repo|kind|ref
+  local want="$1" field="$2" line name repo kind ref preserve desc
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    IFS='|' read -r name repo kind ref preserve desc <<< "$line"
+    name="$(printf '%s' "$name" | tr -d '[:space:]')"
+    [[ "$name" == "$want" ]] || continue
+    case "$field" in
+      repo) printf '%s' "$repo" | tr -d '[:space:]' ;;
+      kind) printf '%s' "$kind" | tr -d '[:space:]' ;;
+      ref) printf '%s' "$ref" | tr -d '[:space:]' ;;
+    esac
+    return 0
+  done < "$REPO_ROOT/config/third-party-skills.txt"
+}
+
+plan_tp_state() {
+  local name="$1"
+  local home="${THIRD_PARTY_SKILLS_HOME:-$HOME/.local/share/skills-for-developer/third-party}"
+  if [[ -d "$home/$name" ]]; then echo "已安装"; else echo "未安装"; fi
+}
+
+print_deploy_plan() {
+  local create replace ok missing_dirs state skill need_deps need_cmd name repo ref
+  IFS='|' read -r create replace ok missing_dirs <<< "$(plan_link_counts)"
+  echo "== 部署计划（只预览，不修改）=="
+  echo "  链接: ${#SKILLS[@]} 个 skill -> ${#TARGETS[@]} 个目录；新建 $create，修正/替换 $replace，已就绪 $ok；缺目录 $missing_dirs"
+  case "$(plan_cli_state)" in
+    same) echo "  cli.json: 已是最新（跳过）" ;;
+    missing) echo "  cli.json: 目标不存在（交互默认应用，--apply-recommended-cli 可直接应用）" ;;
+    different) echo "  cli.json: 与真源不同（交互默认保留，覆盖前备份）" ;;
+    absent) echo "  cli.json: 仓库没有推荐文件（跳过）" ;;
+  esac
+  while IFS='|' read -r skill need_deps need_cmd; do
+    state=""
+    [[ "$need_deps" -eq 1 ]] && state+="依赖未安装 "
+    [[ "$need_cmd" -eq 1 ]] && state+="命令未安装 "
+    [[ -z "$state" ]] && state="已就绪"
+    state="${state% }"
+    echo "  推荐 skill [$skill]: $state"
+  done < <(while IFS= read -r skill; do [[ -n "$skill" ]] && plan_rec_line "$skill"; done < <(recommended_skills))
+  while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    repo="$(third_party_field "$name" repo)"
+    ref="$(third_party_field "$name" ref)"
+    echo "  第三方 [$name]: $(plan_tp_state "$name") 来源 ${repo}@${ref}（默认不装）"
+  done < <(third_party_names)
+  if [[ -f "$REPO_ROOT/config/upstream-skills.json" ]]; then
+    echo "  上游 clone 链接: 由 link-upstream-skills.py 检查/修正"
+  fi
+  echo "  未自动处理: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查"
+}
+
+print_deploy_summary() {
+  local skill need_deps need_cmd name state
+  echo "== 完成 =="
+  echo "- skill 链接: 已处理 ${#SKILLS[@]} 个 -> ${#TARGETS[@]} 个目录"
+  if [[ $SKIP_RECOMMENDED -eq 1 ]]; then
+    echo "- cli.json: 已跳过（--skip-recommended-cli）"
+  else
+    case "$(plan_cli_state)" in
+      same) echo "- cli.json: 已就绪" ;;
+      absent) echo "- cli.json: 仓库没有推荐文件" ;;
+      *) echo "- cli.json: 未应用（可重跑并确认，或用 --apply-recommended-cli）" ;;
+    esac
+  fi
+  if [[ $SKIP_REC_SKILLS -eq 1 ]]; then
+    echo "- 推荐 skill: 已跳过（--skip-recommended-skills）"
+  else
+    while IFS='|' read -r skill need_deps need_cmd; do
+      state=""
+      [[ "$need_deps" -eq 1 ]] && state+="依赖未安装 "
+      [[ "$need_cmd" -eq 1 ]] && state+="命令未安装 "
+      if [[ -z "$state" ]]; then
+        echo "- 推荐 skill [$skill]: 已就绪"
+      else
+        state="${state% }"
+        echo "- 推荐 skill [$skill]: $state"
+      fi
+    done < <(while IFS= read -r skill; do [[ -n "$skill" ]] && plan_rec_line "$skill"; done < <(recommended_skills))
+  fi
+  if [[ $SKIP_TP -eq 1 ]]; then
+    echo "- 第三方 skill: 已跳过（--skip-third-party-skills）"
+  else
+    while IFS= read -r name; do
+      [[ -z "$name" ]] && continue
+      echo "- 第三方 [$name]: $(plan_tp_state "$name")"
+    done < <(third_party_names)
+  fi
+  echo "- 未处理: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查"
+  echo "  依赖检查: python -X utf8 scripts/check-skill-deps.py --profile standard"
+}
+
+if [[ $PLAN -eq 1 ]]; then
+  print_deploy_plan
+  exit 0
+fi
 
 apply_recommended_cli
 deploy_recommended_skills
@@ -628,5 +827,5 @@ if [[ $VERIFY_ONLY -eq 0 && $UNLINK -eq 0 ]]; then
   check_basic_tool fd 'sudo apt install fd-find（命令名 fdfind；macOS: brew install fd）' fd fdfind
   check_basic_tool Scrapling 'uv tool install "scrapling[fetchers]"（再运行 scrapling install）' scrapling
   check_basic_tool Playwright 'python3 -m pip install playwright && python3 -m playwright install chromium' playwright
-  echo "提示：推荐依赖套餐见 docs/skill-dependencies.md#部署基线；检查命令 python3 -X utf8 scripts/check-skill-deps.py --profile standard（完整套餐 --profile full 另含 uv、jq、Scrapling）"
+  print_deploy_summary
 fi

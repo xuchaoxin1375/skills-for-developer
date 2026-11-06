@@ -139,6 +139,9 @@ Windows（PowerShell）：
 # 全量链接 (首次迁移 / 新增 skill / 换机器后恢复, 幂等)
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1
 
+# 只预览部署计划, 不修改
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Plan
+
 # 只检查, 不修改
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -VerifyOnly
 
@@ -172,6 +175,9 @@ cd ~/repos/skills-for-developer
 
 # 全量链接（幂等）
 ./scripts/link-skills.sh
+
+# 只预览部署计划，不修改
+./scripts/link-skills.sh --plan
 
 # 只检查 / 只处理部分 / 移除
 ./scripts/link-skills.sh --verify-only
@@ -230,17 +236,19 @@ cd ~/repos/skills-for-developer
 
 部署 = 推荐基线依赖 + skill 链接安装 + 全局 AGENTS.md 合并 + 两级校验。按下列顺序一次跑完，避免来回补步；各步细则见对应小节，此处只给顺序与开关。
 
+先跑 `--plan` / `-Plan` 可预览链接新建与替换数量、cli.json、推荐 skill 和第三方状态，不修改任何文件。交互模式只对未就绪项提问：cli.json 缺失默认应用、已存在差异默认保留；推荐依赖默认安装；第三方 skill 默认不装。完成后会打印已处理与未处理的摘要。
+
 1. **推荐基线依赖（强烈建议）**：按 `minimal` / `standard` / `full` 选套餐（默认 `standard`，含全局 mmdc；PowerShell 7 仅 Windows）；`full` 再补 uv、jq 与 Scrapling（推荐项）。它们覆盖 resource-inventory、htmlmini、mermaid-render-fix、browser-automation、network-access 等，缺了会退化到在线回退、人工路径或能力不全。基础命令行工具 git、ripgrep、fd 与 Playwright、Scrapling 为推荐项（缺失只警告），部署脚本结束时会检测并提示安装命令，不阻断部署。检查命令与安装明细见 [依赖套餐](docs/skill-dependencies.md#部署基线)。
-2. **链接安装（首跑即定 cli.json）**：命令见「常用操作」。交互终端不带开关会询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
+2. **链接安装（首跑即定 cli.json）**：命令见「常用操作」。交互终端只对未就绪项询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
    ```bash
    ./scripts/link-skills.sh --apply-recommended-cli   # 应用推荐 TUI 配置
    ./scripts/link-skills.sh --skip-recommended-cli   # 保持本机 TUI 配置
    ```
    Windows 对应 `scripts\link-skills.ps1 -ApplyRecommendedCli` / `-SkipRecommendedCli`。
    推荐 skill（`config/recommended-skills.txt`，当前为 htmlmini）同次一并处理：
-   依赖（`pnpm install`）交互询问缺省 Yes、非交互默认跳过（同一次带
-   `--apply-recommended-skills` 显式安装）；命令（`htmlmini`）默认装成直接可调用
-   （Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH），
+   只对未就绪项询问，一次确认是否安装依赖（`pnpm install`）并创建命令，缺省 Yes；
+   非交互默认跳过依赖（同一次带 `--apply-recommended-skills` 显式安装），命令仍装成
+   直接可调用（Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH），
    用 `--skip-recommended-skills` 两者都不装。
    第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
    非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本。
