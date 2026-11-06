@@ -2,6 +2,30 @@
 
 用于 `pip install`、`uv pip install`、`npm install`、`pnpm install`、`conda install` 失败、冲突、卡住或超时。先按错误定位阶段，再只改一个变量；镜像地址、代理与超时参数仍按[依赖下载](dependency-downloads.md)配置，本文件不重复那张配置表。
 
+## Python 工具选型与默认路径
+
+先看项目或环境已经声明了什么，再选工具。已有声明时直接沿用，不为了“更快”迁移工具链。
+
+| 场景 | 默认 | 边界 |
+|---|---|---|
+| 有 `uv.lock` / `[tool.uv]` | uv：`uv sync --locked`、`uv run` | 保留锁文件；不要用 pip 修改同一个环境 |
+| 有 `requirements.txt` / `constraints.txt` | venv + pip：`python -m venv .venv`、`python -m pip install -r ...` | 兼容性最好，CI 通常只需 Python 自带的 pip |
+| 有 `environment.yml` / `conda-meta` | conda / mamba | 先用 conda 装，缺包再用该环境的 pip；依赖边界见下文 conda 一节 |
+| 已有 Poetry / PDM 等锁文件 | 沿用其锁文件与命令 | 不在本表展开，也不因排障换管理器 |
+| 临时命令行工具 | `uv tool install`（有 uv）→ pipx → venv + pip | 工具装进独立环境，避免污染项目或系统 Python |
+| 新建项目、无团队约束 | uv（已安装或用户同意安装）；否则 venv + pip | uv 提供锁文件、Python 版本管理与 pip 兼容接口；不是硬前提 |
+| 纯 Python 库或小脚本 | venv + pip 或 uv | 不必引入 conda |
+| 科学计算、非 Python 二进制依赖、已有 conda 环境 | conda，优先 conda-forge + libmamba | CUDA、MKL、编译器、GDAL 等跨语言依赖；纯 Python 小包不必 |
+
+默认路径：
+
+1. 先识别项目与环境：`pyproject.toml`、锁文件、`environment.yml`、`VIRTUAL_ENV` / `CONDA_PREFIX`、`python -m pip --version`。
+2. 有声明就沿用；没有声明就新建隔离环境。不要直接装进系统 Python。
+3. 先解析预演，再安装一次，最后验证。
+4. 当前工具确实无解、且用户同意后才换工具链；迁移时重建环境，锁文件差异作为可审阅变更。
+
+uv 不读取 `pip.conf` / `PIP_INDEX_URL`，不支持 `--user`，默认只装进虚拟环境；使用 uv 时按[依赖下载](dependency-downloads.md)配置它的索引与超时，同一环境不要用 pip 和 uv 交替升级同一个包。
+
 ## 先读错误，不先重跑
 
 安装失败可以按阶段归类，多数错误能直接落到其中一段。把完整错误、命令、解释器和包管理器版本一起留下，再决定动作；同一命令原样重跑通常只会重复等待。
@@ -113,7 +137,23 @@ uv pip compile requirements.in -o requirements.txt
 
 - **npm `ERESOLVE`**：先读冲突双方要求的版本，用 `npm ls <包>` 确认现有树；优先对齐 peer 依赖或升级上层包。`--legacy-peer-deps`、`--force` 会跳过检查，只在明确接受风险时使用；长期修复用 `overrides` 并留下锁文件变更。
 - **pnpm**：用 `pnpm why <包>` 查来源，`pnpm.overrides` 处理传递依赖；有锁文件时保持 `--frozen-lockfile`，不要为了绕过冲突删锁。
-- **conda**：优先保持 channel 优先级与 `libmamba` 求解器；同一环境里不要用 conda 和 pip 反复安装同一个包。channel 映射与镜像配置见[依赖下载](dependency-downloads.md#conda--miniforge)。
+- **conda**：环境里优先用 conda 安装，保持 channel 优先级与 `libmamba` 求解器；较新 conda 可用 `conda-pypi` 通道合并解析纯 Python wheel（按版本文档配置），不支持时再用该环境内的 pip 补缺，不用 pip 升级 conda 管理的包。channel 映射与镜像配置见[依赖下载](dependency-downloads.md#conda--miniforge)。
+
+## 需要用户决定的节点
+
+以下选择会改变项目工具链、环境归属或依赖行为。先给出选项、影响和推荐，再由用户决定；项目已有明确声明或用户已授权代决时直接沿用。
+
+| 情况 | 为什么要问 | 建议给用户的选项 |
+|---|---|---|
+| 项目没有声明工具，pip/uv/conda 都可行 | 影响锁文件、CI 与团队习惯 | 沿用 pip（改动小）；用 uv 新建锁文件（解析与复现更好）；已有 conda 环境则继续 conda |
+| 要新建或切换 Python 版本 | 影响其他项目、系统环境和下载体积 | 用现有解释器建 venv；用 uv 管理新版本；用 conda 新建环境 |
+| 冲突无解，需要降级/升级关键依赖或换替代包 | 改变运行时行为 | 列出可兼容组合、各自代价与推荐项，让用户选 |
+| 需要写入系统 Python 或 `--break-system-packages` | 可能破坏系统工具 | 优先 venv、`uv tool install`、pipx；只有用户明确要求才用破坏性开关 |
+| 要迁移工具链或重写锁文件 | 产生大 diff，影响协作与 CI | 保持原工具；或重建环境并迁移锁文件，先展示差异 |
+| 需要安装新的全局工具（uv/conda/pipx）或大下载、私有源凭据 | 改动环境、占用网络/费用、涉及凭据 | 说明用途、体积、影响范围和替代方案；用户同意再装 |
+| 只是建 venv、dry-run、加约束、官方源回退一次 | 低风险、可逆、在当前路径内 | 不必打断用户，完成后在结果里说明 |
+
+询问时给一句推荐和理由，不只列菜单；用户没有偏好时按推荐执行，用户明确要求代决时不再反复确认。
 
 ## 依据
 
@@ -123,4 +163,6 @@ uv pip compile requirements.in -o requirements.txt
 - [pip 依赖解析](https://pip.pypa.io/en/stable/topics/dependency-resolution/)：回溯、`ResolutionImpossible`、约束与放宽版本的建议。
 - [pip check](https://pip.pypa.io/en/stable/cli/pip_check/)：已安装依赖的一致性检查。
 - [uv 锁定环境](https://docs.astral.sh/uv/pip/compile/)与[构建失败](https://docs.astral.sh/uv/reference/troubleshooting/build-failures/)：只解析预演、构建工具链与约束。
+- [uv 工具](https://docs.astral.sh/uv/guides/tools/)与[与 pip 的差异](https://docs.astral.sh/uv/pip/compatibility/)：`uv tool install` 的隔离环境、默认虚拟环境、不读 pip 配置与索引策略。
+- [conda 包管理](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-pkgs.html)与[conda-pypi](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/install-packages-from-pypi.html)：conda 优先、pip 作为补充，以及纯 Python wheel 的合并解析。
 - [PEP 668](https://peps.python.org/pep-0668/)：外部管理环境与虚拟环境优先。

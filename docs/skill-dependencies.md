@@ -148,6 +148,10 @@ python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
 
 效率上先跑前面的检查，只补缺失或版本不符的项，已 `OK` 的不重装；安装前做一次解析预演（`pip install --dry-run --report ...` 或 `uv pip compile`），每次只改一个变量；只有缓存损坏、哈希异常等证据才全量重装。
 
+Python 的默认路径：项目已有声明就沿用（`requirements.txt` → pip、`uv.lock` → uv、`environment.yml`/`conda-meta` → conda）；没有声明时新建隔离环境：临时 CLI 优先 `uv tool`/pipx（已装时），否则 venv+pip；项目用 venv+pip 或 uv。不往系统 Python 装，也不为提速擅自迁移工具链。
+
+需要换工具链、动系统 Python、冲突无解要降级或换替代包、安装新的全局工具或大下载时，先说明选项与取舍并由用户决定；建 venv、dry-run、加约束、官方源回退一次这类低风险动作可直接做。
+
 安装影响与替代：
 
 - 这些命令会联网下载并写入用户或系统目录，可能修改 PATH；Python/Node 安装包通常几十 MB，浏览器更大。先说明再执行，不静默安装。

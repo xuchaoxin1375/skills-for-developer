@@ -50,7 +50,7 @@ description: >
 | 代理登记缺失或失效、需要发现候选 | [代理登记](references/proxy-registry.md)；已有脚本 `scripts/probe_local_proxies.py`，参数查其帮助，不另写扫描器 |
 | 需要核验文件加速候选 | `scripts/check_github_mirrors.py` 的帮助；镜像首页可用不代表目标资源可用 |
 | 安装 Python／Node.js／conda 依赖 | [依赖下载](references/dependency-downloads.md)，区分索引、包文件与额外下载 |
-| 依赖安装报错、版本冲突、无匹配 wheel、PEP 668 或反复超时 | [依赖安装失败分诊](references/dependency-install-recovery.md)，先分段再决定换源、改约束或重装 |
+| 依赖安装报错、版本冲突、无匹配 wheel、PEP 668 或反复超时 | [依赖安装失败分诊](references/dependency-install-recovery.md)，先分段再决定换源、改约束、换工具链或重装 |
 | 安装或下载浏览器制品 | [浏览器安装](references/browser-installation.md)，先复用本机环境，不自动安装 |
 | 只需网页提取、搜索调度或全面资源盘点 | 分别按 [htmlmini](../htmlmini/SKILL.md)、[agentic-web-search](../agentic-web-search/SKILL.md)、[resource-inventory](../resource-inventory/SKILL.md)，不因引用重启完整网络流程 |
 
