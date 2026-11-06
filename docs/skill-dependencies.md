@@ -140,13 +140,13 @@ python3 -X utf8 scripts/check-skill-deps.py     # Linux / macOS
 | 现象 | 判断 | 下一步 |
 |---|---|---|
 | `ResolutionImpossible` / `conflicting dependencies` | 依赖图冲突，不是镜像故障 | 在干净 venv 复现；放宽顶层 pin 或加 constraints 后重新解析；不用 `--no-deps` 绕过 |
-| `No matching distribution` / `Could not find a version` | 当前版本、Python 或平台没有可用分发 | 查 `Requires-Python` 与兼容 wheel；换解释器或换有 wheel 的版本，不用 `--ignore-requires-python` |
+| `No matching distribution` / `Could not find a version` | 当前索引、版本、Python 或平台没有可用分发 | 先确认是索引缺版本还是平台不匹配；索引缺版本回退官方源一次，平台不匹配则换解释器或换有 wheel 的版本；不用 `--ignore-requires-python` |
 | `externally-managed-environment` | 系统 Python 受 PEP 668 保护 | 新建 venv；命令行工具用 `uv tool install` 或 pipx；不默认 `--break-system-packages` |
 | `Failed building wheel` / 缺编译器或头文件 | 构建失败 | 先用 `--only-binary=:all:` 判断有没有 wheel；必须构建时补工具链，不关闭 TLS |
 | timeout / connection reset / 5xx / 很慢 | 下载阶段 | 按 network-access 选路；同路线有限重试，镜像回退官方源一次；不清空缓存或整轮重装 |
 | `pip check` 破损 / 导入失败 | 安装后环境 | 用目标解释器核对版本并重装目标包；不把退出码 0 当成功 |
 
-效率上先跑前面的检查，只补 `MISSING` 或版本不符的项，已 `OK` 的不重装；安装前做一次解析预演（`pip install --dry-run --report ...` 或 `uv pip compile`），每次只改一个变量；只有缓存损坏、哈希异常等证据才全量重装。
+效率上先跑前面的检查，只补缺失或版本不符的项，已 `OK` 的不重装；安装前做一次解析预演（`pip install --dry-run --report ...` 或 `uv pip compile`），每次只改一个变量；只有缓存损坏、哈希异常等证据才全量重装。
 
 安装影响与替代：
 
