@@ -96,6 +96,8 @@ rust/cargo、go 等通用运行时只在 `resource-inventory` 的运行时报里
 | `standard`（默认） | `minimal` + pnpm、mmdc（全局）、PowerShell 7（仅 Windows）、Playwright（推荐项） | 日常使用；mmdc 直接可用，减少回退判断 |
 | `full` | `standard` + uv、jq、Scrapling（推荐项） | 想一次装齐常用全局 CLI 与抓取能力 |
 
+套餐只覆盖依赖层：`full` 是“完整全局”依赖档，不等于完整部署。[部署清单](../README.md)还包括 skill 链接安装、全局 AGENTS.md 合并与两级校验；只跑 `--profile full` 不会安装或链接 skill。用户只说“完整部署”时，先确认是“依赖装到 full”还是“按部署清单全流程”。检查命令本身只报告状态与安装命令，不执行安装。
+
 ```bash
 python -X utf8 scripts/check-skill-deps.py --profile standard
 python -X utf8 scripts/check-skill-deps.py --profile full --json

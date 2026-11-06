@@ -134,12 +134,12 @@
         "name": "pnpm"
       },
       "install": {
-        "windows": "corepack enable; corepack prepare pnpm@latest --activate",
-        "linux": "corepack enable && corepack prepare pnpm@latest --activate",
-        "macos": "corepack enable && corepack prepare pnpm@latest --activate"
+        "windows": "npm i -g pnpm",
+        "linux": "npm i -g pnpm",
+        "macos": "npm i -g pnpm"
       },
-      "impact": "通过 Node Corepack 写入 shim；不改全局包目录，Windows 下可能需要管理员。",
-      "alternative": "项目内可用 corepack pnpm install；全局工具请用 npm i -g。"
+      "impact": "写入 npm 全局目录并可能修改 PATH；Node.js 25 起不再分发 Corepack，不能再用 corepack enable。",
+      "alternative": "Node.js 24 及更早可在项目内用 corepack pnpm install；Node.js 25+ 用 npm i -g pnpm，或按 nodejs-runtime-setup 选择独立安装方式。"
     },
     "mmdc": {
       "label": "@mermaid-js/mermaid-cli（mmdc）",
