@@ -43,7 +43,7 @@ description: >
 - **推荐：资源清理**。临时文件、临时目录、锁文件在正常与异常退出时均被清理（Shell 用 `trap`，Python/Node 用 `try/finally`）。
 - **推荐：配置外置**。路径、URL、端口等环境相关值使用变量、环境变量或配置文件，默认值为常量声明。
 - **推荐：版本控制**。脚本纳入 Git；含 `.sh`/`.bash` 的仓库在 `.gitattributes` 中声明 `*.sh text eol=lf`、`*.bash text eol=lf`，防止 Windows CRLF 导致 `\r: command not found`；`.bat`/`.cmd` 声明 `eol=crlf`。大多数文本文件两种行尾都能运行，优先用仓库级 `* text=auto eol=lf` 统一，只有 Shell、Makefile 等严格类型按运行要求固定；不要逐个文件强制或批量改写行尾。
-- **推荐：行尾检查脚本化**。对严格类型可用 `git ls-files --eol` 抽查，确认属性与工作区实际行尾；需要归一化索引时用 `git add --renormalize .`，先确认范围并与业务改动分开审阅。`core.safecrlf=false` 只静音，不代替规则修正。
+- **推荐：行尾检查脚本化**。对严格类型可用 `git ls-files --eol` 抽查，确认属性与工作区实际行尾；只读检查脚本只覆盖这些类型，不扫描全仓，避免把普通文本也纳入强制。需要归一化索引时用 `git add --renormalize .`，先确认范围并与业务改动分开审阅。`core.safecrlf=false` 只静音，不代替规则修正。
 
 ## 覆盖写入与写入前检查
 
