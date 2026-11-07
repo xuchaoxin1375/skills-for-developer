@@ -278,3 +278,10 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 同一前缀两轮结果不同，印证超时只能记不可判定；脚本据此把超时与内容特征不符分开报告。
 - `ghfast.top` 两轮全超时，本次判为不可用，但不足以断言长期失效。
 - 未验证：完整大文件下载、并发与限流、跨日波动、其他网络环境。
+
+## 2026-11-08 GitHub raw 超时后改用 jsDelivr
+
+执行环境：国内 Windows，OpenCode `webfetch`（工具自带的代理/直连配置，未显式指定路线）。同一目标 `https://raw.githubusercontent.com/sigoden/argc/main/src/shell.rs` 两次传输失败（默认期限与 60 秒各一次，未取得正文），改用 `https://cdn.jsdelivr.net/gh/sigoden/argc@main/src/shell.rs` 一次取得完整正文；同轮 `api.github.com` REST 请求正常。
+
+- 本次属原样重发同一 URL 的反例；raw 失败后应直接换适用路线，不重复同一路线。
+- 未记录 HTTP 状态、耗时与字节数，未确认实际出口；jsDelivr 只证明该公开仓库文件在当次可取，不外推到 Release、archive 或私有仓库。
