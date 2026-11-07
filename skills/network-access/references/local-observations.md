@@ -283,5 +283,5 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 执行环境：国内 Windows，OpenCode `webfetch`（工具自带的代理/直连配置，未显式指定路线）。同一目标 `https://raw.githubusercontent.com/sigoden/argc/main/src/shell.rs` 两次传输失败（默认期限与 60 秒各一次，未取得正文），改用 `https://cdn.jsdelivr.net/gh/sigoden/argc@main/src/shell.rs` 一次取得完整正文；同轮 `api.github.com` REST 请求正常。
 
-- 本次属原样重发同一 URL 的反例；raw 失败后应直接换适用路线，不重复同一路线。
+- 本次属两个反例：先直连而非先走已核验加速，以及 raw 超时后原样重发同一 URL；按现行选路应第一步走加速，3 秒无首响即改路。
 - 未记录 HTTP 状态、耗时与字节数，未确认实际出口；jsDelivr 只证明该公开仓库文件在当次可取，不外推到 Release、archive 或私有仓库。

@@ -146,7 +146,7 @@ def classify(kind, result):
     sample = result.pop("sample", b"")
     if not result.get("ok"):
         if result.get("timeout"):
-            return False, "超时（不可判定，可放宽 --timeout 复测）"
+            return False, "超时（不可判定，换其他候选或路线）"
         return False, result.get("error", "失败")
     if result["bytes"] == 0:
         return False, "空响应"
@@ -181,7 +181,7 @@ def check_git(prefix, timeout):
             env=env,
         )
     except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "git 超时（不可判定，可放宽 --timeout 复测）", "timeout": True}
+        return {"ok": False, "error": "git 超时（不可判定，换其他候选或路线）", "timeout": True}
     except OSError as exc:
         return {"ok": False, "error": f"git 启动失败：{exc}"}
     elapsed = round(time.monotonic() - start, 2)
