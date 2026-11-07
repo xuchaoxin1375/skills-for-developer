@@ -110,7 +110,7 @@ GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-rema
 
 用法：按服务规则把完整原链接放在前缀之后，例如 `https://gh-proxy.com/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`。这是 GitHub 资源加速，不是通用文档代理；Release、archive、raw、网页和 git 传输各自核验，不能从一种推断另一种可用。
 
-jsDelivr 的 `gh` 路径（`https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>`）也能直接取仓库内单文件，不经过前缀加速。它只覆盖仓库文件，不支持 Release 资产、archive 和私有仓库；分支引用可能命中 CDN 缓存，需要与仓库当前内容一致时改用提交 SHA。raw 原站超时或前缀加速不适用时，可把该路径作为 raw 的候选路线，按目标文件核验状态码与内容，不因 CDN 首页可用就推断任意文件可取。
+jsDelivr 的 `gh` 路径（`https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>`）可缓存并直出仓库内单文件，但它不是前缀加速，也不保证绕过 raw：未命中缓存时可能 301 到 `raw.githubusercontent.com`（实测同一仓库有的文件 200、有的 301 到 raw）。它只覆盖仓库文件，不支持 Release 资产、archive 和私有仓库；分支引用可能命中 CDN 缓存，需要与仓库当前内容一致时改用提交 SHA。把它当作 raw 的候选路线，取回后检查最终 URL 与状态；301 到 raw 不算加速成功，不因 CDN 首页可用就推断任意文件可取。
 
 **发现与核验**
 
