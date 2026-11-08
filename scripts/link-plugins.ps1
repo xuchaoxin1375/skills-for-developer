@@ -38,10 +38,14 @@ param(
   [string]$RepoRoot = '',
   [string[]]$Include,
   [switch]$Unlink,
-  [switch]$VerifyOnly
+  [switch]$VerifyOnly,
+  [switch]$Quiet
 )
 
 $ErrorActionPreference = 'Stop'
+
+# -Quiet 只隐藏逐项成功/进度行，警告、失败和最终汇总照常输出。
+function Write-Step([string]$Message) { if (-not $Quiet) { Write-Host $Message } }
 
 # 默认 UTF-8：5.1 控制台默认 GBK，直接输出中文会被采集侧按 UTF-8 解错。
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -136,7 +140,7 @@ function Show-ForeignPluginEntries {
   $known = @($plugins | ForEach-Object { $_.Name })
   foreach ($entry in @(Get-ChildItem -LiteralPath $targetDir -Force -ErrorAction SilentlyContinue)) {
     if ($known -contains $entry.Name) { continue }
-    Write-Host "  [$($entry.Name)] 非本仓库管理, 保留不动"
+    Write-Step "  [$($entry.Name)] 非本仓库管理, 保留不动"
   }
 }
 
@@ -166,14 +170,14 @@ function Test-PluginRuntime {
 
 $failures = 0
 
-Write-Host "== $targetDir =="
+Write-Step "== $targetDir =="
 if (-not (Test-Path $targetDir -PathType Container)) {
   if ($VerifyOnly) {
     Write-Warning "  缺失目录 (VerifyOnly, 不创建): $targetDir"
     $failures++
   } elseif ($PSCmdlet.ShouldProcess($targetDir, '创建 opencode plugins 目录')) {
     New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
-    Write-Host '  创建目录'
+    Write-Step '  创建目录'
   }
 }
 
@@ -185,17 +189,17 @@ foreach ($plugin in $plugins) {
   if ($Unlink) {
     $cur = Get-LinkTarget $link
     if ($null -eq $cur) {
-      Write-Host "$label 无链接, 跳过"
+      Write-Step "$label 无链接, 跳过"
       continue
     }
     if ($cur -contains $dest -or $cur -eq $dest) {
       if ($VerifyOnly) {
-        Write-Host "$label 将被移除 (VerifyOnly)"
+        Write-Step "$label 将被移除 (VerifyOnly)"
         continue
       }
       if ($PSCmdlet.ShouldProcess($link, "移除 Junction -> $dest")) {
         Remove-Item -LiteralPath $link -Force
-        Write-Host "$label 已移除"
+        Write-Step "$label 已移除"
       }
     } else {
       Write-Warning "$label 是指向别处的链接 ($cur), 不动"
@@ -211,14 +215,14 @@ foreach ($plugin in $plugins) {
     }
     if ($PSCmdlet.ShouldProcess($link, "创建 Junction -> $dest")) {
       New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-      Write-Host "$label 已创建 -> $dest"
+      Write-Step "$label 已创建 -> $dest"
     }
     continue
   }
 
   $cur = Get-LinkTarget $link
   if ($null -ne $cur -and ($cur -eq $dest -or $cur -contains $dest)) {
-    Write-Host "$label OK"
+    Write-Step "$label OK"
     if (-not (Test-Path (Join-Path $link 'package.json') -PathType Leaf)) {
       Write-Warning "$label 链接存在但 package.json 不可读"
       $failures++
@@ -235,7 +239,7 @@ foreach ($plugin in $plugins) {
     if ($PSCmdlet.ShouldProcess($link, "纠正链接 $cur -> $dest")) {
       Remove-Item -LiteralPath $link -Force
       New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-      Write-Host "$label 已纠正 -> $dest"
+      Write-Step "$label 已纠正 -> $dest"
     }
     continue
   }
@@ -253,7 +257,7 @@ foreach ($plugin in $plugins) {
     if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
     Move-Item -LiteralPath $link -Destination $backup -Force
     New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-    Write-Host "$label 实体已备份到 $backup, 链接已创建"
+    Write-Step "$label 实体已备份到 $backup, 链接已创建"
   }
 }
 

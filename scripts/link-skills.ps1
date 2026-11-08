@@ -82,6 +82,7 @@ param(
   [switch]$Unlink,
   [switch]$VerifyOnly,
   [switch]$Plan,
+  [switch]$Quiet,
   [switch]$ApplyRecommendedCli,
   [switch]$SkipRecommendedCli,
   [switch]$ApplyRecommendedSkills,
@@ -92,6 +93,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# -Quiet 只隐藏逐项成功/进度行，警告、失败和最终汇总照常输出。
+function Write-Step([string]$Message) { if (-not $Quiet) { Write-Host $Message } }
+
+function Test-FileEqual([string]$Left, [string]$Right) {
+  # 不用 Get-FileHash: 部分 5.1 环境的 PSModulePath 被其他版本污染, 自动加载会失败
+  $a = [System.IO.File]::ReadAllBytes($Left)
+  $b = [System.IO.File]::ReadAllBytes($Right)
+  if ($a.Length -ne $b.Length) { return $false }
+  for ($i = 0; $i -lt $a.Length; $i++) { if ($a[$i] -ne $b[$i]) { return $false } }
+  return $true
+}
 
 # -File 调用时逗号分隔值会作为单个字符串传入；统一拆成名字数组。
 if ($Include) {
@@ -194,7 +207,7 @@ function Remove-StaleRepoLinks([string]$TargetDir) {
     }
     if ($PSCmdlet.ShouldProcess($entry.FullName, '清理悬空链接')) {
       Remove-Item -LiteralPath $entry.FullName -Force
-      Write-Host "  [$($entry.Name)] 悬空链接已清理 (目标不存在)"
+      Write-Step "  [$($entry.Name)] 悬空链接已清理 (目标不存在)"
     }
   }
 }
@@ -204,7 +217,7 @@ $failures = 0
 # -Plan 只预览，不创建目录、不改链接。
 if (-not $Plan) {
 foreach ($targetDir in $targets) {
-  Write-Host "== $targetDir =="
+  Write-Step "== $targetDir =="
   if (-not (Test-Path $targetDir -PathType Container)) {
     if ($VerifyOnly) {
       Write-Warning "  缺失目录 (VerifyOnly, 不创建): $targetDir"
@@ -213,7 +226,7 @@ foreach ($targetDir in $targets) {
     }
     if ($PSCmdlet.ShouldProcess($targetDir, '创建 harness skills 目录')) {
       New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
-      Write-Host '  创建目录'
+      Write-Step '  创建目录'
     }
   }
 
@@ -225,18 +238,18 @@ foreach ($targetDir in $targets) {
     if ($Unlink) {
       $cur = Get-LinkTarget $link
       if ($null -eq $cur) {
-        Write-Host "$label 无链接, 跳过"
+        Write-Step "$label 无链接, 跳过"
         continue
       }
       # 只有指向本仓库的才删, 防止误删用户手工链到别处的内容
       if ($cur -contains $dest -or $cur -eq $dest) {
         if ($VerifyOnly) {
-          Write-Host "$label 将被移除 (VerifyOnly)"
+          Write-Step "$label 将被移除 (VerifyOnly)"
           continue
         }
         if ($PSCmdlet.ShouldProcess($link, "移除 Junction -> $dest")) {
           Remove-Item -LiteralPath $link -Force
-          Write-Host "$label 已移除"
+          Write-Step "$label 已移除"
         }
       } else {
         Write-Warning "$label 是指向别处的链接 ($cur), 不动"
@@ -252,14 +265,14 @@ foreach ($targetDir in $targets) {
       }
       if ($PSCmdlet.ShouldProcess($link, "创建 Junction -> $dest")) {
         New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-        Write-Host "$label 已创建 -> $dest"
+        Write-Step "$label 已创建 -> $dest"
       }
       continue
     }
 
     $cur = Get-LinkTarget $link
     if ($null -ne $cur -and ($cur -eq $dest -or $cur -contains $dest)) {
-      Write-Host "$label OK"
+      Write-Step "$label OK"
       # 顺手验证 SKILL.md 可读
       if (-not (Test-Path (Join-Path $link 'SKILL.md') -PathType Leaf)) {
         Write-Warning "$label 链接存在但 SKILL.md 不可读"
@@ -278,7 +291,7 @@ foreach ($targetDir in $targets) {
       if ($PSCmdlet.ShouldProcess($link, "纠正链接 $cur -> $dest")) {
         Remove-Item -LiteralPath $link -Force
         New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-        Write-Host "$label 已纠正 -> $dest"
+        Write-Step "$label 已纠正 -> $dest"
       }
       continue
     }
@@ -303,7 +316,7 @@ foreach ($targetDir in $targets) {
       if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
       Move-Item -LiteralPath $link -Destination $backup -Force
       New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-      Write-Host "$label 实体已备份到 $backup, 链接已创建"
+      Write-Step "$label 实体已备份到 $backup, 链接已创建"
     }
   }
 
@@ -494,7 +507,7 @@ function Get-PlanCliState {
   if (-not (Test-Path -LiteralPath $repoCli -PathType Leaf)) { return 'absent' }
   $dstCli = Join-Path (Join-Path $env:USERPROFILE '.config\opencode') 'cli.json'
   if (-not (Test-Path -LiteralPath $dstCli -PathType Leaf)) { return 'missing' }
-  if ((Get-FileHash -LiteralPath $repoCli).Hash -eq (Get-FileHash -LiteralPath $dstCli).Hash) { return 'same' }
+  if (Test-FileEqual $repoCli $dstCli) { return 'same' }
   return 'different'
 }
 
@@ -569,7 +582,7 @@ function Show-DeployPlan {
   if (Test-Path (Join-Path $RepoRoot 'config\upstream-skills.json') -PathType Leaf) {
     Write-Host '  上游 clone 链接: 由 link-upstream-skills.py 检查/修正'
   }
-  Write-Host '  未自动处理: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查'
+  Write-Host '  本脚本未自动处理（scripts/deploy.ps1 会串起来）: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查'
 }
 
 function Show-DeploySummary {
@@ -603,7 +616,7 @@ function Show-DeploySummary {
       Write-Host "- 第三方 [$n]: $(Get-PlanTpState $n)"
     }
   }
-  Write-Host '- 未处理: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查'
+  Write-Host '- 本脚本未处理（scripts/deploy.ps1 会串起来）: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查'
   Write-Host '  依赖检查: python -X utf8 scripts/check-skill-deps.py --profile standard'
 }
 
@@ -619,8 +632,7 @@ if (-not $Unlink -and -not $VerifyOnly) {
   if (Test-Path -LiteralPath $repoCli -PathType Leaf) {
     $dstDir = Join-Path $env:USERPROFILE '.config\opencode'
     $dstCli = Join-Path $dstDir 'cli.json'
-    $inSync = (Test-Path -LiteralPath $dstCli -PathType Leaf) -and `
-      ((Get-FileHash -LiteralPath $repoCli).Hash -eq (Get-FileHash -LiteralPath $dstCli).Hash)
+    $inSync = (Test-Path -LiteralPath $dstCli -PathType Leaf) -and (Test-FileEqual $repoCli $dstCli)
     if ($inSync) {
       Write-Host '推荐 cli.json 已是最新。'
     } elseif ($SkipRecommendedCli) {
@@ -773,7 +785,6 @@ if ($Unlink) {
 if ($VerifyOnly) {
   $repoAgents = Join-Path (Join-Path $RepoRoot 'config') 'global-AGENTS.md'
   if (Test-Path -LiteralPath $repoAgents -PathType Leaf) {
-    $repoHash = (Get-FileHash -LiteralPath $repoAgents).Hash
     # 每个消费全局 AGENTS.md 的 harness 一个目标路径, 与 README「全局 AGENTS.md 同步与合并」保持一致
     $agentsTargets = @(
       @{ Name = 'OpenCode'; Path = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md' }
@@ -783,7 +794,7 @@ if ($VerifyOnly) {
       if (-not (Test-Path -LiteralPath $t.Path -PathType Leaf)) {
         Write-Warning "全局 AGENTS.md($($t.Name)) 缺失 (期望按 README 从 config/global-AGENTS.md 恢复)"
         $failures++
-      } elseif ((Get-FileHash -LiteralPath $t.Path).Hash -ne $repoHash) {
+      } elseif (-not (Test-FileEqual $repoAgents $t.Path)) {
         Write-Warning "全局 AGENTS.md($($t.Name)) 与真源不一致, 按 README 手工合并 (不自动覆盖)"
       } else {
         Write-Host "全局 AGENTS.md($($t.Name)) 与真源一致。"
@@ -806,7 +817,7 @@ if ($VerifyOnly) {
           ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
         $onPath = Test-CommandReady $cmd
         if ($isOurs -and $onPath) {
-          Write-Host "推荐 skill [$s] 命令 OK：$cmd"
+          Write-Step "推荐 skill [$s] 命令 OK：$cmd"
         } else {
           Write-Warning "推荐 skill [$s] 命令缺失（期望 $shim 可用，重跑链接脚本安装）"
           $failures++
@@ -883,9 +894,9 @@ if (-not $VerifyOnly -and -not $Unlink) {
       }
     }
     if ($located) {
-      Write-Host "推荐工具 $($tool.Label) 可用：$($located.Source)"
+      Write-Step "推荐工具 $($tool.Label) 可用：$($located.Source)"
     } else {
-      Write-Host "建议安装 $($tool.Label)（推荐，缺失不阻断）：$($tool.Install)"
+      Write-Step "建议安装 $($tool.Label)（推荐，缺失不阻断）：$($tool.Install)"
     }
   }
   Show-DeploySummary

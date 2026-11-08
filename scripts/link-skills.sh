@@ -41,6 +41,7 @@ set -euo pipefail
 # 让本次校验能看到脚本安装到 ~/.local/bin 的命令（当前进程未必继承更新后的 PATH）
 export PATH="$HOME/.local/bin:$PATH"
 
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SKILLS_DIR="$REPO_ROOT/skills"
 BACKUP_ROOT="$HOME/.skills-migration-backup"
@@ -63,11 +64,16 @@ SKIP_REC_SKILLS=0
 APPLY_TP=0
 SKIP_TP=0
 SYNC_TP=0
+QUIET=0
+
+# -Quiet 只隐藏逐项成功/进度行，警告、失败和最终汇总照常输出。
+say() { [[ $QUIET -eq 1 ]] || echo "$@"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --verify-only) VERIFY_ONLY=1; shift ;;
     --plan) PLAN=1; shift ;;
+    --quiet) QUIET=1; shift ;;
     --unlink) UNLINK=1; shift ;;
     --apply-recommended-cli) APPLY_RECOMMENDED=1; shift ;;
     --skip-recommended-cli) SKIP_RECOMMENDED=1; shift ;;
@@ -178,7 +184,7 @@ clean_stale_links() {
       failures=$((failures + 1))
     else
       rm "$p"
-      echo "  [$name] 悬空链接已清理（目标不存在）: $cur"
+      say "  [$name] 悬空链接已清理（目标不存在）: $cur"
     fi
   done
 }
@@ -188,7 +194,7 @@ failures=0
 # --plan 只预览，不创建目录、不改链接。
 if [[ $PLAN -eq 0 ]]; then
 for target in "${TARGETS[@]}"; do
-  echo "== $target =="
+  say "== $target =="
   if [[ ! -d "$target" ]]; then
     if [[ $VERIFY_ONLY -eq 1 ]]; then
       echo "  缺失目录（VerifyOnly，不创建）: $target" >&2
@@ -196,7 +202,7 @@ for target in "${TARGETS[@]}"; do
       continue
     fi
     mkdir -p "$target"
-    echo "  创建目录"
+    say "  创建目录"
   fi
 
   tag="$(harness_tag "$target")"
@@ -210,16 +216,16 @@ for target in "${TARGETS[@]}"; do
         cur="$(readlink "$link")"
         if [[ "$cur" == "$dest" ]]; then
           if [[ $VERIFY_ONLY -eq 1 ]]; then
-            echo "$label 将被移除（VerifyOnly）"
+            say "$label 将被移除（VerifyOnly）"
           else
             rm "$link"
-            echo "$label 已移除"
+            say "$label 已移除"
           fi
         else
           echo "$label 是指向别处的链接（${cur}），不动" >&2
         fi
       else
-        echo "$label 无链接，跳过"
+        say "$label 无链接，跳过"
       fi
       continue
     fi
@@ -227,7 +233,7 @@ for target in "${TARGETS[@]}"; do
     if [[ -L "$link" ]]; then
       cur="$(readlink "$link")"
       if [[ "$cur" == "$dest" ]]; then
-        echo "$label OK"
+        say "$label OK"
         [[ -f "$link/SKILL.md" ]] || { echo "$label 链接存在但 SKILL.md 不可读" >&2; failures=$((failures + 1)); }
       else
         if [[ $VERIFY_ONLY -eq 1 ]]; then
@@ -236,7 +242,7 @@ for target in "${TARGETS[@]}"; do
         else
           rm "$link"
           ln -s "$dest" "$link"
-          echo "$label 已纠正 -> $dest"
+          say "$label 已纠正 -> $dest"
         fi
       fi
     elif [[ -e "$link" ]]; then
@@ -251,7 +257,7 @@ for target in "${TARGETS[@]}"; do
         [[ -e "$backup" ]] && rm -rf "$backup"
         mv "$link" "$backup"
         ln -s "$dest" "$link"
-        echo "$label 实体已备份到 ${backup}，链接已创建"
+        say "$label 实体已备份到 ${backup}，链接已创建"
       fi
     else
       if [[ $VERIFY_ONLY -eq 1 ]]; then
@@ -259,7 +265,7 @@ for target in "${TARGETS[@]}"; do
         failures=$((failures + 1))
       else
         ln -s "$dest" "$link"
-        echo "$label 已创建 -> $dest"
+        say "$label 已创建 -> $dest"
       fi
     fi
   done
@@ -335,7 +341,7 @@ install_skill_command() {
   mkdir -p "$bindir"
   link="$bindir/$cmd"
   if [[ -f "$link" ]] && grep -qF "$entry" "$link" 2>/dev/null; then
-    echo "  [$skill] 命令已就绪: $link"
+    say "  [$skill] 命令已就绪: $link"
     return 0
   fi
   printf '#!/bin/sh\nexec node "%s" "$@"\n' "$entry" > "$link"
@@ -553,7 +559,7 @@ verify_recommended_skills() {
       link="$HOME/.local/bin/$cmd"
       if [[ -f "$link" ]] && grep -qF "$entry" "$link" 2>/dev/null \
         && command -v "$cmd" >/dev/null 2>&1; then
-        echo "推荐 skill [$s] 命令 OK：$cmd"
+        say "推荐 skill [$s] 命令 OK：$cmd"
       else
         echo "推荐 skill [$s] 命令缺失（期望 $link 可用，重跑链接脚本安装）" >&2
         failures=$((failures + 1))
@@ -708,7 +714,7 @@ print_deploy_plan() {
   if [[ -f "$REPO_ROOT/config/upstream-skills.json" ]]; then
     echo "  上游 clone 链接: 由 link-upstream-skills.py 检查/修正"
   fi
-  echo "  未自动处理: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查"
+  echo "  本脚本未自动处理（scripts/deploy.sh 会串起来）: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查"
 }
 
 print_deploy_summary() {
@@ -747,7 +753,7 @@ print_deploy_summary() {
       echo "- 第三方 [$name]: $(plan_tp_state "$name")"
     done < <(third_party_names)
   fi
-  echo "- 未处理: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查"
+  echo "- 本脚本未处理（scripts/deploy.sh 会串起来）: 全局 AGENTS.md 合并、OpenCode 插件链接、依赖套餐检查"
   echo "  依赖检查: python -X utf8 scripts/check-skill-deps.py --profile standard"
 }
 

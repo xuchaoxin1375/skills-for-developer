@@ -25,9 +25,14 @@ PLUGINS_DIR="$REPO_ROOT/plugins"
 BACKUP_ROOT="$HOME/.skills-migration-backup"
 TARGET_DIR="$HOME/.config/opencode/plugins"
 
+
 VERIFY_ONLY=0
 UNLINK=0
 INCLUDE=""
+QUIET=0
+
+# -Quiet 只隐藏逐项成功/进度行，警告、失败和最终汇总照常输出。
+say() { [[ $QUIET -eq 1 ]] || echo "$@"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --unlink) UNLINK=1; shift ;;
     --include) INCLUDE="${2:-}"; shift 2 ;;
     --include=*) INCLUDE="${1#--include=}"; shift ;;
+    --quiet) QUIET=1; shift ;;
     -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
@@ -108,21 +114,21 @@ clean_stale_links() {
       failures=$((failures + 1))
     else
       rm "$p"
-      echo "  [$name] 悬空链接已清理（目标不存在）: $cur"
+      say "  [$name] 悬空链接已清理（目标不存在）: $cur"
     fi
   done
 }
 
 failures=0
 
-echo "== $TARGET_DIR =="
+say "== $TARGET_DIR =="
 if [[ ! -d "$TARGET_DIR" ]]; then
   if [[ $VERIFY_ONLY -eq 1 ]]; then
     echo "  缺失目录（VerifyOnly，不创建）: $TARGET_DIR" >&2
     failures=$((failures + 1))
   else
     mkdir -p "$TARGET_DIR"
-    echo "  创建目录"
+    say "  创建目录"
   fi
 fi
 
@@ -133,17 +139,17 @@ for plugin in "${PLUGINS[@]}"; do
 
   if [[ $UNLINK -eq 1 ]]; then
     if [[ ! -L "$link" ]]; then
-      echo "$label 无链接，跳过"
+      say "$label 无链接，跳过"
       continue
     fi
     cur="$(readlink -f "$link")"
     if [[ "$cur" == "$(readlink -f "$dest")" ]]; then
       if [[ $VERIFY_ONLY -eq 1 ]]; then
-        echo "$label 将被移除（VerifyOnly）"
+        say "$label 将被移除（VerifyOnly）"
         continue
       fi
       rm "$link"
-      echo "$label 已移除"
+      say "$label 已移除"
     else
       echo "$label 是指向别处的链接（${cur}），不动" >&2
     fi
@@ -157,12 +163,12 @@ for plugin in "${PLUGINS[@]}"; do
       continue
     fi
     ln -s "$dest" "$link"
-    echo "$label 已创建 -> $dest"
+    say "$label 已创建 -> $dest"
     continue
   fi
 
   if [[ -L "$link" && "$(readlink -f "$link")" == "$(readlink -f "$dest")" ]]; then
-    echo "$label OK"
+    say "$label OK"
     [[ -f "$link/package.json" ]] || { echo "$label 链接存在但 package.json 不可读" >&2; failures=$((failures + 1)); }
     continue
   fi
@@ -176,7 +182,7 @@ for plugin in "${PLUGINS[@]}"; do
     fi
     rm "$link"
     ln -s "$dest" "$link"
-    echo "$label 已纠正 -> $dest"
+    say "$label 已纠正 -> $dest"
     continue
   fi
 
@@ -192,7 +198,7 @@ for plugin in "${PLUGINS[@]}"; do
   [[ -e "$backup" ]] && rm -rf "$backup"
   mv "$link" "$backup"
   ln -s "$dest" "$link"
-  echo "$label 实体已备份到 ${backup}，链接已创建"
+  say "$label 实体已备份到 ${backup}，链接已创建"
 done
 
 clean_stale_links

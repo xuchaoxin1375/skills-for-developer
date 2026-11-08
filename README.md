@@ -136,6 +136,11 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 Windows（PowerShell）：
 
 ```powershell
+# 一键部署（skill + 插件 + 全局 AGENTS.md + 依赖检查, 末尾打印效率复盘）
+powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1
+powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Plan
+powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -VerifyOnly
+
 # 全量链接 (首次迁移 / 新增 skill / 换机器后恢复, 幂等)
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1
 
@@ -169,6 +174,11 @@ powershell -ExecutionPolicy Bypass -File scripts/link-plugins.ps1 -Unlink
 Linux：
 
 ```bash
+# 一键部署（skill + 插件 + 全局 AGENTS.md + 依赖检查）
+./scripts/deploy.sh
+./scripts/deploy.sh --plan
+./scripts/deploy.sh --verify-only
+
 # 先把仓库同步过去（以 remote 为准，两边推拉即可；路径不必与 Windows 一致）
 git clone <remote-url> ~/repos/skills-for-developer
 cd ~/repos/skills-for-developer
@@ -238,6 +248,8 @@ cd ~/repos/skills-for-developer
 
 先跑 `--plan` / `-Plan` 可预览链接新建与替换数量、cli.json、推荐 skill 和第三方状态，不修改任何文件。交互模式只对未就绪项提问：cli.json 缺失默认应用、已存在差异默认保留；推荐依赖默认安装；第三方 skill 默认不装。完成后会打印已处理与未处理的摘要。
 
+优先用一键脚本 `scripts/deploy.ps1`（Windows）/ `scripts/deploy.sh`（Linux）串起下面各步（skill 链接、插件链接、全局 AGENTS.md、依赖检查），并在末尾打印各阶段耗时与效率复盘；分步命令只在排障或只做单步时使用。一键脚本同样支持 `-Plan` / `--plan`、`-VerifyOnly` / `--verify-only` 与 `-Quiet` / `--quiet`。
+
 1. **推荐基线依赖（强烈建议）**：按 `minimal` / `standard` / `full` 选套餐（默认 `standard`，含全局 mmdc；PowerShell 7 仅 Windows）；`full` 再补 uv、jq 与 Scrapling（推荐项）。它们覆盖 resource-inventory、htmlmini、mermaid-render-fix、browser-automation、network-access 等，缺了会退化到在线回退、人工路径或能力不全。基础命令行工具 git、ripgrep、fd 与 Playwright、Scrapling 为推荐项（缺失只警告），部署脚本结束时会检测并提示安装命令，不阻断部署。检查命令与安装明细见 [依赖套餐](docs/skill-dependencies.md#部署基线)。
 2. **链接安装（首跑即定 cli.json）**：命令见「常用操作」。交互终端只对未就绪项询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
    ```bash
@@ -252,11 +264,20 @@ cd ~/repos/skills-for-developer
    用 `--skip-recommended-skills` 两者都不装。
    第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
    非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本。
-   插件（`plugins/`）单独跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
+   插件（`plugins/`）由一键脚本一并处理；分步执行时跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
 3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——缺才复制；不一致只提示，由人或代理对比后合并，不直接覆盖。
 4. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径、第三方名单与各 harness 安装数全过，见「结构校验」。
 5. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」；插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`）。
 6. **服务端计数对照**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
+
+### 部署后效率复盘（可选反馈）
+
+部署完成或校验通过后，用约 1 分钟复盘本轮部署，避免流程劣化被当成正常：
+
+- **记录耗时**：`deploy.ps1` / `deploy.sh` 末尾会按阶段打印耗时；与上一轮或本机预期对比，某步明显变慢时先查网络、包管理器缓存、PATH 与磁盘，而不是重复全量重跑。
+- **记录二次补步**：是否出现"本可一次执行、却因缺开关或缺步骤又跑一遍"（cli.json、推荐依赖、AGENTS.md、插件）。出现即说明指南或脚本仍有缺口。
+- **可选反馈**：把耗时、二次补步与难读的输出反馈给仓库维护者（提 issue 或直接告知）；不反馈不影响部署，反馈用于优化本指南与脚本。
+- **改动前后对比**：调整部署脚本或指南后，先用 `-Plan` / `--plan` 与 `-VerifyOnly` / `--verify-only` 记一次基线，再改；避免把劣化当成正常。
 
 WSL（Windows 子系统）首次部署除上述步骤外，还要复用 Windows 侧的完整配置（含模型配置），见 [WSL 复用 Windows 侧 OpenCode 配置](docs/wsl-opencode-reuse.md)。
 
@@ -330,7 +351,7 @@ python3 -c "import json,sys,os;ids={s['id'] for s in json.load(open(sys.argv[1])
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
 
-真源：`config/global-AGENTS.md`（与各目标文件字节一致）。每个消费全局 `AGENTS.md` 的 harness 一个部署目标：OpenCode 落 `~/.config/opencode/AGENTS.md`，ZCode 落 `~/.zcode/AGENTS.md`（ZCode 的用户级指令文件只认该路径，不回退 `~/.agents`）。链接脚本不碰各 harness 的 `AGENTS.md`，但 `-VerifyOnly`/`--verify-only` 会一并提示漂移：目标缺失计异常，内容不一致只警告（由人或代理手工合并，不自动覆盖）。新机 clone 后跑一次下面命令；已存在且不一致时只提示，需agent对比后合并(或手工合并，不是直接覆盖)。
+真源：`config/global-AGENTS.md`（与各目标文件字节一致）。每个消费全局 `AGENTS.md` 的 harness 一个部署目标：OpenCode 落 `~/.config/opencode/AGENTS.md`，ZCode 落 `~/.zcode/AGENTS.md`（ZCode 的用户级指令文件只认该路径，不回退 `~/.agents`）。链接脚本不碰各 harness 的 `AGENTS.md`；一键部署脚本 `scripts/deploy.ps1` / `deploy.sh` 会在目标缺失时复制，内容不一致只警告（由人或代理手工合并，不自动覆盖）。分步执行时 `-VerifyOnly`/`--verify-only` 会一并提示漂移：目标缺失计异常，内容不一致只警告。新机 clone 后跑一次一键脚本即可；已存在且不一致时需 agent 对比后合并(或手工合并，不是直接覆盖)。
 
 Windows（PowerShell）：
 
@@ -344,7 +365,7 @@ $targets = @(
 $OutputEncoding = [System.Text.Encoding]::UTF8
 foreach ($dst in $targets) {
   if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null; Copy-Item -LiteralPath $src -Destination $dst; "$dst restored" }
-  elseif ((Get-FileHash -LiteralPath $src).Hash -eq (Get-FileHash -LiteralPath $dst).Hash) { "$dst already in sync" }
+  elseif ([System.Linq.Enumerable]::SequenceEqual([byte[]][System.IO.File]::ReadAllBytes($src), [byte[]][System.IO.File]::ReadAllBytes($dst))) { "$dst already in sync" }
   else { "$dst differs, merge manually (one line), will not overwrite" }
 }
 ```

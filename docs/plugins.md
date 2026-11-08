@@ -19,6 +19,7 @@ skills-for-developer/
   悬空链接（插件重命名/删除后的残留，`-VerifyOnly` 计为异常）；该目录下其他来源的插件不动；
   路径上是实体目录时先备份到 `~/.skills-migration-backup/<时间戳>/opencode-plugins/` 再替换为链接。
 - 插件只对 OpenCode 生效（其他 harness 没有插件机制），因此不分发到 skills 目录。
+- 一键部署（skill + 插件 + 全局 AGENTS.md）用 `scripts/deploy.ps1`（Windows）/ `scripts/deploy.sh`（Linux）；分步执行时单独跑链接脚本。
 - `opencode.json`（供应商与密钥）不入库，插件注册不依赖它：靠 `~/.config/opencode/plugins/`
   自动发现，因此真源里不出现机器绝对路径。
 
