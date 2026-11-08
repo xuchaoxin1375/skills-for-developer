@@ -38,6 +38,9 @@
 # 各已登记的 harness 目录都用链接指向它。
 set -euo pipefail
 
+# 让本次校验能看到脚本安装到 ~/.local/bin 的命令（当前进程未必继承更新后的 PATH）
+export PATH="$HOME/.local/bin:$PATH"
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SKILLS_DIR="$REPO_ROOT/skills"
 BACKUP_ROOT="$HOME/.skills-migration-backup"

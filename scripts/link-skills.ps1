@@ -369,6 +369,15 @@ function Get-CommandBinDir {
   return (Join-Path $env:USERPROFILE '.local\bin')
 }
 
+function Test-CommandReady([string]$Command) {
+  # 命令就绪: 当前进程能找到, 或 bin 目录已在用户 PATH (新开终端生效, 本次进程未必继承)
+  if (Get-Command $Command -ErrorAction SilentlyContinue) { return $true }
+  $binDir = (Get-CommandBinDir).TrimEnd('\')
+  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+  if ([string]::IsNullOrEmpty($userPath)) { return $false }
+  return [bool](($userPath -split ';') | Where-Object { $_ -ne '' -and $_.TrimEnd('\') -ieq $binDir })
+}
+
 function Ensure-BinInUserPath([string]$BinDir) {
   # 用户 PATH 缺该目录则追加（用户级，无需管理员；新开终端生效）
   $cur = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -500,7 +509,7 @@ function Get-PlanRecState([string]$Skill) {
     $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
     $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
       ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
-    $onPath = $null -ne (Get-Command $cmd -ErrorAction SilentlyContinue)
+    $onPath = Test-CommandReady $cmd
     if (-not ($isOurs -and $onPath)) { $needCmd = $true }
   }
   return [pscustomobject]@{ Skill = $Skill; NeedDeps = $needDeps; NeedCmd = $needCmd }
@@ -795,7 +804,7 @@ if ($VerifyOnly) {
         $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
         $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
           ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
-        $onPath = $null -ne (Get-Command $cmd -ErrorAction SilentlyContinue)
+        $onPath = Test-CommandReady $cmd
         if ($isOurs -and $onPath) {
           Write-Host "推荐 skill [$s] 命令 OK：$cmd"
         } else {

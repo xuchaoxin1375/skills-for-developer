@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   [Windows 专用] 将本仓库 plugins/ 下的每个插件包通过 Junction 链接到 OpenCode 的 plugins 目录。
@@ -121,6 +121,49 @@ function Remove-StalePluginLinks {
   }
 }
 
+function Show-LegacyPluginEntries {
+  # V1 旧目录 ~/.config/opencode/plugin (单数): V2 仍会扫描, 坏插件只写日志不报错, 因此只报告不删除
+  $legacyDir = Join-Path $env:USERPROFILE '.config\opencode\plugin'
+  if (-not (Test-Path -LiteralPath $legacyDir -PathType Container)) { return }
+  $entries = @(Get-ChildItem -LiteralPath $legacyDir -Force -ErrorAction SilentlyContinue)
+  if ($entries.Count -eq 0) { return }
+  Write-Warning "  旧插件目录有 $($entries.Count) 个条目 (V1 格式, V2 装载失败只写日志): $legacyDir"
+  foreach ($e in $entries) { Write-Warning "    - $($e.Name)" }
+}
+
+function Show-ForeignPluginEntries {
+  # 目标目录里非本仓库来源的插件不动, 只列出来, 避免误以为都已托管
+  $known = @($plugins | ForEach-Object { $_.Name })
+  foreach ($entry in @(Get-ChildItem -LiteralPath $targetDir -Force -ErrorAction SilentlyContinue)) {
+    if ($known -contains $entry.Name) { continue }
+    Write-Host "  [$($entry.Name)] 非本仓库管理, 保留不动"
+  }
+}
+
+function Test-PluginRuntime {
+  # 服务端日志是唯一能看出装载失败的地方: 失败不弹窗, 只写 WARN 行
+  $log = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
+  if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
+    Write-Host '  运行态: 未找到服务端日志, 跳过（服务未运行过）'
+    return
+  }
+  $lines = @(Get-Content -LiteralPath $log -Tail 2000 -ErrorAction SilentlyContinue)
+  foreach ($plugin in $plugins) {
+    $name = $plugin.Name
+    $last = $lines | Where-Object {
+      $_.Contains($name) -and ($_.Contains('loading plugin') -or $_.Contains('failed to load plugin'))
+    } | Select-Object -Last 1
+    if ($null -eq $last) {
+      Write-Host "  [$name] 运行态: 日志无装载记录（服务未重启或未运行）"
+    } elseif ($last.Contains('failed to load plugin')) {
+      Write-Warning "  [$name] 运行态: 装载失败（服务端日志 failed to load plugin）"
+      $script:failures++
+    } else {
+      Write-Host "  [$name] 运行态: 已装载"
+    }
+  }
+}
+
 $failures = 0
 
 Write-Host "== $targetDir =="
@@ -217,6 +260,9 @@ foreach ($plugin in $plugins) {
 Remove-StalePluginLinks
 
 if ($VerifyOnly) {
+  Show-LegacyPluginEntries
+  Show-ForeignPluginEntries
+  Test-PluginRuntime
   if ($failures -gt 0) {
     Write-Warning "校验发现 $failures 处异常, 见上。"
     exit 1
