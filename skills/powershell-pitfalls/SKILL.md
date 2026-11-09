@@ -3,6 +3,7 @@ name: powershell-pitfalls
 description: >
   Windows PowerShell 5.1 / pwsh 7 的执行与排障：编码、退出码、启动/profile、引号、路径和输出流。
   Windows 首次 PowerShell 调用前加载，含单行抓取、读取、解析与命令链；已加载规则直接复用，常规执行不预读诊断材料。
+  需要按用户视角复验 Tab 补全/PSReadLine 交互时，按真实窗口注入按键与读屏的流程执行。
   仅用原生 read 查看文本无需加载；不处理 Linux shell 问题。
 ---
 
@@ -40,6 +41,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 - 直接调用优先 `& $exe @argumentList`，不用 `Invoke-Expression` 拼接执行。路径、空参数、JSON 与多层引号不确定时离线核对 argv，不用外部收费请求试错。
 - 确切文件路径优先 `-LiteralPath`，脚本资源从 `$PSScriptRoot` 定位，写入核对编码、BOM与换行；不把 `>` 与不同版本的 `Set-Content` 当成跨平台等价写法。
 - 删除 Junction 只删链接本身，不用 `-Recurse`；递归操作先核对目标范围。执行策略异常先查来源和生效范围，不默认改全局策略。
+- 验证 Tab 补全等交互行为时不改用 `SendKeys` 抢焦点；按[交互式控制台验证](references/interactive-console-verification.md)启动独立窗口、向输入缓冲区注入按键并读屏。
 
 ## 按需读取
 
@@ -50,6 +52,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 | 启动、版本或 profile 集成问题 | [启动与版本差异](references/startup-and-version.md) |
 | 路径、引号、参数、进程等待或 Junction | [文件与程序调用](references/files-and-invocation.md) |
 | 静默失败、退出码或日志混入结果 | [错误与输出契约](references/errors-and-output.md) |
+| 验证 Tab 补全/PSReadLine 交互（真实窗口、模拟按键、读屏、截图） | [交互式控制台验证](references/interactive-console-verification.md) |
 
 ## 验证与维护
 
