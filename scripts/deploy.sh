@@ -31,26 +31,77 @@ SKILL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --plan) PLAN=1; SKILL_ARGS+=(--plan); shift ;;
-    --verify-only) VERIFY_ONLY=1; SKILL_ARGS+=(--verify-only); shift ;;
-    --quiet) QUIET=1; SKILL_ARGS+=(--quiet); shift ;;
-    --skip-plugins) SKIP_PLUGINS=1; shift ;;
-    --skip-global-agents) SKIP_AGENTS=1; shift ;;
-    --skip-dep-check) SKIP_DEPS=1; shift ;;
-    --apply-recommended-cli) SKILL_ARGS+=(--apply-recommended-cli); shift ;;
-    --skip-recommended-cli) SKILL_ARGS+=(--skip-recommended-cli); shift ;;
-    --apply-recommended-skills) SKILL_ARGS+=(--apply-recommended-skills); shift ;;
-    --skip-recommended-skills) SKILL_ARGS+=(--skip-recommended-skills); shift ;;
-    --apply-third-party-skills) SKILL_ARGS+=(--apply-third-party-skills); shift ;;
-    --skip-third-party-skills) SKILL_ARGS+=(--skip-third-party-skills); shift ;;
-    --sync-third-party-skills) SKILL_ARGS+=(--sync-third-party-skills); shift ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
-    *) echo "未知参数: $1" >&2; exit 2 ;;
+  --plan)
+    PLAN=1
+    SKILL_ARGS+=(--plan)
+    shift
+    ;;
+  --verify-only)
+    VERIFY_ONLY=1
+    SKILL_ARGS+=(--verify-only)
+    shift
+    ;;
+  --quiet)
+    QUIET=1
+    SKILL_ARGS+=(--quiet)
+    shift
+    ;;
+  --skip-plugins)
+    SKIP_PLUGINS=1
+    shift
+    ;;
+  --skip-global-agents)
+    SKIP_AGENTS=1
+    shift
+    ;;
+  --skip-dep-check)
+    SKIP_DEPS=1
+    shift
+    ;;
+  --apply-recommended-cli)
+    SKILL_ARGS+=(--apply-recommended-cli)
+    shift
+    ;;
+  --skip-recommended-cli)
+    SKILL_ARGS+=(--skip-recommended-cli)
+    shift
+    ;;
+  --apply-recommended-skills)
+    SKILL_ARGS+=(--apply-recommended-skills)
+    shift
+    ;;
+  --skip-recommended-skills)
+    SKILL_ARGS+=(--skip-recommended-skills)
+    shift
+    ;;
+  --apply-third-party-skills)
+    SKILL_ARGS+=(--apply-third-party-skills)
+    shift
+    ;;
+  --skip-third-party-skills)
+    SKILL_ARGS+=(--skip-third-party-skills)
+    shift
+    ;;
+  --sync-third-party-skills)
+    SKILL_ARGS+=(--sync-third-party-skills)
+    shift
+    ;;
+  -h | --help)
+    sed -n '2,27p' "$0"
+    exit 0
+    ;;
+  *)
+    echo "未知参数: $1" >&2
+    exit 2
+    ;;
   esac
 done
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-[[ -d "$REPO_ROOT/skills" ]] || { echo "skills 目录不存在: $REPO_ROOT/skills" >&2; exit 1; }
+[[ -d "$REPO_ROOT/skills" ]] || {
+  echo "skills 目录不存在: $REPO_ROOT/skills" >&2
+  exit 1
+}
 
 say() { [[ $QUIET -eq 1 ]] || echo "$@"; }
 

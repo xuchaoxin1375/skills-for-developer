@@ -25,7 +25,6 @@ PLUGINS_DIR="$REPO_ROOT/plugins"
 BACKUP_ROOT="$HOME/.skills-migration-backup"
 TARGET_DIR="$HOME/.config/opencode/plugins"
 
-
 VERIFY_ONLY=0
 UNLINK=0
 INCLUDE=""
@@ -36,17 +35,41 @@ say() { [[ $QUIET -eq 1 ]] || echo "$@"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --verify-only) VERIFY_ONLY=1; shift ;;
-    --unlink) UNLINK=1; shift ;;
-    --include) INCLUDE="${2:-}"; shift 2 ;;
-    --include=*) INCLUDE="${1#--include=}"; shift ;;
-    --quiet) QUIET=1; shift ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
-    *) echo "未知参数: $1" >&2; exit 2 ;;
+  --verify-only)
+    VERIFY_ONLY=1
+    shift
+    ;;
+  --unlink)
+    UNLINK=1
+    shift
+    ;;
+  --include)
+    INCLUDE="${2:-}"
+    shift 2
+    ;;
+  --include=*)
+    INCLUDE="${1#--include=}"
+    shift
+    ;;
+  --quiet)
+    QUIET=1
+    shift
+    ;;
+  -h | --help)
+    sed -n '2,21p' "$0"
+    exit 0
+    ;;
+  *)
+    echo "未知参数: $1" >&2
+    exit 2
+    ;;
   esac
 done
 
-[[ -d "$PLUGINS_DIR" ]] || { echo "plugins 目录不存在: $PLUGINS_DIR" >&2; exit 1; }
+[[ -d "$PLUGINS_DIR" ]] || {
+  echo "plugins 目录不存在: $PLUGINS_DIR" >&2
+  exit 1
+}
 
 # 收集含 package.json 的插件名
 mapfile -t PLUGINS < <(for d in "$PLUGINS_DIR"/*/; do
@@ -57,7 +80,7 @@ for d in "$PLUGINS_DIR"/*/; do
 done
 
 if [[ -n "$INCLUDE" ]]; then
-  IFS=',' read -ra WANT <<< "$INCLUDE"
+  IFS=',' read -ra WANT <<<"$INCLUDE"
   FILTERED=()
   for p in "${PLUGINS[@]}"; do
     for w in "${WANT[@]}"; do
@@ -66,18 +89,21 @@ if [[ -n "$INCLUDE" ]]; then
   done
   PLUGINS=("${FILTERED[@]}")
 fi
-[[ ${#PLUGINS[@]} -gt 0 ]] || { echo "没有可处理的插件。" >&2; exit 1; }
+[[ ${#PLUGINS[@]} -gt 0 ]] || {
+  echo "没有可处理的插件。" >&2
+  exit 1
+}
 
 normalize_path() {
   # 词法归一化：折叠 //、/./、/../，不要求路径存在（悬空链接的目标通常不存在）
   local p="$1" out="" part
   local -a parts
-  IFS=/ read -r -a parts <<< "$p"
+  IFS=/ read -r -a parts <<<"$p"
   for part in "${parts[@]}"; do
     case "$part" in
-      ''|'.') ;;
-      '..') out="${out%/*}" ;;
-      *) out="$out/$part" ;;
+    '' | '.') ;;
+    '..') out="${out%/*}" ;;
+    *) out="$out/$part" ;;
     esac
   done
   printf '%s\n' "${out:-/}"
@@ -91,19 +117,19 @@ clean_stale_links() {
     [[ -L "$p" ]] || continue
     cur="$(readlink "$p")"
     case "$cur" in
-      /*) abs="$cur" ;;
-      *) abs="$(dirname "$p")/$cur" ;;
+    /*) abs="$cur" ;;
+    *) abs="$(dirname "$p")/$cur" ;;
     esac
     abs="$(normalize_path "$abs")"
     case "$abs" in
-      "$PLUGINS_DIR"/*) ;;
-      *) continue ;;
+    "$PLUGINS_DIR"/*) ;;
+    *) continue ;;
     esac
     [[ -e "$p" ]] && continue
     name="$(basename "$p")"
     if [[ -n "$INCLUDE" ]]; then
       hit=0
-      IFS=',' read -ra WANT <<< "$INCLUDE"
+      IFS=',' read -ra WANT <<<"$INCLUDE"
       for w in "${WANT[@]}"; do
         [[ "$name" == "$w" ]] && hit=1
       done
@@ -169,7 +195,10 @@ for plugin in "${PLUGINS[@]}"; do
 
   if [[ -L "$link" && "$(readlink -f "$link")" == "$(readlink -f "$dest")" ]]; then
     say "$label OK"
-    [[ -f "$link/package.json" ]] || { echo "$label 链接存在但 package.json 不可读" >&2; failures=$((failures + 1)); }
+    [[ -f "$link/package.json" ]] || {
+      echo "$label 链接存在但 package.json 不可读" >&2
+      failures=$((failures + 1))
+    }
     continue
   fi
 
