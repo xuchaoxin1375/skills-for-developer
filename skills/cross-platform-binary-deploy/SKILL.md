@@ -95,6 +95,8 @@ description: 跨平台 CLI 二进制部署：按 OS/架构选择 GitHub Release 
 - API 限流时改用固定版本；不要在脚本里无限重试。
 - Windows 10 以下可能没有 `tar`；缺少解压工具时给出包管理器或手工解压入口。
 - macOS 未签名二进制可能被 Gatekeeper 拦截；优先改用 `brew`，或说明 `xattr -d com.apple.quarantine <文件>` 放行方式与风险。
+- Git Bash/MSYS 等兼容层的 PATH 使用 `:`，而 Windows 程序常输出 `C:/...;...`；直接放进 PATH 会让首项失效，按平台分隔符修正后再继续。
+- 同一二进制被多个 shell 使用时，补全注册与启动文件彼此独立；安装器不要用 PowerShell 组件开关推断 Git Bash、WSL 或其他 shell 已生效。
 - 正在运行的旧进程可能锁住可执行文件；Windows 上需关闭会话后重试，不要反复强制覆盖。
 - 安装目录不在 PATH 或排在其他目录之后时，“安装成功”但命令仍解析到旧版本；必须检查实际解析路径。
 
@@ -115,6 +117,7 @@ description: 跨平台 CLI 二进制部署：按 OS/架构选择 GitHub Release 
 - 先跑 dry-run 或 `-WhatIf`，确认动作清单与目标路径。
 - 覆盖已有版本、同版本、指定低版本、未知平台、资产缺失与校验失败。
 - 在至少一个真实平台完成下载、校验、解压、安装与 `<tool> --version`；其他平台只声明已验证资产命名或 release 列表，不声称已实机安装。
+- 二进制同时服务多个 shell 时，分别在目标 shell 中验证补全注册与 PATH，不只验证 `--version`。
 - 检查重复运行是否幂等，失败后是否留下半成品或错误的 PATH 条目。
 
 ## 与相邻 skill 的边界
