@@ -73,6 +73,7 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 | `skills/note-blog-archivist`         | 经验结论沉淀到本地笔记/博客仓库：定位笔记总目录、复用现有文档最小追加或按目录规则新建，省去手动归类；仅接单份已定稿内容，合并/改写不在此列                                                                                                                                                                                                                   | 存笔记、记一笔、沉淀经验、放到博客、经验库、归档笔记、笔记分类、并进现有笔记 |
 | `skills/resource-inventory`          | 本机资源体检与复用：一次聚合当前会话环境、运行时版本、Python 解释器与引擎层、浏览器候选、代理环境变量/登记/实际入口、项目已有测试与包管理工具及已装证据；检测逻辑仍属各域 skill，本 skill 只做聚合与判读，避免重复安装和环境误判 | 本机有什么、环境探测、资源全景、避免重复安装、Python 环境在哪、浏览器在哪、代理入口、测试栈、换机器排查 |
 | `skills/nodejs-runtime-setup`        | Node.js 运行时与 pnpm 安装：按单版本、多版本、团队锁版本选默认方案（官方安装器/winget、fnm、nvm-windows、Volta），区分二进制镜像、registry 与独立下载，给失败模式与回退；覆盖 PATH 冲突、符号链接权限、Corepack 移除后的 pnpm 安装与 EPERM；依赖镜像选路归 network-access | 安装 Node、装 Node.js、node 版本、切换 Node 版本、fnm、nvm-windows、nvm、Volta、pnpm 安装、corepack 不存在、Node 26、Windows 装 Node、国内镜像装 Node、PATH 多个 node、符号链接 1314、npm EPERM |
+| `skills/cross-platform-binary-deploy` | 跨平台 CLI 二进制部署：按 OS/架构映射 release 资产、校验 SHA-256、安全解压、原子替换、PATH、版本固定与回滚；先判断何时改用包管理器，下载选路归 network-access | 二进制部署、release 资产、跨平台安装、GitHub Release、固定版本、SHA-256、校验、解压、原子替换、PATH、升级、卸载、回滚、无包管理器、包管理器版本旧 |
 
 > 约定：`SKILL.md` 头部的 `description` 是 agent 侧的触发依据；上表是给人看的检索入口，两处语义保持一致，改 skill 时同步更新。
 
