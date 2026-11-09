@@ -41,7 +41,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 - 直接调用优先 `& $exe @argumentList`，不用 `Invoke-Expression` 拼接执行。路径、空参数、JSON 与多层引号不确定时离线核对 argv，不用外部收费请求试错。
 - 确切文件路径优先 `-LiteralPath`，脚本资源从 `$PSScriptRoot` 定位，写入核对编码、BOM与换行；不把 `>` 与不同版本的 `Set-Content` 当成跨平台等价写法。
 - 删除 Junction 只删链接本身，不用 `-Recurse`；递归操作先核对目标范围。执行策略异常先查来源和生效范围，不默认改全局策略。
-- 验证 Tab 补全等交互行为时不改用 `SendKeys` 抢焦点；按[交互式控制台验证](references/interactive-console-verification.md)启动独立窗口、向输入缓冲区注入按键并读屏。
+- 验证 Tab 补全等交互行为时不改用 `SendKeys` 抢焦点；按[交互式控制台验证](references/interactive-console-verification.md)启动独立窗口、向输入缓冲区注入按键并读屏。窗口由探针独占，以读屏出现提示符判断就绪，不用 `MainWindowHandle`，不与用户输入混用。
 
 ## 按需读取
 
@@ -52,7 +52,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 | 启动、版本或 profile 集成问题 | [启动与版本差异](references/startup-and-version.md) |
 | 路径、引号、参数、进程等待或 Junction | [文件与程序调用](references/files-and-invocation.md) |
 | 静默失败、退出码或日志混入结果 | [错误与输出契约](references/errors-and-output.md) |
-| 验证 Tab 补全/PSReadLine 交互（真实窗口、模拟按键、读屏、截图） | [交互式控制台验证](references/interactive-console-verification.md) |
+| 验证 Tab 补全/PSReadLine 交互（真实窗口、模拟按键、读屏、截图、与用户共存） | [交互式控制台验证](references/interactive-console-verification.md) |
 
 ## 验证与维护
 
