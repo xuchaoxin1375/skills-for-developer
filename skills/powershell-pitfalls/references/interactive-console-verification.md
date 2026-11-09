@@ -11,10 +11,10 @@
 1. 启动独立窗口：`Start-Process pwsh -ArgumentList '-NoLogo','-NoExit' -PassThru`。保留 profile，才是在验证用户日常环境；启动后读 `(Get-Process -Id <pid>).MainWindowHandle`，非 0 表示控制台窗口已建立。
 2. 等待提示符：固定等待只作首次试探，应以读屏结果确认；profile 初始化耗时因机器而异。
 3. 附加控制台：探针进程先 `FreeConsole()`，再 `AttachConsole(<pid>)`，用 `CreateFileW("CONIN$"/"CONOUT$")` 取得输入输出句柄。
-4. 注入按键：`WriteConsoleInputW` 写入 `KEY_EVENT_RECORD`，`EventType = 1`，每字符发送按下与抬起两条；虚拟键码用 `VkKeyScanW(ch)` 取低字节，扫描码用 `MapVirtualKeyW(vk, 0)`。文本的修饰键从 `VkKeyScanW` 高字节解析。
+4. 注入按键：`WriteConsoleInputW` 写入 `KEY_EVENT_RECORD`，`EventType = 1`，每字符发送按下与抬起两条；虚拟键码用 `VkKeyScanW(ch)` 取低字节，扫描码用 `MapVirtualKeyW(vk, 0)`。文本的修饰键从 `VkKeyScanW` 高字节解析。`Ctrl+C` 是例外：默认控制台模式下真实 Ctrl+C 会被当作控制事件，而写入的是按键记录，二者在 Tab 菜单中的行为不同；验证 Ctrl+C 要改用 `keybd_event`/`SendInput` 并校验前台窗口。
 5. 读取屏幕：`GetConsoleScreenBufferInfo` 取 `dwSize` 与 `srWindow`，逐行 `ReadConsoleOutputCharacterW`，再 `TrimEnd()`；按可见窗口读取，不读整块缓冲区。
 6. 顺序验证：先跑已知命令的对照（如 `Get-Chi` + Tab），确认注入与读屏链路，再测目标命令；一次只注入一步并等待重绘。
-7. 清行与退出：菜单打开时先 `Esc` 关闭菜单，再 `Ctrl+C` 清行；最后输入 `exit` 回车退出，进程仍在时用 `Stop-Process` 兜底。
+7. 清行与退出：菜单打开时先 `Esc` 关闭菜单，再 `Ctrl+C` 清行（真实按键下 Ctrl+C 在菜单中可能无效）；最后输入 `exit` 回车退出，进程仍在时用 `Stop-Process` 兜底。
 
 ## 关键常量与常见坑
 
@@ -24,7 +24,8 @@
 - `MenuComplete` 的行为是首个 Tab 用第一个候选替换当前词并展开菜单；在新词上再按 Tab 会重新补全，不保证在候选列表内循环。
 - 输入时的列表视图（如 `<History(...) XxxFlags(...)>`）是预测，不是 Tab 候选菜单；判读以输入行是否被替换、是否出现候选菜单为准。
 - 截图用 `PrintWindow(hwnd, hdc, 2)`（`PW_RENDERFULLCONTENT`），可抓取非前台窗口。pwsh 7.5（.NET 9）下 `Add-Type` 引用 `System.Drawing` 会缺 `System.Private.Windows.Core`，改用 Windows PowerShell 5.1 并加 `-ReferencedAssemblies System.Drawing`。
-- 不要用 `SendKeys` 或 `AppActivate`：会抢前台焦点，目标未激活时直接失败；直接写输入缓冲区不依赖焦点。
+- 不要用 `SendKeys` 或 `AppActivate`：会抢前台焦点，目标未激活时直接失败；直接写输入缓冲区不依赖焦点。需要验证真实 Ctrl+C 时是例外：用 `keybd_event`/`SendInput`，先 `SetForegroundWindow` 并核对 `GetForegroundWindow()`，焦点不对就中止。
+- 菜单中的 Ctrl+C：真实按键在默认控制台模式下不会关闭菜单、也不会清行；只把 Ctrl+C 绑到 `CancelLine` 同样无效。先 `Esc` 关菜单再 `Ctrl+C`；若要在菜单内一次生效，需在 Tab/MenuComplete 包装里临时设置 `[Console]::TreatControlCAsInput = $true`（并绑定 `CancelLine`），结束后恢复。
 
 ## 验收与清理
 
