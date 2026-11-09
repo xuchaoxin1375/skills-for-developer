@@ -1,4 +1,4 @@
-# 启用仓库自带的 .githooks：pre-commit 跑结构与链接检查。
+﻿# 启用仓库自带的 .githooks：pre-commit 跑结构与链接检查。
 # 用法（仓库根）：powershell -File scripts/install-hooks.ps1
 $ErrorActionPreference = 'Stop'
 

@@ -19,6 +19,7 @@ skills-for-developer/
   悬空链接（插件重命名/删除后的残留，`-VerifyOnly` 计为异常）；该目录下其他来源的插件不动；
   路径上是实体目录时先备份到 `~/.skills-migration-backup/<时间戳>/opencode-plugins/` 再替换为链接。
 - 插件只对 OpenCode 生效（其他 harness 没有插件机制），因此不分发到 skills 目录。
+- 一键部署（skill + 插件 + 全局 AGENTS.md）用 `scripts/deploy.ps1`（Windows）/ `scripts/deploy.sh`（Linux）；分步执行时单独跑链接脚本。
 - `opencode.json`（供应商与密钥）不入库，插件注册不依赖它：靠 `~/.config/opencode/plugins/`
   自动发现，因此真源里不出现机器绝对路径。
 
@@ -100,6 +101,7 @@ skill 负责**规则与判断**（什么时候该用哪种编码策略、输出�
 ## 验证与维护
 
 - 插件逻辑改动：先跑插件自带测试，再按上面的验证清单做一次真实调用对照。
+- `link-plugins.ps1 -VerifyOnly` 除链接状态外，还会列出旧目录 `~/.config/opencode/plugin`（V1 单数）的残留、目标目录中非本仓库的插件，并核对服务端日志里本仓库插件的最近一次装载结果；装载失败计为异常。
 - 装载失败优先查服务端日志（`loading plugin` / `failed to load plugin`），不要只看界面。
 - 宿主静默吞掉装载失败：插件应自带诊断通道（写临时目录的一行日志），否则"没生效"无从查起；
   写法见 [编码守卫插件](../plugins/powershell-encoding-guard/README.md) 的「已踩过的坑」一节。

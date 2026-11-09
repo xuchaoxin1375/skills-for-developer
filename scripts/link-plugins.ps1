@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   [Windows 专用] 将本仓库 plugins/ 下的每个插件包通过 Junction 链接到 OpenCode 的 plugins 目录。
@@ -38,10 +38,14 @@ param(
   [string]$RepoRoot = '',
   [string[]]$Include,
   [switch]$Unlink,
-  [switch]$VerifyOnly
+  [switch]$VerifyOnly,
+  [switch]$Quiet
 )
 
 $ErrorActionPreference = 'Stop'
+
+# -Quiet 只隐藏逐项成功/进度行，警告、失败和最终汇总照常输出。
+function Write-Step([string]$Message) { if (-not $Quiet) { Write-Host $Message } }
 
 # 默认 UTF-8：5.1 控制台默认 GBK，直接输出中文会被采集侧按 UTF-8 解错。
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -121,16 +125,59 @@ function Remove-StalePluginLinks {
   }
 }
 
+function Show-LegacyPluginEntries {
+  # V1 旧目录 ~/.config/opencode/plugin (单数): V2 仍会扫描, 坏插件只写日志不报错, 因此只报告不删除
+  $legacyDir = Join-Path $env:USERPROFILE '.config\opencode\plugin'
+  if (-not (Test-Path -LiteralPath $legacyDir -PathType Container)) { return }
+  $entries = @(Get-ChildItem -LiteralPath $legacyDir -Force -ErrorAction SilentlyContinue)
+  if ($entries.Count -eq 0) { return }
+  Write-Warning "  旧插件目录有 $($entries.Count) 个条目 (V1 格式, V2 装载失败只写日志): $legacyDir"
+  foreach ($e in $entries) { Write-Warning "    - $($e.Name)" }
+}
+
+function Show-ForeignPluginEntries {
+  # 目标目录里非本仓库来源的插件不动, 只列出来, 避免误以为都已托管
+  $known = @($plugins | ForEach-Object { $_.Name })
+  foreach ($entry in @(Get-ChildItem -LiteralPath $targetDir -Force -ErrorAction SilentlyContinue)) {
+    if ($known -contains $entry.Name) { continue }
+    Write-Step "  [$($entry.Name)] 非本仓库管理, 保留不动"
+  }
+}
+
+function Test-PluginRuntime {
+  # 服务端日志是唯一能看出装载失败的地方: 失败不弹窗, 只写 WARN 行
+  $log = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
+  if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
+    Write-Host '  运行态: 未找到服务端日志, 跳过（服务未运行过）'
+    return
+  }
+  $lines = @(Get-Content -LiteralPath $log -Tail 2000 -ErrorAction SilentlyContinue)
+  foreach ($plugin in $plugins) {
+    $name = $plugin.Name
+    $last = $lines | Where-Object {
+      $_.Contains($name) -and ($_.Contains('loading plugin') -or $_.Contains('failed to load plugin'))
+    } | Select-Object -Last 1
+    if ($null -eq $last) {
+      Write-Host "  [$name] 运行态: 日志无装载记录（服务未重启或未运行）"
+    } elseif ($last.Contains('failed to load plugin')) {
+      Write-Warning "  [$name] 运行态: 装载失败（服务端日志 failed to load plugin）"
+      $script:failures++
+    } else {
+      Write-Host "  [$name] 运行态: 已装载"
+    }
+  }
+}
+
 $failures = 0
 
-Write-Host "== $targetDir =="
+Write-Step "== $targetDir =="
 if (-not (Test-Path $targetDir -PathType Container)) {
   if ($VerifyOnly) {
     Write-Warning "  缺失目录 (VerifyOnly, 不创建): $targetDir"
     $failures++
   } elseif ($PSCmdlet.ShouldProcess($targetDir, '创建 opencode plugins 目录')) {
     New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
-    Write-Host '  创建目录'
+    Write-Step '  创建目录'
   }
 }
 
@@ -142,17 +189,17 @@ foreach ($plugin in $plugins) {
   if ($Unlink) {
     $cur = Get-LinkTarget $link
     if ($null -eq $cur) {
-      Write-Host "$label 无链接, 跳过"
+      Write-Step "$label 无链接, 跳过"
       continue
     }
     if ($cur -contains $dest -or $cur -eq $dest) {
       if ($VerifyOnly) {
-        Write-Host "$label 将被移除 (VerifyOnly)"
+        Write-Step "$label 将被移除 (VerifyOnly)"
         continue
       }
       if ($PSCmdlet.ShouldProcess($link, "移除 Junction -> $dest")) {
         Remove-Item -LiteralPath $link -Force
-        Write-Host "$label 已移除"
+        Write-Step "$label 已移除"
       }
     } else {
       Write-Warning "$label 是指向别处的链接 ($cur), 不动"
@@ -168,14 +215,14 @@ foreach ($plugin in $plugins) {
     }
     if ($PSCmdlet.ShouldProcess($link, "创建 Junction -> $dest")) {
       New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-      Write-Host "$label 已创建 -> $dest"
+      Write-Step "$label 已创建 -> $dest"
     }
     continue
   }
 
   $cur = Get-LinkTarget $link
   if ($null -ne $cur -and ($cur -eq $dest -or $cur -contains $dest)) {
-    Write-Host "$label OK"
+    Write-Step "$label OK"
     if (-not (Test-Path (Join-Path $link 'package.json') -PathType Leaf)) {
       Write-Warning "$label 链接存在但 package.json 不可读"
       $failures++
@@ -192,7 +239,7 @@ foreach ($plugin in $plugins) {
     if ($PSCmdlet.ShouldProcess($link, "纠正链接 $cur -> $dest")) {
       Remove-Item -LiteralPath $link -Force
       New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-      Write-Host "$label 已纠正 -> $dest"
+      Write-Step "$label 已纠正 -> $dest"
     }
     continue
   }
@@ -210,13 +257,16 @@ foreach ($plugin in $plugins) {
     if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
     Move-Item -LiteralPath $link -Destination $backup -Force
     New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
-    Write-Host "$label 实体已备份到 $backup, 链接已创建"
+    Write-Step "$label 实体已备份到 $backup, 链接已创建"
   }
 }
 
 Remove-StalePluginLinks
 
 if ($VerifyOnly) {
+  Show-LegacyPluginEntries
+  Show-ForeignPluginEntries
+  Test-PluginRuntime
   if ($failures -gt 0) {
     Write-Warning "校验发现 $failures 处异常, 见上。"
     exit 1
