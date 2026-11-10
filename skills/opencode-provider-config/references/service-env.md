@@ -48,6 +48,13 @@ ps -o pid,ppid,lstart,cmd $(pgrep -f "serve --service")         # 以 STARTED �
 
 `service restart` 完全生效约需 1 分钟：重启后不得以 pgrep 返回的第一个 PID 为准（该进程可能处于正在退出的瞬态），必须以上述 `ps` 输出中 `STARTED` 时间最新者为准，再对其核验环境变量。
 
+Windows 没有 `/proc` 与进程组连带终止：`set env` 的写入通常已落盘，被打断的是同一条命令里后续的 `service start`，表现为只写进一半变量。把成串操作交给脱离服务进程树的子进程一次做完，再用只读命令确认：
+
+```powershell
+Start-Process pwsh -ArgumentList '-NoLogo','-NoProfile','-Command','opencode service set env <VAR> <VALUE>; Start-Sleep -Seconds 2; opencode service start' -WindowStyle Hidden
+opencode service get env        # 只读确认（输出含密钥，展示前打码）
+```
+
 ## 存储与生效分离
 
 环境变量有三层——shell 里 export 的临时变量（对服务进程无效，见第 2 步结论）、`get env` 读的持久化存储（`service.json` 的 `env` 块）、运行中服务进程启动时继承的快照（读法 `tr '\0' '\n' < /proc/<PID>/environ`）。三者可各自不同步；`get env` 为空并不代表服务进程中无此变量——修改服务级 env 之前，除 `get env` 外，还应查询 live 服务进程的环境（密钥经掩码处理，不输出明文）：
@@ -61,7 +68,7 @@ tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(s
 
 ## live 未生效的判定与隔离验证
 
-Windows 无 `/proc` 时，以对照与隔离为准。`service status` 端口与 `opencode.log` 中 `spawning process` 的 `run=` 是否变化，是重启是否真正生效的判据；两者不变即 live 仍是旧快照，此时重复 `set env`/`restart` 只是空转，应停手。用已知正常模型做对照：已知模型 `run` 正常、新模型报缺 key，即 live 陈旧而非配置错。先用 `run --standalone` 隔离验证（私有服务继承当前 shell 环境，同条命令内设变量并验证，密钥不落盘到配置文件）：
+Windows 无 `/proc` 时，以对照与隔离为准。`service status` 端口与 `opencode.log` 中 `spawning process` 的 `run=` 是否变化，是重启是否真正生效的判据；两者不变即 live 仍是旧快照，此时重复 `set env`/`restart` 只是空转，应停手。也可用启动时间佐证：`opencode api get /api/info` 返回的 `pid` 用 `(Get-Process -Id <pid>).StartTime` 读出，晚于最后一次 `set env` 即新快照。Windows 读不到别的进程的 environ，代理是否真被服务用上只能间接判断——代理端口可连、经该代理的请求返回 200、`api get /api/info` 健康——确证仍需一次真实模型请求。用已知正常模型做对照：已知模型 `run` 正常、新模型报缺 key，即 live 陈旧而非配置错。先用 `run --standalone` 隔离验证（私有服务继承当前 shell 环境，同条命令内设变量并验证，密钥不落盘到配置文件）：
 
 ```powershell
 $env:<VAR_NAME> = "<KEY>"; opencode run --standalone -m <providerID>/<modelID> "reply with exactly: OK"
