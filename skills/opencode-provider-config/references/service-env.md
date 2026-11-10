@@ -2,6 +2,24 @@
 
 > 本文件是 `opencode-provider-config` 的按需参考，只在配置或排查 OpenCode 服务端 env、代理与重启问题时读取。主流程和验证顺序仍以 [SKILL.md](../SKILL.md) 为准。
 
+## 脚本入口（推荐）
+
+`scripts/opencode_proxy.py` 把本节的手工序列合成一条命令：三层对照（存储层 / live 进程 / 当前 shell）、变量名审计、`NO_PROXY` 分隔符与回环检查、有界 TCP 探活；写入时先审计再落盘，避免"配了代理却不生效"。
+
+```bash
+python3 -X utf8 scripts/opencode_proxy.py status                    # 只读；退出码 0 正常 / 1 有问题
+python3 -X utf8 scripts/opencode_proxy.py status --json --no-probe  # 机器可读、不出网
+python3 -X utf8 scripts/opencode_proxy.py set http://127.0.0.1:<port> [--no-proxy <放行域名>] [--no-restart]
+python3 -X utf8 scripts/opencode_proxy.py unset [--all] [--no-restart]
+```
+
+- **写入**：读改写 `service.json`（同目录备份 + 临时文件原子替换 + 权限 600），代理变量只增合并不覆盖，其他 env 原样保留且不打印；`env` 若还是字符串（旧格式或手工写入的 Python dict 串）会解析后迁移成标准对象。
+- **重启**：默认 detached 重启一次，轮询 `/api/info` 的 pid 变化，再核验新进程环境；`--no-restart` 只写存储层，适合在 OpenCode 会话内执行（重启会打断当前命令）。
+- **降级**：Windows 无法读取其他进程环境，核验只报告"新进程已就绪、未能核验"，需配合启动时间或一次真实请求判断。macOS 用 `ps eww` 读取，值含空格时可能截断（代理 URL 与 `NO_PROXY` 不含空格，够用）；Linux 走 `/proc/<pid>/environ`。
+- **退出码**：0 正常；1 发现问题或核验未通过；2 用法/IO 错误；3 `service.json` 的 `env` 格式不受支持（此时改用 `opencode service set env` 重写）。
+
+脚本只处理代理类变量；密钥仍走 `opencode service set env`，不要因为脚本能写 env 就把密钥塞进它的调用。
+
 ## 按域名分流代理
 
 代理是进程级的，JSON 配置无法按 provider 配代理（源码的 `options.fetch` 是函数，写不进配置文件）。同一供应商有多个入口域名、部分直连部分被阻断时，用服务端全局代理 + `NO_PROXY` 分流：直连可达的域名加进 `NO_PROXY`，其余域名自动走代理。例：域名 A 直连、域名 B 被阻断，则 `NO_PROXY` 加 A，两套 provider 配置共用同一服务端代理即可自动分流，启动时无需设置任何环境变量。
@@ -39,6 +57,8 @@ python3 -c "import os; print(os.environ.get('<PROVIDER>_API_KEY','') == '<KEY>')
 shell 环境中通常仅存在小写 `http_proxy` 系变量，但部分 HTTP 客户端仅识别大写变量。恢复代理时，应以 `env | grep -i proxy` 的实测值为准补齐大写三变量（端口照抄实测值，不得臆造；写入方式见主文件的 env 模板），`NO_PROXY` 保持逗号分隔。
 
 Windows 另有一层：变量**存储名取首次创建时的大小写**，此后换大小写赋值只改值不改名，子进程继承的仍是旧名。`$env:HTTPS_PROXY` 回读有值不能作通过依据，要用 `Get-ChildItem Env:` 或 `cmd /c 'set | findstr /i proxy'` 看真实名字；修复先 `Remove-Item Env:https_proxy` 再以大写名重建。
+
+与大小写相邻的另一个坑是**拼写**：`HPPTS_PROXY`、`HPPT_PROXY` 会完整落盘、出现在 `get env` 与进程环境里，但任何 HTTP 客户端都不会读取，`service set env` 也不会报错。`service get env` 只能证明"写了"，不能证明"会被读"，判定仍以 `scripts/opencode_proxy.py status` 的变量名审计与 live 对照为准。
 
 ## 已知行为：set env 会重启服务
 

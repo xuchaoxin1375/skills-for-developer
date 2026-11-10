@@ -1,6 +1,6 @@
 ---
 name: opencode-provider-config
-description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）接入 OpenCode V2，或补全、审查已有模型参数：获取模型列表、核实输入输出模态与工具能力、思考等级与 variants、上下文及输出上限，写 providers 配置、选择协议、设置服务环境（含 `HTTP_PROXY`/`NO_PROXY` 服务端代理持久化与「设了代理却不生效」排查）与按授权验证。用于接入第三方供应商/模型、配置 provider、切换 Responses/Messages、调整已有或内置模型的 capabilities/limit/reasoning、查 /v1/models 或 models.dev，或让 OpenCode V2 走代理、排查服务端 env 不生效；不要求重新接入或必须提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
+description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）接入 OpenCode V2，或补全、审查已有模型参数：获取模型列表、核实输入输出模态与工具能力、思考等级与 variants、上下文及输出上限，写 providers 配置、选择协议、设置服务环境（含 `HTTP_PROXY`/`NO_PROXY` 服务端代理持久化与「设了代理却不生效」排查）与按授权验证。用于接入第三方供应商/模型、配置 provider、切换 Responses/Messages、调整已有或内置模型的 capabilities/limit/reasoning、查 /v1/models 或 models.dev，或让 OpenCode V2 走代理、检查/设置/移除服务端代理（`scripts/opencode_proxy.py`）、排查服务端 env 不生效；不要求重新接入或必须提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
 ---
 
 # OpenCode 自定义供应商模型接入流程
@@ -174,6 +174,16 @@ Responses 路由的默认值与 Chat 不同（`store`、`include` 等），`open
 
 **服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值——该命令只读，读 `service.json` 的 `env` 块，与 live 进程快照、shell 变量分属三层，细节见 [references/service-env.md](references/service-env.md)）：
 
+代理优先用脚本，密钥仍用内置命令。内置 `set env` 接受任意变量名，`HPPTS_PROXY` 这类笔误同样"写入成功"、`get env` 与进程环境里都看得到，但没有任何 HTTP 客户端会读取，表现为"配了代理却全程直连"；脚本在写盘前审计变量名与分隔符，并把多次重启压成一次：
+
+```bash
+python3 -X utf8 <本skill目录>/scripts/opencode_proxy.py status                   # 三层对照 + 拼写审计 + TCP 探活，退出码 0/1
+python3 -X utf8 <本skill目录>/scripts/opencode_proxy.py set http://127.0.0.1:<port>   # 写 HTTP(S)_PROXY、合并 NO_PROXY、重启并核验
+python3 -X utf8 <本skill目录>/scripts/opencode_proxy.py unset                    # 移除代理变量，默认保留 NO_PROXY；--all 一并清理
+```
+
+脚本只改代理类变量：其他 env（含密钥）原样保留且不打印；`--no-restart` 只写存储层。在 OpenCode 会话内执行时用 `--no-restart`，另开会话外终端 `opencode service restart` 后跑 `status` 复核，避免重启打断当前命令。
+
 ```bash
 opencode service set env <PROVIDER>_API_KEY <KEY>
 
@@ -214,6 +224,7 @@ opencode service start   # set env 本身也会重启服务
 - 修改既有 `opencode.json` 前先读全文，保留无关配置。
 - `service set env`、`mcp add` 等会重启服务的操作不要连排在同一条命令里，逐条执行。
 - **必须**：`NO_PROXY` 必须逗号分隔；PowerShell 下含逗号的值必须加双引号，否则逗号被解析为数组、落盘变成空格分隔，例：`opencode service set env NO_PROXY "localhost,127.0.0.1,::1,<既有放行域名>"`。接手既有配置先核验分隔符，空格分隔一律改正。例：`localhost 127.0.0.1 ::1` 的空格写法可能不被 HTTP 客户端解析，放行域名静默走代理。
+- **必须**：代理变量名只能是 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`（大小写均可，同名并存时大写优先）；其他名字不报错也不生效。`HPPTS_PROXY`、`HPPT_PROXY` 这类笔误会完整落盘、出现在 `get env` 与进程环境里，容易被误判为"已配置"。写入前后用 `scripts/opencode_proxy.py status` 审计，或逐个核对变量名。
 - **必须**：改服务级 env 前先 `opencode service get env` 抄下既有值；`HTTP(S)_PROXY`/`NO_PROXY` 对设备上所有 provider 全局生效，只增合并不覆盖。例：设备原有模型靠既有代理变量连通，新接入照模板覆盖后旧模型静默断链。
 - **必须**：重启 opencode 服务前先双查代理环境（`get env` ＋ live 进程 environ），只在旧进程快照里的代理一重启就丢；重启用 detached 方式，事后核验新进程 environ 里 PROXY 仍在。例：模型靠 HTTPS_PROXY 连网，裸 restart 后集体断链，查 environ 才发现新进程没继承。
 - **必须**：只实测本次接入要用的模型（用户点名的那个），分组内其余模型不逐一验可用性与速度。用户没点名就先问一次，不自行代表他选。例：分组 20 个模型只用 2 个，就只测那 2 个，不跑完 20 个。
@@ -227,6 +238,7 @@ opencode service start   # set env 本身也会重启服务
 
 - [ ] 模型列表经过筛选，只配对话模型。
 - [ ] 本地直连不通时代理已持久化到服务端，不是只在当前 shell export。
+- [ ] 代理变量名拼写已核对（`HTTP(S)_PROXY`/`ALL_PROXY`/`NO_PROXY`），没有 `HPPTS_PROXY` 一类笔误；`opencode_proxy.py status` 通过或已说明未核验原因。
 - [ ] `NO_PROXY` 为逗号分隔、含回环；多入口分流时直连域名已加入，代理端口来自实测或用户告知。
 - [ ] 改服务级 env 前已 `get env` 抄下既有值，代理变量只增合并不覆盖。
 - [ ] `env` 变量名与 `providerID` 未占用既有名称；同名不同值已换名。

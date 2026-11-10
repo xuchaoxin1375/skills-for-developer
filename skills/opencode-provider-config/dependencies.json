@@ -8,7 +8,7 @@
         { "kind": "runtime", "name": "python" },
         { "kind": "runtime", "name": "python3" }
       ],
-      "hint": "model_info.py 仅用标准库；也可用 curl + 手工查表"
+      "hint": "model_info.py 与 opencode_proxy.py 仅用标准库；也可用 curl + 手工查表、内置 service 命令"
     }
   ]
 }
