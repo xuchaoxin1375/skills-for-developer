@@ -13,7 +13,7 @@ python3 -X utf8 scripts/opencode_proxy.py set http://127.0.0.1:<port> [--no-prox
 python3 -X utf8 scripts/opencode_proxy.py unset [--all] [--no-restart]
 ```
 
-- **写入**：读改写 `service.json`（同目录备份 + 临时文件原子替换 + 权限 600），代理变量只增合并不覆盖，其他 env 原样保留且不打印；`env` 若还是字符串（旧格式或手工写入的 Python dict 串）会解析后迁移成标准对象。
+- **写入**：读改写 `service.json`（同目录备份 + 临时文件原子替换 + 权限 600），代理变量只增合并不覆盖，其他 env 原样保留且不打印；`env` 若还是字符串（旧格式或手工写入的 Python dict 串）会解析后迁移成标准对象；`set` 会顺手移除拼错的代理变量名（如 `HPPTS_PROXY`），避免写入成功但依旧直连。
 - **重启**：默认 detached 重启一次，轮询 `/api/info` 的 pid 变化，再核验新进程环境；`--no-restart` 只写存储层，适合在 OpenCode 会话内执行（重启会打断当前命令）。
 - **降级**：Windows 无法读取其他进程环境，核验只报告"新进程已就绪、未能核验"，需配合启动时间或一次真实请求判断。macOS 用 `ps eww` 读取，值含空格时可能截断（代理 URL 与 `NO_PROXY` 不含空格，够用）；Linux 走 `/proc/<pid>/environ`。
 - **退出码**：0 正常；1 发现问题或核验未通过；2 用法/IO 错误；3 `service.json` 的 `env` 格式不受支持（此时改用 `opencode service set env` 重写）。

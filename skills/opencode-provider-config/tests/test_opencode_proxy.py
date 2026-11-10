@@ -160,6 +160,20 @@ def test_cli_set_and_unset_scope():
     assert "NO_PROXY" not in json.loads(path.read_text(encoding="utf-8"))["env"]
 
 
+def test_cli_set_drops_typo_names():
+    import contextlib
+    import io
+
+    path = temp_service({"HPPTS_PROXY": "http://127.0.0.1:10808", "NO_PROXY": "localhost"})
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert proxy.main(
+            ["set", "http://127.0.0.1:10808", "--no-restart", "--service-json", str(path)]
+        ) == 0
+    env = json.loads(path.read_text(encoding="utf-8"))["env"]
+    assert "HPPTS_PROXY" not in env
+    assert env["HTTP_PROXY"] == env["HTTPS_PROXY"] == "http://127.0.0.1:10808"
+
+
 def test_cli_set_removes_typo_names_on_unset():
     import contextlib
     import io

@@ -182,7 +182,7 @@ python3 -X utf8 <本skill目录>/scripts/opencode_proxy.py set http://127.0.0.1:
 python3 -X utf8 <本skill目录>/scripts/opencode_proxy.py unset                    # 移除代理变量，默认保留 NO_PROXY；--all 一并清理
 ```
 
-脚本只改代理类变量：其他 env（含密钥）原样保留且不打印；`--no-restart` 只写存储层。在 OpenCode 会话内执行时用 `--no-restart`，另开会话外终端 `opencode service restart` 后跑 `status` 复核，避免重启打断当前命令。
+脚本只改代理类变量：其他 env（含密钥）原样保留且不打印；`set` 会顺手清掉拼错的代理变量名；`--no-restart` 只写存储层。在 OpenCode 会话内执行时用 `--no-restart`，另开会话外终端 `opencode service restart` 后跑 `status` 复核，避免重启打断当前命令。
 
 ```bash
 opencode service set env <PROVIDER>_API_KEY <KEY>

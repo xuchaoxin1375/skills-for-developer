@@ -566,6 +566,9 @@ def cmd_set(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     target = str(info["url"])
+    dropped = sorted(issue["name"] for issue in audit_names(env))
+    for name in dropped:
+        env.pop(name, None)
     for key in ("HTTP_PROXY", "HTTPS_PROXY"):
         env[key] = target
         if key.lower() in env:
@@ -582,6 +585,7 @@ def cmd_set(args: argparse.Namespace) -> int:
         "service_json": str(path),
         "backup": str(backup),
         "migrated_format": fmt == FORMAT_STRING,
+        "dropped_typos": dropped,
         "written": {"HTTP_PROXY": target, "HTTPS_PROXY": target, "NO_PROXY": merged},
         "restarted": False,
         "verified": False,
@@ -604,6 +608,8 @@ def cmd_set(args: argparse.Namespace) -> int:
         print(f"已写入 {path}（备份 {backup.name}）")
         if result["migrated_format"]:
             print("env 已从字符串迁移为标准对象格式")
+        if dropped:
+            print("已移除拼错的代理变量：" + "、".join(dropped))
         print(f"  HTTP_PROXY  {target}")
         print(f"  HTTPS_PROXY {target}")
         print(f"  NO_PROXY    {merged}")
