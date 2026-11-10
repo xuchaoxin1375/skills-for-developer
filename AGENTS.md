@@ -13,6 +13,7 @@
 - 文档排版与图示按 [markdown-style](skills/markdown-style/SKILL.md)：结构、流程、依赖类示意图用 Mermaid，不用框线字符画。
 - Windows 下通过 PowerShell 读取含非 ASCII 的 UTF-8 文件前，按 [PowerShell 编码读取规则](skills/powershell-pitfalls/SKILL.md#文件读取与输出编码agent-读文件前)选择命令与保真回退。
 - 完成任务即按仓库既有风格提交并默认同步：先 `fetch` + `merge --ff-only` 对齐远端再 `push`（多远端逐个推）；推送或拉取失败（无凭据、网络、非快进、远端拒绝）就跳过并如实报告，不阻塞交付，不擅自 `--force`。
+- 用户说“同步”“同步仓库”时，范围不止 git 提交：同时核对本机偏好（`cli.json`、全局 `AGENTS.md`）已回写真源、skill 实体与 README 索引一致，并跑链接与仓库检查；检查项与顺序按 [skill-authoring-sync](skills/skill-authoring-sync/SKILL.md) 的“同步的检查范围”。
 - PR、改历史、强推及其他外部操作仍遵循有效会话授权，不从修改文档或创建 skill 推定授权。
 
 治理文档是维护入口，不要求每次修改通读全部 skill、运行所有应用级检查或做全仓格式迁移。

@@ -27,7 +27,7 @@
     "mode": "auto"
   },
   "debug": {
-    "devtools": true,
+    "devtools": false,
     "turn_tokens": "verbose",
     "timing": false
   },

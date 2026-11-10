@@ -156,6 +156,17 @@ skills-for-developer/
 
 装载规则、失败排查与"插件 vs skill"分工见[插件制品](../../docs/plugins.md)。
 
+### “同步”的检查范围
+
+用户说“同步”“同步仓库”“同步 skills”时，范围不止 git 提交；逐项核对，缺项要说明未做的原因。
+
+- **偏好回写**：本机 `cli.json` 与全局 `AGENTS.md` 的最新偏好按「同步 harness 配置偏好」比对，可跨机的差异合入真源。
+- **skill 实体与索引**：本机新建或改过的 skill 已落真源，README 检索表与 `description` 语义一致；第三方名单的 `ref` 是否该更新。
+- **提交与远端对齐**：按仓库风格提交，再按「跨机器同步与对齐判定」核对每个远端。
+- **链接与检查**：`-VerifyOnly`、`check-skills.py`、`check-links.py` 通过；harness 侧无实体副本漂移。
+
+先核对实体与偏好差异，再提交与推送，最后报告各项事实（含未做项）。
+
 ### 跨机器同步与对齐判定
 
 用户说“同步 skills”时，先把本地工作区状态和远端真实状态分开验证。`git status -sb` 只比较 `HEAD` 与本地缓存的 `refs/remotes/<remote>/<branch>`；该缓存可能早已过期，不能单独证明远端已对齐。
