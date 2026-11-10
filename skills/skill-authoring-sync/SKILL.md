@@ -107,6 +107,7 @@ skills-for-developer/
 - 推荐：触发不准（该加载没加载、或误加载）时，按[触发描述维护](../../docs/skill-authoring-workflow.md#触发描述维护推荐)做一次改前/改后最小对照，再同时改 `description` 与检索表；不靠改正文规则代偿触发。
 - 必须：用户提及 skill 变更/改动时，先定位真源再查改动：在真源内用 `git status --short`、`git log --oneline -N`、`git diff` 核对实体改动，不得以 harness 侧目录时间判定。例：查近期改动先跑状态与差异，再按名加载对应正文。
 - 必须：`skills/user-profile/` 只在用户明确要求改它时才动。规则归属按全局 `AGENTS.md` 的“会话入口与规则归属”：跨任务协作与授权留在全局，个人高频默认在 `user-profile`，领域机制在对应自定义 skill；引用替代副本，不将无法分类的长期偏好一概堆进任一入口。第三方 skill 由调用方编排，不改其正文承载本仓库规则。
+- 必须：维护或同步 skill 时顺路核对 `config/global-AGENTS.md` 与本机副本的结构和内容差异：能对齐的当次对齐，差异较大或存在冲突时先询问用户，不让偏差长期累积。
 
 ### 子模块中的 skill
 
