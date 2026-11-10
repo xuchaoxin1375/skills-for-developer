@@ -1,6 +1,6 @@
 ---
 name: opencode-provider-config
-description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）接入 OpenCode V2，或补全、审查已有模型参数：获取模型列表、核实输入输出模态与工具能力、思考等级与 variants、上下文及输出上限，写 providers 配置、选择协议、设置服务环境与按授权验证。用于接入第三方供应商/模型、配置 provider、切换 Responses/Messages、调整已有或内置模型的 capabilities/limit/reasoning、查 /v1/models 或 models.dev；不要求重新接入或必须提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
+description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）接入 OpenCode V2，或补全、审查已有模型参数：获取模型列表、核实输入输出模态与工具能力、思考等级与 variants、上下文及输出上限，写 providers 配置、选择协议、设置服务环境（含 `HTTP_PROXY`/`NO_PROXY` 服务端代理持久化与「设了代理却不生效」排查）与按授权验证。用于接入第三方供应商/模型、配置 provider、切换 Responses/Messages、调整已有或内置模型的 capabilities/limit/reasoning、查 /v1/models 或 models.dev，或让 OpenCode V2 走代理、排查服务端 env 不生效；不要求重新接入或必须提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
 ---
 
 # OpenCode 自定义供应商模型接入流程
