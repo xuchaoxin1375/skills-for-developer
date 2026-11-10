@@ -6,6 +6,13 @@
 
 代理是进程级的，JSON 配置无法按 provider 配代理（源码的 `options.fetch` 是函数，写不进配置文件）。同一供应商有多个入口域名、部分直连部分被阻断时，用服务端全局代理 + `NO_PROXY` 分流：直连可达的域名加进 `NO_PROXY`，其余域名自动走代理。例：域名 A 直连、域名 B 被阻断，则 `NO_PROXY` 加 A，两套 provider 配置共用同一服务端代理即可自动分流，启动时无需设置任何环境变量。
 
+## 代理的其余前提
+
+- **前台进程不吃服务端 env**：`--standalone` 与 `serve` 读自身进程环境，代理要写进启动那条命令；`service set env` 只对托管的后台服务生效。
+- **代理认证**：账号密码写进代理 URL 并对 `@`、`:`、`/` 等百分号编码（如 `http://user:p%40ssword@127.0.0.1:<port>`）；网关回 `407 Proxy Authentication Required` 即属此情形。
+- **TLS 解密**：代理或杀软做 HTTPS 扫描时报 `SELF_SIGNED_CERT_IN_CHAIN`、`CERT_NOT_YET_VALID`、`CERT_SIGNATURE_FAILURE`，先把 `opencode.ai`、`*.opencode.ai` 与 provider 域名排除扫描，其次导出其 CA 为 PEM 设 `NODE_EXTRA_CA_CERTS`，随服务持久化后重启生效。
+- **撤销**：`opencode service unset env HTTPS_PROXY`（`HTTP_PROXY` 同理）。删除同样只改存储层，旧快照要等下一次服务重启才消失。
+
 ## 密钥错位排查
 
 同一 provider 下所有模型均报网关侧“无可用渠道”，但配置文件与单模型直连测试均正常时，应优先怀疑实际生效的密钥与本次配置的密钥不一致（多会话共用同一后台服务时易发生混用）。以下命令仅输出 `True`/`False`，不打印密钥明文：
