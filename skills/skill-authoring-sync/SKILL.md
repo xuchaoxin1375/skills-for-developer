@@ -206,11 +206,13 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 （Linux `~/.config/opencode/cli.json`）；全局偏好真源是 `config/global-AGENTS.md`。
 仓库 `config/` 只收非密配置；`opencode.json`（providers）与密钥（`service.json`、`auth.json`）不入库。
 
+先按[治理规范](references/skill-governance.md)的“用户级偏好与 skill 的归属”定位置并查重，再执行下面的比对与写入：
+
 1. **比对**：逐字段比较本机与真源（JSON 展平后分新增 / 缺失 / 值不同三类），不只看文件是否相同。
-2. **取舍**：环境相关或临时调试项留在本机；可跨机的偏好合入真源。
-3. **写入**：让真源与本机字节一致（链接脚本按文件 hash 判断“已是最新”，不一致时下次部署会提示覆盖）。
+2. **取舍**：环境相关或临时调试项留在本机；可跨机的偏好合入真源。已在 skill 中完整描述的机制只保留选择、覆盖或指针，不复制清单。
+3. **写入**：`cli.json` 让真源与本机字节一致（链接脚本按文件 hash 判断“已是最新”，不一致时下次部署会提示覆盖）；`global-AGENTS.md` 允许本机自定义副本，但新增的通用条目要两边一致。修改被 harness 加载的 `AGENTS.md` 会触发指令重载，定稿后一次写入，避免先加后改。
 4. **校验**：`python3 scripts/check-skills.py --no-harness`，以及
-   `scripts\link-skills.ps1 -VerifyOnly`（Linux `./scripts/link-skills.sh --verify-only`）。
+   `scripts\link-skills.ps1 -VerifyOnly`（Linux `./scripts/link-skills.sh --verify-only`）。`-VerifyOnly` 的全局 AGENTS 漂移只表示本机副本与真源存在差异；确认本次新增条目两边一致，不把既有自定义差异当作失败。
 5. **报告**：列出采纳与保留项及依据；提交与同步按当前有效的全局或仓库授权。
 
 反向分发（真源 → 本机）由链接脚本承担：`-ApplyRecommendedCli`（Linux `--apply-recommended-cli`）
