@@ -145,7 +145,7 @@ if [[ $SKIP_AGENTS -eq 0 ]]; then
         if cmp -s "$src" "$dst"; then
           say "全局 AGENTS.md($dst) 已与真源一致"
         else
-          echo "WARN: 全局 AGENTS.md($dst) 与本机不同；保留本机文件，请对比后手工合并（不覆盖）" >&2
+          echo "WARN: 全局 AGENTS.md($dst) 与本机不同；保留本机文件，请对比后合并通用条目（本机定制保留，不覆盖）" >&2
         fi
       elif [[ $PLAN -eq 1 ]]; then
         say "全局 AGENTS.md($dst) 计划复制"

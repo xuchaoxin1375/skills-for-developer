@@ -115,7 +115,7 @@ function Sync-GlobalAgents {
       if (Test-FileEqual $src $dst) {
         Write-Step "全局 AGENTS.md($($t.Name)) 已与真源一致"
       } else {
-        Write-Warning "全局 AGENTS.md($($t.Name)) 与本机不同；保留本机文件，请对比后手工合并（不覆盖）"
+        Write-Warning "全局 AGENTS.md($($t.Name)) 与本机不同；保留本机文件，请对比后合并通用条目（本机定制保留，不覆盖）"
       }
       continue
     }

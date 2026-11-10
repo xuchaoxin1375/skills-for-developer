@@ -34,7 +34,7 @@
 .PARAMETER VerifyOnly
   只检查链接状态与全局 AGENTS.md 是否漂移, 不做任何修改;
   悬空链接 (目标已不存在) 也计为异常。
-  有异常时以非零退出码返回 (AGENTS 缺失计异常, 内容不一致只警告)。
+  有异常时以非零退出码返回 (AGENTS 缺失计异常, 内容不一致只警告; 允许本机定制)。
 
 .PARAMETER Plan
   只打印部署计划, 不修改链接、配置或依赖。
@@ -795,7 +795,7 @@ if ($VerifyOnly) {
         Write-Warning "全局 AGENTS.md($($t.Name)) 缺失 (期望按 README 从 config/global-AGENTS.md 恢复)"
         $failures++
       } elseif (-not (Test-FileEqual $repoAgents $t.Path)) {
-        Write-Warning "全局 AGENTS.md($($t.Name)) 与真源不一致, 按 README 手工合并 (不自动覆盖)"
+        Write-Warning "全局 AGENTS.md($($t.Name)) 与真源存在差异（允许本机定制；确认通用条目一致即可）"
       } else {
         Write-Host "全局 AGENTS.md($($t.Name)) 与真源一致。"
       }

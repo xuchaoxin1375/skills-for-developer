@@ -834,7 +834,7 @@ deploy_third_party_skills
 unlink_recommended_commands
 
 check_global_agents() {
-  # 全局 AGENTS.md 漂移提示：缺失计异常，不一致只警告（手工合并，不自动覆盖）。
+  # 全局 AGENTS.md 差异提示：缺失计异常，不一致只警告（允许本机定制，通用条目手工合并，不自动覆盖）。
   [[ $VERIFY_ONLY -eq 1 ]] || return 0
   local repo_agents="$REPO_ROOT/config/global-AGENTS.md"
   [[ -f "$repo_agents" ]] || return 0
@@ -847,7 +847,7 @@ check_global_agents() {
       echo "全局 AGENTS.md($name) 缺失（期望按 README 从 config/global-AGENTS.md 恢复）" >&2
       failures=$((failures + 1))
     elif ! cmp -s "$repo_agents" "$live"; then
-      echo "全局 AGENTS.md($name) 与真源不一致，按 README 手工合并（不自动覆盖）" >&2
+      echo "全局 AGENTS.md($name) 与真源存在差异（允许本机定制；确认通用条目一致即可）" >&2
     else
       echo "全局 AGENTS.md($name) 与真源一致。"
     fi

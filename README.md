@@ -352,7 +352,7 @@ python3 -c "import json,sys,os;ids={s['id'] for s in json.load(open(sys.argv[1])
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
 
-真源：`config/global-AGENTS.md`（与各目标文件字节一致）。每个消费全局 `AGENTS.md` 的 harness 一个部署目标：OpenCode 落 `~/.config/opencode/AGENTS.md`，ZCode 落 `~/.zcode/AGENTS.md`（ZCode 的用户级指令文件只认该路径，不回退 `~/.agents`）。链接脚本不碰各 harness 的 `AGENTS.md`；一键部署脚本 `scripts/deploy.ps1` / `deploy.sh` 会在目标缺失时复制，内容不一致只警告（由人或代理手工合并，不自动覆盖）。分步执行时 `-VerifyOnly`/`--verify-only` 会一并提示漂移：目标缺失计异常，内容不一致只警告。新机 clone 后跑一次一键脚本即可；已存在且不一致时需 agent 对比后合并(或手工合并，不是直接覆盖)。
+真源：`config/global-AGENTS.md`（以它为基准；允许各 harness 保留本机定制，通用条目两边保持一致）。每个消费全局 `AGENTS.md` 的 harness 一个部署目标：OpenCode 落 `~/.config/opencode/AGENTS.md`，ZCode 落 `~/.zcode/AGENTS.md`（ZCode 的用户级指令文件只认该路径，不回退 `~/.agents`）。链接脚本不碰各 harness 的 `AGENTS.md`；一键部署脚本 `scripts/deploy.ps1` / `deploy.sh` 会在目标缺失时复制，内容不一致只警告（通用条目由人或代理对比合并，本机定制保留，不自动覆盖）。分步执行时 `-VerifyOnly`/`--verify-only` 会一并提示差异：目标缺失计异常，内容不一致只警告（存在本机定制时属正常）。新机 clone 后跑一次一键脚本即可；已存在且不一致时合并通用条目，本机专属条目留在本机副本。
 
 Windows（PowerShell）：
 
@@ -367,7 +367,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 foreach ($dst in $targets) {
   if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null; Copy-Item -LiteralPath $src -Destination $dst; "$dst restored" }
   elseif ([System.Linq.Enumerable]::SequenceEqual([byte[]][System.IO.File]::ReadAllBytes($src), [byte[]][System.IO.File]::ReadAllBytes($dst))) { "$dst already in sync" }
-  else { "$dst differs, merge manually (one line), will not overwrite" }
+  else { "$dst differs from the source (local customization allowed); merge shared entries manually, will not overwrite" }
 }
 ```
 
@@ -378,7 +378,7 @@ src="$(git rev-parse --show-toplevel)/config/global-AGENTS.md"
 for dst in ~/.config/opencode/AGENTS.md ~/.zcode/AGENTS.md; do
   if [ ! -f "$dst" ]; then mkdir -p "$(dirname "$dst")"; cp "$src" "$dst"; echo "$dst restored";
   elif cmp -s "$src" "$dst"; then echo "$dst already in sync";
-  else echo "$dst differs, merge manually (one line), will not overwrite"; fi
+  else echo "$dst differs from the source (local customization allowed); merge shared entries manually, will not overwrite"; fi
 done
 ```
 
