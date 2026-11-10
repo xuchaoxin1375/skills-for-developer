@@ -167,7 +167,7 @@ skills-for-developer/
 4. **按结果处理**：
    - `behind > 0`、`ahead = 0`：先处理工作区未提交改动（提交或 stash），再 `git pull --ff-only`（或 `git merge --ff-only <remote>/<branch>`）后复跑第 3 步。
    - `ahead > 0`、`behind = 0`：本地有未推送提交；按当前有效的提交与同步授权处理，获准 push 后重新 fetch 核对。失败处理遵循当前全局或仓库规则；网络诊断与可用路线按 `network-access`，重试仍受授权限制。
-   - 双向非零：先报告分叉点和双方提交，不擅自 merge/rebase。
+   - 双向非零：先报告分叉点和双方提交，不擅自 merge/rebase。用户明确要求同步后，把远端独有提交用 `merge --no-ff` 合入本地，再分别推送所有远端；不要 `--force`。合并后跑仓库检查，并用 `rev-parse` 确认本地与各远端指向同一提交。
 5. **报告核验事实**：写明 remote、branch、远端 SHA、本地 HEAD、ahead/behind，以及是否实际执行过 fetch。ahead/behind 只描述提交历史；工作区有未提交改动时另用 `git status --short` 说明，不能把它算作已同步。不要用 `git status -sb` 的 `up to date` 代替远端结论；远端不可达时明确说“未能验证远端”。涉及远端操作时写明实际通道（直连、代理或镜像）。
 
 ### 删除 skill

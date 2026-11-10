@@ -118,6 +118,7 @@ description: 跨平台 CLI 二进制部署：按 OS/架构选择 GitHub Release 
 - 覆盖已有版本、同版本、指定低版本、未知平台、资产缺失与校验失败。
 - 在至少一个真实平台完成下载、校验、解压、安装与 `<tool> --version`；其他平台只声明已验证资产命名或 release 列表，不声称已实机安装。
 - 二进制同时服务多个 shell 时，分别在目标 shell 中验证补全注册与 PATH，不只验证 `--version`。
+- Bash 中多候选第一次 Tab 只补公共前缀或响铃，第二次才列候选；超过 `completion-query-items` 会询问 `y/n`。不要以一次 Tab 无列表判定补全失效。
 - 检查重复运行是否幂等，失败后是否留下半成品或错误的 PATH 条目。
 
 ## 与相邻 skill 的边界

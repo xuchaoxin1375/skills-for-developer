@@ -30,6 +30,15 @@ Windows Terminal 用 ConPTY（`OpenConsole.exe`）承载控制台，传统控制
 
 实测环境：Windows 11、pwsh 7.6.3、PSReadLine 2.4.5。同一探针分别附加 `Start-Process pwsh` 与 `wt.exe -w -1 pwsh` 的会话，附加与读屏均成功。探针从代理自身的 shell 启动时，目标窗口可能并未真正显示在桌面上（`MainWindowHandle` 为 0、窗口矩形为零）；需要用户可见的界面验证时，从桌面会话启动。
 
+## 非 PowerShell 控制台（Git Bash / MSYS）
+
+同一套附加、注入与读屏方法也适用于 Git Bash 的 bash 进程，但有几处差异：
+
+- 目标必须是真实控制台进程。`git-bash.exe`/mintty 使用自己的终端，不能用 `AttachConsole` 读屏；改用 `bin\bash.exe` 或 Windows Terminal 中的 bash。
+- `bin\bash.exe` 可能只是启动器，实际交互 shell 是它的 `usr\bin\bash.exe` 子进程。附加前按 `ParentProcessId` 找到子 bash，或附加到持有 conhost 的进程；只附加启动器会读不到提示符。
+- 正常 Git Bash 入口会准备 `/usr/bin`、`/mingw64/bin`；直接启动 `usr\bin\bash.exe` 可能缺这些路径，补全函数依赖的 `xargs` 等命令不可用，表现为候选静默为空。先验证 `command -v xargs`，或从正常入口启动。
+- Bash 的可编程补全多候选时，第一次 Tab 只补公共前缀或响铃，第二次才列候选；超过 `completion-query-items` 会询问 `Display all ...? (y or n)`。不要以一次 Tab 无列表判定补全失效。
+
 ## 与他人操作共存
 
 探针不抢前台焦点，不等于用户碰不到同一个控制台。以下干扰会直接改变判读结果：
