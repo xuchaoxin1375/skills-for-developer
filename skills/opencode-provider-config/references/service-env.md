@@ -38,6 +38,8 @@ python3 -c "import os; print(os.environ.get('<PROVIDER>_API_KEY','') == '<KEY>')
 
 shell 环境中通常仅存在小写 `http_proxy` 系变量，但部分 HTTP 客户端仅识别大写变量。恢复代理时，应以 `env | grep -i proxy` 的实测值为准补齐大写三变量（端口照抄实测值，不得臆造；写入方式见主文件的 env 模板），`NO_PROXY` 保持逗号分隔。
 
+Windows 另有一层：变量**存储名取首次创建时的大小写**，此后换大小写赋值只改值不改名，子进程继承的仍是旧名。`$env:HTTPS_PROXY` 回读有值不能作通过依据，要用 `Get-ChildItem Env:` 或 `cmd /c 'set | findstr /i proxy'` 看真实名字；修复先 `Remove-Item Env:https_proxy` 再以大写名重建。
+
 ## 已知行为：set env 会重启服务
 
 每次 `service set env` 都会重启后台服务，导致正在执行的 shell 命令以 "Tool execution interrupted"（导出日志中也显示为 "Command cancelled"）中断——这不是失败，变量已写入。变量名与取值全部定稿后再写入，`set env` 次数即重启次数，能少一次就少一次；逐条设置、每条跑完重新确认即可；确认用只读的 `opencode service get env`（输出含密钥，展示前先打码）。
@@ -62,6 +64,10 @@ Start-Process pwsh -ArgumentList '-NoLogo','-NoProfile','-Command','opencode ser
 opencode service get env        # 只读确认（输出含密钥，展示前打码）
 ```
 
+## 重启时的竞态
+
+`service stop` 只杀服务进程；空窗期里其他存活的客户端（另一窗口的会话、编辑器扩展）发现服务不可用会自行拉起一个，并沿用**它自己**的环境，随后执行的 `service start` 因服务已存活而成为空操作——代理是否跟得上取决于谁先抢到。要可控就二选一：把变量写进持久化 `env`（`set env`），或关掉所有入口再 `stop`/`start`。
+
 ## 存储与生效分离
 
 环境变量有三层——shell 里 export 的临时变量（对服务进程无效，见第 2 步结论）、`get env` 读的持久化存储（`service.json` 的 `env` 块）、运行中服务进程启动时继承的快照（读法 `tr '\0' '\n' < /proc/<PID>/environ`）。三者可各自不同步；`get env` 为空并不代表服务进程中无此变量——修改服务级 env 之前，除 `get env` 外，还应查询 live 服务进程的环境（密钥经掩码处理，不输出明文）：
@@ -75,7 +81,7 @@ tr '\0' '\n' < /proc/$SERV_PID/environ | grep -E "PROXY|_API_KEY" | sed -E 's/(s
 
 ## live 未生效的判定与隔离验证
 
-Windows 无 `/proc` 时，以对照与隔离为准。`service status` 端口与 `opencode.log` 中 `spawning process` 的 `run=` 是否变化，是重启是否真正生效的判据；两者不变即 live 仍是旧快照，此时重复 `set env`/`restart` 只是空转，应停手。也可用启动时间佐证：`opencode api get /api/info` 返回的 `pid` 用 `(Get-Process -Id <pid>).StartTime` 读出，晚于最后一次 `set env` 即新快照。Windows 读不到别的进程的 environ，代理是否真被服务用上只能间接判断——代理端口可连、经该代理的请求返回 200、`api get /api/info` 健康——确证仍需一次真实模型请求。用已知正常模型做对照：已知模型 `run` 正常、新模型报缺 key，即 live 陈旧而非配置错。先用 `run --standalone` 隔离验证（私有服务继承当前 shell 环境，同条命令内设变量并验证，密钥不落盘到配置文件）：
+Windows 无 `/proc` 时，以对照与隔离为准。`service status` 端口与 `opencode.log` 中 `spawning process` 的 `run=` 是否变化，是重启是否真正生效的判据；两者不变即 live 仍是旧快照，此时重复 `set env`/`restart` 只是空转，应停手。也可用启动时间佐证：`opencode api get /api/info` 返回的 `pid` 用 `(Get-Process -Id <pid>).StartTime` 读出，晚于最后一次 `set env` 即新快照。Windows 没有内置命令读别的进程 environ；同权限进程可用 PEB + `ReadProcessMemory` 读环境块取精确证据，常规以「新进程启动时间 + 回环健康 + 代理可达 + 一次真实请求」判断。用已知正常模型做对照：已知模型 `run` 正常、新模型报缺 key，即 live 陈旧而非配置错。先用 `run --standalone` 隔离验证（私有服务继承当前 shell 环境，同条命令内设变量并验证，密钥不落盘到配置文件）：
 
 ```powershell
 $env:<VAR_NAME> = "<KEY>"; opencode run --standalone -m <providerID>/<modelID> "reply with exactly: OK"
