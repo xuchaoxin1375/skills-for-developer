@@ -39,6 +39,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 - 普通自动化优先已安装的 pwsh 7，在实际启动层跳过 profile；显式启动用 `-NoLogo -NoProfile`，无交互任务才加 `-NonInteractive`。复现 profile 集成时保留目标初始化，不统一强加跳过。
 - 必需 cmdlet 操作用 `-ErrorAction Stop`；每个原生程序后立即检查 `$LASTEXITCODE`，失败则按契约退出，不让后一条成功命令掩盖失败。诊断与业务输出分流，不混入 `Format-*` 展示对象。
 - 直接调用优先 `& $exe @argumentList`，不用 `Invoke-Expression` 拼接执行。路径、空参数、JSON 与多层引号不确定时离线核对 argv，不用外部收费请求试错。
+- 多段命令、含中文或嵌套引号的复杂命令写成 `.ps1` 再用 `-File` 调用，不在 `-Command` 里拼引号链；行内只保留单条可读命令。
 - 确切文件路径优先 `-LiteralPath`，脚本资源从 `$PSScriptRoot` 定位，写入核对编码、BOM与换行；不把 `>` 与不同版本的 `Set-Content` 当成跨平台等价写法。
 - 删除 Junction 只删链接本身，不用 `-Recurse`；递归操作先核对目标范围。执行策略异常先查来源和生效范围，不默认改全局策略。
 - 验证 Tab 补全等交互行为时不改用 `SendKeys` 抢焦点；按[交互式控制台验证](references/interactive-console-verification.md)启动独立窗口、向输入缓冲区注入按键并读屏。窗口由探针独占，以读屏出现提示符判断就绪，不用 `MainWindowHandle`，不与用户输入混用。

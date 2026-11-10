@@ -109,6 +109,7 @@ $nativeExit = $LASTEXITCODE
  （如 `$PSVersionTable` 或要透传给内层的 `$`），外层必须用**单引号**包裹整段 python 代码。
 - 症状实例：`-Command "$PSVersionTable.PSVersion"` 被外层展开成
   `System.Management...PSVersion` 当命令执行而报错——错的不是内层，是外层先吃了 `$`。
+- 多段命令、含中文或嵌套引号的命令不要在 `-Command` 里拼：写成 `.ps1` 文件再用 `-File` 调用，`-File` 之后的参数直传给脚本，引号层只剩一层，多行 here-string 也一并消失。
 - `[CmdletBinding()]param()` 前不能有任何可执行语句。调试探针 `Write-Output` 插错位置
   会直接报 `Unexpected attribute 'CmdletBinding'` / `Unexpected token 'param'`。
   探针只能插在 `param()` 块**之后**。

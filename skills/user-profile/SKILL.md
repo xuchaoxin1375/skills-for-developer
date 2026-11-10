@@ -1,8 +1,8 @@
 ---
 name: user-profile
 description: >
-  个人高频默认值：搜索渠道顺位、多通道分工与托管搜索兜底边界；问答与可复用流程的沉淀偏好；配置仅作本机案例；Windows shell、路径和自建工具版本偏好。
-  会话动手前由全局 AGENTS.md 加载；保留 PowerShell、网络、脚本及检索的按需入口，领域执行细则不在此维护。
+  个人高频默认值：搜索渠道顺位、多通道分工与托管搜索兜底边界；问答与可复用流程的沉淀偏好；配置仅作本机案例；Windows shell、路径、回复语言和自建工具版本偏好。
+  会话动手前由全局 AGENTS.md 加载；保留 PowerShell、网络(资源下载和、脚本及检索的按需入口，领域执行细则不在此维护。
 ---
 
 ## User Profile（个人常驻默认值）
@@ -20,6 +20,7 @@ description: >
 - **供应商托管搜索**：只作最后兜底，前序通道不可用、明确耗尽或不适合该任务时才考虑；不默认启用、不静默回退，使用前说明实际路径、费用及供应商/协议/harness 适配情况。原因是这条路径的调用、计费与取证不够透明；费用不明或超出本轮授权时先确认。这不禁用普通 Responses 文本与函数调用，也不把 harness 独立搜索或 Console 的 Hosted Web Search 仅凭名称归为模型供应商托管搜索。
 - **搜索透明性**：路径归属与配置层禁用的证据按 `harness-web-check`；偏好/skill 是行为约束，不报告成配置层硬禁用。
 - **配置代办**：用户明确授权后，可代查官方文档、给出配置步骤，或代注册免费账号/创建 API key；不代付、不绕过验证码或服务条款、不复制本机凭据到其他设备或仓库，保存前确认位置与权限。细节按 `harness-web-check`。
+- **回复语言**：默认中文回复；用户改用其他语言、引用原文或明确要求外语时跟随。代码、命令、路径与专有名词保持原样，不翻译。
 - **Windows shell**：优先 PowerShell，其次 git-bash，cmd.exe 仅作最后回退；带逻辑的 Windows 片段用 PowerShell，启动与执行细节按 `powershell-pitfalls`。
 - **路径**：优先使用 `/`；Windows 特殊路径和目标工具兼容性例外见 [路径分隔符](../powershell-pitfalls/references/files-and-invocation.md#路径分隔符优先用-)。
 - **自建工具版本**：脚本/小工具采用本地日期时间 `YYYY.MM.DD.HHmm`，不手搓语义化版本；唯一真源在 `package.json` 的 `version`，其余位置运行时读取，并提供重打入口(如 `pnpm stamp`)。四段号仅用于本地 link/安装，不发布到只接受三段 semver 的 npm registry。
