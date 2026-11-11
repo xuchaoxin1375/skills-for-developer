@@ -12,10 +12,10 @@
 ## 基本做法
 
 1. 启动独立窗口：`Start-Process pwsh -ArgumentList '-NoLogo','-NoExit' -PassThru`。保留 profile，才是在验证用户日常环境。**不要用 `MainWindowHandle` 判断窗口就绪**：实测它可能一直是 0，而控制台已经能读屏。
-2. 等待提示符：轮询读屏直到出现提示符或超时。固定等待只作首次试探，profile 初始化耗时因机器而异；超时按失败处理，不靠延长等待掩盖问题。
+2. 等待提示符：轮询读屏直到出现提示符或超时。读屏若使用 `TrimEnd()`，匹配提示符时也应去掉末尾空白，例如匹配 `READY>` 而非 `READY> `，避免窗口已就绪却一直超时。固定等待只作首次试探，profile 初始化耗时因机器而异；超时按失败处理，不靠延长等待掩盖问题。
 3. 附加控制台：探针进程先 `FreeConsole()`，再 `AttachConsole(<pid>)`，用 `CreateFileW("CONIN$"/"CONOUT$")` 取得输入输出句柄。`CONOUT$` 按读写打开（`GENERIC_READ|GENERIC_WRITE`，`0xC0000000`）；实测只给 `GENERIC_READ` 时 `GetConsoleScreenBufferInfo` 返回 `ERROR_ACCESS_DENIED`(5)，看起来像附加失败。
 4. 注入按键：`WriteConsoleInputW` 写入 `KEY_EVENT_RECORD`，`EventType = 1`，每字符发送按下与抬起两条；虚拟键码用 `VkKeyScanW(ch)` 取低字节，扫描码用 `MapVirtualKeyW(vk, 0)`。文本的修饰键从 `VkKeyScanW` 高字节解析。`Ctrl+C` 是例外：默认控制台模式下真实 Ctrl+C 会被当作控制事件，而写入的是按键记录，二者在 Tab 菜单中的行为不同；验证 Ctrl+C 要改用 `keybd_event`/`SendInput` 并校验前台窗口。
-5. 读取屏幕：`GetConsoleScreenBufferInfo` 取 `dwSize` 与 `srWindow`，逐行 `ReadConsoleOutputCharacterW`，再 `TrimEnd()`；按可见窗口读取，不读整块缓冲区。每次读屏重新取尺寸，不缓存——终端尺寸和滚动位置会被用户或终端本身改变。附加后不要改用 `[Console]::WindowWidth` 一类 .NET 成员：它们持有启动时的句柄缓存，会报"句柄无效"。
+5. 读取屏幕：`GetConsoleScreenBufferInfo` 取 `dwSize` 与 `srWindow`，逐行 `ReadConsoleOutputCharacterW`，按返回的实际字符数 `read` 截取后再去除末尾空白：`sb.ToString(0, (int)read).TrimEnd()`。不能直接用 `sb.ToString()` 读取整个封送缓冲区，否则可能带出尾部乱码或孤立代理项，导致 UTF-8 写入失败。按可见窗口读取，不读整块缓冲区。每次读屏重新取尺寸，不缓存——终端尺寸和滚动位置会被用户或终端本身改变。附加后不要改用 `[Console]::WindowWidth` 一类 .NET 成员：它们持有启动时的句柄缓存，会报"句柄无效"。
 6. 顺序验证：先跑已知命令的对照（如 `Get-Chi` + Tab），确认注入与读屏链路，再测目标命令；一次只注入一步并等待重绘。
 7. 清行与退出：菜单打开时先 `Esc` 关闭菜单，再 `Ctrl+C` 清行（真实按键下 Ctrl+C 在菜单中可能无效）；最后输入 `exit` 回车退出，进程仍在时用 `Stop-Process` 兜底。只结束本次启动的进程与窗口：结束目标 shell 后终端窗口可能仍在（实测 Windows Terminal 窗口保留），需要按自己的 pid 关闭并复查，不按进程名批量结束。
 
@@ -70,6 +70,6 @@ Windows Terminal 用 ConPTY（`OpenConsole.exe`）承载控制台，传统控制
 
 ## 验收与清理
 
-- 对照命令复现预期菜单，才算注入机制有效；对不上时先查字符回显、修饰键常量与读屏范围，不要先改补全配置。
+- 对照命令复现预期菜单，才算注入机制有效；对不上时先查字符回显、修饰键常量与读屏范围，不要先改补全配置。读屏代码有改动时，用含非 ASCII 字符的屏幕验证无尾部乱码、可严格编码为 UTF-8，并确认去掉末尾空白后的提示符仍能判定就绪。
 - 记录环境版本（pwsh、PSReadLine、宿主、目标程序）、对照结果、目标结果与进程清理状态；截图只作辅助证据，判读仍以屏幕文本为准。
 - 验证结束确认没有残留 pwsh 或 conhost 窗口，并复查终端窗口是否随 shell 一起关闭；只按记录的 pid 结束进程，不按进程名批量清理。
