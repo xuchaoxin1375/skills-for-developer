@@ -30,7 +30,7 @@
 
 ### 工具与文档默认
 
-- Windows 首次发出 PowerShell 调用前加载 `powershell-pitfalls`，单行 `curl`/`Get-Content`/`python` 片段与多段链式管道同样算。
+- Windows 首次发出 PowerShell 或 bash 调用前加载 `shell-pitfalls`，单行 `curl`/`Get-Content`/`python` 片段与多段链式管道同样算；Git Bash 的启动、路径转换与交互验证也归该 skill。
 - 写脚本/小工具 CLI 默认按 `scripting-best-practices` 交付；覆盖写入前的检查与 `--force` 入口、方案取舍留档以该 skill 为准，本文件不复制清单。
 - 文档与注释：并列列举用无序列表或小标题，不用任何数字编号（阿拉伯数字、中文数字、带圈数字），只有确有先后顺序的步骤才用有序列表；命令示例中的占位路径写 `/path/to/...`，不拿真实路径当占位。细节见 `markdown-style`。
 

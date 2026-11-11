@@ -1,6 +1,6 @@
 # powershell-encoding-guard（OpenCode 插件）
 
-把 `skills/powershell-pitfalls` 中**每次 shell 调用都要做**的机械步骤前置到 OpenCode 的
+把 `skills/shell-pitfalls` 中**每次 shell 调用都要做**的机械步骤前置到 OpenCode 的
 shell 钩子，减少"每次都要记得写那两行"的遗漏。
 
 ## 做什么
@@ -21,7 +21,7 @@ shell 钩子，减少"每次都要记得写那两行"的遗漏。
 ## 不做什么
 
 - 不替代理做判断：`何时加 -ErrorAction Stop`、退出码契约、落盘链路设计、什么时候改用原生
-  `read` 工具，仍由 `skills/powershell-pitfalls` 维护。
+  `read` 工具，仍由 `skills/shell-pitfalls` 维护。
 - 不自动补 `-Encoding UTF8`：GBK / ANSI 文件会被改坏，编码必须按实际文件格式判定。
 - 不改写命令结构、不重排管道、不阻断 cmdlet 之间的管道（那是 .NET 字符串，不是本插件的目标形态）。
 - 不做系统级编码统一（改系统代码页 / 区域设置会影响本机所有程序）。

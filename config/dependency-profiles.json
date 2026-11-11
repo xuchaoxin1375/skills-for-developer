@@ -159,7 +159,7 @@
     },
     "powershell": {
       "label": "PowerShell 7（仅 Windows）",
-      "why": "powershell-pitfalls 的 Windows 示例与脚本",
+      "why": "shell-pitfalls 的 Windows 示例与脚本",
       "requirement": {
         "id": "powershell",
         "required": true,

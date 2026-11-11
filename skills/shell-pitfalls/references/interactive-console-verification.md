@@ -3,7 +3,8 @@
 ## 适用条件
 
 - Windows 交互式桌面会话，需要复验用户按 Tab 后实际看到的界面：候选菜单、排序、描述列、选中后的输入行变化、预测视图。
-- 只关心候选集合时，优先用非交互入口：`[System.Management.Automation.CommandCompletion]::CompleteInput($line, $cursor, $null)`；本流程用于补全引擎之外的界面层差异。
+- 目标外壳可以是 pwsh/PSReadLine，也可以是 Git Bash 的 bash；后者见[非 PowerShell 控制台](#非-powershell-控制台git-bash--msys)。Linux/macOS 的窗口级按键注入未验证，WSL 内按 Linux 方式处理。
+- 只关心候选集合时，优先用非交互入口：PowerShell 用 `[System.Management.Automation.CommandCompletion]::CompleteInput($line, $cursor, $null)`，bash 用 `compgen` 或补全函数直接调用；本流程用于补全引擎之外的界面层差异。
 - 需要目标程序有独立控制台窗口；纯服务会话或无桌面环境不适用。
 - 代理代为验证时，目标窗口由探针独占。用户在同一窗口操作会污染结果，见[与他人操作共存](#与他人操作共存)。
 

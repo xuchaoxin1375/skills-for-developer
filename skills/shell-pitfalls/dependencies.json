@@ -10,6 +10,15 @@
         { "kind": "command", "name": "powershell" }
       ],
       "hint": "执行示例需要 PowerShell 5.1 或 pwsh 7；只读规范不需要"
+    },
+    {
+      "id": "bash",
+      "required": false,
+      "platforms": ["windows", "linux", "macos"],
+      "alternatives": [
+        { "kind": "command", "name": "bash" }
+      ],
+      "hint": "Git Bash、WSL 或系统 bash 均可；只读规范不需要"
     }
   ]
 }

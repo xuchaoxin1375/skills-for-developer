@@ -101,7 +101,7 @@ PEP 723 单文件依赖声明示例：
 
 ## 文件读写编码（UTF-8，默认）
 
-必须：读写文本文件时显式指定编码。常规文本按 UTF-8 处理：读用 `Path.read_text(encoding="utf-8")`，写用 `Path.write_text(..., encoding="utf-8")`；需去掉字节顺序标记（BOM，Byte Order Mark）时读用 `encoding="utf-8-sig"`。子进程输出编码见“本地工具：文件遍历与子进程”第 3 条，不与本条混用。禁止用 `errors="replace"` 或 ASCII 转义做常规输出，它们只掩盖误读；诊断链路无法统一编码时的保真回退见 `powershell-pitfalls` 的编码参考。
+必须：读写文本文件时显式指定编码。常规文本按 UTF-8 处理：读用 `Path.read_text(encoding="utf-8")`，写用 `Path.write_text(..., encoding="utf-8")`；需去掉字节顺序标记（BOM，Byte Order Mark）时读用 `encoding="utf-8-sig"`。子进程输出编码见“本地工具：文件遍历与子进程”第 3 条，不与本条混用。禁止用 `errors="replace"` 或 ASCII 转义做常规输出，它们只掩盖误读；诊断链路无法统一编码时的保真回退见 `shell-pitfalls` 的编码参考。
 
 ```python
 from pathlib import Path

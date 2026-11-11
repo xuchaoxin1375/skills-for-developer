@@ -1,7 +1,7 @@
 /**
  * PowerShell 编码守卫（OpenCode 插件）
  *
- * 职责：把 `skills/powershell-pitfalls` 中"每次 shell 调用都要做"的机械步骤前置到 shell 钩子：
+ * 职责：把 `skills/shell-pitfalls` 中"每次 shell 调用都要做"的机械步骤前置到 shell 钩子：
  *   1. Windows 上的 PowerShell 调用自动前置编码语句（同次调用内、第一次输出之前）。
  *   2. 原生命令输出经 PowerShell 文本层（管道/重定向）时，记一条诊断日志；
  *      在工具结果末尾追加提示是**可选项**，默认关闭（`appendNote`）。
@@ -10,7 +10,7 @@
  * 何时改用原生 read 工具）仍由 skill 维护。插件不替代理做判读，也不改写命令结构，
  * 不自动补 `-Encoding UTF8`（GBK/ANSI 文件会被改坏），不自动重排管道。
  *
- * 规则出处与实测证据见 skills/powershell-pitfalls（含 references/encoding-read.md）。
+ * 规则出处与实测证据见 skills/shell-pitfalls（含 references/encoding-read.md）。
  */
 
 import { appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
@@ -283,7 +283,7 @@ export function riskNote(findings: RiskFinding[]): string {
     `[${PLUGIN_ID}] 原生命令输出经 PowerShell 文本层（管道/重定向）：${list}。`,
     "这类链路的输出保真不稳定（实测出现过\"设了编码反而更乱\"），退出码 0 或纯英文输出不能证明读取正确。",
     "替代做法：让程序自己筛选（--format / 原生 grep）、用程序自带的 --out 落盘，或改走字节闸门；",
-    "判读与排障见 skills/powershell-pitfalls（references/encoding-read.md）。",
+    "判读与排障见 skills/shell-pitfalls（references/encoding-read.md）。",
   ].join("\n");
 }
 
@@ -293,7 +293,7 @@ export function riskError(findings: RiskFinding[]): string {
   return [
     `[${PLUGIN_ID}] 拒绝执行：原生命令输出经 PowerShell 文本层（管道/重定向）：${list}。`,
     "请改为：让程序自己筛选（--format / 原生 grep）、用程序自带的 --out 落盘，或改走字节闸门；",
-    "确需该形态时改用 warn 模式。判读与排障见 skills/powershell-pitfalls。",
+    "确需该形态时改用 warn 模式。判读与排障见 skills/shell-pitfalls。",
   ].join("\n");
 }
 

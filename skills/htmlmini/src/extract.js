@@ -1013,7 +1013,7 @@ export function savePageArgs({
   postWaitMs = null,
 }) {
   // -X utf8 + PYTHONUTF8：子进程日志强制 UTF-8 输出，本侧按 UTF-8 增量解码、
-  // 逐行透传（Windows 控制台查看侧按 powershell-pitfalls 的 UTF-8 模板设置）。
+  // 逐行透传（Windows 控制台查看侧按 shell-pitfalls 的 PowerShell UTF-8 模板设置）。
   // --engine 透传：显式指定时 save_page 只用该层（不再自动升档），已知站点可省掉注定失败的升档。
   // 等选择器时把页面超时压到渲染预算（60s）：save_page 用 timeout_ms 当 wait_for_selector
   // 的超时，默认 300s 会让一个写错/永远不可见的选择器干等五分钟。

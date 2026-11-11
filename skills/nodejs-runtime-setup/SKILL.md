@@ -85,7 +85,7 @@ Node.js **25 起不再分发 Corepack**，`corepack enable` 在 26 上直接报�
 - 镜像滞后导致装不到目标版本就明确回退官方源，不把某个镜像写死为唯一来源。
 - 企业网络需要代理时，npm 用 `proxy` / `https-proxy`，Node 24.5+/22.21+ 的 `http`、`https` 与 `fetch` 支持 `NODE_USE_ENV_PROXY=1` 读取 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`；代理只解决通路，不改变包来源。
 - 不关闭 TLS 校验来“解决”证书错误；企业代理替换证书时配置受信任 CA（`NODE_EXTRA_CA_CERTS`、npm `cafile` 或系统根证书）。
-- Windows 上 `npm.ps1 cannot be loaded` 是 PowerShell 执行策略拦截，不是 npm 损坏：当前用户设为 `RemoteSigned` 后新开终端；组策略锁定时找管理员，详见 powershell-pitfalls。
+- Windows 上 `npm.ps1 cannot be loaded` 是 PowerShell 执行策略拦截，不是 npm 损坏：当前用户设为 `RemoteSigned` 后新开终端；组策略锁定时找管理员，详见 shell-pitfalls 的 PowerShell 部分。
 
 ## 验收清单
 

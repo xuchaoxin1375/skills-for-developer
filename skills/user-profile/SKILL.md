@@ -21,8 +21,8 @@ description: >
 - **搜索透明性**：路径归属与配置层禁用的证据按 `harness-web-check`；偏好/skill 是行为约束，不报告成配置层硬禁用。
 - **配置代办**：用户明确授权后，可代查官方文档、给出配置步骤，或代注册免费账号/创建 API key；不代付、不绕过验证码或服务条款、不复制本机凭据到其他设备或仓库，保存前确认位置与权限。细节按 `harness-web-check`。
 - **回复语言**：默认中文回复；用户改用其他语言、引用原文或明确要求外语时跟随。代码、命令、路径与专有名词保持原样，不翻译。
-- **Windows shell**：优先 PowerShell，其次 git-bash，cmd.exe 仅作最后回退；带逻辑的 Windows 片段用 PowerShell，启动与执行细节按 `powershell-pitfalls`。
-- **路径**：优先使用 `/`；Windows 特殊路径和目标工具兼容性例外见 [路径分隔符](../powershell-pitfalls/references/files-and-invocation.md#路径分隔符优先用-)。
+- **Windows shell**：优先 PowerShell，其次 git-bash，cmd.exe 仅作最后回退；带逻辑的 Windows 片段用 PowerShell，启动与执行细节按 `shell-pitfalls`。
+- **路径**：优先使用 `/`；Windows 特殊路径和目标工具兼容性例外见 [路径分隔符](../shell-pitfalls/references/files-and-invocation.md#路径分隔符优先用-)。
 - **自建工具版本**：脚本/小工具采用本地日期时间 `YYYY.MM.DD.HHmm`，不手搓语义化版本；唯一真源在 `package.json` 的 `version`，其余位置运行时读取，并提供重打入口(如 `pnpm stamp`)。四段号仅用于本地 link/安装，不发布到只接受三段 semver 的 npm registry。
 - **Markdown 文档修改**：修改既有文档时，新增与改动内容按 `markdown-style` 规范执行，不迁就存量不规范写法；仅当明确要求延续原文档风格时才沿用；全文规范化需单独授权。
 - **修改范围对齐**：修改指示或范围模糊不清(包括用户可能未意识到)时，先对齐真实意图与改动边界再动手；不先按自己的理解改一版再解释。范围明确的局部修改不重复确认。
@@ -53,7 +53,7 @@ description: >
 
 | 触发情况 | 加载入口与细则归属 |
 |---|---|
-| Windows 首次发出 PowerShell 调用前，包含单行读取/抓取/解析 | `powershell-pitfalls`：编码、管道、退出码、启动/profile 与参数 |
+| Windows 首次发出 PowerShell 或 bash 调用前，包含单行读取/抓取/解析 | `shell-pitfalls`：选壳、编码、管道、退出码、启动/profile、参数与 Git Bash 差异 |
 | 外链抓取、依赖下载或代理/镜像配置前 | `network-access`：环境假设、代理登记、实际出口、选路与失败分流 |
 | 编写、审查或重构脚本/CLI | `scripting-best-practices`：UTF-8、选项、覆盖预检、核心用例与决策留档 |
 | 联网检索与证据核验 | `agentic-web-search`：常规流程与一次性搜索例外；配置/工具下发/实际调用检查转 `harness-web-check` |

@@ -108,7 +108,7 @@ git rm --cached -- <file>
 git add --renormalize .
 ```
 
-- 判别：忽略行尾后差异消失是行尾变化线索；先确认属性/运行要求，不因此自动做全仓操作。UTF-8、BOM、脚本执行权限和中文路径按实际工具验证；PowerShell 5.1 编码差异按 `powershell-pitfalls`，不把所有 `.ps1` 强制为 CRLF。
+- 判别：忽略行尾后差异消失是行尾变化线索；先确认属性/运行要求，不因此自动做全仓操作。UTF-8、BOM、脚本执行权限和中文路径按实际工具验证；PowerShell 5.1 编码差异按 `shell-pitfalls`，不把所有 `.ps1` 强制为 CRLF。
 
 ### .editorconfig：基座与两条例外
 

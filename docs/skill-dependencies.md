@@ -118,7 +118,7 @@ python -X utf8 scripts/check-skill-deps.py --list-profiles
 | minimal | fd（推荐，Debian/Ubuntu 命令为 `fdfind`） | 跨平台高性能文件/目录搜索，按名称批量定位文件 | `winget install sharkdp.fd` | `brew install fd` / `sudo apt install fd-find` |
 | standard | pnpm（项目依赖管理器） | htmlmini 项目安装、mermaid-render-fix 的单次拉起 | `npm i -g pnpm` | 同左 |
 | standard | mmdc（全局） | mermaid-render-fix 直接渲染，省去首次下载与回退判断 | `$env:PUPPETEER_SKIP_DOWNLOAD='true'; npm i -g @mermaid-js/mermaid-cli` | `PUPPETEER_SKIP_DOWNLOAD=true npm i -g @mermaid-js/mermaid-cli` |
-| standard | PowerShell 7（仅 Windows） | powershell-pitfalls、Windows 脚本示例 | `winget install Microsoft.PowerShell` | 不适用；非 Windows 不安装也不启动 pwsh |
+| standard | PowerShell 7（仅 Windows） | shell-pitfalls、Windows 脚本示例 | `winget install Microsoft.PowerShell` | 不适用；非 Windows 不安装也不启动 pwsh |
 | standard | Playwright（推荐，命令 `playwright`） | browser-automation、web-app-testing、ai-verified-delivery 的自动化、截图与 E2E | `python -m pip install playwright; python -m playwright install chromium` | `python3 -m pip install playwright && python3 -m playwright install chromium` |
 | full | uv | resource-inventory、resilient-browser-fetch 的 Python 环境与引擎 | `winget install astral-sh.uv` | `brew install uv` / `curl -LsSf https://astral.sh/uv/install.sh -o uv-install.sh && sh uv-install.sh` |
 | full | jq | opencode-provider-config 的手工 JSON 过滤 | `winget install jqlang.jq` | `brew install jq` / `sudo apt install jq` |
