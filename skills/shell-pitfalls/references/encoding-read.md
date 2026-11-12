@@ -89,6 +89,7 @@ pwsh -NoProfile -File scripts/calibrate-encoding.ps1 -IncludeWindowsPowerShell -
 
 - PowerShell 输出编码与 Python 捕获端默认编码不一致时，`subprocess(..., text=True)` 可能乱码或抛 `UnicodeDecodeError`。先确定生产方编码，再显式指定 `encoding='utf-8'`（生产方确为 UTF-8 时），或先捕获 bytes 并严格按已知编码解码。
 - `PYTHONIOENCODING=utf-8` 或 `python -X utf8` 可控制相应的 Python 编码行为，不能修复 PowerShell 已误读的文件或自行改变其输出字节。
+- 经钩子或包装脚本间接调用 Python 时，在实际启动解释器的入口核对输出编码；执行侧设置与多层子进程继承按 [Python 执行侧编码](../../scripting-best-practices/references/python.md#执行侧编码utf-8默认)处理。
 - Unicode 文本向不支持该字符的输出端写入时可能抛 `UnicodeEncodeError`；在工具链无法统一编码时按本文最小复现用 ASCII JSON 保真回退。替换错误字符只用于诊断摘要，不作为正确读取的证据。
 
 ### 子进程 stdout 经重定向被二次编码（不是源文件坏）
@@ -240,9 +241,9 @@ python -c "import json,pathlib;print(json.dumps({p:pathlib.Path(p).read_bytes().
 |---|---|
 | 整行乱码（`docs(����): ...`） | UTF-8 字节被按 GBK 解读 |
 | 稀疏替换符（`落盘那一�?显示`） | 同上，但部分字节无法成对 → 被换成 U+FFFD，**信息已丢失** |
-| 存储的提交信息/文件内容是干净的，只有显示乱 | 问题在显示/中转层，不是内容被改写 |
+| 保存的内容正确，但命令日志乱码 | 两者可能来自不同输出源，需单独核对日志的生产方与捕获层 |
 
-判定动作：**先确认内容本身是否干净**（提交信息用 `git log --format=%B` 按字节读，文件用二进制读），再怀疑显示层。内容干净 + 显示乱 → 属于中转/捕获层，按上面的"绕开文本层"处理；内容也乱 → 往上游查生产方。
+判定动作：**分别核对保存的内容与出现乱码的输出流**。提交信息用 `git log --format=%B` 按字节读，文件用二进制读；提交信息正确不能证明钩子日志编码正确。捕获实际产生乱码的进程的原始字节，判断是生产方输出编码不匹配，还是中转／捕获时转码，不能仅凭保存的内容正确就排除生产方。
 
 ### 最小复现与修复
 
