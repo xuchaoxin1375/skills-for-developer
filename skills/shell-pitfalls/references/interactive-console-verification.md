@@ -7,6 +7,7 @@
 - 目标外壳可以是 pwsh/PSReadLine，也可以是 Git Bash 的 bash；后者见[非 PowerShell 控制台](#非-powershell-控制台git-bash--msys)。Linux/macOS 的窗口级按键注入未验证，WSL 内按 Linux 方式处理。
 - 只关心候选集合时，优先用非交互入口：PowerShell 用 `[System.Management.Automation.CommandCompletion]::CompleteInput($line, $cursor, $null)`，bash 用 `compgen` 或补全函数直接调用；本流程用于补全引擎之外的界面层差异。
 - 需要目标程序有独立控制台窗口；纯服务会话或无桌面环境不适用。
+- 安装/升级模块或修改启动期环境变量后，需要确认用户真实入口是否生效，而不只是子进程导入成功。
 - 代理代为验证时，目标窗口由探针独占。用户在同一窗口操作会污染结果，见[与他人操作共存](#与他人操作共存)。
 
 ## 基本做法
@@ -18,6 +19,16 @@
 5. 读取屏幕：`GetConsoleScreenBufferInfo` 取 `dwSize` 与 `srWindow`，逐行 `ReadConsoleOutputCharacterW`，按返回的实际字符数 `read` 截取后再去除末尾空白：`sb.ToString(0, (int)read).TrimEnd()`。不能直接用 `sb.ToString()` 读取整个封送缓冲区，否则可能带出尾部乱码或孤立代理项，导致 UTF-8 写入失败。按可见窗口读取，不读整块缓冲区。每次读屏重新取尺寸，不缓存——终端尺寸和滚动位置会被用户或终端本身改变。附加后不要改用 `[Console]::WindowWidth` 一类 .NET 成员：它们持有启动时的句柄缓存，会报"句柄无效"。
 6. 顺序验证：先跑已知命令的对照（如 `Get-Chi` + Tab），确认注入与读屏链路，再测目标命令；一次只注入一步并等待重绘。
 7. 清行与退出：菜单打开时先 `Esc` 关闭菜单，再 `Ctrl+C` 清行（真实按键下 Ctrl+C 在菜单中可能无效）；最后输入 `exit` 回车退出，进程仍在时用 `Stop-Process` 兜底。只结束本次启动的进程与窗口：结束目标 shell 后终端窗口可能仍在（实测 Windows Terminal 窗口保留），需要按自己的 pid 关闭并复查，不按进程名批量结束。
+
+## 安装与版本升级验收
+
+模块安装、版本升级、模块搜索路径或启动期环境变量变更，验收对象是用户下次启动的真实入口，不是子进程里的显式导入。
+
+- 启动目标窗口时保留 profile，不传 `-NoProfile`；等待实际初始化完成后，在窗口内查询 `(Get-Module <name>).Version` 与 `.ModuleBase`，必要时再查 `Get-PSReadLineOption` 一类的运行态选项。
+- `-NoProfile` 子进程 `Import-Module`、手动调用初始化函数、只检查文件存在或只看安装命令退出码，都只证明组件可用，不能证明启动路径生效。
+- 启动期模块（如 PowerShell 5.1 的 PSReadLine）可能在 profile/init 之前加载；在 profile/init 里补 `PSModulePath` 只能影响后续导入，换不掉已加载版本。把目标目录写入 User/Machine `PSModulePath` 后，必须完全重开宿主进程（不是新标签页），再按上一条验收。
+- 记录证据：窗口类型、宿主版本、初始化是否执行、模块版本与 `ModuleBase`、相关 `PSModulePath` 首项。只报“已安装/已导入”不构成用户级验收。
+- 验收前核对：窗口保留 profile、初始化已完成、查询的是已加载模块而非 `Import-Module` 返回值、`PSModulePath` 首项包含目标目录、旧窗口已完全重开；任一不满足都按未验收处理。
 
 ## 宿主差异（conhost 与 ConPTY）
 

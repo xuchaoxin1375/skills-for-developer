@@ -4,7 +4,7 @@ description: >
   Windows 与 POSIX 外壳（PowerShell 5.1/pwsh 7、bash/Git Bash，cmd.exe 仅回退）的执行与排障：
   选壳、编码、退出码、启动/profile、引号与路径、管道与输出。
   Windows 首次调用某个外壳前加载，含单行抓取、读取、解析与命令链；已加载规则直接复用，常规执行不预读诊断材料。
-  需要按用户视角复验 Tab 补全、菜单与读屏时，按真实窗口注入按键的流程执行。
+  需要按用户视角复验 Tab 补全、菜单、读屏，或模块安装/升级是否对用户生效时，按真实窗口的流程执行。
   仅用原生 read 查看文本无需加载；脚本编写规范走 scripting-best-practices。
 ---
 
@@ -61,6 +61,8 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 按用户视角复验 Tab 补全、参数菜单与预测视图时，用独立窗口 + 注入按键 + 读屏，不用 `SendKeys` 抢焦点：另起一个保留 profile 的交互式 shell，由探针附加其控制台写按键并读屏，以提示符出现判断就绪，不与用户输入混用。pwsh/PSReadLine 与 Git Bash 的启动差异、Ctrl+C 例外、截图与清理见[交互式控制台验证](references/interactive-console-verification.md)；只关心候选集合时优先用补全引擎的非交互入口。
 
+验证模块安装/升级、路径或启动期环境变量变更是否对用户生效时，同样用保留 profile 的真实窗口验收；`-NoProfile` 子进程、手动调用初始化函数或只检查文件存在只算组件级验证。PowerShell 模块搜索路径必须在进程启动前包含目标目录，profile/init 里再补路径不能替换已经加载的模块。
+
 ## 按需读取
 
 | 条件 | 参考 |
@@ -71,7 +73,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 | PowerShell 路径、引号、参数、进程等待或 Junction | [文件与程序调用](references/files-and-invocation.md) |
 | PowerShell 静默失败、退出码或日志混入结果 | [错误与输出契约](references/errors-and-output.md) |
 | bash/Git Bash 的 rc、路径转换、CRLF、TTY 与退出码细节 | [bash 与其他 POSIX 壳](references/bash-and-other-shells.md) |
-| 验证 Tab 补全/菜单（pwsh 与 Git Bash、真实窗口、模拟按键、读屏、截图、与用户共存） | [交互式控制台验证](references/interactive-console-verification.md) |
+| 验证 Tab 补全/菜单，或模块安装/升级是否对用户生效（pwsh 与 Git Bash、真实窗口、模拟按键、读屏、截图、与用户共存） | [交互式控制台验证](references/interactive-console-verification.md) |
 
 ## 验证与维护
 
