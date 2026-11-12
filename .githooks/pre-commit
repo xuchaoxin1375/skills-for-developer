@@ -5,9 +5,13 @@
 set -e
 
 run_py() {
-    if command -v python >/dev/null 2>&1; then python "$@"
-    elif command -v python3 >/dev/null 2>&1; then python3 "$@"
-    elif command -v py >/dev/null 2>&1; then py -3 "$@"
+    # Git 捕获钩子输出；显式使用 UTF-8，避免 Windows 重定向时按系统编码输出。
+    if command -v python >/dev/null 2>&1; then
+        python -X utf8 "$@"
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -X utf8 "$@"
+    elif command -v py >/dev/null 2>&1; then
+        py -3 -X utf8 "$@"
     else
         echo "pre-commit: 未找到 Python（python/python3/py），跳过自检" >&2
         return 0
