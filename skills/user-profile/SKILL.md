@@ -56,7 +56,7 @@ description: >
 |---|---|
 | Windows 首次发出 PowerShell 或 bash 调用前，包含单行读取/抓取/解析 | `shell-pitfalls`：选壳、编码、管道、退出码、启动/profile、参数与 Git Bash 差异 |
 | 外链抓取、依赖下载或代理/镜像配置前 | `network-access`：环境假设、代理登记、实际出口、选路与失败分流 |
-| 编写、审查或重构脚本/CLI | `scripting-best-practices`：UTF-8、选项、覆盖预检、核心用例与决策留档 |
+| 新增、扩展、审查或重构脚本、CLI 或供人调用的 shell 函数（含 PowerShell 模块与 profile/rc 函数） | 编写前读取 `scripting-best-practices`，按其帮助、补全与交付规则执行；没有独立脚本文件也适用，具体清单不在此复制 |
 | 联网检索与证据核验 | `agentic-web-search`：常规流程与一次性搜索例外；配置/工具下发/实际调用检查转 `harness-web-check` |
 | 文档排版或 skill 内容维护 | `markdown-style` 管排版；`skill-authoring-sync` 管真源与写作规范入口 |
 | 发现 skill 指导低效、需要反馈或打补丁 | `skill-patcher` 管补丁措辞与自检；`skill-authoring-sync` 管真源、链接与同步 |
