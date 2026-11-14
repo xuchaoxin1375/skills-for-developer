@@ -43,6 +43,8 @@ OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可�
 
 ### 2. 网络诊断（直连超时时按序排查）
 
+给定地址先做一次快速可用性判定。若已明确不可用（DNS 无解析/NXDOMAIN、连接拒绝、证书错误、404），停止扩大排查，立即把实际错误、已试地址与判定依据反馈给用户，请其确认域名或提供替代入口。用户给的地址可能有误，不默认它一定正确；也不要因为担心误判而反复重试或自行猜测替代域名。若只是超时，按下列顺序做一次对比诊断，仍不通就反馈，不静默延长超时反复试。
+
 1. 先确认是全局超时还是该域名：测一个国内可达域名（如 `www.baidu.com`）对比。测"直连"必须加 `curl.exe --noproxy "*"`，否则 shell 的 `http_proxy`/`https_proxy` 会让假直连通过——直连"成功"三次，加 `--noproxy "*"` 重测才发现实际一直超时。
 2. 查系统代理线索：注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` 的 `ProxyServer`（即使 `ProxyEnable=0`，其值也常是最近一次使用的代理端口），再 `netstat -ano -p tcp | findstr <端口>` 确认代理进程仍在监听。
 3. 用 DoH 查真实 IP（防 DNS 污染）：`https://cloudflare-dns.com/dns-query?name=<域名>&type=A`（header `accept: application/dns-json`）或 `https://dns.google/resolve?name=<域名>`。污染特征：不同 DNS 服务器返回 Dropbox/Twitter 等无关 IP。
@@ -247,6 +249,7 @@ opencode service start   # set env 本身也会重启服务
 - [ ] `get env` 与 live 服务进程环境一致：无陈旧密钥，大写代理变量齐全。
 - [ ] 重启生效已用端口/`run=` 变化或新进程 environ 确认；重启后以 `STARTED` 时间最新的进程为准；live 陈旧时已用 `--standalone` 隔离验证。
 - [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染。
+- [ ] 给定地址在快速检查后确认不可用（无解析、连接拒绝、证书错误、404）或连续超时时，已反馈具体错误并确认地址，没有静默重试或自行替换域名。
 - [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体；`api_key_expired` 按 Console 新建 `oc_sk_…` 处理，未去改 `auth.json`。
 - [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败。
 - [ ] 思考档位按[公开档位配置基线](references/model-parameters.md#公开档位配置基线)配置；其他参数有对应依据，未知值未猜填；已有模型只覆盖目标字段，并按[参数验收](references/model-parameters.md#验收与交付)核对服务解析值。
