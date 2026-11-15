@@ -85,7 +85,7 @@ description: >
 - B 先定骨架：标准 viewport meta；移动优先、按内容实测必要的 rem 断点（通常 2–4 个）；内在布局优先
 （RAM `auto-fit + minmax(min(100%,15rem),1fr)`、Flex wrap/sidebar/switcher、subgrid），查询只兜底。
 - B 再定流体：容器 `width:min(calc(100% - 2rem),72rem)`；字号间距 `clamp()` 且含 rem 项、MAX≤2.5×MIN；
-首屏 `100svh`、全屏壳 `100dvh`（先写 `vh` 回退）；通栏 `100%` 不用 `100vw`。
+首屏 `100svh`、全屏壳 `100dvh`（先写 `vh` 回退）；流内通栏 `100%` 不用 `100vw`（固定全宽浮层覆盖滚动条槽的例外见 `page-patterns.md`“可访问抽屉”）。
 - B 再定媒体：`srcset+sizes`（w 配 sizes，x 给固定尺寸），美术指导用 `picture`，
 `width/height` 或 `aspect-ratio` 防 CLS，LCP 图 `fetchpriority=high` 不懒加载。
 - B 骨架细节：完整语法与打印见 `media-queries.md`；整页三栏/抽屉/表格见 `page-patterns.md`；
@@ -117,7 +117,7 @@ description: >
 
 - MUST：标准 viewport meta 且不禁缩放；标签完整或整体隐藏，禁挤压裁切省略号；所有动作键盘可达；图标必有准确可访问名；320 回流无页面级横滚；焦点可见，禁无替代 `outline:none`；字号不用纯 vw；图片有 `width/height` 或 `aspect-ratio`。
 - SHOULD：多实例低频先试选中浮层，主次明确先试主操作+菜单；容器查询优先；内在布局（RAM/Flex wrap）优先于查询；动效读取项目令牌并按职责表验稳定性、性能与 reduced-motion；逻辑属性优先；国内 H5 限最大宽。
-- AVOID：滑动/拖动/仅 hover 发现操作；小字号压窄按钮；只用颜色表选中；`title` 当唯一名称；禁用提交代校验；禁缩放禁粘贴；无任务理由的多重嵌套滚动；通栏 `100vw`；纯 vw 字号；窄屏 `display:none` 删内容（收纳移进菜单不消失）；用 `hidden/clip` 掩盖真实溢出，裁切不能代替可达性修复。
+- AVOID：滑动/拖动/仅 hover 发现操作；小字号压窄按钮；只用颜色表选中；`title` 当唯一名称；禁用提交代校验；禁缩放禁粘贴；无任务理由的多重嵌套滚动；流内通栏 `100vw`（固定全宽浮层覆盖滚动条槽的例外见 `page-patterns.md`“可访问抽屉”）；纯 vw 字号；窄屏 `display:none` 删内容（收纳移进菜单不消失）；用 `hidden/clip` 掩盖真实溢出，裁切不能代替可达性修复。
 
 ### 输出与整合
 

@@ -93,7 +93,7 @@ body { padding-left: var(--rail-cw); }                       /* 默认 68px 图�
 @media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
 ```
 
-触发按钮带 `aria-expanded/aria-controls`；打开给主内容加 `inert`；Esc/点遮罩关，焦点回触发器；锁滚动；可用原生 `dialog`/`popover` 代替自建。
+触发按钮带 `aria-expanded/aria-controls`；打开给主内容加 `inert`；Esc/点遮罩关，焦点回触发器；锁滚动；可用原生 `dialog`/`popover` 代替自建。全宽窄屏抽屉需要覆盖滚动条槽时，用 `inset-inline-start:0; width:100vw`；`inset-inline-end:0 + 100vw` 在 Windows 经典滚动条下会把内容左移。流内通栏仍用 `100%`。
 
 ### 响应式表格双策略
 
