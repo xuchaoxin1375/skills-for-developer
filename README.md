@@ -11,6 +11,7 @@
 | 想法还不清楚，先把方案问透 | 上游 `grill-me` → `grilling` | 讨论并留术语/决策时选 `grill-with-docs`；已有规格先复用 |
 | 业务术语、状态或关系说不清 | 上游 `domain-modeling` | 只读术语表不启动建模，不批量改名 |
 | 模块接口难用、薄包装太多、修改扩散 | 上游 `codebase-design` | 本地调用方不因此扩成全仓治理 |
+| 从零规划 Web 应用，纠结前后端分离/项目骨架 | [swe-gov](skills/swe-gov/SKILL.md) | 不同时启动全套治理；需求访谈、模块设计、仓库配置、测试与交付按需协作 |
 | 明确要求测试驱动实现 | 上游 `tdd` | 不因引用而安装整套上游流程 |
 | 需要测试覆盖、真实集成与回归 | [web-app-testing](skills/web-app-testing/SKILL.md) | 不另建验收等级或重复计划 |
 | 难 bug 或性能回归需要定位 | 上游 `diagnosing-bugs` | 不凭猜测直接改实现 |
@@ -44,7 +45,7 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 | `skills/htmlmini`                    | 网页核心骨架提取：URL／本地快照的摘要与取数，不整份读HTML；常规静态提取走短路径，复用快照，复杂渲染与排障按需读取；可用时优先于普通web_fetch，缺失可回退；选择器契约回原始DOM核对，写改页面归frontend-design/frontend-qa，批量采集归resilient-browser-fetch | HTML、网页、摘要、取数、表格、榜单、快照复用、轻量提取、渲染分流、web_fetch、采集侦查 |
 | `skills/skill-authoring-sync` | 自定义 skill 真源、分发与跨机同步；第三方保持上游原样，现成 CLI 或独立 clone 精选链接，不保存同名适配版；调用方式与安装来源分开核对 | 新建/修改/安装/同步 skill、真源、上游原样、clone、精选链接、用户调用、模型调用、AGENTS.md 写作 |
 | `skills/repo-gov`                     | 公开/私有仓库治理与安全提交：按用途选配 README、LICENSE、.gitignore/.gitattributes、CONTRIBUTING、SECURITY、行为准则与模板；提交前检查、密钥/大文件审计、分支与评审保护、CI 与依赖/构建供应链控制、GitHub/Gitee 远程仓库创建与 token 发现；应用架构转 swe-gov，文档内容转 project-docs | 初始化仓库、新建仓库、远程仓库、GitHub、Gitee、token、凭据、LICENSE、许可证选择、SECURITY、CONTRIBUTING、.gitignore、.gitattributes、提交检查、CI、分支保护、供应链、审计密钥、repo-gov、仓库治理 |
-| `skills/swe-gov` | 长期应用的跨模块约束、数据/状态归属、契约兼容、运行恢复和维护；局部接口设计归 codebase-design，术语/ADR 记录归 domain-modeling，差异评审归 code-review | 工程治理、共享契约、状态归属、兼容迁移、异步任务、SLO、恢复、技术债、文档一致性、门禁设计 |
+| `skills/swe-gov` | 从零规划 Web 应用与长期应用的跨模块约束、数据/状态归属、契约兼容、运行恢复和维护；覆盖前后端分离、渲染方式、部署单元、仓库结构与项目骨架；局部接口设计归 codebase-design，术语/ADR 记录归 domain-modeling，差异评审归 code-review | 工程治理、新建 Web 应用、前后端分离、渲染方式、部署单元、项目骨架、共享契约、状态归属、兼容迁移、异步任务、SLO、恢复、技术债、文档一致性、门禁设计 |
 | `skills/tech-learning-research` | 话题系统讲解、调研与选型：先定产物、读者和成功判据，复用材料、按缺口取证再成文，按需核实工作机制；详略与证据状态独立，核心缺证不确定推荐，可分离缺口交限定范围结果；保留报告交付确认，学习文档编排采用共享教学正本，检索执行归agentic-web-search | 学习、学习文档、教材编写、编排策略、调研、方案比较、选型、做法盘点、工作机制、材料复用、证据缺口、限定范围、报告交付、research、tutorial、comparison |
 | `skills/markdown-style` | 通用排版正本：纯排版只改形式，写作/改写可复用规则而不套内容零改动门槛；行内代码按位置处理管道符（正文不转义、表格优先数字实体），并优先英文、保留原样引用，教材编号按出版与交叉引用需要例外保留；区分可复制命令与终端记录，图示按需选用与验证，不公开空候选清单；skill指令内容按仓库写作规范 | 排版、风格迁移、格式复用、加粗、标题、教材编号、交叉引用、列表、表格、代码块、行内代码、管道符处理、HTML 实体、表格单元格、复制命令、终端记录、Mermaid、图示选择、状态表、状态快照、本地链接 |
 | `skills/lightweight-app-builder`     | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、Python/TS 默认选型、打包签名分发，六步流程；编译型按单文件/性能等硬约束例外，安装入口优先跨平台方式，与 repo-gov/swe-gov/ai-verified-delivery 分层组合，已有脚本的编写与重构规范转 scripting-best-practices | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、跨平台选型、Python/TS 优先、安装入口按需、打包分发、轻量应用构建 |
