@@ -2,6 +2,8 @@
 
 默认采用 fable 的顶栏、搜索/返回、导航分组、底部控制与页面节奏。当前归档已分离hoverPeek/focusPeek，修复主图标横移、Esc焦点丢失与分组节点替换，并保护按住指针时的目标和点击语义；其实现仍不等同于下述完整模型。需要完整输入策略或临时展开时参考 sonnet，继续核对[已知缺口与验证范围](builds-comparison.md)。
 
+若实现依据来自 UI 草稿，先按[草稿到模板](cf-customization-guide.md#草稿到模板)映射到本页的完整外壳单元；页脚控制、peek、Esc、快捷键与槽宽/点击稳定不因草稿未画而省略。
+
 ## 结构与参数
 
 `Topbar + SidebarSlot(占位) + SidebarPanel(视觉) + main(min-width:0) + 可选footer`。
