@@ -286,3 +286,10 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 本次属两个反例：先直连而非先走已核验加速，以及 raw 超时后原样重发同一 URL；按现行选路应第一步走加速，3 秒无首响即改路。
 - 复核同一仓库：`src/shell.rs` 返回 200；`README.md` 返回 301 到 `raw.githubusercontent.com` 后超时。jsDelivr 未命中缓存时会回落到 raw，不能当通用绕过，301 到 raw 不算加速成功。
 - 未记录 HTTP 状态、耗时与字节数，未确认实际出口；jsDelivr 只证明该公开仓库文件在当次可取，不外推到 Release、archive 或私有仓库。
+
+## 2026-11-15 GitHub 直连 TLS 握手失败，改用登记默认代理
+
+执行环境：国内 Windows PowerShell。`git ls-remote github` 直连 `https://github.com/<owner>/<repo>` 报 `schannel: failed to receive handshake, SSL/TLS connection failed`；`git fetch github main` 无代理时长时间无输出后被中断。随后用 curl 经登记默认入口（7897）取同一仓库的 git info/refs 返回 200；登记备选入口（10808）4 秒连接超时。`git config --get-urlmatch http.proxy <目标URL>` 显示 URL 级配置仍指向 10808，故只加通用 `-c http.proxy=<7897>` 时 git 仍走失效入口；改用 `-c http.https://github.com.proxy=<7897>` 覆盖 URL 级键后，`ls-remote` 退出码 0，返回与本地 HEAD 一致的 SHA。同期 `git ls-remote origin`（`https://gh-proxy.com/...`）也返回同一 SHA。
+
+- 与 2026-10-30 直连 fetch/push 成功对照：GitHub Git 传输的直连可用性随时段与网络变化，不能沿用旧结论；失败后先核验实际生效的代理入口或改走镜像，不重复直连或重复 push。
+- URL 级 `http.<url>.proxy` 优先于通用 `http.proxy`，换入口必须覆盖前者；本次未测试 `git push github`，只证明只读 git 传输与镜像路线当次可用。
