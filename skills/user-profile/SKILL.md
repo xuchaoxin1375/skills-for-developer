@@ -1,7 +1,7 @@
 ---
 name: user-profile
 description: >
-  个人高频默认值：搜索渠道顺位、多通道分工与托管搜索兜底边界；问答与可复用流程的沉淀偏好；配置仅作本机案例；Windows shell、路径、Git 远程 HTTPS 优先（SSH 为候选）、回复语言和自建工具版本偏好。
+  个人高频默认值：搜索渠道顺位、多通道分工与托管搜索兜底边界；问答与可复用流程的沉淀偏好；配置仅作本机案例；Windows shell、路径、Git 远程 HTTPS 优先（SSH 为候选）、远程仓库凭据发现、回复语言和自建工具版本偏好。
   会话动手前由全局 AGENTS.md 加载；保留 PowerShell、网络(包括但不限于资源访问/下载和网页抓取/请求与推送)、脚本及检索的按需入口，领域执行细则不在此维护。
 ---
 
@@ -24,6 +24,7 @@ description: >
 - **回复语言**：默认中文回复；用户改用其他语言、引用原文或明确要求外语时跟随。代码、命令、路径与专有名词保持原样，不翻译。
 - **Windows shell**：优先 PowerShell，其次 git-bash，cmd.exe 仅作最后回退；带逻辑的 Windows 片段用 PowerShell，启动与执行细节按 `shell-pitfalls`。
 - **Git 远程访问**：默认优先 HTTPS URL（`https://...`）；SSH 仍是候选，在 HTTPS 不通、受限或用户明确要求时可用，不把 SSH 视为禁用。切换前说明所选通道与原因。
+- **远程仓库与凭据**：受托创建 GitHub/Gitee 仓库时，先检查常见环境变量（`GITHUB_TOKEN`、`GH_TOKEN`、`GITEE_TOKEN`、`GITEE_ACCESS_TOKEN` 等）、`gh` 登录态和 credential manager，并用只读 API 验证是否可用；变量存在不等于有效，不回显 token。细节按 `repo-gov` 的“远程仓库创建与凭据发现”。
 - **路径**：优先使用 `/`；Windows 特殊路径和目标工具兼容性例外见 [路径分隔符](../shell-pitfalls/references/files-and-invocation.md#路径分隔符优先用-)。
 - **自建工具版本**：脚本/小工具采用本地日期时间 `YYYY.MM.DD.HHmm`，不手搓语义化版本；唯一真源在 `package.json` 的 `version`，其余位置运行时读取，并提供重打入口(如 `pnpm stamp`)。四段号仅用于本地 link/安装，不发布到只接受三段 semver 的 npm registry。
 - **Markdown 文档修改**：修改既有文档时，新增与改动内容按 `markdown-style` 规范执行，不迁就存量不规范写法；仅当明确要求延续原文档风格时才沿用；全文规范化需单独授权。

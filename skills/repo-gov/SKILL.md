@@ -3,8 +3,9 @@ name: repo-gov
 description: >
   代码仓库的规范治理与安全提交，按公开/私有和项目栈裁剪：新建或改造仓库时选配 README、LICENSE、
   .gitignore/.gitattributes、CONTRIBUTING、SECURITY、行为准则与 Issue/PR 模板；提交前检查、
-  历史密钥与大文件审计、分支与评审保护、CI 与依赖/构建供应链控制、AGENTS.md。
-  当用户要初始化仓库、补治理文件、问许可证怎么选、做提交前安全检查或配置分支保护时使用；
+  历史密钥与大文件审计、分支与评审保护、CI 与依赖/构建供应链控制、AGENTS.md、
+  创建 GitHub/Gitee 远程仓库与 token 发现。
+  当用户要初始化仓库、补治理文件、问许可证怎么选、做提交前安全检查、配置分支保护或创建远程仓库时使用；
   应用架构、契约与运行治理转 swe-gov，文档内容与结构转 project-docs。
 ---
 
@@ -192,6 +193,19 @@ git ls-files -c -i --exclude-standard                     # 已追踪却应忽�
 - 团队/受控仓库配置必需检查、适用评审、强推/绕过限制及最终合并结果验证；单人项目明确自身复核和风险，不虚构第二位批准者。分支命名、人数和 tag 形式遵循项目政策。
 - `CODEOWNERS` 用于责任映射，须与实际规则集/平台权限联动。文件存在或同一行列出多个 owner，不证明多个团队均必须批准；确需多方审批时核对平台能力并验证拒绝缺批场景。
 - hotfix 按支持分支策略回移植；保护与检查细节见 [CI 与供应链](references/ci-and-supply-chain.md)。
+
+### 远程仓库创建与凭据发现
+
+委托创建 GitHub/Gitee 等远程仓库时，先在本地发现可用凭据，再决定是否向用户索要。仓库名、公开性和许可证是用户决策，不自行推定。
+
+- **按常见变量名探测，但不把存在当可用**：依次检查 `GITHUB_TOKEN`、`GH_TOKEN`、`GITEE_TOKEN`、`GITEE_ACCESS_TOKEN`、`GITLAB_TOKEN` 等，同时检查 `gh auth status` 和 `git credential fill` 的 host 记录。只报告“已设置/未设置”和验证结果，不回显值；非交互检查设置 `GIT_TERMINAL_PROMPT=0`，避免等待输入。
+- **用只读请求验证**：GitHub 用 `GET /user`，Gitee 用 `GET /api/v5/user`，Gitee token 放在 `Authorization: token ...`。记录 HTTP 状态；401/403 表示无效或权限不足，不能因为变量名像就继续。
+- **区分 API 凭据与 Git 凭据**：credential manager 保存的密码可能只对 `git push` 有效，不能用于 API；API token 也可能缺少建库或写仓库权限。分别验证，不互相替代。
+- **不要索要明文 token**：需要用户补充时，让用户写入本机环境变量或凭据管理器，不要求在聊天中粘贴；不把 token 放进 remote URL、命令历史、日志或仓库文件。临时使用 askpass/credential helper 时，用完清理。
+- **GitHub 建空库**：先 `GET /repos/<owner>/<name>` 判断是否存在；`POST /user/repos` 时设 `auto_init=false`，避免和本地首次提交冲突。确认 `private=false` 与默认分支后再推送。
+- **Gitee 空库不能直接公开**：空仓库切公开会返回 422（“空仓库不支持设置为公开仓库”）。先推送首个提交，再 `PATCH /repos/<owner>/<name>`，请求体同时带 `name` 和 `private=false`，然后复核。
+- **HTTPS 推送与核验**：按用户偏好使用 HTTPS remote；推送后用 `git ls-remote` 分别核对每个远端的 branch SHA，不能只看 `git status -sb`。公开仓库再用 API 或匿名访问确认 `private=false`。
+- **失败分流**：401 检查 token 是否过期或类型不对；403 检查 scope；404 可能是名称不存在、权限不足或私有仓库；422 读响应正文并按平台约束处理。不要盲目重试或用其他账号绕过。
 
 ### 评审与代理上下文
 
