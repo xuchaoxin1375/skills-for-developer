@@ -48,6 +48,7 @@
 
 - Windows 首次发出 PowerShell 或 bash 调用前加载 `shell-pitfalls`，单行 `curl`/`Get-Content`/`python` 片段与多段链式管道同样算；Git Bash 的启动、路径转换与交互验证也归该 skill。
 - 新增或扩展脚本、CLI 或供人调用的 shell 函数前，先读取 `scripting-best-practices`，再按其帮助、补全与交付要求实现；模块、profile/rc 内的函数同样适用，具体清单只在该 skill 维护。
+- 交付给用户维护的程序与脚本默认跨平台，优先 Python 或 JavaScript/TypeScript 等主流生态；不默认同时提供 shell 与 PowerShell 入口，避免多份实现的功能对齐与回归成本。编译型方案只在单文件分发、启动性能、体积等硬约束下使用，平台专属方案只在系统集成等场景使用，并都说明理由；目标环境单一且 shell 明显更合适时（如 Linux 服务器运维脚本），先给出 shell 与跨平台方案的取舍并询问用户，不静默选定。选型细则见 `scripting-best-practices`，应用形态与安装入口见 `lightweight-app-builder`；本条针对交付物，不改变 agent 执行命令时的外壳选择。
 - 问题与方案文档按跨设备复用写：能脚本化的步骤给脚本入口，诊断与状态提供可重复执行的命令或脚本，写清前置条件、只读/写入行为、预期输出与失败处理；不把本机路径或一次性探测步骤当成通用方案。
 - 文档与注释：并列列举用无序列表或小标题，不用任何数字编号（阿拉伯数字、中文数字、带圈数字），只有确有先后顺序的步骤才用有序列表；命令示例中的占位路径写 `/path/to/...`，不拿真实路径当占位。细节见 `markdown-style`。
 

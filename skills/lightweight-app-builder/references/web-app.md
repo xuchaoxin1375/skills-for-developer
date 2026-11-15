@@ -140,7 +140,7 @@ my-tool/
 │   ├── core/             # 业务逻辑，不依赖 HTTP 框架
 │   └── store/            # SQLite/JSON 访问层
 ├── public/               # 本地字体与静态资源（不外联）
-├── scripts/              # dev.sh / dev.ps1 / install.sh / install.ps1
+├── scripts/              # dev/install/release 入口：优先跨平台命令，平台脚本按需
 ├── docs/                 # USAGE.md 与 DECISIONS.md
 └── README.md
 ```

@@ -147,20 +147,25 @@ flowchart TD
 
 ## Step 4 — 默认技术栈（2026 共识）
 
-除非用户有明确偏好，否则取**第一行命中**的方案。完整对比见 `references/decision-matrix.md`。
+默认优先跨平台、主流生态：Python（`uv` + PEP 723）或 JavaScript/TypeScript。Go、Rust 等编译型方案只在免安装单文件分发、启动性能、体积等硬约束下使用，并在决策记录里写明理由；平台专属入口只在系统集成等场景按需提供。"要跨平台"本身不是选编译型或同时维护双份 Shell/PowerShell 的理由。也不为跨平台默认维护 `.sh` 与 `.ps1` 两份入口，能把安装交给包管理器或跨平台运行时就交给它。
+
+除非用户有明确偏好，否则按场景取**第一行命中**的方案。完整对比见 `references/decision-matrix.md`。
 
 | 场景 | 默认方案 | 何时换 |
 | --- | --- | --- |
 | 自动化脚本 | Python 3.12 + `uv`（PEP 723 单文件，生态最全） | 需分发给不懂技术者 → 改单文件 CLI |
-| 单文件 CLI | Go 1.23+ + Cobra/Kong（交叉编译一条命令） | 团队已写 Rust / 极致启动 → Rust + `clap` derive |
+| CLI（自己/开发者使用） | Python 3.12 + `uv` 或 TypeScript + Node | 需要免安装单文件 → Go/Rust 或 `bun build --compile` |
+| CLI 分发给不懂技术者（免安装） | Go 1.23+ + Cobra/Kong（交叉编译一条命令） | 只需本机运行 → Python/Node；团队已写 Rust → Rust + `clap` derive |
 | 高性能 CLI / TUI | Rust + `clap` derive，TUI 用 `ratatui` | 要更快编译、更低门槛 → Go + Bubble Tea / Python + Textual |
 | 前端型 CLI（AI 助手类） | TypeScript + `oclif` + `Ink`/`Clack` | 需单文件二进制 → `bun build --compile` |
 | 本地 Web UI | Vite + React/Svelte + Hono/FastAPI（只绑 `127.0.0.1`） | 需窗口托盘 → 加桌面壳 |
-| 桌面 GUI（默认） | **Tauri 2** + 任意 Web 前端（包 3–15 MB，内存 20–100 MB） | 团队只写 JS 不想碰 Rust → Electron |
+| 桌面 GUI（默认） | **Tauri 2** + 任意 Web 前端（包 3–15 MB，内存 20–100 MB） | 团队只写 JS 不想碰 Rust → Electron；Python 团队 → `pywebview` |
 | 桌面 GUI（重生态） | Electron（渲染完全一致，生态最大） | 体积内存是约束 → 换回 Tauri 2 |
 | Python 团队要界面 | `pywebview` / Textual（TUI） | 需成熟打包 → 换 Tauri/Electron |
 | Go 团队要界面 | Wails v2（v3 仍 alpha，慎生产） | 需移动端 → 超出本 skill 范围（只做桌面三平台） |
 | 一次性数据脚本 | Python 标准库 + argparse（零依赖） | 长期维护 → Typer + Rich 工程化 |
+
+桌面 GUI 的 Tauri 属于体积/启动约束下的默认例外，Rust 只在外壳与构建层，业务逻辑优先用 TypeScript；Python 团队用 `pywebview`。
 
 数据锚点（讲给用户听）：Tauri 2 安装包 3–15 MB / 内存 20–100 MB / 冷启动约 0.4s；Electron 80–200 MB / 150–300 MB / 约 1.4s，差一个数量级。
 
@@ -196,8 +201,8 @@ flowchart TD
 
 - **可运行程序**：≥1 目标平台真实产物；最终产物必须**一条命令或一次双击**能用。
 - **`README.md`**：第一屏答三问（是什么 / 怎么装 / 怎么用）+ 从零跑通的复制粘贴命令 + 国内镜像说明 + 拦截绕行说明。
-- **一键安装**：`scripts/install.sh` + `install.ps1`，支持 `--version --prefix --mirror --dry-run --uninstall`，幂等。
-- **一键开发**：`scripts/dev.sh` / `dev.ps1`，克隆后一条命令进开发。
+- **一键安装**：优先包管理器或跨平台运行时的单条命令（`uv tool install`、`npm i -g`、`brew`/`scoop`）；确实需要自带安装器时再提供平台脚本，默认不要求 `.sh` 与 `.ps1` 双份，按目标用户与平台确认范围。安装器需支持 `--version --prefix --mirror --dry-run --uninstall`，幂等。
+- **一键开发**：优先一条跨平台命令（如 `uv run`、`pnpm dev`）；需要外壳脚本时再按实际平台提供 `scripts/dev.sh` 或 `dev.ps1`。
 - **`docs/USAGE.md`**：操作说明 + 截图（全景定结构＋关键态特写）/终端录屏；**`docs/DECISIONS.md`**：Step 3 记录；卸载说明（列出所有写入位置）；验证步骤（"输出一致即装对"）。
 - **工程开发清单**：`assets/build-checklist.md` 全勾（需求无遗漏、三维效率预算内），未勾项不得打包。
 - **发布前自查**：`references/quality-gates.md` 末尾 14 项清单逐项过一遍（含干净环境安装、卸载无残留、校验和、版本标签一致、旧版升级实测）。
@@ -234,6 +239,7 @@ flowchart TD
 ## 高频坑位（Gotchas）
 
 - **"跨平台"≠"我机上能跑"**：Win 的 `SIGTERM` / 符号链接 / 文件锁 / 进程树终止 / 260 字符上限皆不同，三平台各跑冒烟。
+- **双份入口是长期成本**：不要为"跨平台"默认同时维护 `.sh` 与 `.ps1`；功能对齐、编码与测试差异会持续消耗维护时间。优先一份跨平台实现，平台专属入口只在目标环境单一时按需提供。
 - **PyInstaller 不能交叉编译**：Win exe 必须 Win 上打，或 GH Actions 三平台矩阵；另有杀软误报风险，提前告知。
 - **Tauri WebView 系统自带**（Win WebView2 / mac WKWebView / Linux WebKitGTK）：同 CSS 渲染不同，关键样式兼容测；Linux 需装 WebKitGTK；Win10 老机器需引导装 WebView2。
 - **macOS 分发链不可拆**：签名 → 公证 → 才能静默更新；未签名报"已损坏"，交付时给右键打开 / `xattr -dr com.apple.quarantine` 说明，优先签名公证；签名与平台绑定，CI 需三平台矩阵。

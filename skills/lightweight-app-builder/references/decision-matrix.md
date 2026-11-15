@@ -51,9 +51,14 @@ flowchart TD
 
 ## 语言选择矩阵
 
+默认从 Python 或 JavaScript/TypeScript 开始；Go/Rust 只在免安装单文件、启动性能、体积等硬约束下作为首选，并写明理由；Shell/PowerShell 只在系统集成等平台专属场景使用。"要跨平台"本身不构成选编译型或同时维护 `.sh`/`.ps1` 的理由。
+
 | 你的情况 | 首选 | 次选 | 一句话原因 |
 | --- | --- | --- | --- |
+| 要跨 Windows/macOS/Linux 长期维护 | Python 或 TypeScript | Go/Rust 单文件 | 一份代码覆盖三平台，避免双份 shell/PowerShell 的功能对齐 |
 | 完全不懂编程，只要能用 | Python | 不需要次选 | 生态最全，出问题网上答案最多 |
+| 只跑 Linux 服务器、以系统命令编排为主 | Bash | Python | 逻辑简单且无跨平台需求时 shell 更直接；先与用户确认 |
+| Windows 系统集成（注册表/服务/计划任务） | PowerShell | Python | 平台专属 API 用 PowerShell 更自然；先与用户确认 |
 | 要发给不懂技术的朋友用 | Go 或 Rust 单文件 | Electron/Tauri 安装包 | 对方"下载、双击"就结束 |
 | 团队已经写 JavaScript/TypeScript | TypeScript | Go | 不换语言，学习成本为零 |
 | 团队已经写 Go | Go | Rust | 编译快、贡献者好找 |

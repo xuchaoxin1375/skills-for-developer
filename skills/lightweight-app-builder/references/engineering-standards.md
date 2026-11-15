@@ -27,7 +27,7 @@ project/
 │   ├── core/              # 业务逻辑：不碰界面、不碰命令行、不碰网络框架
 │   ├── adapters/          # 对外部世界的适配：文件系统、数据库、第三方 API
 │   └── entries/           # 各外壳入口：cli、web、desktop
-├── scripts/               # dev.sh / dev.ps1 / install.sh / install.ps1 / release.sh
+├── scripts/               # 安装/开发/发布入口：优先跨平台命令，平台脚本按需
 ├── tests/                 # 单元测试与跨平台冒烟测试
 ├── docs/                  # USAGE.md、DECISIONS.md、ARCHITECTURE.md
 ├── .github/workflows/     # CI：lint、test、release
@@ -94,7 +94,7 @@ I/O 等待型批量任务（如批量调 Cloudflare API 管域名）必须并发
 | Shell | `shellcheck` | `shfmt -w` | 无 |
 | CSS/JSON | `biome` | `biome format` | 无 |
 
-这些工具全部接进 CI 与本地 `scripts/dev.sh`，**靠自觉执行检查必然失效**。新项目第一天就把 lint 配好，比三个月后补容易十倍。
+这些工具全部接进 CI 与本地一条跨平台检查命令（如 `make check`、`uv run`、`pnpm check`），需要时再提供平台外壳脚本；**靠自觉执行检查必然失效**。新项目第一天就把 lint 配好，比三个月后补容易十倍。
 
 ## 测试策略
 
@@ -102,7 +102,7 @@ I/O 等待型批量任务（如批量调 Cloudflare API 管域名）必须并发
 
 1. **核心单元测试**：只测 `core/` 目录，优先覆盖关键规则、边界和失败路径。覆盖率用于找盲区，阈值沿用项目政策，不设通用百分比。这是投资回报最高的一层。
 2. **CLI 契约测试**：对 `--json` 输出和退出码做断言，防止无意间破坏用户脚本。
-3. **跨平台冒烟脚本**：`scripts/smoke.ps1` 与 `smoke.sh`，各做十件最典型的事并比对结果。**三个平台都要跑**，这是唯一能发现平台差异的手段。
+3. **跨平台冒烟脚本**：优先一份 Python/Node 实现（如 `scripts/smoke.py`），三个平台跑同一份并比对结果；只有必须验证平台专属外壳时，再补 `smoke.sh` / `smoke.ps1` 并保持用例一致。**三个平台都要跑**，这是唯一能发现平台差异的手段。
 
 **测试数据**：用固定的小样本（例如 5 个文件、不同编码与命名），放在 `tests/fixtures/`，包含中文名、空格、超长路径、无扩展名文件——这些才是真实世界会出事的地方。含前后端/存储的 Web 形态按 [web-app-testing](../../web-app-testing/SKILL.md) 扩展 API、权限、用户链路与数据隔离；本节是轻量基线，不替代其分层要求。
 

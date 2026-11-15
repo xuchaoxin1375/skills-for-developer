@@ -318,7 +318,7 @@ main "$@"
 
 **Windows 侧对应脚本**
 
-不要只提供 `.sh`。给 PowerShell 版本 `install.ps1`,并注意:
+默认优先包管理器或跨平台运行时的安装命令,不默认维护 `.sh` 与 `.ps1` 双份。只有确实需要自带安装器、目标含 Windows 且用户已确认这一范围时,再提供 PowerShell 版本 `install.ps1`,并注意:
 
 - PowerShell 写法:用 `powershell -ExecutionPolicy Bypass -File install.ps1` 执行,路径用 `$env:LOCALAPPDATA` 展开,PATH 用 `[Environment]::SetEnvironmentVariable(..., "User")` 写用户级变量并提示重开终端。
 - `.ps1` 文件保存为 **UTF-8 with BOM**,否则 Windows PowerShell 5.1 会把中文字符串解析成乱码。

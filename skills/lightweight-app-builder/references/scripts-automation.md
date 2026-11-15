@@ -55,6 +55,8 @@
 
 ## Shell 与 PowerShell 规范
 
+默认只在目标环境单一且 shell 明显更合适的场景提供（Linux 服务器运维、Windows 系统集成）；跨平台脚本优先 Python/Node，不要默认维护两份入口。确需提供时，先与用户确认范围，并保证两种入口的功能对齐。
+
 Bash 脚本头部固定写：
 
 ```bash
@@ -78,12 +80,12 @@ PowerShell 侧对应规则：
 | 平台 | 工具 | 示例命令 | 说明 |
 | --- | --- | --- | --- |
 | Windows | 任务计划程序 | `schtasks /Create /TN "CleanDownloads" /TR "pythonw <脚本目录>\clean.py" /SC DAILY /ST 23:30` | 用 `pythonw` 避免弹出黑色控制台窗口 |
-| Linux | cron | `30 23 * * * <脚本目录>/clean.sh >> <日志目录>/clean.log 2>&1` | 需要确认用户有 crontab 权限 |
+| Linux | cron | `30 23 * * * python3 <脚本目录>/clean.py >> <日志目录>/clean.log 2>&1` | 需要确认用户有 crontab 权限 |
 | macOS | launchd | 用 `launchctl` 加载 `~/Library/LaunchAgents/com.example.clean.plist` | macOS 上 cron 已不推荐，日志要单独指定 |
 
 **cron 五个字段的含义**：依次是分钟（0–59）、小时（0–23）、日（1–31）、月（1–12）、星期（0–7，0 和 7 都是周日），`*` 表示"每一个"。因此 `30 23 * * *` 就是"每天 23 点 30 分"。
 
-**调度配置必须脚本化**：提供 `scripts/install-task.ps1` 与 `scripts/install-cron.sh`，支持 `--uninstall`。手把手教用户点界面是低质量交付，可重复执行的命令才是。
+**调度配置必须脚本化**：按目标平台提供 `scripts/install-task.ps1` 或 `scripts/install-cron.sh`，支持 `--uninstall`；两个平台都要支持时再各给一份，并保持重复执行幂等与卸载行为一致。手把手教用户点界面是低质量交付，可重复执行的命令才是。
 
 ## 可靠性四件套
 
@@ -115,7 +117,7 @@ PREFIX="${PREFIX:-$HOME/.local/bin}"
 # 1. 探测平台  2. 拼出下载地址  3. 下载并校验 SHA256  4. 安装到 PREFIX  5. 提示 PATH 配置
 ```
 
-配套必须提供 Windows 版 `install.ps1`，逻辑一致但用 `Invoke-WebRequest` 与 `$env:USERPROFILE`。**两个脚本的功能集必须对齐**，这是跨平台交付最容易偷工减料的地方。
+优先用包管理器或跨平台运行时安装（`uv tool install`、`npm i -g` 等），不默认维护 `.sh` 与 `.ps1` 双份。只有确实需要自带安装器且目标含 Windows 时，再提供 `install.ps1`，逻辑与 `.sh` 一致但用 `Invoke-WebRequest` 与 `$env:USERPROFILE`；**两个脚本的功能集必须对齐**，这一范围要先与用户确认。
 
 国内网络环境下，下载 GitHub 释放文件应支持 `--mirror` 参数，自动在原链接前拼接当前可用的镜像代理前缀，并在文档中注明**镜像站可用性会变化，使用前需自行核实**。
 
