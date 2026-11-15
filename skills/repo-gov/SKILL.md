@@ -198,12 +198,14 @@ git ls-files -c -i --exclude-standard                     # 已追踪却应忽�
 
 委托创建 GitHub/Gitee 等远程仓库时，先在本地发现可用凭据，再决定是否向用户索要。仓库名、公开性和许可证是用户决策，不自行推定。
 
-- **按常见变量名探测，但不把存在当可用**：依次检查 `GITHUB_TOKEN`、`GH_TOKEN`、`GITEE_TOKEN`、`GITEE_ACCESS_TOKEN`、`GITLAB_TOKEN` 等，同时检查 `gh auth status` 和 `git credential fill` 的 host 记录。只报告“已设置/未设置”和验证结果，不回显值；非交互检查设置 `GIT_TERMINAL_PROMPT=0`，避免等待输入。
+- **按常见变量名与宿主凭据库探测**：依次检查 `GITHUB_TOKEN`、`GH_TOKEN`、`GITEE_TOKEN`、`GITEE_ACCESS_TOKEN`、`GITLAB_TOKEN` 等，同时检查 `gh auth status`、Windows `cmdkey /list` 的 `git:https://<host>` 条目、SSH 密钥与现有仓库 remote(用于推断账号)。只报告“已设置/已取到”和验证结果，不回显值；非交互检查设置 `GIT_TERMINAL_PROMPT=0`。
+- **`git credential fill` 失败不等于没有凭据**：全局 `credential.helper` 可能写成 `manager` 而二进制不在 PATH，fill 退出非零，但普通 `git push` 仍能取到同一份凭据。按 `git config --show-origin --get-all credential.helper` 找到实际 helper 路径，直接执行 `git-credential-manager get`(输入 protocol/host)读取；取到的值只在内存中使用，不落盘、不回显。
 - **用只读请求验证**：GitHub 用 `GET /user`，Gitee 用 `GET /api/v5/user`，Gitee token 放在 `Authorization: token ...`。记录 HTTP 状态；401/403 表示无效或权限不足，不能因为变量名像就继续。
-- **区分 API 凭据与 Git 凭据**：credential manager 保存的密码可能只对 `git push` 有效，不能用于 API；API token 也可能缺少建库或写仓库权限。分别验证，不互相替代。
+- **区分 API 凭据与 Git 凭据**：credential manager 保存的密码可能只对 `git push` 有效，不能用于 API；API token 也可能缺少建库或写仓库权限。分别验证，不互相替代。凭据库里的 classic token 先 `GET /user` 并读 `X-OAuth-Scopes`，含 `repo` 才能建库。
+- **写权限用 dry-run 证明**：公开仓库的 `git ls-remote` 不需要凭据，不能证明推送权限；用 `git push --dry-run <url> HEAD:refs/heads/<probe>` 验证，不会留下分支。SSH 只证明推送通道、不能建库：`ssh -G <host>` 检查是否被 `Host *` 的 `Port`/`User` 改坏，GitHub 可回退 `ssh -T -p 443 git@ssh.github.com`，`Permission denied (publickey)` 说明密钥未登记。
 - **不要索要明文 token**：需要用户补充时，让用户写入本机环境变量或凭据管理器，不要求在聊天中粘贴；不把 token 放进 remote URL、命令历史、日志或仓库文件。临时使用 askpass/credential helper 时，用完清理。
 - **GitHub 建空库**：先 `GET /repos/<owner>/<name>` 判断是否存在；`POST /user/repos` 时设 `auto_init=false`，避免和本地首次提交冲突。确认 `private=false` 与默认分支后再推送。
-- **Gitee 空库不能直接公开**：空仓库切公开会返回 422（“空仓库不支持设置为公开仓库”）。先推送首个提交，再 `PATCH /repos/<owner>/<name>`，请求体同时带 `name` 和 `private=false`，然后复核。
+- **Gitee 空库不能直接公开**：空仓库切公开会返回 422（“空仓库不支持设置为公开仓库”）。先推送首个提交，再 `PATCH /repos/<owner>/<name>`，请求体同时带 `name` 和 `private=false`，然后复核。PATCH 必须显式带 `application/x-www-form-urlencoded` 的 Content-Type，PowerShell 省略会得到 406。
 - **HTTPS 推送与核验**：按用户偏好使用 HTTPS remote；推送后用 `git ls-remote` 分别核对每个远端的 branch SHA，不能只看 `git status -sb`。公开仓库再用 API 或匿名访问确认 `private=false`。
 - **失败分流**：401 检查 token 是否过期或类型不对；403 检查 scope；404 可能是名称不存在、权限不足或私有仓库；422 读响应正文并按平台约束处理。不要盲目重试或用其他账号绕过。
 
