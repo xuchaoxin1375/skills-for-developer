@@ -124,7 +124,7 @@ flowchart TD
 
 **`L-10` 固定定位抢占与遮挡**：粘性头 400% 下占大半屏、锚点被盖、Tab 元素藏于头后（违反 2.4.11）。修复：`html{scroll-padding-top:var(--header-h)}`，空间紧张时 `@media(max-height:30rem),(max-width:48rem){.site-header{position:static}}`。验收：页首 Tab 到页尾全可见，锚点标题不被遮。
 
-**`L-11` `100vw` 与滚动条宽度溢出**：Windows 约 15px 横向滚动、页面间左右跳动。`100vw` 含滚动条宽，`100%` 不含；macOS 覆盖式滚动条掩盖问题。修复：`html{scrollbar-gutter:stable}`，通栏用 `100%`；需突破父容器用 full-bleed grid（`1fr min(65ch,100%) 1fr`，内容 `grid-column:2`，通栏 `1/-1`）。验收：Windows Chrome/Edge 验证，模态锁滚动时背景不横移。
+**`L-11` `100vw` 与滚动条宽度溢出**：Windows 约 15px 横向滚动、页面间左右跳动。`100vw` 含滚动条宽，`100%` 不含；macOS 覆盖式滚动条掩盖问题。修复：`html{scrollbar-gutter:stable}`，流内通栏用 `100%`；需突破父容器用 full-bleed grid（`1fr min(65ch,100%) 1fr`，内容 `grid-column:2`，通栏 `1/-1`）。固定全宽抽屉/模态若需覆盖滚动条槽，用 `left:0; width:100vw`；不要用 `right:0 + 100vw`，右侧锚定会按扣除 gutter 的布局视口定位而左移。验收：Windows Chrome/Edge 验证，模态锁滚动时背景不横移。
 
 **`L-12` 文本容器写死高度**：放大字体/换语言后切掉半行。违反 1.4.12（行高 1.5×/段距 2×/字距 0.12em/词距 0.16em 下不得丢失）。一律 `min-height+padding+align-items:center`。验收：注入文本间距样式无裁切重叠（可用 Text Spacing 书签脚本）。
 
@@ -261,13 +261,13 @@ WebAIM Million 2025（100 万首页自动化检测）：50,960,288 错误，均�
 
 | 编号 | 缺陷 | 出现率 2025 | 验收 |
 |---|---|---|---|
-| `A-01` | 低对比文字 | 79.1%（均值29.6处，同比-14.4%） | 普通文字≥4.5:1、大字≥3:1、必要边界/图标对相邻色≥3:1，placeholder/只读值不豁免；按[共用规范](../../frontend-design/references/contrast-readability.md)验实际叠层/状态及未判项。重置样式进 `@layer base`，避免无层 `button{color:inherit}` 吞掉文字色工具类 |
+| `A-01` | 低对比文字 | 79.1%（均值29.6处，同比-14.4%） | 普通文字≥4.5:1、大字≥3:1、必要边界/图标对相邻色≥3:1，placeholder/只读值不豁免；按[共用规范](../../frontend-design/references/contrast-readability.md)验实际叠层/状态及未判项。重置样式进 `@layer base`，避免无层 `button{color:inherit}` 吞掉文字色工具类；暗底日志/终端块内的 muted 文本按暗底重新定义，不继承页面 muted 变量 |
 | `A-02` | 图片缺 alt | 55.5% | 信息图写含义，装饰 `alt=""`，功能图述动作非外观 |
 | `A-03` | 表单无标签 | 48.2% | `<label for>/aria-label/aria-labelledby`，placeholder 不算标签 |
 | `A-04` | 空链接 | 45.4% | 必有可访问名，图标加隐藏文本/`aria-label` |
 | `A-05` | 空按钮 | 29.6% | 同上；`×`字符需 `aria-label="关闭"` 且字符 `aria-hidden` |
 | `A-06` | 缺文档语言 | 15.8% | `<html lang="zh-CN">`，异语段落局部 `lang` |
-| `A-07` | ARIA 滥用 | 用量与错误正相关 | No ARIA 优于 Bad ARIA；原生优先，对照 APG |
+| `A-07` | ARIA 滥用 | 用量与错误正相关 | No ARIA 优于 Bad ARIA；原生优先，对照 APG。自定义 div 表格给 `role=table/row` 时补齐 `columnheader/cell`，只给外层/行会触发 `aria-required-children` |
 | `A-08` | 焦点不可见 | — | `:focus-visible` 可见、不被完全遮挡，作者定义的必要焦点线索对相邻色≥3:1；2px周长等效面积与同一像素聚焦前后≥3:1采用为产品增强（2.4.13 AAA，非AA必需）；禁裸 `outline:none` |
 | `A-09` | 非语义交互 | — | 禁 `<div onClick>` 当控件，一律 button/a |
 | `A-10` | 键盘陷阱/焦点管理 | — | 浮层移入焦点+Tab 循环+Esc+关闭返回触发元 |
@@ -385,7 +385,7 @@ AI 同质化（有观察依据）：紫渐变+Inter+圆角卡片+柔和阴影+�
 
 | 编号 | 缺陷 | 验收 |
 |---|---|---|
-| `P-01` | 滚动条占位 | `scrollbar-gutter:stable`，避 `100vw`，Windows 验一轮 |
+| `P-01` | 滚动条占位 | `scrollbar-gutter:stable`；流内通栏避 `100vw`，固定全宽浮层需覆盖 gutter 时用 `left:0 + 100vw`，Windows 验一轮 |
 | `P-02` | 中文字体回退 | 栈 `system-ui,-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif`，按钮 `min-width`，Win+Mac 各验 |
 | `P-03` | iOS 聚焦缩放 | input/textarea/select `font-size≥16px`（视觉小用 transform 变通） |
 | `P-04` | 安全区 | `viewport-fit=cover` + `env(safe-area-inset-*)` |
