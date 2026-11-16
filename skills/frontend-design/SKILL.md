@@ -56,7 +56,7 @@ description: Web/桌面小工具界面设计：布局栅格、渐进式披露、
 ### 步骤6——审查与交付
 
 先跑 `scripts/scan.py` 扫低级违例，再按 `assets/design-review-checklist.md` 与 `references/checklist.md` 逐项打勾（含 `taste.md` 主张项），顺序：任务→主张→恢复→键盘窄屏→视觉→装饰。需按编号深查缺陷根因/复现/验收时，转 `frontend-qa` 的 catalog（`L/C/S/V/A/F/N/I/D/P/G/H`）；动效缺陷深查方法见 `web-animation-guide` 的验证清单。结论分三级：阻断（MUST/NEVER违反）/建议（SHOULD）/细节，每条注明文件与规则。交付物：线框、令牌差异、实际视口/容器验证记录与截图、清单打勾、已知问题；响应式专项合并到同一报告，未执行项明确记录。
-网页项目默认带页面图标（favicon）：优先复用项目或品牌已有图形；没有时也做一个简单可辨的图标（首字母或几何标记即可），优先 SVG 并给 PNG/ICO 回退，不留框架默认图标或 404 空图标；桌面壳与本地 Web UI 复用同一图形作为窗口和安装包图标。
+网页项目默认带页面图标（favicon）：优先复用项目或品牌已有图形，也可以直接取常见图标库（Lucide/Tabler 等）的单个图标，不必专门设计；没有合适素材时用项目名首字母或一个几何标记即可。优先 SVG 并给 PNG/ICO 回退，不留框架默认图标或 404 空图标；桌面壳与本地 Web UI 复用同一图形作为窗口和安装包图标。
 可增长列表按滚动归属验：页面列表可自然增长，受限弹窗/面板条目翻倍也不突破可见高度；诊断结论验条件标注。
 独立首屏或滚动视口采集复用 [托管截图入口](../browser-automation/references/screenshot-workflow.md)。本 skill 的 `scripts/screenshot.mjs` 是项目内多宽度/整页采集模板，须置于已有总期限与进程回收的 runner 中使用；`finally` 不等于启动者异常退出也能收尾。
 浮层类（fixed/overlay/portal）页面级断言查不到，须单列断言。
