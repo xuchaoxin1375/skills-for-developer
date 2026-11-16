@@ -32,7 +32,7 @@
 |---|---|---|---|
 | 默认表格 | 选择、警告、Name、Type、Content、Proxy、TTL、Comment、Details、Actions；功能列固定 | colgroup + fixed layout；表最小宽度由当前可见列之和决定，局部横滚 | 保留真实 table 语义；不能为了塞进容器把全部列任意压扁，D1 |
 | 记录阅读 | 名称及淡色域名后缀；等宽 Content 截断且有 title；橙云/文字代理状态；TTL/评论/优先级详情 | 警告图标有 Tooltip；编辑动作与长数据分离 | title 不是完整触屏长内容查看方案；代理不是只靠颜色，D1/D3 |
-| 排序 | Name/Type/Content 表头按钮带当前方向图标 | 首次升序 → 降序 → 关闭；字符串 localeCompare | 非 TTL/Modified 数值排序；源码 aria-sort 放在 button，目标应放在列头，D1 |
+| 排序 | Name/Type/Content 表头按钮带当前方向图标 | 首次升序 → 降序 → 关闭；字符串 localeCompare | 状态数按 tables.md 的用途判断，不默认照抄参考稿的三态；非 TTL/Modified 数值排序；源码 aria-sort 放在 button，目标应放在列头，D1 |
 | 固定操作列 | 右侧表头与单元格粘性、实色背景；还有右方内容时显示边缘阴影 | 横滚仍可点 Edit | 与父滚动层/背景一起复用；不要声称已冻住所有列，D1 |
 | Display | proxy/ttl/comment/details 选择；compact/comfortable；inline/dialog | 偏好分别持久化；Reset widths 恢复全部列宽 | 改 editMode 会直接清 editingId，没有 dirty 确认；需补保护，D1 |
 | 列宽拖拽 | 可调列边界有拖拽手柄；固定列无手柄 | pointer capture；拖动 React state 预览，松手存储；各列 min/max 限制 | pointercancel 清拖动但不回滚预览；读取持久值未按列边界夹取，D4 |
