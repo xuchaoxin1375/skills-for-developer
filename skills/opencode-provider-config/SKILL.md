@@ -1,16 +1,17 @@
 ---
 name: opencode-provider-config
-description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）接入 OpenCode V2，或补全、审查已有模型参数：获取模型列表、核实输入输出模态与工具能力、思考等级与 variants、上下文及输出上限，写 providers 配置、选择协议、设置服务环境（含 `HTTP_PROXY`/`NO_PROXY` 服务端代理持久化与「设了代理却不生效」排查）与按授权验证。用于接入第三方供应商/模型、配置 provider、切换 Responses/Messages、调整已有或内置模型的 capabilities/limit/reasoning、查 /v1/models 或 models.dev，或让 OpenCode V2 走代理、检查/设置/移除服务端代理（`scripts/opencode_proxy.py`）、排查服务端 env 不生效；不要求重新接入或必须提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
+description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）或官方 API key 型端点（如 Google AI Studio）接入 OpenCode V2，或补全、审查已有模型参数：获取模型列表、核实输入输出模态与工具能力、思考等级与 variants、上下文及输出上限，写 providers 配置、选择协议、设置服务环境（含 `HTTP_PROXY`/`NO_PROXY` 服务端代理持久化与「设了代理却不生效」排查）与按授权验证。用于接入供应商与模型、配置 provider、切换 Responses/Messages、调整已有或内置模型的 capabilities/limit/reasoning、查 /v1/models 或 models.dev，或让 OpenCode 走代理、检查/设置/移除代理（`scripts/opencode_proxy.py`）、排查服务端 env 不生效；不要求重新接入或提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
 ---
 
-# OpenCode 自定义供应商模型接入流程
+# OpenCode 供应商接入与模型参数流程
 
 ## 适用范围
 
 - 第三方中转站（NewAPI / one-api / uni-api 等 OpenAI 兼容网关）接入 OpenCode V2。
+- 官方 API key 型端点（Google AI Studio 等）接入内置 provider：不需要自定义 `providers` 条目，凭据走服务端环境变量，模型目录来自 models.dev。
 - 已内置 catalog 的供应商改用自定义 baseURL 时，直接覆盖 `settings.baseURL` 即可，不必新建 provider。
 - 不适用于 OAuth 型供应商（Copilot 等），走 `/connect` 交互流程。
-- 通用用法与 V2 配置形状以 `opencode` skill 和官方 V2 文档为准；本 skill 负责第三方接入与模型参数落地，不沿用 V1 字段。
+- 通用用法与 V2 配置形状以 `opencode` skill 和官方 V2 文档为准；本 skill 负责第三方/官方 API key 型接入与模型参数落地，不沿用 V1 字段。
 - 联网搜索工具的可见性与实际调用验收归[harness-web-check](../harness-web-check/SKILL.md)；模型订阅、平台托管搜索与供应商原生工具的归属按[搜索适配说明](../harness-web-check/references/opencode.md#模型订阅与平台托管搜索)分别核实，不从套餐或Responses通路推断。仅当证据指向供应商协议或模型能力配置时，再由本skill局部修复。
 
 ## 核心用例
@@ -18,6 +19,7 @@ description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网�
 | 目标 | 最短入口 |
 | --- | --- |
 | 新网关接入 | 取实际可用模型 ID → 核实参数 → 选协议并写配置 → 目录校验；真实调用另按授权验证。 |
+| Google AI Studio 免费 key | 内置 `google` provider + `GEMINI_API_KEY` 服务端变量；先用独立实例验证，再重启共享服务。 |
 | 已有模型补模态、工具或思考档位 | 不重接供应商、不重写密钥；按[模型参数配置](references/model-parameters.md)只覆盖目标模型所缺字段。 |
 | 只改上下文或输出上限 | 核对该渠道的真实上限，局部改 `limit`，再核对服务解析后的值。 |
 
@@ -219,6 +221,15 @@ opencode service start   # set env 本身也会重启服务
 - 官方免费与 Go 订阅是现成 provider：凭据由 `/connect`（TUI）或 `opencode auth login` 保存到**服务端 SQLite**（路径用 `opencode debug paths db` 查；`~/.local/share/opencode/auth.json` 只在 V2 迁移时导入一次，之后改它无效），管理用 `opencode auth list/export/switch/logout`。模型引用 `opencode/<id>`、`opencode-go/<id>`；opencode.ai 不放行 `NO_PROXY` 即自动走服务端代理。
 - **一把工作区凭据同时授权 `opencode` 与 `opencode-go` 两个 provider**（工作区配置里两者共用同一凭据，`env` 均为 `OPENCODE_CONSOLE_TOKEN`）；只订阅 Go 时不必另填 Console key，`opencode/<id>-free` 会随同一份工作区配置出现。报 `api_key_expired`（"Create a new API key in OpenCode Console…"）说明凭据是旧格式或已过期：`sk-…` 旧 key 已失效，须在 Console → **Keys** → Add Service Account 建 `oc_sk_…`（可设权限与有效期）后重新连接，**重新登录不会续期旧 key**。
 - 同名模型先枚举再选 ID：`opencode models | findstr <系列名>`。例：免费变体带 `-free` 后缀，普通变体报 "Insufficient account funds" 需 Console 余额；`Contributor` 变体低价但提示词会用于模型训练。
+
+## 官方 API key 型供应商（Google AI Studio）
+
+Google AI Studio 的 key 走内置 `google` provider，不需要在 `opencode.json` 写 `providers`；models.dev 目录已包含 `gemini-4-hydrogen` 等条目，服务端识别凭据后自动出现。需要覆盖目录参数时，只写 `providers.google.models.<modelID>` 的目标字段，不新建 provider。
+
+- 凭据变量按 `GEMINI_API_KEY`、`GOOGLE_API_KEY`、`GOOGLE_GENERATIVE_AI_API_KEY` 识别，写一个即可。先直连或经代理做一次最小 `generateContent`，确认 key、目标模型和链路都通，再写服务端 env。
+- 国内直连 `generativelanguage.googleapis.com` 通常超时，代理按第 2、4 节持久化到服务端。验证配置时可先用独立实例，避免重启共享服务：把 key 与 `HTTP(S)_PROXY` 放进当前进程环境，运行 `opencode run --standalone -m google/<model> "OK"`；通过后再写服务端 env，由会话外终端重启并核对 `opencode models | findstr google`。
+- 免费档按 project 限流，具体 RPM/TPM/RPD 只在 AI Studio 限流页可见；429 表示触限，不靠换 key 绕过。免费档提示词会被用于改进 Google 产品，不要放隐私或客户数据。
+- Gemini 3/4 默认开思考，思考 token 计入输出预算；`maxOutputTokens` 太小会出现 `finishReason=MAX_TOKENS` 且文本为空，按任务给足预算或调低思考档位。
 
 ## 约束/规范
 
