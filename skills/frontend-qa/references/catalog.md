@@ -378,6 +378,12 @@ AI 同质化（有观察依据）：紫渐变+Inter+圆角卡片+柔和阴影+�
 | `D-19` | 切换闪白 | `<head>` 内联脚本早设主题类，`color-scheme:light dark`，`theme-color` 随模式 |
 | `D-20` | 仅跟随无手动 | 跟随/浅/深三态+持久化；全站无硬编码色，对比度重验；`prefers-reduced-motion/contrast` 与 `forced-colors` 另验 |
 
+焦点环间距（判据见 [焦点环与相邻间距](../../frontend-design/references/a11y.md#焦点环与相邻间距)）：
+
+| 编号 | 缺陷 | 验收 |
+|---|---|---|
+| `D-21` | 焦点环贴边 | 外扩量=`outline-width+outline-offset`（默认 4px）；与相邻控件、容器边框、分隔线留 ≥4px（推荐 6–8px）；贴分隔线或被裁切时改负 offset 或外挂到容器；Tab 走查看实际渲染 |
+
 ---
 
 ## 类别 P：跨平台与环境差异（国内重点）

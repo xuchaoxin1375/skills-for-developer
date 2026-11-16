@@ -41,6 +41,7 @@
 - [ ] Changed color pairs measured on actual composed backgrounds across supported themes/states; complex backgrounds and axe incomplete items resolved; readability checked and evidence recorded. [A-01]
 - [ ] Applicable user-flow automation and Agent screenshot review follow the shared [visual acceptance protocol](../../ai-verified-delivery/references/visual-acceptance.md); UI observations include action result, close/cancel/focus return, overlap/compression, clipping and responsive controls. [G-10]
 - [ ] Keyboard-only + focus return; 200%/400% + spacing + 400px height. [A-10,L-12]
+- [ ] Focus ring clearance: outline-width + outline-offset (default 4px) stays clear of adjacent borders/dividers by >=4px (prefer 6-8px); inset or hoist the ring where rows are clipped or divider-flush. [A-08,D-21]
 - [ ] Supported OS/browser checks selected by impact; iOS input sizing/safe-area/viewport checks when iOS is supported. [P]
 - [ ] IME composing Enter not submit. [F-16]
 - [ ] Dark: no pure b/w, elevation readable, no FOUC. [D-15..D-19]
