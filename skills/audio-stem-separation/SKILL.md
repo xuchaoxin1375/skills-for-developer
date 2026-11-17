@@ -62,6 +62,8 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 | --- | --- | --- |
 | 只要伴奏/人声两轨 | `--two-stems=vocals -n htdemucs` | 默认档，质量与耗时平衡 |
 | 值得等，要更干净 | `-n htdemucs_ft` | 约 4 倍耗时 |
+| 5 分钟 MP3，高品质 | 2 轨 BS-RoFormer（MLX/audio-separator）；4 轨 `htdemucs_ft` | 单曲几十秒到分钟级；输出 FLAC |
+| 5 分钟 MP3，超高品质 | 2 轨 `BS-Roformer-SW.ckpt`（MLX/audio-separator）；4 轨 `htdemucs_ft` + shifts=2 | 相对 `htdemucs_ft` 再翻倍；MP3 源有损，提升有限 |
 | 要鼓、贝斯、钢琴等 | `-n htdemucs_6s` | 六轨模型，乐器分离弱于专用模型 |
 | Apple Silicon，想最快 | `demucs-mlx`（4 轨）或 `mlx-audio-separator`（2 轨/RoFormer） | 需 macOS 26.2+ 才吃 M5 矩阵单元；包较新，先小样本对照 |
 | 只需快速试听、能接受残留 | ffmpeg 中置相消 `-af "pan=stereo\|c0=c0-c1\|c1=c1-c0"` | 几十秒出结果，人声残留明显，低频与混响受损 |
