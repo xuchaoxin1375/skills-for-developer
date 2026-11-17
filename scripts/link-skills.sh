@@ -839,17 +839,26 @@ check_global_agents() {
   local repo_agents="$REPO_ROOT/config/global-AGENTS.md"
   [[ -f "$repo_agents" ]] || return 0
   # 每个消费全局 AGENTS.md 的 harness 一个目标路径，与 README「全局 AGENTS.md 同步与合并」保持一致
-  local target name live
+  local target name live delta truth_only local_only
   for target in "OpenCode|$HOME/.config/opencode/AGENTS.md" "ZCode|$HOME/.zcode/AGENTS.md"; do
     name="${target%%|*}"
     live="${target#*|}"
     if [[ ! -f "$live" ]]; then
       echo "全局 AGENTS.md($name) 缺失（期望按 README 从 config/global-AGENTS.md 恢复）" >&2
       failures=$((failures + 1))
-    elif ! cmp -s "$repo_agents" "$live"; then
-      echo "全局 AGENTS.md($name) 与真源存在差异（允许本机定制；确认通用条目一致即可）" >&2
-    else
+    elif cmp -s "$repo_agents" "$live"; then
       echo "全局 AGENTS.md($name) 与真源一致。"
+    else
+      # 给出差异方向：真源独有行 = 本机副本缺内容（多为旧版缩略）；本机独有行 = 本机定制
+      delta="$(diff "$repo_agents" "$live" || true)"
+      truth_only="$(printf '%s\n' "$delta" | grep -c '^<' || true)"
+      local_only="$(printf '%s\n' "$delta" | grep -c '^>' || true)"
+      echo "全局 AGENTS.md($name) 与真源存在差异：真源独有 ${truth_only} 行，本机独有 ${local_only} 行。" >&2
+      if [[ $truth_only -gt 0 ]]; then
+        echo "  → 本机副本缺少真源内容（多为旧版缩略或改写过通用条目）：按真源对齐通用条目，本机专属内容留在末尾「个性化规则补充」。" >&2
+      else
+        echo "  → 仅本机新增内容：确认属于本机定制后保留，可跨机的通用条目回写真源。" >&2
+      fi
     fi
   done
 }

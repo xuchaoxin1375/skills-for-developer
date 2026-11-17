@@ -145,7 +145,10 @@ if [[ $SKIP_AGENTS -eq 0 ]]; then
         if cmp -s "$src" "$dst"; then
           say "全局 AGENTS.md($dst) 已与真源一致"
         else
-          echo "WARN: 全局 AGENTS.md($dst) 与本机不同；保留本机文件，请对比后合并通用条目（本机定制保留，不覆盖）" >&2
+          diff_out="$(diff "$src" "$dst" || true)"
+          truth_only="$(printf '%s\n' "$diff_out" | grep -c '^<' || true)"
+          local_only="$(printf '%s\n' "$diff_out" | grep -c '^>' || true)"
+          echo "WARN: 全局 AGENTS.md($dst) 与真源不同（真源独有 ${truth_only} 行，本机独有 ${local_only} 行）；保留本机文件，按真源对齐通用条目，本机定制留在末尾「个性化规则补充」" >&2
         fi
       elif [[ $PLAN -eq 1 ]]; then
         say "全局 AGENTS.md($dst) 计划复制"

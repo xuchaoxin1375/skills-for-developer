@@ -795,7 +795,18 @@ if ($VerifyOnly) {
         Write-Warning "全局 AGENTS.md($($t.Name)) 缺失 (期望按 README 从 config/global-AGENTS.md 恢复)"
         $failures++
       } elseif (-not (Test-FileEqual $repoAgents $t.Path)) {
-        Write-Warning "全局 AGENTS.md($($t.Name)) 与真源存在差异（允许本机定制；确认通用条目一致即可）"
+        # 给出差异方向：真源独有行 = 本机副本缺内容（多为旧版缩略）；本机独有行 = 本机定制
+        $truthLines = @(Get-Content -LiteralPath $repoAgents -Encoding UTF8)
+        $liveLines = @(Get-Content -LiteralPath $t.Path -Encoding UTF8)
+        $cmp = @(Compare-Object -ReferenceObject $truthLines -DifferenceObject $liveLines)
+        $truthOnly = @($cmp | Where-Object { $_.SideIndicator -eq '<=' }).Count
+        $localOnly = @($cmp | Where-Object { $_.SideIndicator -eq '=>' }).Count
+        Write-Warning "全局 AGENTS.md($($t.Name)) 与真源存在差异：真源独有 $truthOnly 行，本机独有 $localOnly 行。"
+        if ($truthOnly -gt 0) {
+          Write-Warning '  -> 本机副本缺少真源内容（多为旧版缩略或改写过通用条目）：按真源对齐通用条目，本机专属内容留在末尾「个性化规则补充」。'
+        } else {
+          Write-Warning '  -> 仅本机新增内容：确认属于本机定制后保留，可跨机的通用条目回写真源。'
+        }
       } else {
         Write-Host "全局 AGENTS.md($($t.Name)) 与真源一致。"
       }

@@ -224,12 +224,14 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 2. **取舍**：环境相关或临时调试项留在本机；可跨机的偏好合入真源。偏好条目写判断原则与思维方式；具体操作、检查项、命令和领域流程放对应 skill，只保留选择、覆盖或指针，不复制清单。
 3. **写入**：`cli.json` 让真源与本机字节一致（链接脚本按文件 hash 判断“已是最新”，不一致时下次部署会提示覆盖）；`global-AGENTS.md` 允许本机自定义副本，但新增的通用条目要两边一致；本机差异只写末尾「个性化规则补充」，与通用条目冲突时按该节说明处理（本机环境差异就地覆盖并注明覆盖对象，通用条目过时先询问再改真源）。修改被 harness 加载的 `AGENTS.md` 会触发指令重载，定稿后一次写入，避免先加后改。
 4. **校验**：`python3 scripts/check-skills.py --no-harness`，以及
-   `scripts\link-skills.ps1 -VerifyOnly`（Linux `./scripts/link-skills.sh --verify-only`）。`-VerifyOnly` 的全局 AGENTS 漂移只表示本机副本与真源存在差异；确认本次新增条目两边一致，不把既有自定义差异当作失败。
+   `scripts\link-skills.ps1 -VerifyOnly`（Linux `./scripts/link-skills.sh --verify-only`）。`-VerifyOnly` 不判失败，只按方向报告全局 AGENTS 漂移：
+   - **真源独有行 > 0**：本机副本缺内容，通常是旧版缩略或改写过通用条目，按真源对齐；改写过的条目保留本机判断时，写明覆盖对象。
+   - **仅本机独有行**：属允许的本机定制；确认通用条目两边一致即可，可跨机的条目回写真源。
 5. **报告**：列出采纳与保留项及依据；提交与同步按当前有效的全局或仓库授权。
 
 反向分发（真源 → 本机）由链接脚本承担：`-ApplyRecommendedCli`（Linux `--apply-recommended-cli`）
 应用推荐配置，覆盖前备份为同目录 `cli.json.bak-<时间戳>`；`-SkipRecommendedCli` 跳过，
-非交互环境默认跳过。`-VerifyOnly` 只提示 `config/global-AGENTS.md` 漂移，不检查 `cli.json`。
+非交互环境默认跳过。`-VerifyOnly` 只提示 `config/global-AGENTS.md` 漂移并给出差异方向，不检查 `cli.json`。
 
 ## 验证协议
 

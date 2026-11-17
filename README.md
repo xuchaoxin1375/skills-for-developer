@@ -356,7 +356,7 @@ python3 -c "import json,sys,os;ids={s['id'] for s in json.load(open(sys.argv[1])
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
 
-真源：`config/global-AGENTS.md`（以它为基准；允许各 harness 保留本机定制，通用条目两边保持一致）。每个消费全局 `AGENTS.md` 的 harness 一个部署目标：OpenCode 落 `~/.config/opencode/AGENTS.md`，ZCode 落 `~/.zcode/AGENTS.md`（ZCode 的用户级指令文件只认该路径，不回退 `~/.agents`）。链接脚本不碰各 harness 的 `AGENTS.md`；一键部署脚本 `scripts/deploy.ps1` / `deploy.sh` 会在目标缺失时复制，内容不一致只警告（通用条目由人或代理对比合并，本机定制保留，不自动覆盖）。分步执行时 `-VerifyOnly`/`--verify-only` 会一并提示差异：目标缺失计异常，内容不一致只警告（存在本机定制时属正常）。新机 clone 后跑一次一键脚本即可；已存在且不一致时合并通用条目，本机专属条目留在本机副本。
+真源：`config/global-AGENTS.md`（以它为基准；允许各 harness 保留本机定制，通用条目两边保持一致）。每个消费全局 `AGENTS.md` 的 harness 一个部署目标：OpenCode 落 `~/.config/opencode/AGENTS.md`，ZCode 落 `~/.zcode/AGENTS.md`（ZCode 的用户级指令文件只认该路径，不回退 `~/.agents`）。链接脚本不碰各 harness 的 `AGENTS.md`；一键部署脚本 `scripts/deploy.ps1` / `deploy.sh` 会在目标缺失时复制，内容不一致只警告（通用条目由人或代理对比合并，本机定制保留，不自动覆盖）。分步执行时 `-VerifyOnly`/`--verify-only` 会一并提示差异：目标缺失计异常，内容不一致只警告，并给出差异方向——**真源独有 N 行**表示本机副本缺内容（多为旧版缩略或改写过通用条目，按真源对齐），**仅本机独有 M 行**属允许的本机定制。新机 clone 后跑一次一键脚本即可；已存在且不一致时合并通用条目，本机专属条目留在本机副本。
 
 Windows（PowerShell）：
 

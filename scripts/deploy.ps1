@@ -115,7 +115,10 @@ function Sync-GlobalAgents {
       if (Test-FileEqual $src $dst) {
         Write-Step "全局 AGENTS.md($($t.Name)) 已与真源一致"
       } else {
-        Write-Warning "全局 AGENTS.md($($t.Name)) 与本机不同；保留本机文件，请对比后合并通用条目（本机定制保留，不覆盖）"
+        $cmp = @(Compare-Object -ReferenceObject @(Get-Content -LiteralPath $src -Encoding UTF8) -DifferenceObject @(Get-Content -LiteralPath $dst -Encoding UTF8))
+        $truthOnly = @($cmp | Where-Object { $_.SideIndicator -eq '<=' }).Count
+        $localOnly = @($cmp | Where-Object { $_.SideIndicator -eq '=>' }).Count
+        Write-Warning "全局 AGENTS.md($($t.Name)) 与真源不同（真源独有 $truthOnly 行，本机独有 $localOnly 行）；保留本机文件，按真源对齐通用条目，本机定制留在末尾「个性化规则补充」"
       }
       continue
     }
