@@ -4,7 +4,7 @@ description: >
   为程序与仓库规划并编写配套文档：按读者任务与项目规模确定最小文档集，分层写 README、--help、配置与接口参考、
   CHANGELOG、ADR、部署与 Runbook，并用读者视角验收；也用于审查现有项目的文档缺口、重复与过时。
   当用户要求写 README、补文档、判断项目该配哪些文档、交付前检查文档，或新建程序、新增功能后需要同步文档时使用。
-  主动澄清业务术语或维护 ADR 内容走 domain-modeling；排版走 markdown-style，注释走 code-comments，已有文档改写合并走 doc-rewrite-review；仓库治理文件走 repo-gov。
+  主动澄清业务术语或维护 ADR 内容走 domain-modeling；排版走 markdown-style，注释走 code-comments，已有文档改写合并走 doc-rewrite-review；README 的仓库治理要求按 repo-gov，文档生命周期与一致性门禁按 swe-gov。
 ---
 
 ## 为程序配文档

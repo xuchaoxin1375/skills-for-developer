@@ -2,7 +2,7 @@
 name: note-blog-archivist
 description: >
   将一份已定稿的经验结论沉淀到本地笔记/博客仓库：定位笔记总目录，在现有文档中找合适位置最小追加或按目录规则新建文档，省去手动归类。当用户说存笔记、记一笔、沉淀经验、放到博客、经验库时使用。
-  仅接收单份已定稿内容；多份文档或草稿的合并、去重、择优、改写归 doc-rewrite-review，纯排版归 markdown-style，从零调研成文归 tech-learning-research，多来源提炼成可复用规则归 reference-to-skill；项目仓库的文档规划、缺口审查与治理文件归 project-docs。
+  仅接收单份已定稿内容；原始讨论需综合或改写时先走 doc-rewrite-review，完成后再归档；多份文档或草稿的合并、去重、择优、改写归 doc-rewrite-review，纯排版归 markdown-style，从零调研成文归 tech-learning-research，多来源提炼成可复用规则归 reference-to-skill；项目仓库的文档规划、缺口审查与治理文件归 project-docs。
 ---
 
 # 笔记与博客归档

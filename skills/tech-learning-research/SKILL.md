@@ -1,11 +1,12 @@
 ---
 name: tech-learning-research
 description: >
-  技术学习、信息调研与方案探索：围绕指定话题做系统讲解、调研报告或选型推荐。
-  用户问有哪些做法、业界如何解决、方案如何比较，或要求从零研究后写教程、笔记、博客时使用；
+  技术学习、调研与方案探索：围绕指定话题做系统讲解、调研报告或选型推荐。
+  用户问有哪些做法、业界如何解决、方案如何比较，或要求从零研究后写调研报告、技术文章、笔记时使用；
+  教程/课程的教学设计与编排走 learning-doc-design，本 skill 负责研究范围、证据、结论与成文；
   产物是文档、脚本或代码也不能跳过必要取证。已有充分资料时复用，不为形式重搜。
-  不用于纯实现或缺陷修复；单个事实核验走agentic-web-search；已有正文改写走doc-rewrite-review；
-  仅归档定稿走note-blog-archivist。检索执行归agentic-web-search，本skill负责研究范围、结论与成文。
+  不用于纯实现或缺陷修复；单个事实核验走 agentic-web-search；已有正文改写走 doc-rewrite-review；
+  仅归档定稿走 note-blog-archivist。检索执行归 agentic-web-search。
 ---
 
 ## 技术学习、信息调研与方案探索

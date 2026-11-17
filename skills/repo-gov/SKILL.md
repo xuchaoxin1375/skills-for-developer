@@ -1,10 +1,10 @@
 ---
 name: repo-gov
 description: >
-  代码仓库的规范治理与安全提交，按公开/私有和项目栈裁剪：新建或改造仓库时选配 README、LICENSE、
-  .gitignore/.gitattributes、CONTRIBUTING、SECURITY、行为准则与 Issue/PR 模板；提交前检查、
-  历史密钥与大文件审计、分支与评审保护、CI 与依赖/构建供应链控制、AGENTS.md、
-  创建 GitHub/Gitee 远程仓库与 token 发现。
+  代码仓库的规范治理与安全提交，按公开/私有和项目栈裁剪：新建或改造仓库时选配治理文件，包括 LICENSE、
+  .gitignore/.gitattributes、CONTRIBUTING、SECURITY、行为准则与 Issue/PR 模板；README 的内容与结构按 project-docs，
+  本 skill 只判断 README 的治理要求；提交前检查、历史密钥与大文件审计、分支与评审保护、CI 与依赖/构建供应链控制、
+  AGENTS.md、创建 GitHub/Gitee 远程仓库与 token 发现。
   当用户要初始化仓库、补治理文件、问许可证怎么选、做提交前安全检查、配置分支保护或创建远程仓库时使用；
   应用架构、契约与运行治理转 swe-gov，文档内容与结构转 project-docs。
 ---
