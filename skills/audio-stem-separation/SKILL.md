@@ -80,6 +80,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 | 源只有 12–16 kHz 带宽（低码率转存） | 仍用 `htdemucs`，别上 `htdemucs_ft`/RoFormer | 高频已被砍掉，重模型补不回来；先按 [源品质核验](references/quality-check.md) 确认 |
 | 值得等，要更干净 | `-n htdemucs_ft` | 约 4 倍耗时 |
 | 5 分钟 MP3，高品质 | 2 轨 BS-RoFormer（MLX/audio-separator）；4 轨 `htdemucs_ft` | 单曲几十秒到分钟级；只听 320kbps MP3 即可 |
+| RoFormer 人声发薄、发尖 | 换 Mel-Band RoFormer 或其 fullness 调优权重 | 音色更平滑，SDR 略低；对照与数字口径见 [模型选型核对](references/model-selection.md) |
 | 5 分钟 MP3，超高品质 | 2 轨 `BS-Roformer-SW.ckpt`（MLX/audio-separator）；4 轨 `htdemucs_ft` + shifts=2 | 相对 `htdemucs_ft` 再翻倍；只听 320kbps MP3 即可，MP3 源有损 |
 | 存档 / 进 DAW / 继续处理 | `--flac`（16-bit 足够） | 体积约为 MP3 的 3–4 倍；不恢复源损失 |
 | 只听后分发 | `--mp3 --mp3-bitrate 320` | 从 FLAC 母版转一次，别反复转 |

@@ -29,20 +29,55 @@
 
 ## 2026-11 快照
 
-以下数字来自公开页面（MVSEP 的算法页与榜单、MUSDB18-HQ 榜单、ZFTurbo 模型表），**不同行的数据集不同，只作档位参考，不可直接相减**；过期后按上面的入口重查。
+数字来自公开页面（MVSEP 的算法页与榜单、MUSDB18-HQ 榜单、ZFTurbo 模型表），检索日期 2026-11-17。**数据集写在同一列里，只可同列相比**；“公开可下”指本地能拿到权重，拿不到的不必为它折腾。
 
-| 模型 / 权重 | vocals SDR | instrumental SDR | 说明 |
+| 模型 / 权重 | 数据集 | vocals | instr. | 公开可下 |
+| --- | --- | --- | --- | --- |
+| `htdemucs`（800 首额外数据） | MUSDB | 8.93 | — | 是（MIT） |
+| `htdemucs_ft` | MUSDB | 9.20 | — | 是（MIT） |
+| SCNet XL IHF | MUSDB | 11.42 | — | 权重无许可声明 |
+| MelBand（Kimberley Jensen） | Multisong | 11.01 | 17.32 | 是 |
+| MelBand（Bas Curtiz / 2024.08） | Multisong | 11.18 | 17.49 | 是 |
+| MelBand（Becruily deux） | Multisong | 11.35 | 17.51 | 是 |
+| MelBand（unwa big beta v5e / becruily vocals） | Multisong | 10.55–10.59 | 16.86–16.90 | 是，人声 fullness 调优版 |
+| BS-Roformer（viperx 系） | MDX23 榜 | 11.75–11.92 | 16.3–17.0 | 是 |
+| **BS-Roformer-SW**（6 轨，折 2 轨） | Multisong | 11.30 | 17.50 级 | 是，666MB，许可未知 |
+| BS Roformer（2025.07） | Multisong | 11.89 | 18.20 | 否（MVSep 侧） |
+| BS Roformer 124 bands（2026.07） | Multisong | 12.33 | 18.64 | 否（付费，数倍耗时） |
+| Ensemble（2025.06） | Multisong | 11.93 | 18.23 | 否 |
+
+结论：源带宽够时，2 轨 RoFormer 的收益（约 +3 dB vocals SDR）远大于从 `htdemucs` 换 `htdemucs_ft`（约 +0.3 dB）；但“第一”的权重多数拿不到，本地实际可选的是 BS-Roformer-SW 与 Mel-RoFormer InstV7n 这一档。
+
+## Mel-Band 与 BS-RoFormer 怎么选
+
+Mel-RoFormer 的“最强”是 2024 年那一代的结论，2026 年已被 BS 系超过（同表 11.0–11.35 对 11.89–12.33）。它仍值得试的理由在架构而不是总分：
+
+- **同等训练数据下 vocals 更强**：论文（arXiv:2310.01809）在 MUSDB18-HQ 上测，Mel 比 BS 高 0.43 dB（L=6）与 0.58 dB（L=9），原因是 Mel 尺度对语音建模更友好。
+- **音色更平滑**：论文原话是“更平滑的人声、更一致的响度”；BS 那篇自己承认输出偏“锐利、雾感少”。所以 0.6–0.9 dB 的总分差距可能被音色偏好抵消。
+- **fullness 调优版换走向**：unwa big beta v5e、becruily vocals 这类把 fullness 拉到 20.7 左右、SDR 降到 10.5。觉得 BS 人声偏薄偏干时，先试这几个。
+
+判断顺序：先跑 BS 系（SW），人声发薄或发尖再换 Mel 系或 Mel 的 fullness 版，不要只看排名。
+
+## 数字口径陷阱
+
+同一个 ckpt 会有一串互相不能比的分数。以 viperx 1296/1297 为例：
+
+| 来源 | 1296 | 1297 |
+| --- | --- | --- |
+| 文件名标注 | 12.9628 | 12.9755 |
+| audio-separator 独立评测（40 首，BSS Eval v4） | 12.10 | 11.77 |
+| ZFTurbo 的 Multisong 口径 | 无 | 10.87 |
+
+文件名里的数字只是训练者贴的标签，不是结果；两个来源的排序甚至相反。引用时写清数据集与评测方法，跨表相减一律不作数。MVSEP 也提示部分评测曲目可能进过训练集。
+
+## 本地能跑什么
+
+| 路线 | 权重 | 体积 | 备注 |
 | --- | --- | --- | --- |
-| `htdemucs`（800 首额外训练，MUSDB） | 8.93 | — | 默认档基线，速度快 |
-| `htdemucs_ft`（MUSDB） | 9.20 | — | 4 个专家网络，约 4 倍耗时 |
-| SCNet XL IHF（MUSDB / Multisong） | 11.42 / 9.68 | 8.19 / 6.48 均值为全轨 | 4 轨单权重，需 SCNet 后端 |
-| MelBand RoFormer（Kim / kim_ft_unwa） | 11.21–12.6 / 12.4 | 17.0 级 | 2 轨，生态最成熟 |
-| BS-Roformer viperx（MDX23 榜） | 11.75–11.92 | 16.3–17.0 | `model_bs_roformer_ep_317_sdr_12.9755.ckpt` 等 |
-| BS Roformer（Multisong 2025.07） | 11.89 | 18.20 | MVSep 微调 |
-| BS Roformer 124 bands（Multisong 2026.07） | 12.33 | 18.64 | 比基础版慢数倍，部分渠道付费 |
-| BS PolarFormer（Synth 2026.05） | 14.03（Synth 口径） | 13.73 | 新架构，换 fullness 分档 |
-
-结论：源带宽够时，2 轨 RoFormer 的收益（约 +3 dB vocals SDR）远大于从 `htdemucs` 换 `htdemucs_ft`（约 +0.3 dB）。
+| `mlx-audio-separator` | BS-Roformer-SW | 666MB | 6 轨，折出 vocals/instrumental；MLX 原生 |
+| `mlx-audio-separator` | Mel-RoFormer InstV7n | 870MB | 2 轨，音色平滑，作对照 |
+| `audio-separator` | 上表任意公开 ckpt | 200MB–1GB | 走 PyTorch MPS，模型覆盖最广 |
+| `mlx-audio-separator` | ZFTurbo Mel vocals v1 | 64MB | **别用它判断 RoFormer**：对应原始权重 SDR 仅 8.42 |
 
 ## 怎么落地
 
