@@ -1,13 +1,13 @@
 # 模型选型核对
 
-音频分离模型一年换一代：同一份 MUSDB18-HQ 上，`htdemucs` 的 vocals SDR 约 8.9 dB，2026 年的 BS-RoFormer 系权重能到 11.9–12.4 dB，在听感上是“伴奏里还有残响”和“干净”的差别。SKILL.md 里的模型表只是起点，动手前花几分钟核对现状，尤其是源本身就是无损或 320k 的时候。
+音频分离模型一年换一代：`htdemucs` 在 MUSDB18-HQ 上的 vocals SDR 约 8.9 dB，2026 年的 BS-RoFormer 系权重在各自数据集上能到 11.9–12.4 dB（跨数据集只能当量级），在听感上是“伴奏里还有残响”和“干净”的差别。SKILL.md 里的套餐与档位只是起点，动手前花几分钟核对现状，尤其是源本身就是无损或 320k 的时候。
 
 ## 什么时候值得查
 
 - 源有效带宽 ≥ 18 kHz（无损、320k），模型的差距能听出来。
 - 要批量处理，或产物是要交付的成品。
 - 距上次确认超过半年。
-- 源只有 12–16 kHz 带宽、只是自己试听一版：按默认 `htdemucs` 跑，不必追新。
+- 源只有 12–16 kHz 带宽、只是自己试听一版：留在 B 档，不必追新。
 
 ## 查哪里
 
@@ -46,7 +46,7 @@
 | BS Roformer 124 bands（2026.07） | Multisong | 12.33 | 18.64 | 否（付费，数倍耗时） |
 | Ensemble（2025.06） | Multisong | 11.93 | 18.23 | 否 |
 
-结论：源带宽够时，2 轨 RoFormer 的收益（约 +3 dB vocals SDR）远大于从 `htdemucs` 换 `htdemucs_ft`（约 +0.3 dB）；但“第一”的权重多数拿不到，本地实际可选的是 BS-Roformer-SW 与 Mel-RoFormer InstV7n 这一档。
+结论：源带宽够时，2 轨 RoFormer 的收益（约 +2.5–3 dB vocals SDR，跨数据集只作量级）远大于从 `htdemucs` 换 `htdemucs_ft`（同数据集约 +0.3 dB）；但“第一”的权重多数拿不到，本地实际可选的是 BS-Roformer-SW 与 Mel-RoFormer InstV7n 这一档。
 
 ## Mel-Band 与 BS-RoFormer 怎么选
 

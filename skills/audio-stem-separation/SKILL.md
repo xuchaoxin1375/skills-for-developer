@@ -13,19 +13,41 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 不熟悉采样率、码率、频谱截止、LUFS、SDR 这些参数时，先读 [音频概念速查](references/audio-basics.md)：它面向不常处理音频的读者，解释每个数字在说什么、哪些结论不能从标签得出。
 
-## 最短路径
+## 先对齐：三个问题定套餐
+
+分离不是越重越好，也不是越短越好：源、机器、用途不同，最合适的档位就不同。动手前先回答三个问题，再选套餐。
+
+- **源带宽**：跑 `python scripts/check_audio_quality.py song.mp3` 看 `ceiling` 与 `verdict`，约十秒（需要 numpy，缺了脚本会提示安装）。这一步同时是预检的一部分。
+- **机器**：Apple Silicon / 有 CUDA / 纯 CPU，内存多少。
+- **用途**：只是试听、自用，还是要交付成品或批量处理。
+
+| 套餐 | 适用 | 做法 | 耗时 | 产物 |
+| --- | --- | --- | --- | --- |
+| **A 试听** | 先确认值不值得处理 | ffmpeg 中置相消 | 秒级 | 临时文件，不交付 |
+| **B 标准** | 自用；源 ≤17.5 kHz；或只有 CPU | `htdemucs` 两轨 | CPU 约 2.6× 实时（5 分钟歌 2–3 分钟）；MPS 约 10× 实时 | 320k MP3 |
+| **C 高质量** | 源 ≥18 kHz，且要交付/批量或 B 的伴奏残留不能接受 | BS-RoFormer（Apple Silicon）或 audio-separator | 5 分钟曲目 1–2 分钟（M5 16GB） | FLAC 母版 |
+
+18–19.5 kHz 是边界带：自用留 B，要交付进 C。源窄带就留在 B：12–17.5 kHz 的源上 C 也补不回高频，只会更慢。
+
+三个横切选项与套餐独立：**输出格式**（只听 320k MP3 / 存档 FLAC）、**stem 数**（2 轨 / 4 轨 / 6 轨）、**裁剪模式**（`cut` 改时间轴 / `mute` 保对轨）。
+
+选型不是一次性的：模型换代快（同一数据集上 vocals SDR 一年能涨 1 dB 以上），距上次确认超过半年、或要批量交付时，按 [模型选型核对](references/model-selection.md) 查一次当前权重。
+
+## 最短路径（B 标准档）
+
+适用：自用伴奏/人声，源带宽 ≤17.5 kHz，或机器只有 CPU。选了 B 档，下面六步就是完整流程；要更轻或更重，见后面的 A / C 档。
 
 前置：ffmpeg（编解码与裁剪）、Python 3.10–3.13、demucs（带 torch）。三平台安装与网络细节见 [环境与依赖](references/environment.md)。
 
 1. **预检**：`ffmpeg -version` 有输出且带 `libmp3lame`；`python3 -V` 在 3.10–3.13 之间。3.14 装不上 torch，换成 3.11/3.12 的解释器或 conda 环境。
 
-   源文件先量有效带宽（用装 demucs 的解释器）：
+   源带宽若还没按「先对齐」量过，现在补上：
 
    ```bash
    python scripts/check_audio_quality.py song.mp3
    ```
 
-   声明码率不等于内容：13–16 kHz 就截止的低码率源，上 `htdemucs_ft`/RoFormer 也补不回高频，仍用默认 `htdemucs`。判决表、假无损与灰区处理见 [源品质核验](references/quality-check.md)。
+   判决为窄带就留在 B：13–16 kHz 就截止的源，上 `htdemucs_ft`/RoFormer 也补不回高频。满带宽且要交付，转 C 档。判决表、假无损与灰区处理见 [源品质核验](references/quality-check.md)。
 
 2. **建隔离环境**（不要装进系统 Python）：
 
@@ -45,7 +67,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
    仓库目录一旦选定就固定复用：`fetch_model.py --dir` 与 `demucs --repo` 必须指向同一路径，换名字等于把每个模型（约 84MB）重下一遍。已有仓库先 `ls ~/.cache/demucs*` 再决定要不要新建。
 
-4. **分离**（默认只分人声/伴奏两轨，320kbps mp3）：
+4. **分离**（本套餐档位：`htdemucs` 两轨，320kbps mp3；换档见 C 档）：
 
    ```bash
    demucs --repo ~/.cache/demucs-models -n htdemucs --two-stems=vocals \
@@ -72,23 +94,37 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 6. **验收**：输出文件存在；`ffprobe` 时长与源一致（分离）或等于剩余段总长（裁剪）；`trim_silence.py` 报告的段表与实际听到的空白对得上；试听确认人声段无金属音、无伴奏残留，拼接处无爆音。
 
+## A 试听档（更轻）
+
+只想先听听分离效果，或判断这首歌值不值得处理时，用 ffmpeg 中置相消，几十秒出结果：
+
+```bash
+ffmpeg -i song.mp3 -af "pan=stereo|c0=c0-c1|c1=c1-c0" preview.wav
+```
+
+人声残留明显，低频与混响受损，只适合试听，不要当成品。要判断 C 档值不值得跑，拿同一段 30 秒与 B 档对照。
+
+## C 高质量档（更重）
+
+适用：源有效带宽 ≥18 kHz（无损、320k），且满足其一：产物要交付、要批量，或 B 档的伴奏残留不能接受。
+
+- **Apple Silicon**：`mlx-audio-separator` + BS-Roformer-SW（6 轨折 2 轨），5 分钟曲目约 1–2 分钟（M5 16GB）；首次要把 `.ckpt` 转成 safetensors。完整命令与权重来源见 [模型选型核对](references/model-selection.md#mlx-实操路径2-轨实测)。
+- **非 Apple Silicon**：`audio-separator` + 公开 ckpt，走 PyTorch MPS 或 CPU；模型覆盖最广，但比 MLX 慢，落地命令见 [模型选型核对](references/model-selection.md#怎么落地)。
+- **不想换工具链**：把 B 路径的 `-n htdemucs` 换成 `-n htdemucs_ft`，只多约 0.3 dB 却要 4 倍耗时，只在赶时间且不愿装第二套环境时选。
+- **人声发薄、发尖**：换 Mel-Band RoFormer 或其 fullness 调优权重，音色更平滑、SDR 略低，对照见 [模型选型核对](references/model-selection.md#mel-band-与-bs-roformer-怎么选)。
+
+16GB 内存上整包 RoFormer 容易换页，长文件加 `--chunk_duration 300`；先拿 30 秒片段与 B 档同一段对照，再决定是否批量。产物默认 FLAC，分发时再转一次 320k MP3。
+
 ## 关键判断
 
-表里的档位是 2026-11 的常用组合。分离模型换代快（同一数据集上 vocals SDR 一年能涨 1 dB 以上），源带宽 ≥ 18 kHz、要批量跑或产物要交付时，先按 [模型选型核对](references/model-selection.md) 查一次当前权重；14–16 kHz 的窄带宽源按默认档跑即可。
+套餐定下来后，剩下的判断多是横切选项与边界情形；档位选择见前面的套餐表。
 
 | 情况 | 选择 | 代价 |
 | --- | --- | --- |
-| 只要伴奏/人声两轨 | `--two-stems=vocals -n htdemucs` | 默认档，质量与耗时平衡 |
-| 源只有 12–16 kHz 带宽（低码率转存） | 仍用 `htdemucs`，别上 `htdemucs_ft`/RoFormer | 高频已被砍掉，重模型补不回来；先按 [源品质核验](references/quality-check.md) 确认 |
-| 值得等，要更干净 | `-n htdemucs_ft` | 约 4 倍耗时 |
-| 5 分钟 MP3，高品质 | 2 轨 BS-RoFormer（MLX/audio-separator）；4 轨 `htdemucs_ft` | 单曲几十秒到分钟级；只听 320kbps MP3 即可 |
-| RoFormer 人声发薄、发尖 | 换 Mel-Band RoFormer 或其 fullness 调优权重 | 音色更平滑，SDR 略低；对照与数字口径见 [模型选型核对](references/model-selection.md) |
-| 5 分钟 MP3，超高品质 | 2 轨 `BS-Roformer-SW.ckpt`（MLX/audio-separator）；4 轨 `htdemucs_ft` + shifts=2 | 相对 `htdemucs_ft` 再翻倍；只听 320kbps MP3 即可，MP3 源有损 |
-| 存档 / 进 DAW / 继续处理 | `--flac`（16-bit 足够） | 体积约为 MP3 的 3–4 倍；不恢复源损失 |
-| 只听后分发 | `--mp3 --mp3-bitrate 320` | 从 FLAC 母版转一次，别反复转 |
-| 要鼓、贝斯、钢琴等 | `-n htdemucs_6s` | 六轨模型，乐器分离弱于专用模型 |
-| Apple Silicon，想最快 | `demucs-mlx`（4 轨）或 `mlx-audio-separator`（2 轨/RoFormer） | 需 macOS 26.2+ 才吃 M5 矩阵单元；包较新，先小样本对照 |
-| 只需快速试听、能接受残留 | ffmpeg 中置相消 `-af "pan=stereo\|c0=c0-c1\|c1=c1-c0"` | 几十秒出结果，人声残留明显，低频与混响受损 |
+| 源只有 12–16 kHz 带宽（低码率转存） | 留在 B，别上 C | 高频已被砍掉，重模型补不回来；先按 [源品质核验](references/quality-check.md) 确认 |
+| 存档 / 进 DAW / 继续处理 | Demucs 用 `--flac`；MLX/audio-separator 用 `--output_format FLAC`（16-bit 足够） | 体积约为 MP3 的 3–4 倍；不恢复源损失 |
+| 只听后分发 | Demucs 用 `--mp3 --mp3-bitrate 320`；C 档从 FLAC 母版转一次 | 别反复转码 |
+| 要鼓、贝斯、钢琴等 | `-n htdemucs_6s`，或 `demucs-mlx` 4 轨 | 六轨模型，乐器分离弱于专用模型 |
 
 耗时取决于设备。这里的 `x 实时` 指处理速度是播放速度的 x 倍（1× = 边播边算，5:02 用 33 秒即 10.5×），换算与 RTF 见 [环境与依赖](references/environment.md#性能与资源)。CPU 基准（Apple M5 16GB、torch 2.15、`htdemucs`）：30 秒片段推理 13 秒，加约 2.5 秒模型加载共 15.5 秒，约 2.6× 实时（≈0.4× 音频时长）；5 分钟的歌约 2–3 分钟。同一台机器切到自动 MPS（demucs 4.1.0）：5:02 的曲目推理 33 秒（≈10.5× 实时，进度条约 10 seconds/s），含模型加载共 1:13，FLAC 与 MP3 源基本同量级；换 MLX `BS-Roformer-SW`（6 轨）跑 5 分钟级曲目 1–2 分钟（首跑 2:00，热跑 0:59）。上述耗时均在启用低电量模式时测得，未与正常模式对照，正常供电下应更快。对比数据与 M5 注意事项见 [环境与依赖](references/environment.md#apple-silicon-加速)。
 
@@ -96,7 +132,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 ## Apple Silicon 加速（可选）
 
-Demucs 4.1+ 的 MPS 已比 CPU 快一个数量级。MLX 路线不只是更快，也是质量升级的入口：2 轨 BS-RoFormer 的 vocals SDR 比 `htdemucs` 高约 3 dB，代价是多了模型权重下载与首次转换。
+Demucs 4.1+ 的 MPS 已比 CPU 快一个数量级。MLX 路线不只是更快，也是质量升级的入口：2 轨 BS-RoFormer 的 vocals SDR 比 `htdemucs` 高约 2.5–3 dB（两个数字来自不同数据集，只作量级参考），代价是多了模型权重下载与首次转换。
 
 - **4 轨，最快**：`pip install demucs-mlx`，然后 `demucs-mlx song.mp3`。输出 4 个 stem，没有 `--two-stems` 快捷方式。
 - **2 轨或 RoFormer**：`pip install mlx-audio-separator`，然后 `mlx-audio-separator song.mp3`。默认 BS-RoFormer 输出 vocals/instrumental；4 轨用 `-m htdemucs_ft.yaml`。
@@ -119,9 +155,10 @@ MLX 要 macOS 26.2+ 才能用上 M5 的 GPU Neural Accelerators；旧系统仍�
 
 ## 自检
 
-- [ ] 分离命令真实跑完，退出码为 0，两个产物文件都存在
-- [ ] 分离前量过源的有效带宽（`check_audio_quality.py` 有 `ceiling` 与 `verdict` 两行），模型档位与带宽匹配
-- [ ] 选型前按 [模型选型核对](references/model-selection.md) 看过当前权重；结论里写明模型版本、评测数据集与检索日期
+- [ ] 已按「先对齐」的三问定下套餐（A/B/C），而不是沿用默认档
+- [ ] 分离命令真实跑完，退出码为 0，产物文件存在
+- [ ] 分离前量过源的有效带宽（`check_audio_quality.py` 有 `ceiling` 与 `verdict` 两行），套餐与带宽匹配
+- [ ] 选 C 档时按 [模型选型核对](references/model-selection.md) 看过当前权重；结论里写明模型版本、评测数据集、检索日期，以及哪些是本机实测
 - [ ] Apple Silicon 上未固定 `-d cpu`；追求速度时按“Apple Silicon 加速”选 MPS 或 MLX，并记录实际后端
 - [ ] 裁剪前跑过 `--dry-run`，段表与预期空白段一致（前奏/间奏/尾奏是否都命中）
 - [ ] 裁剪结果时长等于剩余段总长，误差在 0.1s 内
