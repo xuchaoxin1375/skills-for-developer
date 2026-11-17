@@ -2,6 +2,17 @@
 
 自有 skills 的唯一真源仓库（跨平台：Windows + Linux 共用）。自有实体在 `skills/`，上游实体独立管理；各 agent harness 侧通过链接引用，不存适配副本（Windows 用 **Junction**，Linux 用 **symlink**）。
 
+## 远端与镜像
+
+本仓库同步托管在两个远端，完成提交后逐个推送并核对：
+
+| 远端 | 地址 | 角色 |
+| --- | --- | --- |
+| `origin` | <https://github.com/xuchaoxin1375/skills-for-developer> | 主源 |
+| `gitee` | <https://gitee.com/xuchaoxin1375/skills-for-developer> | 镜像 |
+
+换机器后先运行 `git remote -v`；缺少 `gitee` 时用 `git remote add gitee https://gitee.com/xuchaoxin1375/skills-for-developer.git` 补上再同步。镜像允许短暂滞后，但每次推送后用 `git ls-remote gitee main` 与本地 `HEAD` 核对，不能只凭 `git status -sb` 判断已同步。
+
 ## 日常 AI 编程先看这里
 
 不必记全仓目录，也不必每次跑完全部流程。按当前问题选一个主入口，其他方法只补缺少的判断：
