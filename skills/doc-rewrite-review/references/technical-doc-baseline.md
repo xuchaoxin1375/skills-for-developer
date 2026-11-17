@@ -1,8 +1,8 @@
 ## 技术文档写作基线
 
-本文件是技术文档新写与改写的通用底线，供 [doc-rewrite-review](../SKILL.md)、[learning-doc-design](../../learning-doc-design/SKILL.md)、[project-docs](../../project-docs/SKILL.md)、[tech-learning-research](../../tech-learning-research/SKILL.md) 按需引用。它不替代领域规则：教学设计与学习检查按[教学设计与理解对齐](../../learning-doc-design/references/tutorial-design.md)，项目文档集合与生命周期按 [project-docs](../../project-docs/SKILL.md)，研究取证与来源边界按 [tech-learning-research](../../tech-learning-research/SKILL.md)，排版与图示语法按 [markdown-style](../../markdown-style/SKILL.md)。
+本文件是技术文档新写与改写的通用底线，供 [doc-rewrite-review](../SKILL.md)、[learning-doc-design](../../learning-doc-design/SKILL.md)、[project-docs](../../project-docs/SKILL.md)、[tech-learning-research](../../tech-learning-research/SKILL.md) 按需引用。它只补充跨领域的通用判断，不替代各领域的详细规则：排版与图示语法按 [markdown-style](../../markdown-style/SKILL.md)，教学概念与状态变化深度按 [教学设计与理解对齐](../../learning-doc-design/references/tutorial-design.md)。
 
-只采用当前产物需要的部分；不因读取本文件重启调研、合并、归档或用户访谈。已有正文的实质改写按 [doc-rewrite-review](../SKILL.md)；从零研究成文按 [tech-learning-research](../../tech-learning-research/SKILL.md)；教学设计按 [learning-doc-design](../../learning-doc-design/SKILL.md)。
+只采用当前产物需要的部分；不因读取本文件重启调研、合并、归档或用户访谈。领域规则与执行流程由对应 skill 维护，本文件不承担路由。
 
 ### 规则强度
 
@@ -30,11 +30,11 @@
 - **底线**：首次出现且承担新判断的命令、API、界面操作或其他操作入口，先说明它解决哪类问题、当前要回答什么，再交代结果怎么读；不要用否定式边界或副作用代替用途。
 - **默认**：只展开当前任务所需的参数、选项和边界；完整用法放参考或解释单元。
 - **按需**：必要时给“使用与不使用”的最小对照；说明省略默认值、作用对象和影响范围。
-- **默认**：可复制命令与终端记录分开；命令块不含提示符和输出，终端记录标明提示符并逐条回显。
+- **默认**：可复制命令与终端记录的写法按 [markdown-style](../../markdown-style/SKILL.md) 的代码块规则，不在本文件重复。
 
 ### 概念解释
 
-- **默认**：影响后续理解的基础概念，按三层写：通俗描述、准确规则与边界、常见误解或反例。只有比喻、位置词或一句话定义不算完整。
+- **默认**：影响后续理解的基础概念，按三层写：通俗描述、准确规则与边界、常见误解或反例；只有比喻、位置词或一句话定义不算完整。教学或系统学习场景的详细深度按 [tutorial-design.md](../../learning-doc-design/references/tutorial-design.md#基础概念的完整度)。
 - **底线**：解释不依赖尚未说明的概念，不循环定义；示例中的名字、路径和标识符首次出现时交代它是什么、从哪来。
 - **按需**：纯参考或速查可只给准确规则与边界；常见误解层用于读者容易建立错误心智模型的地方。
 - **默认**：概念与示例互相支撑；只有步骤没有解释，读者会照抄而不会迁移。
@@ -49,15 +49,15 @@
 ### 安全与恢复
 
 - **底线**：涉及隐私、安全、存储、权限或不可逆操作时，在首次相关操作前独立说明影响、边界与验证方式；不能只留在命令参考或排障段。
-- **底线**：不写真实密钥、令牌、内网地址或本机绝对路径；使用占位符和环境变量形式。
+- **底线**：不写真实密钥、令牌、内网地址或本机绝对路径；命令示例中的不确定路径按 [markdown-style](../../markdown-style/SKILL.md) 使用 `/path/to/...`，密钥与令牌用占位符。
 - **底线**：破坏性操作写清作用范围、前置、备份/回滚与恢复验证；不能回滚时明确说明。
 - **按需**：给出失败后的检查点、停止条件和求助入口。
 
 ### 图示
 
 - **按需**：图只在比相邻文字更清楚地表达关系时使用；一图回答一个问题，不逐项复述已有清单。
-- **按需**：同一对象经历多个状态时，用状态表并列各状态，并在关键转换处给同尺度快照；说明什么变了、什么没变。
-- **底线**：结构、流程、时序、依赖或状态示意图不得用字符画；Mermaid 语法、版面与状态图细则按 [markdown-style](../../markdown-style/SKILL.md) 和 [learning-doc-design](../../learning-doc-design/SKILL.md)。
+- **按需**：同一对象经历多个状态时，用状态表并列各状态，并在关键转换处给同尺度快照；详细教学判断按 [tutorial-design.md](../../learning-doc-design/references/tutorial-design.md)。
+- **底线**：结构、流程、时序、依赖或状态示意图按 [markdown-style](../../markdown-style/SKILL.md) 的 Mermaid 规则，不使用字符画。
 - **按需**：图的方向与正文叙述顺序一致；节点过多、缩字或需要横向滚动时改列表、表格或拆图。
 
 ### 验收
@@ -66,12 +66,10 @@
 - **底线**：检查术语与指代一致、链接可导航、代码步骤可执行、命令与输出对应、占位符和真实路径未混用。
 - **底线**：检查隐私、安全、存储与破坏性操作的影响说明；发布元信息只在载体要求时补齐。
 - **按需**：作者自查、实际运行和真实读者走查分开报告，不互相冒充；未运行、示意和已实测明确标注。
-- **按需**：技术文档写清适用版本、最后验证日期与更新入口；生命周期与门禁按 [project-docs](../../project-docs/SKILL.md) 与 [文档与责任](../../swe-gov/references/maintenance-and-feedback.md#文档与责任)，不另建治理规则。
+- **按需**：技术文档写清适用版本、最后验证日期与更新入口；生命周期与门禁按 [project-docs](../../project-docs/SKILL.md) 与 [文档与责任](../../swe-gov/references/maintenance-and-feedback.md#文档与责任)。
 
 ### 使用边界
 
 - 本文件只给通用底线，不决定文档集合、教学策略、研究结论或排版细节。
-- 需要判断配哪些文档、每份写到什么程度时，转 [project-docs](../../project-docs/SKILL.md)。
-- 需要安排读者能力、概念依赖、案例、练习与学习检查时，转 [learning-doc-design](../../learning-doc-design/SKILL.md)。
-- 需要取证、比较方案或写研究报告时，转 [tech-learning-research](../../tech-learning-research/SKILL.md)。
-- 已有正文的改写、审校与多源合并，按 [doc-rewrite-review](../SKILL.md) 的流程执行。
+- 领域规则与执行流程由对应 skill 维护；本文件不另设路由、不复制完整清单。
+- 需要判断配哪些文档、安排教学编排、取证成文或处理已有文本时，按对应领域 skill 执行，不在本文件内展开。
