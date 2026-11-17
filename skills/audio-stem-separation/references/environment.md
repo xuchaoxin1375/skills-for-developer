@@ -94,6 +94,8 @@ Demucs 4.1+ 在 Apple Silicon 自动走 MPS。公开基准（M4 Max 40 核 GPU�
 | PyTorch MPS | 2.82 秒 | 42× |
 | MLX（`demucs-mlx`） | 1.05 秒 | 114× |
 
+**M5 16GB 预期（按 M4 公开基准折算，不是实测）**：同一 `htdemucs` 30 秒片段，原 CPU 约 15.5 秒；MPS 预计 4–5 秒，MLX 预计 3–4 秒。5 分钟单曲：原 CPU 约 2 分钟，MPS 预计 15–25 秒，MLX 预计 8–12 秒。首次进程含模型加载/编译，批量或长文件更接近推理倍率；以本机 30 秒片段实测为准。
+
 - **`demucs-mlx`**：`pip install demucs-mlx`，然后 `demucs-mlx song.mp3`。输出 4 轨到 `separated/`，没有 `--two-stems`；只要 2 轨时用 `mlx-audio-separator`，或把 drums/bass/other 相加得到伴奏。
 - **`mlx-audio-separator`**：`pip install mlx-audio-separator`，然后 `mlx-audio-separator song.mp3`。默认 BS-RoFormer 输出 vocals/instrumental；4 轨用 `-m htdemucs_ft.yaml`；`--output_format` 默认 FLAC，需要 mp3 时显式指定。M4 mini 上比 `audio-separator` 中位快 1.85×（htdemucs_ft 1.40×、BS-RoFormer 2.16×、Mel-Band 2.50×）。
 - **`audio-separator`**：`pip install "audio-separator[cpu]"`；Apple Silicon 走 PyTorch MPS + ONNX CoreML，模型覆盖最广、成熟度最高，但比 MLX 慢。
