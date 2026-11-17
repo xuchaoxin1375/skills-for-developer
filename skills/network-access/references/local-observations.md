@@ -293,3 +293,23 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 - 与 2026-10-30 直连 fetch/push 成功对照：GitHub Git 传输的直连可用性随时段与网络变化，不能沿用旧结论；失败后先核验实际生效的代理入口或改走镜像，不重复直连或重复 push。
 - URL 级 `http.<url>.proxy` 优先于通用 `http.proxy`，换入口必须覆盖前者；本次未测试 `git push github`，只证明只读 git 传输与镜像路线当次可用。
+
+## 2026-11-17 PyPI 源与聚合入口实测（macOS）
+
+执行环境：国内 macOS（Apple Silicon）、Python 3.11、pip 24.0→26.3；进程未设代理变量，未做出口回显。耗时与速度只描述当次链路，不作为线路排名。
+
+`python -m pip index versions` 与 `pip download --no-deps --no-cache-dir` 两段分别计：
+
+| 源 | 索引页 | 包文件段 | 备注 |
+| --- | --- | --- | --- |
+| `repo.huaweicloud.com/repository/pypi/simple` | 0.07–0.11 s | 0.10–0.44 s（1.2–5.3 MB/s） | 本机全部样本可用，端到端 `numpy` 5.3 MB 1.01 s |
+| `mirrors.aliyun.com/pypi/simple` | 0.07–0.09 s（`numpy` 页 1.47 s） | 0.26–0.50 s | 可用，略慢于上一项 |
+| `mirrors.ustc.edu.cn/pypi/simple` | 0.11–0.37 s | 小包 0.32 s，`numpy` **403** | 文件请求 302 到 TUNA 后被拒 |
+| `mirrors.cernet.edu.cn/pypi/web/simple` | 0.37–0.64 s（含 302） | `pyyaml` 175 KB 2.05 s（0.59 MB/s），`numpy` **403** | 同上；端到端明显慢于华为云（0.61 s） |
+| `pypi.org/simple` | 0.68–1.21 s（`numpy` 未截断前需 110 s） | 超 8 s 预算，约 24 KB/s | 直连不适合装大包 |
+
+- **索引可用 ≠ 文件可取**：USTC 与 CERNET 的 Simple 页正常，但文件 URL 会 302 到 `mirrors.tuna.tsinghua.edu.cn`，本机对该域名稳定 403（偶发 429）。只看索引段会把它们误判为可用源。
+- **聚合入口的 302 稳定但有边界**：`mirrors.cernet.edu.cn` 连续 6 次请求 PyPI 均落到 `unicom.mirrors.ustc.edu.cn`；npm 与 brew 路径落到 `mirror.nju.edu.cn`。`/huggingface/`、`/dockerhub/v2/`、GitHub raw 路径均 404，不能当统一加速网关用。
+- **工具**：以上两段由 `scripts/bench_pypi_mirrors.py` 一次跑出（`--samples 2 --workers 4` 约 28 s）；`pip config debug` 确认本机用户级 `pip.conf` 曾同时配置 5 个索引且 `install.user = true`，后者会让 venv 内安装直接失败。
+
+未验证：跨日与不同运营商出口的波动、海外网络、conda/brew/npm 在同机的同类对照、TUNA 拒绝本机文件请求的持续时间与原因。
