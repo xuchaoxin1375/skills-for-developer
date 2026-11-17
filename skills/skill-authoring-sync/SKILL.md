@@ -171,7 +171,7 @@ skills-for-developer/
 
 用户说“同步 skills”时，先把本地工作区状态和远端真实状态分开验证。`git status -sb` 只比较 `HEAD` 与本地缓存的 `refs/remotes/<remote>/<branch>`；该缓存可能早已过期，不能单独证明远端已对齐。
 
-1. **列远端**：`git remote -v`。不要假定只有 `origin`；有镜像时以提交历史更全的一侧为准，必要时分别核对。
+1. **列远端并核对镜像清单**：`git remote -v`。不要假定只有 `origin`；同时看仓库文档是否登记了镜像（如 README 的远端说明），本机缺少对应远端时按登记地址先 `git remote add` 补齐再继续，无法补齐或不具备推送条件（如远端不可达、缺少凭据）时把未覆盖的远端写进报告。有镜像时以提交历史更全的一侧为准，必要时分别核对。
 2. **直接问远端**：`git ls-remote <remote> refs/heads/<branch>`，记录远端 commit。未 fetch 也能得到远端真实 SHA。
 3. **取回并比较**：`git fetch <remote> <branch>`，再运行
    `git rev-list --left-right --count HEAD...<remote>/<branch>`。
@@ -180,7 +180,7 @@ skills-for-developer/
    - `behind > 0`、`ahead = 0`：先处理工作区未提交改动（提交或 stash），再 `git pull --ff-only`（或 `git merge --ff-only <remote>/<branch>`）后复跑第 3 步。
    - `ahead > 0`、`behind = 0`：本地有未推送提交；按当前有效的提交与同步授权处理，获准 push 后重新 fetch 核对。失败处理遵循当前全局或仓库规则；网络诊断与可用路线按 `network-access`，重试仍受授权限制。
    - 双向非零：先报告分叉点和双方提交，不擅自 merge/rebase。用户明确要求同步后，把远端独有提交用 `merge --no-ff` 合入本地，再分别推送所有远端；不要 `--force`。合并后跑仓库检查，并用 `rev-parse` 确认本地与各远端指向同一提交。
-5. **报告核验事实**：写明 remote、branch、远端 SHA、本地 HEAD、ahead/behind，以及是否实际执行过 fetch。ahead/behind 只描述提交历史；工作区有未提交改动时另用 `git status --short` 说明，不能把它算作已同步。不要用 `git status -sb` 的 `up to date` 代替远端结论；远端不可达时明确说“未能验证远端”。涉及远端操作时写明实际通道（直连、代理或镜像）。
+5. **报告核验事实**：写明 remote、branch、远端 SHA、本地 HEAD、ahead/behind，以及是否实际执行过 fetch；仓库文档登记但本机未配置、未推送的远端也要列出。ahead/behind 只描述提交历史；工作区有未提交改动时另用 `git status --short` 说明，不能把它算作已同步。不要用 `git status -sb` 的 `up to date` 代替远端结论；远端不可达时明确说“未能验证远端”。涉及远端操作时写明实际通道（直连、代理或镜像）。
 
 ### 删除 skill
 
