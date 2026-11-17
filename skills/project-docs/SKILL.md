@@ -16,6 +16,7 @@ description: >
 本 skill 只决定四件事：**配哪些文档、每份写到什么程度、按什么顺序写、怎么验证够用**。
 
 - 排版、标题层级与图示形式：`markdown-style`。
+- 通用技术文档写作底线（读者、结构、操作入口、证据等）：[技术文档写作基线](../doc-rewrite-review/references/technical-doc-baseline.md)；项目文档集合与生命周期仍按本 skill。
 - 代码注释、docstring 与 `--help` 的代码侧实现：`code-comments`。
 - 已有文档的改写、合并与去重裁决：`doc-rewrite-review`。
 - 文档生命周期、单一信息源与一致性门禁：`swe-gov`。

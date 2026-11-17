@@ -17,6 +17,7 @@ description: >
 | 任务 | 采用的规则 |
 | --- | --- |
 | 教程、教材、课程、解释型指南的编写与改写 | 本文最短路径；需要系统教学编排时读[教学设计与理解对齐](references/tutorial-design.md) |
+| 技术文档通用写作底线（读者、结构、操作入口、证据等） | 读[技术文档写作基线](../doc-rewrite-review/references/technical-doc-baseline.md)；教学设计与学习检查仍按本 skill |
 | 核对教学规则的理论来源、证据强度或适用边界 | 读[教学依据与采用边界](references/learning-design-foundations.md) |
 | 判断内容属于教程、操作指南、解释还是参考 | 读[教学设计与理解对齐](references/tutorial-design.md)的职责划分，案例见[Diátaxis 应用案例](references/diataxis-cases.md) |
 | 纯 Markdown 排版、标题、表格、代码块与图示语法 | 转[markdown-style](../markdown-style/SKILL.md)；本 skill 不维护第二套排版规范 |

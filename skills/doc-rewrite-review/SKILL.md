@@ -16,6 +16,7 @@ description: >
 | 任务 | 采用的规则 |
 | --- | --- |
 | 单篇正文或系列改写、审校 | 本文的最短路径；大范围重构先简要说明读者、缺口、计划动作和风险 |
+| 技术文档通用写作底线（读者、结构、操作入口、证据等） | 读[技术文档写作基线](references/technical-doc-baseline.md)；本 skill 仍负责已有文本的实质改写、审校与合并 |
 | 学习文档、教材、教程或课程编写与改写 | 转[learning-doc-design](../learning-doc-design/SKILL.md)，按读者与目标选策略与学习检查；需要回到具体正文改写时再按本文流程处理 |
 | 多源正文合并或目录级归属重整 | 编辑前读[合并流程](references/merge-workflow.md)，确认未定的形态、落点与命名 |
 | 只改表现形式 | [markdown-style](../markdown-style/SKILL.md)，不擅自改观点或补内容 |
