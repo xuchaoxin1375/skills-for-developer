@@ -94,7 +94,7 @@ Demucs 4.1+ 在 Apple Silicon 自动走 MPS。公开基准（M4 Max 40 核 GPU�
 | PyTorch MPS | 2.82 秒 | 42× |
 | MLX（`demucs-mlx`） | 1.05 秒 | 114× |
 
-**M5 16GB 实测**（demucs 4.1.0 + torch 2.15，`htdemucs`，5:02 曲目，自动 MPS）：推理 33 秒（≈10.5× 实时，进度条约 10 seconds/s），含模型加载共 1:13；128k MP3 与无损 FLAC 源耗时基本一致。同一机器换 MLX `BS-Roformer-SW`（6 轨）：ckpt→safetensors 转换 2.6 秒，推理 5:00 曲目用 2 分 0 秒（≈2.5× 实时），6 个 stem 各 300.1 秒——质量更高，耗时约为 htdemucs 的 4 倍。按 M4 公开基准折算的 15–25 秒偏乐观，实测按 10× 实时估更稳。下面是从 M4 基准折算的预期值，仅作参考：同一 `htdemucs` 30 秒片段，原 CPU 约 15.5 秒；MPS 预计 4–5 秒，MLX 预计 3–4 秒。
+**M5 16GB 实测**（demucs 4.1.0 + torch 2.15，`htdemucs`，5:02 曲目，自动 MPS）：推理 33 秒（≈10.5× 实时，进度条约 10 seconds/s），含模型加载共 1:13；128k MP3 与无损 FLAC 源耗时基本一致。同一机器换 MLX `BS-Roformer-SW`（6 轨）：ckpt→safetensors 转换 2.6 秒，推理 5:00–5:35 曲目 1–2 分钟（首跑 2:00，热跑 0:59，≈2.5–5.7× 实时），6 个 stem 各 300.1 秒——质量更高，耗时约为 htdemucs 的 4 倍。以上耗时均在**启用低电量模式**时测得，未与正常模式对照，正常供电下应更快；换机器或模式后以进度条的 `seconds/s` 为准。按 M4 公开基准折算的 15–25 秒偏乐观，实测按 10× 实时估更稳。下面是从 M4 基准折算的预期值，仅作参考：同一 `htdemucs` 30 秒片段，原 CPU 约 15.5 秒；MPS 预计 4–5 秒，MLX 预计 3–4 秒。
 
 - **`demucs-mlx`**：`pip install demucs-mlx`，然后 `demucs-mlx song.mp3`。输出 4 轨到 `separated/`，没有 `--two-stems`；只要 2 轨时用 `mlx-audio-separator`，或把 drums/bass/other 相加得到伴奏。
 - **`mlx-audio-separator`**：`pip install mlx-audio-separator`，然后 `mlx-audio-separator song.mp3`。默认 BS-RoFormer 输出 vocals/instrumental；4 轨用 `-m htdemucs_ft.yaml`；`--output_format` 默认 FLAC，需要 mp3 时显式指定。M4 mini 上比 `audio-separator` 中位快 1.85×（htdemucs_ft 1.40×、BS-RoFormer 2.16×、Mel-Band 2.50×）。

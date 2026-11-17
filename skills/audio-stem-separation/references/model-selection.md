@@ -82,6 +82,51 @@ Mel-RoFormer 的“最强”是 2024 年那一代的结论，2026 年已被 BS �
 ## 怎么落地
 
 - 通用：`pip install "audio-separator[cpu]"`，先 `--list_models` 看当前权重名，再 `-m <model> --output_format FLAC`。Apple Silicon 走 MPS，模型覆盖最广。
-- MLX：`mlx-audio-separator -m <model>`（2 轨），或 `demucs-mlx`（4 轨）；权重从 HuggingFace 拉，国内先设 `HF_ENDPOINT`。
+- MLX：见下节的完整流程；4 轨用 `demucs-mlx`。
 - 上机前算两笔账：内存峰值（16GB 机器上整包 RoFormer 容易换页，用 `--chunk_duration`）与单曲耗时；先 30 秒片段对照 `htdemucs` 的同一段。
 - 结论里写清：模型名与权重版本、评测数据集、检索日期、哪些是本机实测、哪些只是公开数据。
+
+## MLX 实操路径（2 轨，实测）
+
+以下在 M5 16GB 跑通；5:00 曲目约 2 分钟（低电量模式下测得，正常模式应更快）。
+
+1. 环境用 Python 3.10–3.14：`mlx-audio-io` 等依赖暂无 cp315 wheel，3.15 装不上。
+
+   ```bash
+   python3.11 -m venv ~/.venvs/mlx-sep
+   ~/.venvs/mlx-sep/bin/python -m pip install -U mlx-audio-separator
+   ```
+
+2. 首次加载 `.ckpt` 要 torch 转权重（推理仍只用 MLX），转一次就够：
+
+   ```bash
+   ~/.venvs/mlx-sep/bin/python -m pip install torch
+   ~/.venvs/mlx-sep/bin/mlx-audio-separator -m BS-Roformer-SW.ckpt \
+       --save_converted_safetensors --preconvert_only
+   ```
+
+3. 权重来源按模型而定：SW 在 GitHub Release（699MB，直连约 26 KB/s，走已核验加速前缀）；Mel 系在 HuggingFace（国内设 `HF_ENDPOINT`）。工具只判断文件是否存在、不校验完整性，下完自己核对字节数（SW 为 699412152）。
+
+4. 跑分离，6 轨一次前向，输出与源等长：
+
+   ```bash
+   mlx-audio-separator song.flac -m BS-Roformer-SW.ckpt --output_format FLAC --output_dir out/
+   ```
+
+5. 伴奏两种口径，都实测过：
+
+   ```bash
+   # mix − vocals：可精确还原，注意峰值可能超过 0 dBTP（实测 +0.3）
+   ffmpeg -i mix.flac -i vocals.flac -filter_complex \
+     "[1:a]volume=-1[v];[0:a][v]amix=inputs=2:normalize=0" bgm-sub.flac
+   # 非人声 5 轨相加：峰值更低，但可能相位抵消，响度通常低 1 dB 左右
+   ffmpeg -i bass.flac -i drums.flac -i guitar.flac -i piano.flac -i other.flac \
+     -filter_complex "amix=inputs=5:normalize=0" bgm-sum.flac
+   ```
+
+坑：
+
+- 两个任务共用同一个日志文件时，晚退出的错误分支会污染正常记录；一个任务一个日志。
+- macOS 装了 coreutils 后 `stat` 是 GNU 版，`stat -f%z` 直接报错；脚本里用 `wc -c < file`。
+- stem 文件名含空格与括号，`find` 匹配用 `-iname` 并加引号。
+- `htdemucs` 会在前奏把高频乐器串进人声（实测多出十几秒低电平段），SW 没有这个现象；换模型后要重看裁剪段表。
