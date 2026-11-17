@@ -106,6 +106,7 @@ main "$@"
 | **用 `command -v` 代替 `which`** | POSIX 标准，更可靠 |
 | **用 `readonly` 声明常量** | 防止意外覆写 |
 | **`local` 声明和赋值分两行** | `local var` 然后 `var=$(cmd)`；写在一行时 `local` 会掩盖命令退出码 |
+| **EXIT trap 依赖变量提升为全局 `readonly`** | `trap ... EXIT` 在 `main()` 返回后才触发；清理所依赖的临时文件/目录/锁文件路径变量必须在顶层声明为全局 `readonly`（且声明与赋值分两行），禁止在 `main()` 内声明为 `local`，否则 `set -u` 下退出时报 `unbound variable` |
 | **遍历文件用 glob 不用 `ls`** | `for f in *.log; do`，禁止 `for f in $(ls *.log)` |
 | **禁止使用 `eval`** | 除非完全理解安全影响并有充分理由 |
 | **`cd` 后检查退出码** | <code>cd "$dir" &#124;&#124; die "无法进入目录"</code> |
@@ -139,6 +140,7 @@ main "$@"
 - **ShellCheck**：静态分析找 bug，`shellcheck script.sh`，以零告警为目标。
 - **shfmt**：自动格式化，推荐 `shfmt -w -i 2 -ci -s script.sh`（CI 检查用 `shfmt -d` 只看差异）。
 - 两者互补（前者查正确性，后者管格式），均接入 CI；VS Code 可装对应扩展获得实时反馈。
+- **自检脚本集成 `shfmt` 时先格式化再执行语法与静态检查**（或排除检查脚本自身）：Bash 逐字节读取脚本执行，若在脚本运行中原地 `shfmt -w` 覆盖自身会导致解释器字节偏移而报 `unexpected EOF` / `syntax error`；同时 `shfmt` 会将 `-a|-b)` 规范化为 `-a | -b)`，避免写成单行管道。
 
 存量脚本已有格式或告警债务时，把清理与业务改动分开：
 
