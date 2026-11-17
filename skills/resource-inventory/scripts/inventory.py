@@ -67,6 +67,9 @@ TOOL_SPECS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ffmpeg", ("ffmpeg", "-version")),
 )
 
+# 某些 CLI 不支持 --version（如 scrapling 0.4.7），用控制台脚本的 shebang 解释器读包元数据。
+METADATA_VERSION_FALLBACKS: dict[str, str] = {"scrapling": "scrapling"}
+
 # 项目级测试工具识别：package.json 依赖名 → 报告中的框架名。
 TEST_DEPS: dict[str, str] = {
     "playwright": "playwright",
@@ -530,6 +533,27 @@ def section_hardware(timeout: float) -> dict[str, Any]:
     }
 
 
+def _console_script_version(path: str, package: str, timeout: float) -> str | None:
+    """POSIX 控制台脚本：读 shebang 解释器，再用包元数据取版本；Windows .exe 返回 None。"""
+    try:
+        first = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        return None
+    if not first.startswith("#!"):
+        return None
+    parts = first[2:].strip().split()
+    if not parts:
+        return None
+    interpreter = parts[0]
+    if Path(interpreter).name == "env" and len(parts) > 1:
+        interpreter = shutil.which(parts[1]) or parts[1]
+    code, stdout, _ = run_command(
+        (interpreter, "-c", f"import importlib.metadata as m; print(m.version({package!r}))"),
+        min(timeout, 10.0),
+    )
+    return first_line(stdout) if code == 0 else None
+
+
 def section_runtimes(timeout: float) -> dict[str, Any]:
     """PATH 上常见运行时的版本与路径。"""
     found: list[dict[str, Any]] = []
@@ -544,13 +568,20 @@ def section_runtimes(timeout: float) -> dict[str, Any]:
             continue
         code, stdout, stderr = run_command(argv, timeout)
         version = first_line(stdout) or first_line(stderr)
+        if code != 0 and version.lower().startswith("usage:"):
+            version = ""
+        if code != 0 and name in METADATA_VERSION_FALLBACKS:
+            fallback = _console_script_version(located, METADATA_VERSION_FALLBACKS[name], timeout)
+            if fallback:
+                version = fallback
+                code = 0
         if code != 0 and not version:
             version = f"exit={code}"
         found.append({"name": name, "path": located, "version": version, "exit": code})
     return {
         "available": True,
         "owner": "resource-inventory",
-        "source": "PATH 探测（shutil.which + 各工具 --version）",
+        "source": "PATH 探测（shutil.which + 各工具版本命令，必要时读包元数据）",
         "tools": found,
         "missing": missing,
     }

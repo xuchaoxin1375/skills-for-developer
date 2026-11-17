@@ -176,6 +176,36 @@ def test_hardware_section() -> None:
     assert section["lowPowerMode"] is None or isinstance(section["lowPowerMode"], bool)
 
 
+def test_console_script_version_fallback() -> None:
+    module = load_inventory_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        site = Path(tmp) / "site"
+        dist = site / "fake_pkg-1.2.3.dist-info"
+        dist.mkdir(parents=True)
+        (dist / "METADATA").write_text(
+            "Metadata-Version: 2.1\nName: fake-pkg\nVersion: 1.2.3\n",
+            encoding="utf-8",
+        )
+        script = Path(tmp) / "fake-cli"
+        script.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+        previous = os.environ.get("PYTHONPATH")
+        os.environ["PYTHONPATH"] = str(site)
+        try:
+            assert module._console_script_version(str(script), "fake-pkg", 5) == "1.2.3"
+        finally:
+            if previous is None:
+                os.environ.pop("PYTHONPATH", None)
+            else:
+                os.environ["PYTHONPATH"] = previous
+
+
+def test_runtime_versions_are_not_usage_text() -> None:
+    code, report, stderr = run_inventory("--json", "--only", "runtimes")
+    assert code == 0, stderr
+    for tool in report["runtimes"]["tools"]:
+        assert not tool["version"].lower().startswith("usage:")
+
+
 def test_python_envs_delegation() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         skills_root = make_skills_root(Path(tmp))
