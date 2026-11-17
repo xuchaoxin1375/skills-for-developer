@@ -15,7 +15,7 @@ description: >
 
 产出是仓库内某个文档的新增或追加内容，附带复用/新建的理由。只改笔记仓库内的文档，不改来源项目代码。
 
-与邻近能力分工：只调格式走 `markdown-style`；已有草稿的大改、结构重整与多份文档合并走 `doc-rewrite-review`；从零调研写新文章走 `tech-learning-research`；把多份材料提炼成可复用规则走 `reference-to-skill`。
+与邻近能力分工：只调格式走 `markdown-style`；原始讨论、零散素材或已有草稿需要综合、改写、结构重整或多份合并时，先走 `doc-rewrite-review`，定稿后再归档；从零调研写新文章走 `tech-learning-research`；把多份材料提炼成可复用规则走 `reference-to-skill`。
 
 ## 工作流程
 

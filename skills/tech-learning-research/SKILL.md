@@ -17,7 +17,7 @@ description: >
 
 - **研究与综合**：本skill决定研究问题、覆盖范围、方案权衡和报告详略。
 - **检索执行**：[agentic-web-search](../agentic-web-search/SKILL.md)维护渠道、查询、证据核验、预算、限流与停止机制；本skill不另设调用次数要求。
-- **教学成文**：学习文档、教材、教程、解释型讲解，以及需说明工作机制或理解困难的指南，在编排前读[教学设计与理解对齐](../learning-doc-design/references/tutorial-design.md)；按读者与目标选择内容策略、工作模型及学习检查，不重启改写、合并或落点确认流程。
+- **教学成文**：报告或文章中的机制解释与理解困难段，可按[教学设计与理解对齐](../learning-doc-design/references/tutorial-design.md)组织说明；完整教程、课程或学习路径的教学设计与编排转[learning-doc-design](../learning-doc-design/SKILL.md)，本 skill 负责研究范围、证据与结论。
 - **其他产物**：已有正文改写归[doc-rewrite-review](../doc-rewrite-review/SKILL.md)，项目配套文档规划归[project-docs](../project-docs/SKILL.md)，脚本实现归[scripting-best-practices](../scripting-best-practices/SKILL.md)。需要归档定稿时再交[note-blog-archivist](../note-blog-archivist/SKILL.md)。
 - **通用写作底线**：新写或改写技术文档时，按[技术文档写作基线](../doc-rewrite-review/references/technical-doc-baseline.md)执行读者、结构、操作入口与证据要求；研究取证与结论仍按本 skill。
 - **表现形式**：新写与改写均采用[markdown-style](../markdown-style/SKILL.md)的适用排版规则，不套用其纯排版任务的“内容零改动”判据。

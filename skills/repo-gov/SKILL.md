@@ -50,11 +50,11 @@ description: >
 - 私有应用不默认添加开源许可证；内部/商业分发按项目已确认政策处理。
 - **必须**：填写实际的版权持有者与年份，不得保留 `YOUR NAME HERE` 占位符（如 `Copyright (c) 2026 <holder>`）；`README.md` 许可证节的 SPDX 名必须与 `LICENSE` 一致。
 
-### README.md：实际可用的信息
+### README.md：治理要求
 
-说明项目用途、适用用户、实际启动/构建/验证入口及必要限制；分发与贡献信息按需要提供。可以合并重复的安装/快速开始，不固定七节或顺序。仅标题与 TODO 不足以指导使用；相关命令要能按说明执行。子目录 README 遵循作用域，许可说明应与实际根许可或明确例外一致。
+README 的内容、结构、快速开始与排障按 [project-docs 的 README 指南](../project-docs/references/readme-guide.md)，本 skill 只判断治理要求：入口真实可导航，许可证节与实际 `LICENSE` 一致，必要限制与安全报告渠道可见。子目录 README 遵循作用域，不复制根许可说明或另建一套安装流程。
 
-教学型仓库的 README 或文档入口还要说明教学目标、目标读者、学习路径，以及案例/实验如何组织；关键概念不能只靠目录名或一句话定义。具体教学编排按[教学设计与理解对齐](../learning-doc-design/references/tutorial-design.md)，仓库治理只要求入口可见、路径可循。
+教学型仓库的 README 或文档入口还要让读者能判断教学目标、目标读者、学习路径与案例组织；具体教学编排按[教学设计与理解对齐](../learning-doc-design/references/tutorial-design.md)，仓库治理只要求入口可见、路径可循。
 
 ### .gitignore：基座与按语言追加
 
