@@ -98,7 +98,17 @@ Demucs 4.1+ 在 Apple Silicon 自动走 MPS。公开基准（M4 Max 40 核 GPU�
 - **`mlx-audio-separator`**：`pip install mlx-audio-separator`，然后 `mlx-audio-separator song.mp3`。默认 BS-RoFormer 输出 vocals/instrumental；4 轨用 `-m htdemucs_ft.yaml`；`--output_format` 默认 FLAC，需要 mp3 时显式指定。M4 mini 上比 `audio-separator` 中位快 1.85×（htdemucs_ft 1.40×、BS-RoFormer 2.16×、Mel-Band 2.50×）。
 - **`audio-separator`**：`pip install "audio-separator[cpu]"`；Apple Silicon 走 PyTorch MPS + ONNX CoreML，模型覆盖最广、成熟度最高，但比 MLX 慢。
 - **M5**：MLX 要 macOS 26.2+ 才吃 GPU Neural Accelerators；`mlx-audio-separator` 的验证机是 M4 mini、README 只列 M1–M4，M5 先跑 30 秒片段做对照。
-- **内存**：`demucs-mlx` 的 htdemucs 缓存在 128GB 机器上可到 16–31GB；24GB 机器要限制 cache 或长文件分块。`mlx-audio-separator` 与 `audio-separator` 都有 `--chunk_duration`。
+- **内存**：`demucs-mlx` 的 htdemucs 缓存在 128GB 机器上可到 16–31GB；16–24GB 机器要限制 cache 或长文件分块。`mlx-audio-separator` 与 `audio-separator` 都有 `--chunk_duration`。
+
+#### M5 16GB 预设
+
+M5 的 16GB 是统一内存，系统与浏览器会先占掉一部分；下面按“音频分离不换页”给保守参数：
+
+- **默认（稳）**：Demucs 4.1+ 自动 MPS。出现换页或内存告警时加 `--segment 7`；这是降内存优先，不是提速。
+- **4 轨 MLX**：`demucs-mlx --batch-size 1 --io-memory-mib 512 song.mp3`。不要同时开其他 GPU 应用。
+- **2 轨/长文件 MLX**：`mlx-audio-separator song.mp3 --chunk_duration 300`；4 轨用 `-m htdemucs.yaml --chunk_duration 300`，先别用 `htdemucs_ft` 整包。
+- **质量优先且要稳**：`AUDIO_SEPARATOR_MPS_BUFFER_BUDGET_GIB=6 audio-separator song.mp3 --chunk_duration 300`。PowerShell 用 `$env:AUDIO_SEPARATOR_MPS_BUFFER_BUDGET_GIB=6; audio-separator ...`。
+- **高风险组合**：`htdemucs_ft` 整包、长文件 BS-RoFormer、多个分离进程并行；16GB 上先用 30 秒片段测，出现 swap、风扇持续满转或进度异常变慢就降级。
 
 ## 清理
 

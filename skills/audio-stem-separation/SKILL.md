@@ -78,7 +78,9 @@ Demucs 4.1+ 的 MPS 已比 CPU 快一个数量级；还要更快时用 MLX 原�
 - **2 轨或 RoFormer**：`pip install mlx-audio-separator`，然后 `mlx-audio-separator song.mp3`。默认 BS-RoFormer 输出 vocals/instrumental；4 轨用 `-m htdemucs_ft.yaml`。
 - **成熟回退**：`pip install "audio-separator[cpu]"`，Apple Silicon 走 PyTorch MPS + ONNX CoreML，模型覆盖更广但比 MLX 慢。
 
-MLX 要 macOS 26.2+ 才能用上 M5 的 GPU Neural Accelerators；旧系统仍能跑，只是不吃矩阵单元。两个 MLX 包比 Demucs 年轻，M5 上先拿 30 秒片段用 `mlx-audio-separator` 与 `demucs-mlx` 各跑一遍对照，再决定是否批量。内存与镜像细节见 [环境与依赖](references/environment.md#apple-silicon-加速)。
+MLX 要 macOS 26.2+ 才能用上 M5 的 GPU Neural Accelerators；旧系统仍能跑，只是不吃矩阵单元。两个 MLX 包比 Demucs 年轻，M5 上先拿 30 秒片段用 `mlx-audio-separator` 与 `demucs-mlx` 各跑一遍对照，再决定是否批量。
+
+**M5 16GB + macOS 26.2+**：默认用 Demucs 4.1+ 的 MPS；要用 MLX，4 轨用 `demucs-mlx --batch-size 1`，2 轨或长文件用 `mlx-audio-separator --chunk_duration 300`。`htdemucs_ft` 整包和长文件 BS-RoFormer 在 16GB 上容易触发换页，先分块/降 batch；具体参数见 [环境与依赖](references/environment.md#m5-16gb-预设)。
 
 ## 环境与依赖
 
