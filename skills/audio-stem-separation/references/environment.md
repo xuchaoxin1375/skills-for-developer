@@ -68,7 +68,7 @@ python -m pip install -U demucs numpy
 
 ## 性能与资源
 
-实测（Apple M5，16 核 CPU，torch 2.15，`htdemucs`，30 秒 mp3 片段）：
+实测（Apple M5，16GB 内存，torch 2.15，`htdemucs`，30 秒 mp3 片段）：
 
 | 阶段 | 耗时 | 备注 |
 | --- | --- | --- |

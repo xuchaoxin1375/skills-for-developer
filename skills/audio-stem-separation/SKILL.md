@@ -66,7 +66,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 | Apple Silicon，想最快 | `demucs-mlx`（4 轨）或 `mlx-audio-separator`（2 轨/RoFormer） | 需 macOS 26.2+ 才吃 M5 矩阵单元；包较新，先小样本对照 |
 | 只需快速试听、能接受残留 | ffmpeg 中置相消 `-af "pan=stereo\|c0=c0-c1\|c1=c1-c0"` | 几十秒出结果，人声残留明显，低频与混响受损 |
 
-耗时取决于设备。CPU 基准（Apple M5、torch 2.15、`htdemucs`）：30 秒片段推理 13 秒，加约 2.5 秒模型加载共 15.5 秒，约 2.6× 实时（≈0.4× 音频时长）；5 分钟的歌约 2–3 分钟。Apple Silicon 用 Demucs 4.1+ 的 MPS 或 MLX 会快一个数量级，对比数据与 M5 注意事项见 [环境与依赖](references/environment.md#apple-silicon-加速)。
+耗时取决于设备。CPU 基准（Apple M5 16GB、torch 2.15、`htdemucs`）：30 秒片段推理 13 秒，加约 2.5 秒模型加载共 15.5 秒，约 2.6× 实时（≈0.4× 音频时长）；5 分钟的歌约 2–3 分钟。Apple Silicon 用 Demucs 4.1+ 的 MPS 或 MLX 会快一个数量级，对比数据与 M5 注意事项见 [环境与依赖](references/environment.md#apple-silicon-加速)。
 
 估时用 30 秒片段先跑一遍，别拿长任务的总时长当基准：机器休眠、合盖、降频都会让 wall-clock 失真，进度条里的 `x seconds/s` 才是推理速度的可靠指标。实测比上述量级慢几倍时，先查是否休眠或线程被限，再考虑换更省的模型。
 
