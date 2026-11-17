@@ -72,6 +72,8 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 ## 关键判断
 
+表里的档位是 2026-11 的常用组合。分离模型换代快（同一数据集上 vocals SDR 一年能涨 1 dB 以上），源带宽 ≥ 18 kHz、要批量跑或产物要交付时，先按 [模型选型核对](references/model-selection.md) 查一次当前权重；14–16 kHz 的窄带宽源按默认档跑即可。
+
 | 情况 | 选择 | 代价 |
 | --- | --- | --- |
 | 只要伴奏/人声两轨 | `--two-stems=vocals -n htdemucs` | 默认档，质量与耗时平衡 |
@@ -91,7 +93,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 ## Apple Silicon 加速（可选）
 
-Demucs 4.1+ 的 MPS 已比 CPU 快一个数量级；还要更快时用 MLX 原生实现：
+Demucs 4.1+ 的 MPS 已比 CPU 快一个数量级。MLX 路线不只是更快，也是质量升级的入口：2 轨 BS-RoFormer 的 vocals SDR 比 `htdemucs` 高约 3 dB，代价是多了模型权重下载与首次转换。
 
 - **4 轨，最快**：`pip install demucs-mlx`，然后 `demucs-mlx song.mp3`。输出 4 个 stem，没有 `--two-stems` 快捷方式。
 - **2 轨或 RoFormer**：`pip install mlx-audio-separator`，然后 `mlx-audio-separator song.mp3`。默认 BS-RoFormer 输出 vocals/instrumental；4 轨用 `-m htdemucs_ft.yaml`。
@@ -116,6 +118,7 @@ MLX 要 macOS 26.2+ 才能用上 M5 的 GPU Neural Accelerators；旧系统仍�
 
 - [ ] 分离命令真实跑完，退出码为 0，两个产物文件都存在
 - [ ] 分离前量过源的有效带宽（`check_audio_quality.py` 有 `ceiling` 与 `verdict` 两行），模型档位与带宽匹配
+- [ ] 选型前按 [模型选型核对](references/model-selection.md) 看过当前权重；结论里写明模型版本、评测数据集与检索日期
 - [ ] Apple Silicon 上未固定 `-d cpu`；追求速度时按“Apple Silicon 加速”选 MPS 或 MLX，并记录实际后端
 - [ ] 裁剪前跑过 `--dry-run`，段表与预期空白段一致（前奏/间奏/尾奏是否都命中）
 - [ ] 裁剪结果时长等于剩余段总长，误差在 0.1s 内
