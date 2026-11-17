@@ -8,6 +8,7 @@
 | `ModuleNotFoundError: No module named 'numpy'` | demucs 的依赖没把 numpy 带全（安装裁剪或 user site 混装） | `python -m pip install numpy`，用同一解释器再验 `python -c "import numpy, torch; print(numpy.__version__, torch.__version__)"` |
 | `Unrecognized option 'filter_complex_script'` | ffmpeg 9 移除了该选项 | 改用 `-/filter_complex <文件>`，或把滤镜串直接内联给 `-filter_complex`（本 skill 的脚本已内联） |
 | `demucs: command not found` | venv 没激活，或装到了别的解释器 | 用 `python -m demucs ...` 调用，避免依赖 PATH |
+| `ImportError: PyTorch is required to convert checkpoint ... to MLX format` | MLX 包只做推理，`.ckpt` 首次加载要 torch 转权重 | `pip install torch` 后跑一次 `-m <ckpt> --save_converted_safetensors --preconvert_only`；之后推理仍只用 MLX |
 | `Torch not compiled with CUDA enabled` | 装的是 CPU 版 torch，却传了 `-d cuda` | 换 CUDA 版 wheel 或改 `-d cpu` |
 | `-d mps` 报未知设备 | 旧版 Demucs 没有 MPS 后端，或设备名不被接受 | Demucs 4.1+ 去掉 `-d` 让它自动选 MPS；旧版或 MPS 报错时用 `-d cpu` |
 | Apple Silicon 上分离很慢 | 命令固定了 `-d cpu`，没用上自动 MPS | 去掉 `-d cpu` 重跑；仍慢再按 [环境与依赖](environment.md#apple-silicon-加速) 上 MLX |

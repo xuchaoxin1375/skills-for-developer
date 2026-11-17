@@ -314,3 +314,17 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - **工具**：以上两段由 `scripts/bench_pypi_mirrors.py` 一次跑出（`--samples 2 --workers 4` 约 15–30 s）；`pip config debug` 确认本机用户级 `pip.conf` 曾同时配置 5 个索引且 `install.user = true`，后者会让 venv 内安装直接失败。
 
 未验证：跨日与不同运营商出口的波动、海外网络、conda/brew/npm 在同机的同类对照、TUNA 拒绝本机文件请求的持续时间与原因。
+
+## 2026-11-17 GitHub Release 大文件实测（macOS）
+
+执行环境：国内 macOS（Apple Silicon）、zsh；未设代理变量，未做出口回显。目标为单个 Release 资产 `BS-Roformer-SW.ckpt`（699,412,152 字节）。
+
+| 路线 | 取回 | 备注 |
+| --- | --- | --- |
+| `github.com` 直连 | 26–35 KB/s，206 | 按此速度需约 5 小时；同日晚些对另一 Release 直连报 `SSL unexpected eof` |
+| 前缀 `https://gh-proxy.com/` | 760 KB/s，Range 请求返回 200 | 实际不可续传，只用整段下载 |
+| 前缀 `https://ghfast.top/` | 3.4–5.3 MB/s，206 | 支持 Range，2–3 分钟下完，落盘字节数与 `content-length` 一致 |
+
+- 判定：Release 资产先测已登记加速前缀再决定，直连只作回退；`scripts/check_github_mirrors.py --targets release` 可在一次调用内筛掉超时前缀（本次 `gh.llkk.cc`、`ghproxy.net`、`github.moeyy.xyz` 均 15 s 超时）。
+- 同一模型仓库走 HuggingFace 时未见可用的旧线索；本次该权重实际托管在 GitHub Release，不在 HF，按资源实际托管位置选路。
+- 未验证：其他时段与运营商、其他 Release 尺寸、代理路线对照、Git 传输在该前缀下的表现。
