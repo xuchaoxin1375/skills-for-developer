@@ -5,11 +5,12 @@
     python inventory.py                  # 人类可读报告（默认不联网）
     python inventory.py --json           # 机器可读 JSON
     python inventory.py --project .      # 追加项目级资源探测（可重复）
+    python inventory.py --only hardware  # 只看系统版本与硬件
     python inventory.py --probe-proxy    # 追加代理活体探测（会出网）
 
-各组实际检测逻辑属于对应 skill：Python 环境见 resilient-browser-fetch 的
+平台、硬件与运行时由本脚本探测；Python 环境见 resilient-browser-fetch 的
 check_environment.py，浏览器见 browser-automation 的 browser_discovery.py，
-代理见 network-access 的 probe_local_proxies.py。本脚本只聚合，不重写它们的规则。
+代理见 network-access 的 probe_local_proxies.py。领域规则不在这里重写。
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import json
 import locale
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -162,7 +164,7 @@ def get_env(name: str) -> str | None:
 
 def parse_only(value: str) -> set[str]:
     """校验 --only 的分组名（逗号分隔）。"""
-    allowed = {"host", "runtimes", "python-envs", "browsers", "proxies", "projects"}
+    allowed = {"host", "hardware", "runtimes", "python-envs", "browsers", "proxies", "projects"}
     names = {part.strip() for part in value.split(",") if part.strip()}
     unknown = names - allowed
     if unknown:
@@ -175,7 +177,7 @@ def parse_only(value: str) -> set[str]:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """解析命令行参数（含 --help 与基本校验）。"""
     parser = argparse.ArgumentParser(
-        description="汇总本机可用资源：运行时、Python 环境与引擎层、浏览器、代理入口、项目已有工具。",
+        description="汇总本机可用资源：平台与硬件、运行时、Python 环境与引擎层、浏览器、代理入口、项目已有工具。",
         epilog=(
             "示例:\n"
             "  python inventory.py --json --project .\n"
@@ -190,7 +192,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=parse_only,
         default=None,
         metavar="LIST",
-        help="只跑指定分组，逗号分隔：host,runtimes,python-envs,browsers,proxies,projects（默认全部）",
+        help="只跑指定分组，逗号分隔：host,hardware,runtimes,python-envs,browsers,proxies,projects（默认全部）",
     )
     parser.add_argument(
         "--project",
@@ -303,6 +305,226 @@ def section_host() -> dict[str, Any]:
         "python_path": sys.executable,
         "cwd": str(Path.cwd()),
         "environment": environment,
+    }
+
+
+def _is_wsl() -> bool:
+    """Linux 侧判断是否跑在 WSL 里。"""
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        text = Path("/proc/version").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "microsoft" in text.lower()
+
+
+def _is_container() -> bool:
+    """Linux 侧判断是否跑在容器里；macOS/Windows 返回 False。"""
+    if os.name == "nt":
+        return False
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup = Path("/proc/1/cgroup").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(marker in cgroup for marker in ("docker", "kubepods", "containerd", "podman"))
+
+
+def _os_profile() -> dict[str, Any]:
+    """系统名称、版本、构建、内核与架构。"""
+    name = platform.system()
+    version = platform.version()
+    build = ""
+    kernel = platform.release()
+    if sys.platform == "darwin":
+        mac = platform.mac_ver()
+        name = "macOS"
+        version = mac[0] or version
+        code, stdout, _ = run_command(("sw_vers", "-buildVersion"), 5)
+        build = first_line(stdout) if code == 0 else ""
+    elif sys.platform.startswith("linux"):
+        try:
+            info = platform.freedesktop_os_release()
+        except (OSError, AttributeError):
+            info = {}
+        name = info.get("PRETTY_NAME") or info.get("NAME") or name
+        version = info.get("VERSION_ID") or version
+    elif os.name == "nt":
+        win = platform.win32_ver()
+        version = win[1] or version
+        build = win[2]
+    return {
+        "name": name,
+        "version": version,
+        "build": build,
+        "arch": platform.machine(),
+        "kernel": kernel,
+        "wsl": _is_wsl(),
+        "container": _is_container(),
+    }
+
+
+def _cpu_model() -> str | None:
+    """CPU 型号；取不到时返回 None，不用架构名冒充。"""
+    if sys.platform == "darwin":
+        code, stdout, _ = run_command(("sysctl", "-n", "machdep.cpu.brand_string"), 5)
+        return first_line(stdout) if code == 0 else None
+    if sys.platform.startswith("linux"):
+        try:
+            text = Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        for line in text.splitlines():
+            if line.lower().startswith("model name"):
+                return line.split(":", 1)[1].strip()
+        return None
+    return platform.processor() or None
+
+
+def _physical_cores() -> int | None:
+    """物理核数；Linux 用 physical id + core id 去重，取不到时返回 None。"""
+    if sys.platform == "darwin":
+        code, stdout, _ = run_command(("sysctl", "-n", "hw.physicalcpu"), 5)
+        value = stdout.strip()
+        return int(value) if code == 0 and value.isdigit() else None
+    if sys.platform.startswith("linux"):
+        try:
+            text = Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        pairs: set[tuple[str, str]] = set()
+        physical = core = None
+        for line in [*text.splitlines(), ""]:
+            if not line.strip():
+                if physical is not None and core is not None:
+                    pairs.add((physical, core))
+                physical = core = None
+                continue
+            key, _, value = line.partition(":")
+            key = key.strip().lower()
+            if key == "physical id":
+                physical = value.strip()
+            elif key == "core id":
+                core = value.strip()
+        return len(pairs) or None
+    return None
+
+
+def _memory_total() -> int | None:
+    """物理内存总字节数；Windows 走 GlobalMemoryStatusEx，POSIX 走 sysconf。"""
+    if os.name == "nt":
+        import ctypes
+
+        class MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatusEx()
+        status.dwLength = ctypes.sizeof(MemoryStatusEx)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return int(status.ullTotalPhys)
+        return None
+    try:
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _nvidia_gpus(timeout: float) -> list[dict[str, Any]]:
+    """NVIDIA GPU 列表；没有 nvidia-smi 或调用失败时返回空列表。"""
+    if not shutil.which("nvidia-smi"):
+        return []
+    code, stdout, _ = run_command(
+        ("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"),
+        min(timeout, 10.0),
+    )
+    if code != 0:
+        return []
+    gpus: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 2 or not parts[0]:
+            continue
+        memory = int(parts[1]) if parts[1].isdigit() else None
+        gpus.append({"name": parts[0], "memoryMiB": memory})
+    return gpus
+
+
+def _disk(path: Path) -> dict[str, Any] | None:
+    """指定路径所在卷的总量与可用量（GiB）。"""
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        return None
+    return {
+        "path": str(path),
+        "totalGiB": round(usage.total / 2**30, 1),
+        "freeGiB": round(usage.free / 2**30, 1),
+    }
+
+
+def _low_power_mode() -> bool | None:
+    """macOS 低电量模式；其他平台返回 None。"""
+    if sys.platform != "darwin":
+        return None
+    code, stdout, _ = run_command(("pmset", "-g"), 5)
+    if code != 0:
+        return None
+    for line in stdout.splitlines():
+        if "lowpowermode" in line.lower():
+            parts = line.split()
+            return parts[-1] == "1" if parts else None
+    return None
+
+
+def section_hardware(timeout: float) -> dict[str, Any]:
+    """平台与硬件：OS、CPU、内存、加速器、磁盘与虚拟化标记。"""
+    cpu_model = _cpu_model()
+    memory = _memory_total()
+    apple_silicon = sys.platform == "darwin" and platform.machine() == "arm64"
+    disks: list[dict[str, Any]] = []
+    seen_devices: set[int] = set()
+    for path in (Path.cwd(), Path.home()):
+        try:
+            device = path.stat().st_dev
+        except OSError:
+            device = None
+        if device is not None and device in seen_devices:
+            continue
+        entry = _disk(path)
+        if entry:
+            if device is not None:
+                seen_devices.add(device)
+            disks.append(entry)
+    return {
+        "available": True,
+        "owner": "resource-inventory",
+        "source": "platform + 各平台系统命令（sw_vers / sysctl / /proc / nvidia-smi / pmset）",
+        "os": _os_profile(),
+        "cpu": {
+            "model": cpu_model,
+            "physical": _physical_cores(),
+            "logical": os.cpu_count(),
+        },
+        "memory": {"totalGiB": round(memory / 2**30, 1) if memory and memory > 0 else None},
+        "accelerators": {
+            "appleSilicon": apple_silicon,
+            "chip": cpu_model if apple_silicon else None,
+            "cuda": _nvidia_gpus(timeout),
+        },
+        "disks": disks,
+        "lowPowerMode": _low_power_mode(),
     }
 
 
@@ -541,7 +763,7 @@ def section_project(raw_path: str) -> dict[str, Any]:
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     """组装报告；单组失败只标记该组，不中断其余探测。--only 决定跑哪些组。"""
-    selected = args.only or {"host", "runtimes", "python-envs", "browsers", "proxies", "projects"}
+    selected = args.only or {"host", "hardware", "runtimes", "python-envs", "browsers", "proxies", "projects"}
     skills_root = find_skills_root(args.skills_root)
     if skills_root is None and selected & {"python-envs", "browsers", "proxies"}:
         logger.warning("未定位到 skill 目录；Python 环境、浏览器、代理活体探测将标记为不可用")
@@ -561,6 +783,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     }
     if "host" in selected:
         report["host"] = section_host()
+    if "hardware" in selected:
+        report["hardware"] = section_hardware(args.timeout)
     if "runtimes" in selected:
         report["runtimes"] = section_runtimes(args.timeout)
     if "python-envs" in selected:
@@ -577,6 +801,36 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 def render_human(report: dict[str, Any]) -> str:
     """把报告渲染成便于人读的表格文本；--only 未选的分组不输出。"""
     lines: list[str] = [f"本机资源体检 {report['generated']}  (skills root: {report['skillsRoot'] or '未定位'})"]
+
+    hardware = report.get("hardware")
+    if hardware:
+        os_info = hardware["os"]
+        cpu = hardware["cpu"]
+        memory = hardware["memory"].get("totalGiB")
+        cores = (
+            f"{cpu['physical']} 物理 / {cpu['logical']} 逻辑"
+            if cpu.get("physical")
+            else f"{cpu.get('logical') or '?'} 逻辑"
+        )
+        lines.append(
+            f"\n[平台与硬件] {os_info['name']} {os_info['version'] or '?'} {os_info['arch']}"
+            f"  {cpu.get('model') or 'CPU 型号未识别'}  {cores}  {memory or '?'} GiB"
+        )
+        flags = [name for name, on in (("WSL", os_info.get("wsl")), ("容器", os_info.get("container"))) if on]
+        if flags:
+            lines.append(f"  虚拟化: {', '.join(flags)}")
+        accel = hardware.get("accelerators") or {}
+        parts = []
+        if accel.get("appleSilicon"):
+            parts.append(f"Apple Silicon ({accel.get('chip') or '?'})")
+        for gpu in accel.get("cuda") or []:
+            memory_text = f" {gpu['memoryMiB']} MiB" if gpu.get("memoryMiB") else ""
+            parts.append(f"CUDA: {gpu['name']}{memory_text}")
+        lines.append(f"  加速器: {'；'.join(parts) or '未检测到 Apple Silicon / CUDA'}")
+        for disk in hardware.get("disks") or []:
+            lines.append(f"  磁盘 {disk['path']}: {disk['freeGiB']}/{disk['totalGiB']} GiB 可用")
+        if hardware.get("lowPowerMode") is not None:
+            lines.append(f"  低电量模式: {'开启' if hardware['lowPowerMode'] else '关闭'}")
 
     host = report.get("host")
     if host:

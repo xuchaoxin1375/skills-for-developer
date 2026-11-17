@@ -18,7 +18,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 分离不是越重越好，也不是越短越好：源、机器、用途不同，最合适的档位就不同。动手前先回答三个问题，再选套餐。
 
 - **源带宽**：跑 `python scripts/check_audio_quality.py song.mp3` 看 `ceiling` 与 `verdict`，约十秒（需要 numpy，缺了脚本会提示安装）。这一步同时是预检的一部分。
-- **机器**：Apple Silicon / 有 CUDA / 纯 CPU，内存多少。
+- **机器**：按 [本机资源体检](../resource-inventory/SKILL.md) 的 `hardware` 组跑一次，看 OS 版本、Apple Silicon/CUDA、内存与磁盘；不要凭印象。
 - **用途**：只是试听、自用，还是要交付成品或批量处理。
 
 | 套餐 | 适用 | 做法 | 耗时 | 产物 |
@@ -155,7 +155,7 @@ MLX 要 macOS 26.2+ 才能用上 M5 的 GPU Neural Accelerators；旧系统仍�
 
 ## 自检
 
-- [ ] 已按「先对齐」的三问定下套餐（A/B/C），而不是沿用默认档
+- [ ] 已按「先对齐」的三问定下套餐（A/B/C），机器条件来自 `hardware` 组实测，而不是凭印象
 - [ ] 分离命令真实跑完，退出码为 0，产物文件存在
 - [ ] 分离前量过源的有效带宽（`check_audio_quality.py` 有 `ceiling` 与 `verdict` 两行），套餐与带宽匹配
 - [ ] 选 C 档时按 [模型选型核对](references/model-selection.md) 看过当前权重；结论里写明模型版本、评测数据集、检索日期，以及哪些是本机实测

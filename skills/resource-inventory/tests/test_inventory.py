@@ -156,9 +156,24 @@ def test_report_json_structure() -> None:
         code, report, stderr = run_inventory("--json", "--skills-root", str(skills_root))
         assert code == 0, stderr
         assert report is not None
-        for section in ("host", "runtimes", "pythonEnvs", "browsers", "proxies", "projects"):
+        for section in ("host", "hardware", "runtimes", "pythonEnvs", "browsers", "proxies", "projects"):
             assert section in report
         assert report["skillsRoot"] == str(skills_root.resolve())
+
+
+def test_hardware_section() -> None:
+    code, report, stderr = run_inventory("--json", "--only", "hardware")
+    assert code == 0, stderr
+    section = report["hardware"]
+    assert section["available"] is True
+    assert section["owner"] == "resource-inventory"
+    assert section["os"]["arch"]
+    assert isinstance(section["cpu"]["logical"], int) and section["cpu"]["logical"] > 0
+    assert section["memory"]["totalGiB"] is None or section["memory"]["totalGiB"] > 0
+    assert "appleSilicon" in section["accelerators"]
+    assert isinstance(section["accelerators"]["cuda"], list)
+    assert section["disks"]
+    assert section["lowPowerMode"] is None or isinstance(section["lowPowerMode"], bool)
 
 
 def test_python_envs_delegation() -> None:
@@ -357,7 +372,7 @@ def test_only_filter() -> None:
         code, report, stderr = run_inventory("--json", "--skills-root", str(skills_root), "--only", "proxies")
         assert code == 0, stderr
         assert "proxies" in report
-        for absent in ("host", "runtimes", "pythonEnvs", "browsers", "projects"):
+        for absent in ("host", "hardware", "runtimes", "pythonEnvs", "browsers", "projects"):
             assert absent not in report
 
 
