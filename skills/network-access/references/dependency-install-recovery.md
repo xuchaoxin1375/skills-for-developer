@@ -96,6 +96,7 @@ uv pip compile requirements.in -o requirements.txt
 - `externally-managed-environment` 是 PEP 668 的保护：系统 Python 由发行版管理。新建 venv；命令行工具用 `uv tool install` 或 pipx；系统包用发行版包管理器。`--break-system-packages` 只作为明确知情后的最后手段，不作为默认修复。
 - 先确认 `python -m pip` 与 `python` 是同一个解释器。PATH 上有多个 Python 时，`pip install` 成功但目标脚本导入失败，通常是装错了环境。
 - `--user` 也不是 PEP 668 的绕过方式；它同样会被标记为外部管理。
+- 用户级 pip 配置里的 `install.user = true` 等于给每条命令都加上 `--user`：venv 内安装会直接以 `Can not perform a '--user' install. User site-packages are not visible in this virtualenv.` 失败，与网络和解析无关。用 `pip config debug` 定位该项来源并改配置；`--no-user` 只作单次绕过，不能替代修复，也不为它长期保留全局 `--user`。
 - 权限错误先看目录归属和虚拟环境位置；不要用 `sudo` 改变用户级 Python 环境的归属。
 
 ## 国内加速、下载慢与可用性
