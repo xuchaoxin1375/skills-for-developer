@@ -10,7 +10,8 @@
 | `demucs: command not found` | venv 没激活，或装到了别的解释器 | 用 `python -m demucs ...` 调用，避免依赖 PATH |
 | `Torch not compiled with CUDA enabled` | 装的是 CPU 版 torch，却传了 `-d cuda` | 换 CUDA 版 wheel 或改 `-d cpu` |
 | `-d mps` 报未知设备 | demucs 没有 MPS 后端 | 固定 `-d cpu` |
-| 分离过程像是卡住，进度条几分钟不动 | CPU 推理本身慢（热启动第一段尤其慢） | 看 `ps` 里 python 是否在跑、CPU 是否高；给它时间或先跑 30 秒片段估时 |
+| 分离过程像是卡住，进度条几分钟不动 | CPU 推理本身慢，或机器休眠/降频、CPU 配额被限 | 看 `ps` 里 python 的 CPU 占用：占用高就是算得慢，给它时间；占用低或时间跳变则查休眠与降频（macOS 合盖会暂停进程） |
+| 实测耗时比 0.4× 音频时长慢好几倍 | 期间机器休眠、降频，或拿了被打断任务的总时长当基准 | 以进度条 `x seconds/s` 判断真实速度；重新用 30 秒片段测，必要时 `caffeinate -i` 后复测 |
 | 用 `conda run -n ...` 跑 demucs 看不到任何输出 | `conda run` 默认缓冲子进程输出 | 加 `--live-stream`，或直接调用环境里的 `python -m demucs` |
 | 输出时长比源短或长几秒 | mp3 容器时长含编码帧填充，与解码后样本数不同 | 用解码时长对比（`ffmpeg -i x.mp3 -f null -` 的 time），差 <0.2s 可忽略 |
 | 裁剪后时长对不上 | 段表用了不同采样率的时间基准，或 `atrim` 边界重叠 | 以 `--dry-run` 段表累计值为准，检查是否有重叠段 |
