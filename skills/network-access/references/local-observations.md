@@ -302,14 +302,15 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 | 源 | 索引页 | 包文件段 | 备注 |
 | --- | --- | --- | --- |
-| `repo.huaweicloud.com/repository/pypi/simple` | 0.07–0.11 s | 0.10–0.44 s（1.2–5.3 MB/s） | 本机全部样本可用，端到端 `numpy` 5.3 MB 1.01 s |
-| `mirrors.aliyun.com/pypi/simple` | 0.07–0.09 s（`numpy` 页 1.47 s） | 0.26–0.50 s | 可用，略慢于上一项 |
-| `mirrors.ustc.edu.cn/pypi/simple` | 0.11–0.37 s | 小包 0.32 s，`numpy` **403** | 文件请求 302 到 TUNA 后被拒 |
-| `mirrors.cernet.edu.cn/pypi/web/simple` | 0.37–0.64 s（含 302） | `pyyaml` 175 KB 2.05 s（0.59 MB/s），`numpy` **403** | 同上；端到端明显慢于华为云（0.61 s） |
-| `pypi.org/simple` | 0.68–1.21 s（`numpy` 未截断前需 110 s） | 超 8 s 预算，约 24 KB/s | 直连不适合装大包 |
+| `repo.huaweicloud.com/repository/pypi/simple` | 0.07–0.15 s | 0.10–0.44 s（1.2–4.9 MB/s） | 全部样本可用，端到端 `numpy` 5.3 MB 1.01 s |
+| `mirrors.aliyun.com/pypi/simple` | 0.07–0.27 s；`numpy` 页 1.3 MB 需 8 s 以上 | 0.26–3.18 s | 可用但波动大 |
+| `mirrors.ustc.edu.cn/pypi/simple` | 0.11–0.39 s | 0.32–0.60 s（约 0.85–1.05 MB/s） | 与本机 3.11 匹配的 cp311 wheel 可用 |
+| `mirrors.cernet.edu.cn/pypi/web/simple` | 0.37–0.55 s（含 302） | `pyyaml` 175 KB 2.05 s，`numpy` 0.47 s（1.1 MB/s） | 端到端明显慢于华为云（0.61 s） |
+| `pypi.org/simple` | 0.68–1.21 s；`numpy` 页读不完 | 超 8 s 预算，约 24–330 KB/s | 直连不适合装大包 |
 
-- **索引可用 ≠ 文件可取**：USTC 与 CERNET 的 Simple 页正常，但文件 URL 会 302 到 `mirrors.tuna.tsinghua.edu.cn`，本机对该域名稳定 403（偶发 429）。只看索引段会把它们误判为可用源。
+- **文件段结论依赖所选文件**：先用 3.15 解释器测时，选中 `numpy` 最新的 cp315 wheel，USTC 与 CERNET 都把请求 302 到 `mirrors.tuna.tsinghua.edu.cn`，本机对该域名稳定 403（偶发 429）；改用本机 3.11 对应的 cp311 wheel 后，两家文件段正常（0.5–0.6 s）。判定为“该文件未在本地缓存、回源到拒本站点”，不是整站的可用性结论。
 - **聚合入口的 302 稳定但有边界**：`mirrors.cernet.edu.cn` 连续 6 次请求 PyPI 均落到 `unicom.mirrors.ustc.edu.cn`；npm 与 brew 路径落到 `mirror.nju.edu.cn`。`/huggingface/`、`/dockerhub/v2/`、GitHub raw 路径均 404，不能当统一加速网关用。
-- **工具**：以上两段由 `scripts/bench_pypi_mirrors.py` 一次跑出（`--samples 2 --workers 4` 约 28 s）；`pip config debug` 确认本机用户级 `pip.conf` 曾同时配置 5 个索引且 `install.user = true`，后者会让 venv 内安装直接失败。
+- **chsrc 与端到端测法给出不同排名**：`chsrc measure pip` 报 USTC 19.2 MB/s、NJU 18.1、PKU 16.3、华为 10.5、MirrorZ 10.0（TUNA 与北外 403）；同一时段 `pip download` 端到端是华为云 1.01 s、USTC 0.85–2.07 s（`numpy` 5.3 MB）。两者测的样例不同，选源以端到端为准，chsrc 用于快速筛掉明显不通的站。
+- **工具**：以上两段由 `scripts/bench_pypi_mirrors.py` 一次跑出（`--samples 2 --workers 4` 约 15–30 s）；`pip config debug` 确认本机用户级 `pip.conf` 曾同时配置 5 个索引且 `install.user = true`，后者会让 venv 内安装直接失败。
 
 未验证：跨日与不同运营商出口的波动、海外网络、conda/brew/npm 在同机的同类对照、TUNA 拒绝本机文件请求的持续时间与原因。

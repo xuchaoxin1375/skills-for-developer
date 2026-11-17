@@ -28,6 +28,7 @@ import json
 import re
 import statistics
 import sys
+import sysconfig
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
@@ -124,6 +125,8 @@ def timed_get(opener, url, timeout, max_bytes, byte_range=False):
                         "timeout": True,
                         "error": f"超出 {timeout:g}s 预算（已读 {total} 字节）",
                         "seconds": round(time.monotonic() - start, 3),
+                        "bytes": total,
+                        "data": b"".join(chunks),
                     }
                 chunk = resp.read(min(65536, max_bytes + 1 - total))
                 if not chunk:
@@ -150,32 +153,93 @@ def bare_path(href):
     return href.split("?", 1)[0].split("#", 1)[0]
 
 
-def pick_wheel(hrefs):
-    """优先纯 Python wheel，其次任意 wheel，最后退回 sdist；只用于测文件段速度。"""
+def local_tags():
+    """当前解释器与平台的 wheel 标签片段，用于挑一个“用户真会下载”的文件。"""
+    impl = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    plat = sysconfig.get_platform().lower().replace("_", "-")
+    os_part = plat.split("-", 1)[0]
+    if os_part.startswith("macosx"):
+        os_name = "macosx"
+        arch = "arm64" if plat.endswith("arm64") else "x86-64"
+        foreign = ("win-", "win_", "manylinux", "musllinux")
+    elif os_part.startswith("linux"):
+        os_name = "linux"
+        arch = "aarch64" if "aarch64" in plat or "arm64" in plat else "x86-64"
+        foreign = ("macosx", "win-", "win_")
+    else:
+        os_name = "win"
+        arch = "arm64" if "arm" in plat else "amd64"
+        foreign = ("macosx", "manylinux", "musllinux", "linux")
+    return {"impl": impl, "os": os_name, "arch": arch, "foreign": foreign}
+
+
+def score_wheel(href, tags):
+    """越像当前环境能装的 wheel 分越高；只用于挑一个代表性文件。"""
+    name = bare_path(href).lower().rsplit("/", 1)[-1]
+    if not name.endswith(".whl"):
+        return -1
+    score = 0
+    if tags["impl"] in name:
+        score += 2
+    if name.endswith("-none-any.whl"):
+        score += 1
+    if tags["arch"] in name and tags["os"] in name:
+        score += 4
+    elif tags["os"] in name:
+        score += 1
+    if any(bad in name for bad in tags["foreign"]):
+        score -= 6
+    return score
+
+
+VER_RE = re.compile(r"^[^-]+-(\d[^-]*)")
+
+
+def version_key(href):
+    """从文件名粗略取版本号，用于只在最新版本里挑文件。"""
+    name = bare_path(href).rsplit("/", 1)[-1]
+    match = VER_RE.match(name)
+    if not match:
+        return ()
+    return tuple(int(part) for part in re.findall(r"\d+", match.group(1)))[:4]
+
+
+def pick_wheel(hrefs, tags=None):
+    """先取与本机最匹配的 wheel（而非最新版本），再在其中选最高版本；没有 wheel 时退回最新 sdist。
+
+    直接按版本取最新会挑到本机装不上的构建（例如最新版只发了更高 CPython 的 wheel），
+    那条路径既不代表用户会下载的文件，也更容易命中镜像的冷缓存。
+    """
+    tags = tags or local_tags()
     wheels = [href for href in hrefs if bare_path(href).lower().endswith(".whl")]
-    for href in wheels:
-        if "-none-any.whl" in bare_path(href).lower():
-            return href, "wheel-any"
     if wheels:
-        return wheels[-1], "wheel"
+        best_score = max(score_wheel(href, tags) for href in wheels)
+        matched = [href for href in wheels if score_wheel(href, tags) == best_score]
+        best = max(matched, key=lambda href: (version_key(href), href))
+        kind = "wheel-any" if bare_path(best).lower().endswith("-none-any.whl") else "wheel"
+        return best, kind
     sdists = [href for href in hrefs if bare_path(href).lower().endswith((".tar.gz", ".zip"))]
     if sdists:
-        return sdists[-1], "sdist"
+        return max(sdists, key=version_key), "sdist"
     return None, None
 
 
-def probe_index(opener, index, package, timeout):
+def probe_index(opener, index, package, timeout, index_max_bytes):
     url = f"{index}/{package}/"
-    # 只看前 128 KB 取链接：Simple 页可能上万条，读全页会让慢线路主导总耗时。
-    result = timed_get(opener, url, timeout, 128 * 1024)
+    # Simple 页可能上百万字节（大包版本多）；截太小只会剩下最老版本，文件段就测错了包。
+    result = timed_get(opener, url, timeout, index_max_bytes)
+    partial = False
     if not result["ok"]:
-        return {"ok": False, "url": url, "note": result.get("error", "失败"), "timeout": result.get("timeout", False)}
+        # 索引页没读完但已经拿到链接时继续测文件段：否则大包的慢源会被误判为不可用。
+        if not result.get("data") or not result.get("timeout"):
+            return {"ok": False, "url": url, "note": result.get("error", "失败"), "timeout": result.get("timeout", False)}
+        partial = True
     text = result["data"].decode("utf-8", "replace")
     hrefs = HREF_RE.findall(text)
     wheel, kind = pick_wheel(hrefs)
     if not hrefs or not wheel:
         return {"ok": False, "url": url, "note": "不是 Simple 索引页或没有可下载文件", "seconds": result["seconds"]}
-    return {
+    entry = {
         "ok": True,
         "url": url,
         "seconds": result["seconds"],
@@ -183,6 +247,9 @@ def probe_index(opener, index, package, timeout):
         "file_url": urljoin(url, wheel),
         "file_kind": kind,
     }
+    if partial:
+        entry["note"] = f"索引页未读完（{result['bytes']} 字节后超预算），文件段取的部分版本"
+    return entry
 
 
 def probe_file(opener, file_url, timeout, range_bytes):
@@ -201,15 +268,17 @@ def probe_file(opener, file_url, timeout, range_bytes):
     }
 
 
-def measure(opener, index, package, timeout, range_bytes, samples):
+def measure(opener, index, package, timeout, index_max_bytes, range_bytes, samples):
     index_runs, file_runs, notes = [], [], []
     last_kind = None
     for _ in range(samples):
-        probe = probe_index(opener, index, package, timeout)
+        probe = probe_index(opener, index, package, timeout, index_max_bytes)
         if not probe["ok"]:
             notes.append(probe["note"])
             break
         index_runs.append(probe["seconds"])
+        if probe.get("note"):
+            notes.append(probe["note"])
         file_probe = probe_file(opener, probe["file_url"], timeout, range_bytes)
         if not file_probe["ok"]:
             notes.append(f"文件段：{file_probe['note']}")
@@ -236,9 +305,11 @@ def measure(opener, index, package, timeout, range_bytes, samples):
     return entry
 
 
-def check_index_source(index, packages, timeout, range_bytes, samples, proxy, direct):
+def check_index_source(index, packages, timeout, index_max_bytes, range_bytes, samples, proxy, direct):
     opener = build_opener(proxy, direct)
-    results = {pkg: measure(opener, index, pkg, timeout, range_bytes, samples) for pkg in packages}
+    results = {
+        pkg: measure(opener, index, pkg, timeout, index_max_bytes, range_bytes, samples) for pkg in packages
+    }
     return {"index": index, "results": results}
 
 
@@ -300,6 +371,7 @@ def main(argv=None):
     ap.add_argument("--from-file", metavar="PATH", help="从文件读候选索引，每行一个，# 开头为注释")
     ap.add_argument("--package", action="append", default=[], metavar="NAME", help=f"要测的包，可重复；默认 {'/'.join(DEFAULT_PACKAGES)}")
     ap.add_argument("--samples", type=int, default=2, help="每个包每段采样次数，取中位数，默认 2")
+    ap.add_argument("--index-max-bytes", type=int, default=2097152, help="索引页最多读多少字节，默认 2097152")
     ap.add_argument("--range-bytes", type=int, default=524288, help="文件段读取字节数，默认 524288")
     ap.add_argument("--timeout", type=float, default=8.0, help="单次请求超时秒数，默认 8")
     ap.add_argument("--workers", type=int, default=4, help="并行测的源数，默认 4")
@@ -316,6 +388,8 @@ def main(argv=None):
         ap.error("--samples 至少为 1")
     if args.timeout <= 0:
         ap.error("--timeout 必须为正数")
+    if args.index_max_bytes < 65536:
+        ap.error("--index-max-bytes 至少 65536（太小会只剩旧版本）")
     if args.range_bytes < 1024:
         ap.error("--range-bytes 至少 1024")
     if args.max_ratio <= 1:
@@ -332,7 +406,17 @@ def main(argv=None):
     entries = []
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         futures = {
-            pool.submit(check_index_source, index, packages, args.timeout, args.range_bytes, args.samples, args.proxy, args.direct): index
+            pool.submit(
+                check_index_source,
+                index,
+                packages,
+                args.timeout,
+                args.index_max_bytes,
+                args.range_bytes,
+                args.samples,
+                args.proxy,
+                args.direct,
+            ): index
             for index in candidates
         }
         for future, index in futures.items():
@@ -345,6 +429,7 @@ def main(argv=None):
     payload = {
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "timeout_s": args.timeout,
+        "index_max_bytes": args.index_max_bytes,
         "range_bytes": args.range_bytes,
         "samples": args.samples,
         "max_ratio": args.max_ratio,
