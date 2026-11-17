@@ -9,6 +9,13 @@
         { "kind": "runtime", "name": "python3" }
       ],
       "hint": "代理探测脚本需要 Python；手工选路不依赖它"
+    },
+    {
+      "id": "aria2c",
+      "kind": "command",
+      "name": "aria2c",
+      "required": false,
+      "hint": "可选：大文件多连接下载。缺失时回退单连接 curl；单连接未被限速或文件较小时收益有限"
     }
   ]
 }

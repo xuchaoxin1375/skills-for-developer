@@ -171,6 +171,7 @@ Python 的默认路径：项目已有声明就沿用（`requirements.txt` → pi
 - Playwright：`standard` 已作为推荐项列出；只做静态抓取、或项目内已有 playwright 时可跳过，优先复用系统 Chrome/Edge。
 - Scrapling：`full` 已作为推荐项列出；只做静态正文抓取或已装进项目虚拟环境时无需全局安装，按 `resilient-browser-fetch` 的分层说明使用。
 - `mmdc`：已含在 `standard`/`full`；选 `minimal` 或临时任务时用 `pnpm dlx`/`npx` 单次拉起。
+- `aria2c`：大文件多连接下载的可选加速器；单连接被镜像限速时收益明显，未限速、小文件与包管理器下载收益有限。不放进套餐，缺失时回退单连接 `curl`。安装示例：Windows `winget install aria2.aria2`，macOS `brew install aria2`，Debian/Ubuntu `sudo apt install aria2`；会联网写入用户或系统目录。
 - `uv`/conda：`full` 含 uv；需要独立 Python 环境或引擎层时按 `resilient-browser-fetch` 的分层说明使用。
 - 国内下载受阻时按 `network-access` 选镜像或代理，不把某次可达的源写成永久默认值；先确认失败在解析、可用性、下载还是构建，解析冲突和权限错误不会因换源消失。
 

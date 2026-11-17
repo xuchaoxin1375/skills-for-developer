@@ -328,3 +328,19 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 判定：Release 资产先测已登记加速前缀再决定，直连只作回退；`scripts/check_github_mirrors.py --targets release` 可在一次调用内筛掉超时前缀（本次 `gh.llkk.cc`、`ghproxy.net`、`github.moeyy.xyz` 均 15 s 超时）。
 - 同一模型仓库走 HuggingFace 时未见可用的旧线索；本次该权重实际托管在 GitHub Release，不在 HF，按资源实际托管位置选路。
 - 未验证：其他时段与运营商、其他 Release 尺寸、代理路线对照、Git 传输在该前缀下的表现。
+
+## 2026-11-17 aria2c 多连接对照（macOS）
+
+执行环境：国内 macOS（Apple Silicon）、zsh；curl 8.20.0、aria2 1.37.0（Homebrew）。进程未配置 `http(s)_proxy`（仅有 `NO_PROXY`/`no_proxy`），两组仍用 `--noproxy '*'` / `--all-proxy=` 显式禁用代理；未做出口回显。下载文件逐次删除，未比对校验和；耗时只描述当次链路，不作为线路排名。
+
+| 目标 | 工具与连接 | 结果 |
+| --- | --- | --- |
+| `https://gh-proxy.com/https://github.com/denoland/deno/releases/download/v2.1.9/deno-aarch64-apple-darwin.zip`（41,767,371 B） | curl，1 | 两次：180 s 超时（收到 31,946,628 B，约 0.17 MiB/s）；另一轮 87.5 s 完成（0.45 MiB/s） |
+| 同上 | aria2c `-x4 -s4 -k1M`，4 | 两次：16.3 s（2.44 MiB/s）、27.8 s（1.44 MiB/s）；字节数与 `content-length` 一致，进度显示 `CN:4` |
+| `https://npmmirror.com/mirrors/node/v22.14.0/node-v22.14.0-darwin-arm64.tar.gz`（47,035,396 B） | curl，1 | 3.2 s，14.01 MiB/s |
+| 同上 | aria2c `-x4 -s4 -k1M`，4 | 2.25 s，19.90 MiB/s |
+
+- gh-proxy 单连接被压到 0.2–0.5 MiB/s，四连接提升到 1.4–2.4 MiB/s；同一前缀的 699 MB 资产在 2026-11-17 另一轮测试中单连接约 760 KB/s，量级一致。该前缀对 Deno zip 的 Range 请求返回 206，进度确认 `CN:4`；对上述 699 MB 资产曾返回 200，说明同一前缀的 Range 支持按资产而变，不能只测一次前缀就套到所有文件。
+- npmmirror 单连接已达 14 MiB/s，四连接只提升约 1.4 倍，远小于限速镜像；多连接不是通用提速，先判断单连接是否受限。
+- 每组只有一到两次样本，未控制 CDN 缓存、时段与运营商波动；不能写成“某站更快”的长期结论，也不能推断其他镜像、文件大小或海外网络。
+- 未验证：`-x8` 及更高并发、跨日对照、代理路线、429/403 限流反应、断点续传控制文件行为。
