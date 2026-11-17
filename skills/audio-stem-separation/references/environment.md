@@ -8,7 +8,7 @@
 | Python | 跑 demucs 与两个脚本 | 3.10–3.13 | 3.14 装 torch 会找不到 wheel |
 | demucs | 分离模型与推理 | 4.1+（自动 MPS） | `demucs: command not found` |
 | torch | demucs 推理后端 | 2.x，随 demucs 装上 | 导入报错 |
-| numpy | demucs 运行时硬依赖 | 任意 1.24+ / 2.x | `ModuleNotFoundError: No module named 'numpy'` |
+| numpy | demucs 运行时硬依赖；`check_audio_quality.py` 的频谱分析 | 任意 1.24+ / 2.x | `ModuleNotFoundError: No module named 'numpy'` |
 | MLX 分离器（可选） | Apple Silicon 原生加速 | `demucs-mlx` 或 `mlx-audio-separator`；macOS 26.2+ 吃 M5 矩阵单元 | 未装时走 Demucs 的 MPS/CPU 路径 |
 | 网络 | 首次装依赖、下载模型 | 仅首次 | 见下文“网络与镜像” |
 
@@ -94,7 +94,7 @@ Demucs 4.1+ 在 Apple Silicon 自动走 MPS。公开基准（M4 Max 40 核 GPU�
 | PyTorch MPS | 2.82 秒 | 42× |
 | MLX（`demucs-mlx`） | 1.05 秒 | 114× |
 
-**M5 16GB 预期（按 M4 公开基准折算，不是实测）**：同一 `htdemucs` 30 秒片段，原 CPU 约 15.5 秒；MPS 预计 4–5 秒，MLX 预计 3–4 秒。5 分钟单曲：原 CPU 约 2 分钟，MPS 预计 15–25 秒，MLX 预计 8–12 秒。首次进程含模型加载/编译，批量或长文件更接近推理倍率；以本机 30 秒片段实测为准。
+**M5 16GB 实测**（demucs 4.1.0 + torch 2.15，`htdemucs`，5:02 曲目，自动 MPS）：推理 33 秒（≈10.5× 实时，进度条约 10 seconds/s），含模型加载共 1:13；128k MP3 与无损 FLAC 源耗时基本一致。按 M4 公开基准折算的 15–25 秒偏乐观，实测按 10× 实时估更稳。下面是从 M4 基准折算的预期值，仅作参考：同一 `htdemucs` 30 秒片段，原 CPU 约 15.5 秒；MPS 预计 4–5 秒，MLX 预计 3–4 秒。
 
 - **`demucs-mlx`**：`pip install demucs-mlx`，然后 `demucs-mlx song.mp3`。输出 4 轨到 `separated/`，没有 `--two-stems`；只要 2 轨时用 `mlx-audio-separator`，或把 drums/bass/other 相加得到伴奏。
 - **`mlx-audio-separator`**：`pip install mlx-audio-separator`，然后 `mlx-audio-separator song.mp3`。默认 BS-RoFormer 输出 vocals/instrumental；4 轨用 `-m htdemucs_ft.yaml`；`--output_format` 默认 FLAC，需要 mp3 时显式指定。M4 mini 上比 `audio-separator` 中位快 1.85×（htdemucs_ft 1.40×、BS-RoFormer 2.16×、Mel-Band 2.50×）。

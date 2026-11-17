@@ -35,6 +35,15 @@
       "hint": "Apple Silicon 可选加速，二选一；装在独立 venv 时用对应 python -m 调用。未装时走 Demucs 4.1+ 的 MPS 或 CPU 路径"
     },
     {
+      "id": "quality-check-tools",
+      "required": false,
+      "alternatives": [
+        { "kind": "command", "name": "flaccheck" },
+        { "kind": "command", "name": "spek" }
+      ],
+      "hint": "可选：批量核验源品质。check_audio_quality.py 只需 ffmpeg + numpy；flaccheck（单文件二进制）另查 MDCT 残差、预回声与 joint stereo，Spek 只看频谱图"
+    },
+    {
       "id": "model-weights",
       "kind": "network",
       "required": false,
