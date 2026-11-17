@@ -9,7 +9,8 @@
 | `Unrecognized option 'filter_complex_script'` | ffmpeg 9 移除了该选项 | 改用 `-/filter_complex <文件>`，或把滤镜串直接内联给 `-filter_complex`（本 skill 的脚本已内联） |
 | `demucs: command not found` | venv 没激活，或装到了别的解释器 | 用 `python -m demucs ...` 调用，避免依赖 PATH |
 | `Torch not compiled with CUDA enabled` | 装的是 CPU 版 torch，却传了 `-d cuda` | 换 CUDA 版 wheel 或改 `-d cpu` |
-| `-d mps` 报未知设备 | demucs 没有 MPS 后端 | 固定 `-d cpu` |
+| `-d mps` 报未知设备 | 旧版 Demucs 没有 MPS 后端，或设备名不被接受 | Demucs 4.1+ 去掉 `-d` 让它自动选 MPS；旧版或 MPS 报错时用 `-d cpu` |
+| Apple Silicon 上分离很慢 | 命令固定了 `-d cpu`，没用上自动 MPS | 去掉 `-d cpu` 重跑；仍慢再按 [环境与依赖](environment.md#apple-silicon-加速) 上 MLX |
 | 分离过程像是卡住，进度条几分钟不动 | CPU 推理本身慢，或机器休眠/降频、CPU 配额被限 | 看 `ps` 里 python 的 CPU 占用：占用高就是算得慢，给它时间；占用低或时间跳变则查休眠与降频（macOS 合盖会暂停进程） |
 | 实测耗时比 0.4× 音频时长慢好几倍 | 期间机器休眠、降频，或拿了被打断任务的总时长当基准 | 以进度条 `x seconds/s` 判断真实速度；重新用 30 秒片段测，必要时 `caffeinate -i` 后复测 |
 | 用 `conda run -n ...` 跑 demucs 看不到任何输出 | `conda run` 默认缓冲子进程输出 | 加 `--live-stream`，或直接调用环境里的 `python -m demucs` |

@@ -6,9 +6,10 @@
 | --- | --- | --- | --- |
 | ffmpeg / ffprobe | 解码 mp3/flac、重编码、静音裁剪、验收探测 | ≥ 5，带 `libmp3lame` | `trim_silence.py` 报找不到 ffmpeg；`--mp3` 输出失败 |
 | Python | 跑 demucs 与两个脚本 | 3.10–3.13 | 3.14 装 torch 会找不到 wheel |
-| demucs | 分离模型与推理 | 4.x（4.1 实测） | `demucs: command not found` |
+| demucs | 分离模型与推理 | 4.1+（自动 MPS） | `demucs: command not found` |
 | torch | demucs 推理后端 | 2.x，随 demucs 装上 | 导入报错 |
 | numpy | demucs 运行时硬依赖 | 任意 1.24+ / 2.x | `ModuleNotFoundError: No module named 'numpy'` |
+| MLX 分离器（可选） | Apple Silicon 原生加速 | `demucs-mlx` 或 `mlx-audio-separator`；macOS 26.2+ 吃 M5 矩阵单元 | 未装时走 Demucs 的 MPS/CPU 路径 |
 | 网络 | 首次装依赖、下载模型 | 仅首次 | 见下文“网络与镜像” |
 
 `trim_silence.py` 只用标准库，但需要 ffmpeg 解码与编码；`fetch_model.py` 只用标准库，运行在装了 demucs 的解释器里（它从 demucs 包里读模型清单）。
@@ -50,10 +51,10 @@ python -m pip install -U demucs numpy
 | ffmpeg | `brew install ffmpeg` | `sudo apt install ffmpeg` | `winget install Gyan.FFmpeg` 或 `scoop install ffmpeg` |
 | Python | `brew install python@3.12` | `sudo apt install python3 python3-venv` | `winget install Python.Python.3.12` |
 | 激活环境 | `. .venv/bin/activate` | 同 macOS | `.venv\Scripts\Activate.ps1`（PowerShell 5.1 不支持 `&&`） |
-| 推理设备 | 只有 CPU，没有 MPS | CPU 或 `-d cuda` | CPU 或 `-d cuda`（需 CUDA 版 torch，默认 wheel 可能不带） |
+| 推理设备 | Demucs 4.1+ 自动 MPS；旧版 CPU-only；可选用 MLX | CPU 或 `-d cuda` | CPU 或 `-d cuda`（需 CUDA 版 torch，默认 wheel 可能不带） |
 | 长路径 | — | — | 深层目录 + 中文名可能触发路径长度问题，分离时把工作目录放在浅层 |
 
-- **Apple Silicon**：demucs 不接 MPS，`-d mps` 直接失败，只能 `-d cpu`；M 系列核心多，实际耗时仍以 CPU 线程数为准。
+- **Apple Silicon**：Demucs 4.1+ 自动使用 MPS（[macOS support](https://github.com/adefossez/demucs/blob/main/docs/mac.md)），不要固定 `-d cpu`；只有 MPS 报错或旧版 Demucs 才回退 `-d cpu`。MPS 已比 CPU 快一个数量级，但仍不如 MLX 原生实现；追求速度用 `demucs-mlx`（4 轨）或 `mlx-audio-separator`（2 轨/RoFormer）。MLX 要 macOS 26.2+ 才能启用 M5 的 GPU Neural Accelerators。
 - **WSL**：装在 WSL 自己的发行版里，别用 `/mnt/c` 下的 Windows 解释器；音频放 WSL 文件系统，放 `/mnt/c` 会有明显 IO 开销。
 - **Linux + NVIDIA**：需要 CUDA 版 torch，`pip install torch --index-url https://download.pytorch.org/whl/cu124` 之后再装 demucs，否则 `-d cuda` 报 `Torch not compiled with CUDA enabled`。
 
@@ -61,6 +62,7 @@ python -m pip install -U demucs numpy
 
 - **PyPI**：默认源在很多国内网络下可用；明显卡在依赖下载时再换镜像，例如 `-i https://pypi.tuna.tsinghua.edu.cn/simple`。torch wheel 体积大，镜像只解决速度，不解决不可达。
 - **HuggingFace**：demucs 4.1 的 `get_model` 先走 HF（`hdemucs` 等 bag 配置在那里），HF 不通时会在 `Retrying in 1s [Retry 1/5]` 之间静默等待，看起来像卡死。本 skill 的做法是绕过它：模型文件从 `dl.fbaipublicfiles.com` 直接取（实测可直连），再用 `--repo` 指本地目录离线加载。
+- **MLX 模型**：`demucs-mlx` 首次从 HuggingFace 下载（htdemucs 约 160MB）；`mlx-audio-separator` 也从 HF/模型源拉取。它们不走 `fetch_model.py` 的 fbaipublicfiles 路径；HF 不通时设 `HF_ENDPOINT=https://hf-mirror.com`，或用各自的下载/预热参数先取模型。
 - **两个源都不通**：设置 `HF_ENDPOINT=https://hf-mirror.com` 让 demucs 走镜像；或按 `network-access` 配代理后重试，并把结果记入本次结论，不要假设下次仍可用。
 - **校验**：`fetch_model.py` 会核对文件名里的 sha256 前 8 位，校验不过直接删文件报错，不会留下半个模型让 demucs 加载失败。
 
@@ -80,10 +82,27 @@ python -m pip install -U demucs numpy
 - 进程被 SIGTERM 或休眠打断时会在原目录留下半成品，重跑前清掉输出目录。
 - 内存峰值约 2–4GB（单曲、`htdemucs`）；多文件并行 `-j N` 会按倍数放大。
 - 磁盘：venv 约 1.5GB，每个模型约 84MB，输出 mp3 与源文件同量级。
-- 想更省时：换量化模型（`mdx_q` / `mdx_extra_q`，体积与耗时更小、质量略降）、缩小 `--segment`、或有 CUDA 时用 `-d cuda`。
+- 想更省时：Apple Silicon 用 Demucs 4.1+ 的 MPS 或 MLX；换量化模型（`mdx_q` / `mdx_extra_q`，体积与耗时更小、质量略降）、缩小 `--segment`、或有 CUDA 时用 `-d cuda`。
+
+### Apple Silicon 加速
+
+Demucs 4.1+ 在 Apple Silicon 自动走 MPS。公开基准（M4 Max 40 核 GPU、128GB、120 秒 44.1kHz、`htdemucs`，2026-10）：
+
+| 后端 | 耗时 | 实时倍率 |
+| --- | --- | --- |
+| PyTorch CPU | 19.4 秒 | 6× |
+| PyTorch MPS | 2.82 秒 | 42× |
+| MLX（`demucs-mlx`） | 1.05 秒 | 114× |
+
+- **`demucs-mlx`**：`pip install demucs-mlx`，然后 `demucs-mlx song.mp3`。输出 4 轨到 `separated/`，没有 `--two-stems`；只要 2 轨时用 `mlx-audio-separator`，或把 drums/bass/other 相加得到伴奏。
+- **`mlx-audio-separator`**：`pip install mlx-audio-separator`，然后 `mlx-audio-separator song.mp3`。默认 BS-RoFormer 输出 vocals/instrumental；4 轨用 `-m htdemucs_ft.yaml`；`--output_format` 默认 FLAC，需要 mp3 时显式指定。M4 mini 上比 `audio-separator` 中位快 1.85×（htdemucs_ft 1.40×、BS-RoFormer 2.16×、Mel-Band 2.50×）。
+- **`audio-separator`**：`pip install "audio-separator[cpu]"`；Apple Silicon 走 PyTorch MPS + ONNX CoreML，模型覆盖最广、成熟度最高，但比 MLX 慢。
+- **M5**：MLX 要 macOS 26.2+ 才吃 GPU Neural Accelerators；`mlx-audio-separator` 的验证机是 M4 mini、README 只列 M1–M4，M5 先跑 30 秒片段做对照。
+- **内存**：`demucs-mlx` 的 htdemucs 缓存在 128GB 机器上可到 16–31GB；24GB 机器要限制 cache 或长文件分块。`mlx-audio-separator` 与 `audio-separator` 都有 `--chunk_duration`。
 
 ## 清理
 
 ```bash
 rm -rf .venv-demucs ~/.cache/demucs-models   # 环境与模型一起清掉，不影响系统 Python
+rm -rf ~/.cache/mlx-audio-separator ~/.cache/demucs-mlx   # 用过 MLX 路线时
 ```
