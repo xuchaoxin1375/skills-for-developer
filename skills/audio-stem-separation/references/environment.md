@@ -108,7 +108,7 @@ M5 的 16GB 是统一内存，系统与浏览器会先占掉一部分；下面�
 - **4 轨 MLX**：`demucs-mlx --batch-size 1 --io-memory-mib 512 song.mp3`。不要同时开其他 GPU 应用。
 - **2 轨/长文件 MLX**：`mlx-audio-separator song.mp3 --chunk_duration 300`；4 轨用 `-m htdemucs.yaml --chunk_duration 300`，先别用 `htdemucs_ft` 整包。
 - **质量优先且要稳**：`AUDIO_SEPARATOR_MPS_BUFFER_BUDGET_GIB=6 audio-separator song.mp3 --chunk_duration 300`。PowerShell 用 `$env:AUDIO_SEPARATOR_MPS_BUFFER_BUDGET_GIB=6; audio-separator ...`。
-- **5 分钟 MP3**：htdemucs/htdemucs_ft 可整轨；BS-RoFormer 先整轨，OOM/换页再加 `--chunk_duration 180`（分块边界可能有轻微 artifacts）。输出优先 FLAC/WAV；320kbps 源用 16-bit FLAC 已足够，24-bit/float32 只在还要混音或继续处理时有意义（Demucs 用 `--flac --int24`）。MP3 源本身有损，24-bit 不会恢复细节；320kbps 已是常见上限，不要上采样到 48/96kHz，也不要再转回 MP3。
+- **5 分钟 MP3**：htdemucs/htdemucs_ft 可整轨；BS-RoFormer 先整轨，OOM/换页再加 `--chunk_duration 180`（分块边界可能有轻微 artifacts）。输出优先 FLAC/WAV；320kbps 源用 16-bit FLAC 已足够，24-bit/float32 只在还要混音或继续处理时有意义（Demucs 用 `--flac --int24`）。MP3 源本身有损，24-bit 不会恢复细节；320kbps 已是常见上限，不要上采样到 48/96kHz。存档用 FLAC；分发副本可从 FLAC 转一次 320kbps MP3，不要反复转码。
 - **高风险组合**：批量跑 `htdemucs_ft`、长文件 BS-RoFormer、多个分离进程并行；单首 5 分钟可试 `htdemucs_ft --segment 7`，出现 swap、风扇持续满转或进度异常变慢再降级。
 
 ## 清理
