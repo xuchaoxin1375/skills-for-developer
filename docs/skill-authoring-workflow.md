@@ -8,7 +8,7 @@
 
 ### 职责与关联
 
-四个 skill 围绕同一生命周期协作，但主要输入、判断依据和交付物不同。
+四个 skill 围绕同一生命周期协作，但主要输入、判断依据和交付物不同。按适用范围还分三层：这四个属于 skill 生命周期（创建、提炼、修补、分发）；`markdown-style`、`code-comments`、`doc-rewrite-review` 是正文形式与文档规范，被生命周期流程调用，但自身不改 skill；`ai-verified-delivery` 一类是交付验证门禁，产出证据而不是规则。环境与偏好层（harness 与模型配置、`resource-inventory`、`user-profile`）不属于元层。
 
 | Skill | 主要输入 | 核心职责 | 主要输出 |
 |---|---|---|---|
