@@ -42,7 +42,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
    Demucs 4.1+ 在 Apple Silicon 上自动走 MPS；只有 MPS 报错或旧版 Demucs 才加 `-d cpu`。Linux/Windows 无 CUDA 时加 `-d cpu`，有 CUDA 时用 `-d cuda`。想比 MPS 更快，见下方“Apple Silicon 加速”。
 
-   要存档、进 DAW 或继续处理，把 `--mp3 --mp3-bitrate 320` 换成 `--flac`；只听后分发再从 FLAC 母版转 320kbps MP3，避免反复有损编码。
+   只听就保持 `--mp3 --mp3-bitrate 320`；要存档、进 DAW 或继续处理，再换成 `--flac`。需要分发时从 FLAC 转一次 320kbps MP3，避免反复有损编码。
 
    产物在 `out/htdemucs/song/{vocals,no_vocals}.mp3`：`no_vocals` 是伴奏，`vocals` 是人声。
 
@@ -64,8 +64,8 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 | --- | --- | --- |
 | 只要伴奏/人声两轨 | `--two-stems=vocals -n htdemucs` | 默认档，质量与耗时平衡 |
 | 值得等，要更干净 | `-n htdemucs_ft` | 约 4 倍耗时 |
-| 5 分钟 MP3，高品质 | 2 轨 BS-RoFormer（MLX/audio-separator）；4 轨 `htdemucs_ft` | 单曲几十秒到分钟级；输出 FLAC |
-| 5 分钟 MP3，超高品质 | 2 轨 `BS-Roformer-SW.ckpt`（MLX/audio-separator）；4 轨 `htdemucs_ft` + shifts=2 | 相对 `htdemucs_ft` 再翻倍；MP3 源有损，提升有限 |
+| 5 分钟 MP3，高品质 | 2 轨 BS-RoFormer（MLX/audio-separator）；4 轨 `htdemucs_ft` | 单曲几十秒到分钟级；只听 320kbps MP3 即可 |
+| 5 分钟 MP3，超高品质 | 2 轨 `BS-Roformer-SW.ckpt`（MLX/audio-separator）；4 轨 `htdemucs_ft` + shifts=2 | 相对 `htdemucs_ft` 再翻倍；只听 320kbps MP3 即可，MP3 源有损 |
 | 存档 / 进 DAW / 继续处理 | `--flac`（16-bit 足够） | 体积约为 MP3 的 3–4 倍；不恢复源损失 |
 | 只听后分发 | `--mp3 --mp3-bitrate 320` | 从 FLAC 母版转一次，别反复转 |
 | 要鼓、贝斯、钢琴等 | `-n htdemucs_6s` | 六轨模型，乐器分离弱于专用模型 |
