@@ -1,10 +1,10 @@
 ---
 name: learning-doc-design
 description: >
-  编写与改写学习文档、教材、教程、课程和解释型指南：先确定读者、能力目标与成功判据，再安排教学主线、概念依赖、
+  学习文档、教材、教程、课程和解释型指南的教学设计、编排与教学效果审校：先确定读者、能力目标与成功判据，再安排教学主线、概念依赖、
   案例实验、练习与理解检查；也用于判断内容该放正文、必读概念单元还是按需参考。
   用户要求从零写教程/教材/课程、设计学习路径、解释初学者卡点，或审查教学文档的理解负担与学习效果时使用。
-  纯排版走 markdown-style；已有正文的改写、审校与多源合并走 doc-rewrite-review；从零调研成文走 tech-learning-research；
+  纯排版走 markdown-style；已有教学正文的纯文本改写、审校与多源合并走 doc-rewrite-review；从零调研成文走 tech-learning-research；
   项目文档集合规划走 project-docs。
 ---
 
@@ -21,7 +21,7 @@ description: >
 | 核对教学规则的理论来源、证据强度或适用边界 | 读[教学依据与采用边界](references/learning-design-foundations.md) |
 | 判断内容属于教程、操作指南、解释还是参考 | 读[教学设计与理解对齐](references/tutorial-design.md)的职责划分，案例见[Diátaxis 应用案例](references/diataxis-cases.md) |
 | 纯 Markdown 排版、标题、表格、代码块与图示语法 | 转[markdown-style](../markdown-style/SKILL.md)；本 skill 不维护第二套排版规范 |
-| 已有正文的事实、结构或表达改写 | 转[doc-rewrite-review](../doc-rewrite-review/SKILL.md)；教学编排仍可按需引用本 skill |
+| 已有教学正文的纯文本事实、结构或表达改写 | 转[doc-rewrite-review](../doc-rewrite-review/SKILL.md)；教学编排仍可按需引用本 skill |
 | 需要新资料、版本核验或外部证据 | 转[tech-learning-research](../tech-learning-research/SKILL.md)；已有充分材料时不为形式重搜 |
 | 项目 README、CLI/API 参考、部署与 Runbook | 转[project-docs](../project-docs/SKILL.md)；教程编排采用本 skill 的共享参考 |
 
