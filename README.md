@@ -289,6 +289,8 @@ git submodule update --init --depth 1
 ./scripts/deploy.sh --skip-plugins --skip-global-agents --skip-dep-check
 ```
 
+链接只对支持原生 skill 发现/扫描的 harness 有意义；链接存在、`--verify-only` 通过都不等于当前会话已发现或触发 skill。没有 Skill 工具或列表接口的环境（如部分沙箱）直接按路径读取 `skills/<name>/SKILL.md`，`references/`、`scripts/` 同样按相对路径读取；需要把技能放进工作区时，复制或链接到工作区可读目录，并在任务说明中给出路径。原生发现是否生效以宿主暴露的 skill 列表/调用结果为准，不能从链接推断。
+
 1. **推荐基线依赖（强烈建议）**：按 `minimal` / `standard` / `full` 选套餐（默认 `standard`，含全局 mmdc；PowerShell 7 仅 Windows）；`full` 再补 uv、jq 与 Scrapling（推荐项）。它们覆盖 resource-inventory、htmlmini、mermaid-render-fix、browser-automation、network-access 等，缺了会退化到在线回退、人工路径或能力不全。基础命令行工具 git、ripgrep、fd 与 Playwright、Scrapling 为推荐项（缺失只警告），部署脚本结束时会检测并提示安装命令，不阻断部署。检查命令与安装明细见 [依赖套餐](docs/skill-dependencies.md#部署基线)。
 2. **链接安装（首跑即定 cli.json）**：命令见「常用操作」。交互终端只对未就绪项询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
    ```bash

@@ -3,8 +3,8 @@
 
 检查范围：README.md、docs/**/*.md、skills/**/*.md；跳过 node_modules、assets/sources
 与子模块 codex-model-config。只校验行内 Markdown 链接；外部 URL、reference-style
-链接和 HTML href 不校验。锚点按 GitHub 常见 slug 规则近似：小写、去标点、
-空格转连字符、重复标题追加 -1。
+链接和 HTML href 不校验。指向未初始化子模块的链接计为跳过并提示，不按失败处理。
+锚点按 GitHub 常见 slug 规则近似：小写、去标点、空格转连字符、重复标题追加 -1。
 
 用法（仓库根）：
   python scripts/check-links.py
@@ -71,8 +71,34 @@ def strip_inline_code(line: str) -> str:
     return re.sub(r"`[^`]*`", "", line)
 
 
+def submodule_roots(repo: Path) -> list[Path]:
+    """从 .gitmodules 读取子模块路径；不依赖 git 命令，zip 包同样适用。"""
+    gm = repo / ".gitmodules"
+    if not gm.is_file():
+        return []
+    roots = []
+    for line in gm.read_text(encoding="utf-8-sig").splitlines():
+        m = re.match(r"\s*path\s*=\s*(.+?)\s*$", line)
+        if m:
+            roots.append((repo / m.group(1)).resolve())
+    return roots
+
+
+def submodule_uninitialized(root: Path) -> bool:
+    """子模块目录缺失或为空时视为未初始化；有内容但缺目标文件仍按错误处理。"""
+    if not root.is_dir():
+        return True
+    try:
+        return not any(root.iterdir())
+    except OSError:
+        return True
+
+
 def check(repo: Path):
+    repo = repo.resolve()
     errors: list[str] = []
+    skipped: list[str] = []
+    submodules = submodule_roots(repo)
     checked = 0
     for f in iter_files(repo):
         in_fence = False
@@ -95,7 +121,16 @@ def check(repo: Path):
                 if path_part:
                     path = (f.parent / path_part).resolve()
                     if not path.exists():
-                        errors.append(f"{f.relative_to(repo)}:{no} 链接目标不存在: {target}")
+                        owner = next(
+                            (r for r in submodules if path == r or r in path.parents),
+                            None,
+                        )
+                        if owner is not None and submodule_uninitialized(owner):
+                            skipped.append(
+                                f"{f.relative_to(repo)}:{no} 子模块未初始化，跳过: {target}"
+                            )
+                        else:
+                            errors.append(f"{f.relative_to(repo)}:{no} 链接目标不存在: {target}")
                         continue
                 else:
                     path = f
@@ -109,9 +144,14 @@ def check(repo: Path):
                         close = difflib.get_close_matches(frag, available, n=1, cutoff=0.6)
                         hint = f"（最接近: #{close[0]}）" if close else ""
                         errors.append(f"{f.relative_to(repo)}:{no} 锚点不存在: {target}{hint}")
-    print(f"检查 {checked} 个内部链接，{len(errors)} 个问题")
+    summary = f"检查 {checked} 个内部链接，{len(errors)} 个问题"
+    if skipped:
+        summary += f"，{len(skipped)} 个跳过（子模块未初始化）"
+    print(summary)
     for e in errors:
         print(f"ERROR: {e}")
+    for s in skipped:
+        print(f"SKIP: {s}")
     print("FAIL" if errors else "全部链接通过。")
     return 1 if errors else 0
 
