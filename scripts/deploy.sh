@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 #
-# 一键部署：子模块检查、skill 链接、OpenCode 插件链接、全局 AGENTS.md 恢复与校验。
+# 一键部署：子模块检查、选中 harness 的 skill 链接；选中 OpenCode 时再处理插件与全局 AGENTS.md。
 # 串联子模块检查、link-skills.sh、link-plugins.sh 与 AGENTS.md 同步，避免漏步；
 # 结束时打印各阶段耗时与效率复盘提示，便于发现部署流程劣化。
 #
 # 用法（仓库根）：
-#   scripts/deploy.sh                      # 部署（交互终端下按 link-skills 规则询问）
+#   scripts/deploy.sh                      # 默认：只链 Agents 通用目录（~/.agents/skills）
+#   scripts/deploy.sh --harness opencode    # 只处理 OpenCode（含插件与全局 AGENTS.md）
+#   scripts/deploy.sh --harness opencode,codex
+#   scripts/deploy.sh --harness all         # 五套目录全量
 #   scripts/deploy.sh --plan               # 只预览，不修改
-#   scripts/deploy.sh --verify-only        # 只校验，不修改
+#   scripts/deploy.sh --verify-only        # 只校验选中的 harness，不修改
 #   scripts/deploy.sh --quiet              # 隐藏逐项成功/进度行，保留警告与汇总
 #   scripts/deploy.sh --skip-plugins       # 跳过 OpenCode 插件
 #   scripts/deploy.sh --skip-global-agents # 跳过全局 AGENTS.md
 #   scripts/deploy.sh --skip-dep-check     # 跳过依赖套餐检查
 #   scripts/deploy.sh --skip-submodules    # 跳过 git submodule 初始化/检查
+#
+# 未选择 opencode 时，插件、全局 AGENTS.md 与 cli.json 自动跳过；需要时选 opencode 或 all。
 #
 # 以下开关原样转给 link-skills.sh：
 #   --apply-recommended-cli / --skip-recommended-cli
@@ -30,6 +35,7 @@ SKIP_PLUGINS=0
 SKIP_AGENTS=0
 SKIP_DEPS=0
 SKIP_SUBMODULES=0
+HARNESS_SPEC="agents"
 SKILL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -65,6 +71,16 @@ while [[ $# -gt 0 ]]; do
     SKIP_SUBMODULES=1
     shift
     ;;
+  --harness)
+    HARNESS_SPEC="${2:-}"
+    SKILL_ARGS+=(--harness "$HARNESS_SPEC")
+    shift 2
+    ;;
+  --harness=*)
+    HARNESS_SPEC="${1#--harness=}"
+    SKILL_ARGS+=(--harness "$HARNESS_SPEC")
+    shift
+    ;;
   --apply-recommended-cli)
     SKILL_ARGS+=(--apply-recommended-cli)
     shift
@@ -94,7 +110,7 @@ while [[ $# -gt 0 ]]; do
     shift
     ;;
   -h | --help)
-    sed -n '2,23p' "$0"
+    sed -n '2,28p' "$0"
     exit 0
     ;;
   *)
@@ -132,6 +148,16 @@ opencode_present() {
   command -v opencode >/dev/null 2>&1 && return 0
   local dir="$HOME/.config/opencode"
   [[ -f "$dir/AGENTS.md" || -f "$dir/opencode.json" || -f "$dir/auth.json" || -f "$dir/cli.json" ]]
+}
+
+opencode_selected() {
+  # 本次 --harness 是否包含 opencode；all 覆盖全部 harness。
+  local spec
+  spec="$(printf '%s' "$HARNESS_SPEC" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  case ",$spec," in
+  *,all,* | *,opencode,*) return 0 ;;
+  esac
+  return 1
 }
 
 uninitialized_submodules() {
@@ -199,24 +225,31 @@ timings+=("skill 链接:$((SECONDS - start))")
 
 # 2. OpenCode 插件链接
 if [[ $SKIP_PLUGINS -eq 0 ]]; then
-  start=$SECONDS
-  if [[ $PLAN -eq 1 ]]; then
-    say "计划: 运行 link-plugins.sh（建链/校正）"
+  if ! opencode_selected; then
+    say "跳过 OpenCode 插件：本次 --harness ${HARNESS_SPEC} 未选择 opencode（需要时加 --harness opencode 或 all）"
   else
-    plugin_args=()
-    [[ $VERIFY_ONLY -eq 1 ]] && plugin_args+=(--verify-only)
-    [[ $QUIET -eq 1 ]] && plugin_args+=(--quiet)
-    if ! "$REPO_ROOT/scripts/link-plugins.sh" "${plugin_args[@]+"${plugin_args[@]}"}"; then
-      failures=$((failures + 1))
+    start=$SECONDS
+    if [[ $PLAN -eq 1 ]]; then
+      say "计划: 运行 link-plugins.sh（建链/校正）"
+    else
+      plugin_args=()
+      [[ $VERIFY_ONLY -eq 1 ]] && plugin_args+=(--verify-only)
+      [[ $QUIET -eq 1 ]] && plugin_args+=(--quiet)
+      if ! "$REPO_ROOT/scripts/link-plugins.sh" "${plugin_args[@]+"${plugin_args[@]}"}"; then
+        failures=$((failures + 1))
+      fi
     fi
+    timings+=("插件链接:$((SECONDS - start))")
   fi
-  timings+=("插件链接:$((SECONDS - start))")
 fi
 
 # 3. 全局 AGENTS.md
 if [[ $SKIP_AGENTS -eq 0 ]]; then
-  start=$SECONDS
-  src="$REPO_ROOT/config/global-AGENTS.md"
+  if ! opencode_selected; then
+    say "跳过全局 AGENTS.md：本次 --harness ${HARNESS_SPEC} 未选择 opencode（需要时加 --harness opencode 或 all）"
+  else
+    start=$SECONDS
+    src="$REPO_ROOT/config/global-AGENTS.md"
   if [[ ! -f "$src" ]]; then
     echo "WARN: 缺少 config/global-AGENTS.md，跳过全局 AGENTS.md 同步" >&2
     failures=$((failures + 1))
@@ -301,7 +334,8 @@ if [[ $SKIP_AGENTS -eq 0 ]]; then
       fi
     fi
   fi
-  timings+=("全局 AGENTS.md:$((SECONDS - start))")
+    timings+=("全局 AGENTS.md:$((SECONDS - start))")
+  fi
 fi
 
 # 4. 依赖套餐检查（只提示，不阻断）

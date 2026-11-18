@@ -34,7 +34,7 @@ npx skills add mattpocock/skills --skill grill-me -g -a opencode claude-code cod
 - 上游实体：`third-party/mattpocock-skills/`，由 `.gitignore` 忽略；不要对它运行 `git clean -xdf`。
 - 来源、固定提交与精选源目录：`config/upstream-skills.json`；只登记要暴露的 skill，不链接整库。
 - 分发：`scripts/link-upstream-skills.py` 复用现有链接工具的 Junction/symlink 与备份机制，不联网、不 clone、不更新源码。
-- 现有 `link-skills.ps1` / `link-skills.sh` 也会调用它，沿用 Include 与 VerifyOnly 筛选；SkipThirdPartySkills 会跳过。原有 Unlink 仍只处理自有 skill，本组用下面的独立 unlink 命令。
+- 现有 `link-skills.ps1` / `link-skills.sh` 也会调用它，沿用 Include、VerifyOnly 与 `--harness` / `-Harness` 筛选；默认只链 `agents`，`all` 才覆盖五套目录。SkipThirdPartySkills 会跳过。原有 Unlink 仍只处理自有 skill，本组用下面的独立 unlink 命令。
 - 默认创建缺失链接，冲突时报错；`--replace` 才会迁移冲突链接/实体，实体先备份。校验会拒绝提交、来源或精选 skill 内容漂移。
 
 ### 新机恢复与更新
@@ -47,6 +47,8 @@ git -C third-party/mattpocock-skills checkout --detach <config中的revision>
 python -X utf8 scripts/link-upstream-skills.py
 python -X utf8 scripts/link-upstream-skills.py --verify-only
 ```
+
+默认只链 `agents`；OpenCode 用 `--harness opencode`，需要五套目录时用 `--harness all`。`--unlink` 未指定 harness 时默认清理五套目录。
 
 `core.symlinks=false` 只用于避免上游仓库自带的分发链接在 Windows checkout 时失败；实际分发仍由本地工具创建 Junction/symlink。已有 clone 不重跑 clone；浅克隆缺少目标提交时先有界 fetch 指定提交。尚未安装且没有同名链接时，缺少 clone 只报告可选项，不能称已安装；已有链接而 clone 丢失则校验失败，先恢复 clone。
 

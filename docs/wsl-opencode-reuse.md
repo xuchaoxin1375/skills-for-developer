@@ -2,7 +2,7 @@
 
 WSL 与 Windows 是两套彼此独立的 OpenCode 实例：配置目录、数据目录互不相通，但 Windows 用户目录在 WSL 中可经 `/mnt/c/Users/<用户>` 直接读取。本文让 WSL 一次补齐 Windows 侧完整配置（含模型配置）。skill 分发不走本文，仍由仓库链接脚本负责（见 README「部署清单」）。
 
-顺序：先完成部署清单步骤 1–2（skill 链接、`AGENTS.md`、`cli.json`），再做本文步骤，最后回清单做校验。本文只处理模型相关的三件套，不重复部署清单已对齐项。
+顺序：先完成部署清单步骤 1–2（skill 链接、`AGENTS.md`、`cli.json`），再做本文步骤，最后回清单做校验。本文只处理模型相关的三件套，不重复部署清单已对齐项。WSL 侧使用 OpenCode，因此部署时必须显式加 `--harness opencode`（或 `--harness all`）；默认 `agents` 只链 `~/.agents/skills`，不会创建 `~/.config/opencode/skills`、`AGENTS.md` 或 `cli.json`。
 
 ### 完整清单：什么算“完整”
 
@@ -13,7 +13,7 @@ WSL 与 Windows 是两套彼此独立的 OpenCode 实例：配置目录、数据
 | 登录态 | 数据目录 `auth.json` 内各条目 | 本文步骤 3：缺失条目重登或按条目补齐，不复制整个数据目录 |
 | TUI 偏好 | `cli.json` | 部署清单步骤 1（`--apply-recommended-cli`），不从 Windows 复制 |
 | 全局 `AGENTS.md` | `~/.config/opencode/AGENTS.md` | 部署清单步骤 2，不从 Windows 复制 |
-| skill 实体 | 各 harness `skills/` 链接 | 链接脚本，不从 Windows 复制 |
+| skill 实体 | 选中 harness 的 `skills/` 链接（WSL 用 OpenCode，需 `--harness opencode`） | 链接脚本，不从 Windows 复制 |
 | 数据目录（`opencode.db`、会话、快照、日志） | 各自系统独占 | **不复用**：内含本机绝对路径、锁文件与跨平台差异 |
 | `node_modules`（插件依赖） | 各自安装 | **不复用**：原生二进制不跨平台，由本机 `opencode` 自行安装 |
 

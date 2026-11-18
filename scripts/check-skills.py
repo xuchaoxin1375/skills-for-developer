@@ -8,7 +8,8 @@
   2. README 索引：每个 skill 在 README.md 有 `skills/<name>` 入口，
      且该行有说明与关键词列（过短时给警告）。
   3. 红线路径：skill 正文/引用/示例/配套脚本不得出现仓库外真实路径。
-  4. 各 harness 安装数：每个真源 skill 在已登记的 harness 侧都是指向真源的链接。
+  4. 选中 harness 安装数：每个真源 skill 在 `--harness` 选中的目录里都是指向真源的链接
+     （默认 agents；all 覆盖五套）。
   5. 推荐部署名单：config/recommended-skills.txt 的名字须有对应真源目录；
      含 package.json（需依赖安装）却不在名单中的给出提醒。
   6. 第三方推荐名单：config/third-party-skills.txt 的格式、重名与真源冲突。
@@ -20,6 +21,8 @@
 
 用法（仓库根）：
   python3 scripts/check-skills.py
+  python3 scripts/check-skills.py --harness opencode
+  python3 scripts/check-skills.py --harness all
   python3 scripts/check-skills.py --include doc-rewrite-review,htmlmini
   python3 scripts/check-skills.py --no-harness      # 只查仓库侧（含 CI）
   python3 scripts/check-skills.py --repo <path>     # 指定仓库根（默认脚本上级）
@@ -475,19 +478,34 @@ def uninitialized_submodules(repo):
     return paths
 
 
-def harness_targets():
+def harness_targets(spec: str = "agents"):
     home = Path.home()
     agents = Path(
         os.environ.get("DSH_AGENTS_HOME") or (home / ".agents")
     )
     dsh = Path(os.environ.get("DSH_HOME") or (home / ".dsh"))
-    return [
+    all_targets = [
         ("opencode", home / ".config" / "opencode" / "skills"),
         ("codex", home / ".codex" / "skills"),
         ("claude", home / ".claude" / "skills"),
         ("agents", agents / "skills"),
         ("dsh", dsh / "skills"),
     ]
+    items = [item.strip().lower() for item in (spec or "agents").split(",") if item.strip()]
+    if not items:
+        items = ["agents"]
+    valid = {label for label, _path in all_targets}
+    unknown = [item for item in items if item not in valid and item != "all"]
+    if unknown:
+        raise ValueError(
+            f"未知 harness: {', '.join(unknown)}（可选: {', '.join(sorted(valid))}, all）"
+        )
+    if "all" in items and len(items) > 1:
+        raise ValueError("harness all 不能与其他 harness 组合")
+    if "all" in items:
+        return all_targets
+    selected = set(items)
+    return [(label, path) for label, path in all_targets if label in selected]
 
 
 def main(argv=None):
@@ -496,6 +514,8 @@ def main(argv=None):
                     help="只检查指定 skill，逗号分隔")
     ap.add_argument("--no-harness", action="store_true",
                     help="只查仓库侧（frontmatter/索引/红线），跳过 harness 安装数")
+    ap.add_argument("--harness", default="agents",
+                    help="检查的 harness，逗号分隔；默认 agents，可 all（默认: %(default)s）")
     ap.add_argument("--repo", default="",
                     help="仓库根（默认由脚本位置推导）")
     ap.add_argument("--strict", action="store_true",
@@ -602,8 +622,13 @@ def main(argv=None):
 
     # harness 安装数
     if not args.no_harness:
+        try:
+            targets = harness_targets(args.harness)
+        except ValueError as exc:
+            errors.append(str(exc))
+            targets = []
         repo_names = {s.name for s in skills}
-        for label, target in harness_targets():
+        for label, target in targets:
             if not target.is_dir():
                 errors.append(f"[{label}] 缺失目录: {target}")
                 continue

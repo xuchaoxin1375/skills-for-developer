@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
 #
-# 将本仓库 skills/ 下的每个 skill 通过 symlink 链接到各 agent harness 的 skills 目录。
-# Linux/macOS 用；Windows 请用 scripts/link-skills.ps1（Junction）。
+# 将本仓库 skills/ 下的每个 skill 通过 symlink 链接到选中的 agent harness skills 目录。
+# 默认 agents；用 --harness 选择，all 为五套目录。Linux/macOS 用；Windows 用 scripts/link-skills.ps1。
 #
 # 唯一真源: <repo>/skills/<name>/（内含 SKILL.md）。
 # Harness 侧只放 symlink，不存实体：
+#   - Agents 通用: ${DSH_AGENTS_HOME:-$HOME/.agents}/skills（默认；Pi 等标准兼容 harness 共用）
 #   - OpenCode : $HOME/.config/opencode/skills
 #   - Codex    : $HOME/.codex/skills
 #   - Claude   : $HOME/.claude/skills
-#   - Agents 通用: ${DSH_AGENTS_HOME:-$HOME/.agents}/skills（Pi 等标准兼容 harness 共用）
 #   - DeepSeek Harness (dsh): ${DSH_HOME:-$HOME/.dsh}/skills
+#
+# 默认只处理 Agents 通用目录；用 --harness 选择一个或多个 harness，或用
+# --harness all 恢复五套目录全量链接。未选择的目录不会创建、修正或清理链接。
 #
 # 幂等，可反复执行。只管理仓库中存在的 skill 名，并顺手清理指向本仓库
 # 但目标已不存在的悬空链接（重命名/删除 skill 的残留）；
 # 不会动 harness 自带内容（如 Codex 的 .system/、AGENTS.md）。
 #
 # 用法：
-#   scripts/link-skills.sh                    # 全量链接（交互终端下会询问是否应用推荐 cli.json
-#                                             # 及推荐 skill 依赖；命令默认安装）
-#   scripts/link-skills.sh --plan             # 只打印部署计划，不修改
-#   scripts/link-skills.sh --verify-only      # 只检查，不修改（含推荐 skill 依赖与命令）
-#   scripts/link-skills.sh --unlink           # 移除本仓库创建的链接与命令（实体、依赖目录不受影响）
-#   scripts/link-skills.sh --include a,b      # 只处理部分 skill（推荐部署同步取交集）
+#   scripts/link-skills.sh --harness agents    # 默认：只链接到 ~/.agents/skills
+#   scripts/link-skills.sh --harness opencode,codex
+#   scripts/link-skills.sh --harness all       # 五套目录全量链接
+#   scripts/link-skills.sh --plan              # 只打印部署计划，不修改
+#   scripts/link-skills.sh --verify-only       # 只检查选中的 harness，不修改
+#   scripts/link-skills.sh --unlink            # 移除选中 harness 中本仓库创建的链接与命令
+#   scripts/link-skills.sh --include a,b       # 只处理部分 skill（推荐部署同步取交集）
 #   scripts/link-skills.sh --apply-recommended-cli  # 直接应用推荐 cli.json，不询问
 #   scripts/link-skills.sh --skip-recommended-cli   # 跳过推荐 cli.json
 #   scripts/link-skills.sh --apply-recommended-skills  # 直接安装推荐 skill 依赖，不询问
@@ -44,13 +48,9 @@ export PATH="$HOME/.local/bin:$PATH"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SKILLS_DIR="$REPO_ROOT/skills"
 BACKUP_ROOT="$HOME/.skills-migration-backup"
-TARGETS=(
-  "$HOME/.config/opencode/skills"
-  "$HOME/.codex/skills"
-  "$HOME/.claude/skills"
-  "${DSH_AGENTS_HOME:-$HOME/.agents}/skills"
-  "${DSH_HOME:-$HOME/.dsh}/skills"
-)
+HARNESS_SPEC="agents"
+TARGETS=()
+TARGET_HARNESSES=()
 
 VERIFY_ONLY=0
 UNLINK=0
@@ -67,6 +67,68 @@ QUIET=0
 
 # -Quiet 只隐藏逐项成功/进度行，警告、失败和最终汇总照常输出。
 say() { [[ $QUIET -eq 1 ]] || echo "$@"; }
+
+harness_dir() {
+  case "$1" in
+  opencode) printf '%s\n' "$HOME/.config/opencode/skills" ;;
+  codex) printf '%s\n' "$HOME/.codex/skills" ;;
+  claude) printf '%s\n' "$HOME/.claude/skills" ;;
+  agents) printf '%s\n' "${DSH_AGENTS_HOME:-$HOME/.agents}/skills" ;;
+  dsh) printf '%s\n' "${DSH_HOME:-$HOME/.dsh}/skills" ;;
+  *) return 1 ;;
+  esac
+}
+
+parse_harnesses() {
+  # 解析 --harness 列表：默认 agents；all 只能单独使用；未知名称快速失败。
+  local spec="$1" item h dup
+  local -a requested=() selected=()
+  spec="$(printf '%s' "$spec" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  [[ -n "$spec" ]] || spec="agents"
+  IFS=',' read -ra requested <<<"$spec"
+
+  local has_all=0 count=0
+  for item in "${requested[@]}"; do
+    [[ -z "$item" ]] && continue
+    count=$((count + 1))
+    case "$item" in
+    all) has_all=1 ;;
+    opencode | codex | claude | agents | dsh) ;;
+    *)
+      echo "未知 harness: $item（可选: opencode, codex, claude, agents, dsh, all）" >&2
+      exit 2
+      ;;
+    esac
+  done
+  if [[ $has_all -eq 1 && $count -gt 1 ]]; then
+    echo "--harness all 不能与其他 harness 组合" >&2
+    exit 2
+  fi
+  if [[ $has_all -eq 1 ]]; then
+    selected=(opencode codex claude agents dsh)
+  else
+    for item in "${requested[@]}"; do
+      [[ -z "$item" ]] && continue
+      dup=0
+      for h in "${selected[@]+"${selected[@]}"}"; do
+        [[ "$h" == "$item" ]] && dup=1
+      done
+      [[ $dup -eq 0 ]] && selected+=("$item")
+    done
+  fi
+
+  TARGETS=()
+  TARGET_HARNESSES=()
+  for item in "${selected[@]}"; do
+    TARGETS+=("$(harness_dir "$item")")
+    TARGET_HARNESSES+=("$item")
+  done
+  HARNESS_LABEL="$(IFS=,; echo "${TARGET_HARNESSES[*]}")"
+}
+
+opencode_selected() {
+  [[ ",${HARNESS_LABEL}," == *",opencode,"* ]]
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -122,6 +184,14 @@ while [[ $# -gt 0 ]]; do
     INCLUDE="${1#--include=}"
     shift
     ;;
+  --harness)
+    HARNESS_SPEC="${2:-}"
+    shift 2
+    ;;
+  --harness=*)
+    HARNESS_SPEC="${1#--harness=}"
+    shift
+    ;;
   -h | --help)
     sed -n '2,36p' "$0"
     exit 0
@@ -132,6 +202,8 @@ while [[ $# -gt 0 ]]; do
     ;;
   esac
 done
+
+parse_harnesses "$HARNESS_SPEC"
 
 [[ -d "$SKILLS_DIR" ]] || {
   echo "skills 目录不存在: $SKILLS_DIR" >&2
@@ -187,17 +259,6 @@ if [[ ${#SKILLS[@]} -eq 0 ]]; then
     exit 1
   }
 fi
-
-harness_tag() {
-  case "$1" in
-  *opencode*) echo opencode ;;
-  *.codex*) echo codex ;;
-  *.claude*) echo claude ;;
-  *.agents*) echo agents ;;
-  *.dsh*) echo dsh ;;
-  *) echo other ;;
-  esac
-}
 
 normalize_path() {
   # 词法归一化：折叠 //、/./、/../，不要求路径存在（悬空链接的目标通常不存在）
@@ -258,8 +319,10 @@ failures=0
 
 # --plan 只预览，不创建目录、不改链接。
 if [[ $PLAN -eq 0 ]]; then
-  for target in "${TARGETS[@]}"; do
-    say "== $target =="
+  for idx in "${!TARGETS[@]}"; do
+    target="${TARGETS[$idx]}"
+    tag="${TARGET_HARNESSES[$idx]}"
+    say "== $target（$tag） =="
     if [[ ! -d "$target" ]]; then
       if [[ $VERIFY_ONLY -eq 1 ]]; then
         echo "  缺失目录（VerifyOnly，不创建）: $target" >&2
@@ -270,7 +333,6 @@ if [[ $PLAN -eq 0 ]]; then
       say "  创建目录"
     fi
 
-    tag="$(harness_tag "$target")"
     for skill in "${SKILLS[@]}"; do
       link="$target/$skill"
       dest="$SKILLS_DIR/$skill"
@@ -565,7 +627,7 @@ deploy_third_party_skills() {
     return 0
   fi
   echo "== 第三方 skill（${action}）：${TP[*]} =="
-  local args=(-X utf8 "$REPO_ROOT/scripts/third-party-skills.py" "$action")
+  local args=(-X utf8 "$REPO_ROOT/scripts/third-party-skills.py" "$action" --harness "$HARNESS_LABEL")
   local s
   for s in "${TP[@]}"; do args+=(--name "$s"); done
   if ! "$py" "${args[@]}"; then
@@ -585,7 +647,7 @@ verify_third_party_skills() {
     echo "未找到 Python，跳过第三方 skill 校验。"
     return 0
   fi
-  local args=(-X utf8 "$REPO_ROOT/scripts/third-party-skills.py" verify)
+  local args=(-X utf8 "$REPO_ROOT/scripts/third-party-skills.py" verify --harness "$HARNESS_LABEL")
   local s
   for s in "${TP[@]}"; do args+=(--name "$s"); done
   if ! "$py" "${args[@]}"; then
@@ -646,6 +708,10 @@ apply_recommended_cli() {
   # 推荐 cli.json：缺失或与真源不一致时，交互终端下询问是否应用；
   # 非交互环境默认跳过（用 --apply-recommended-cli 显式应用）。
   [[ $UNLINK -eq 1 || $VERIFY_ONLY -eq 1 ]] && return 0
+  if ! opencode_selected; then
+    echo "已跳过推荐 cli.json（本次 --harness ${HARNESS_LABEL} 未选择 opencode）。"
+    return 0
+  fi
   local repo_cli="$REPO_ROOT/config/opencode/cli.json"
   [[ -f "$repo_cli" ]] || return 0
   local dst="$HOME/.config/opencode/cli.json"
@@ -771,13 +837,18 @@ print_deploy_plan() {
   local create replace ok missing_dirs state skill need_deps need_cmd name repo ref
   IFS='|' read -r create replace ok missing_dirs <<<"$(plan_link_counts)"
   echo "== 部署计划（只预览，不修改）=="
+  echo "  harness: ${HARNESS_LABEL}（默认 agents；全量用 --harness all）"
   echo "  链接: ${#SKILLS[@]} 个 skill -> ${#TARGETS[@]} 个目录；新建 ${create}，修正/替换 ${replace}，已就绪 ${ok}；缺目录 ${missing_dirs}"
-  case "$(plan_cli_state)" in
-  same) echo "  cli.json: 已是最新（跳过）" ;;
-  missing) echo "  cli.json: 目标不存在（交互默认应用，--apply-recommended-cli 可直接应用）" ;;
-  different) echo "  cli.json: 与真源不同（交互默认保留，覆盖前备份）" ;;
-  absent) echo "  cli.json: 仓库没有推荐文件（跳过）" ;;
-  esac
+  if opencode_selected; then
+    case "$(plan_cli_state)" in
+    same) echo "  cli.json: 已是最新（跳过）" ;;
+    missing) echo "  cli.json: 目标不存在（交互默认应用，--apply-recommended-cli 可直接应用）" ;;
+    different) echo "  cli.json: 与真源不同（交互默认保留，覆盖前备份）" ;;
+    absent) echo "  cli.json: 仓库没有推荐文件（跳过）" ;;
+    esac
+  else
+    echo "  cli.json: 未选择 opencode（跳过）"
+  fi
   while IFS='|' read -r skill need_deps need_cmd; do
     state=""
     [[ "$need_deps" -eq 1 ]] && state+="依赖未安装 "
@@ -801,8 +872,10 @@ print_deploy_plan() {
 print_deploy_summary() {
   local skill need_deps need_cmd name state
   echo "== 完成 =="
-  echo "- skill 链接: 已处理 ${#SKILLS[@]} 个 -> ${#TARGETS[@]} 个目录"
-  if [[ $SKIP_RECOMMENDED -eq 1 ]]; then
+  echo "- skill 链接: 已处理 ${#SKILLS[@]} 个 -> ${#TARGETS[@]} 个目录（${HARNESS_LABEL}）"
+  if ! opencode_selected; then
+    echo "- cli.json: 未选择 opencode（跳过）"
+  elif [[ $SKIP_RECOMMENDED -eq 1 ]]; then
     echo "- cli.json: 已跳过（--skip-recommended-cli）"
   else
     case "$(plan_cli_state)" in
@@ -857,7 +930,7 @@ if [[ $UNLINK -eq 0 && $SKIP_TP -eq 0 && -f "$REPO_ROOT/config/upstream-skills.j
     echo "Python missing; upstream clone links were NOT checked." >&2
     failures=$((failures + 1))
   else
-    upstream_args=(-X utf8 "$REPO_ROOT/scripts/link-upstream-skills.py" --repo-root "$REPO_ROOT")
+    upstream_args=(-X utf8 "$REPO_ROOT/scripts/link-upstream-skills.py" --repo-root "$REPO_ROOT" --harness "$HARNESS_LABEL")
     [[ $VERIFY_ONLY -eq 1 ]] && upstream_args+=(--verify-only)
     [[ -n "$INCLUDE" ]] && upstream_args+=(--include "$INCLUDE")
     if ! "$upstream_py" "${upstream_args[@]}"; then

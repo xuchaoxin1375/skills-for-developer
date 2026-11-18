@@ -37,14 +37,14 @@ git status --short -- config/opencode/cli.json config/global-AGENTS.md plugins
 Get-Item "$env:USERPROFILE\.config\opencode\cli.json" -ErrorAction SilentlyContinue
 Get-ChildItem "$env:USERPROFILE\.config\opencode\plugins" -ErrorAction SilentlyContinue
 
-# 从真源恢复 cli.json，并重建插件链接与 AGENTS.md
-powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -ApplyRecommendedCli -SkipRecommendedSkills -SkipThirdPartySkills -SkipDepCheck -SkipSubmodules
+# 从真源恢复 cli.json，并重建插件链接与 AGENTS.md（必须显式选 opencode）
+powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -Harness opencode -ApplyRecommendedCli -SkipRecommendedSkills -SkipThirdPartySkills -SkipDepCheck -SkipSubmodules
 
 # 分别验证插件链接与运行态
 powershell -ExecutionPolicy Bypass -File scripts\link-plugins.ps1 -VerifyOnly
 ```
 
-`-ApplyRecommendedCli` 是恢复 `cli.json` 的关键；只跑默认部署或带 `-SkipRecommendedCli` 时，`cli.json` 不会被改写。`apply_recommended_cli` 会先把现有 live 文件备份为同目录 `cli.json.bak-<时间戳>`。
+`-Harness opencode` 与 `-ApplyRecommendedCli` 是恢复的关键：默认 `-Harness agents` 只链 Agents 通用目录，会跳过插件、全局 `AGENTS.md` 与 `cli.json`；只跑默认部署或带 `-SkipRecommendedCli` 时，`cli.json` 不会被改写。`apply_recommended_cli` 会先把现有 live 文件备份为同目录 `cli.json.bak-<时间戳>`。
 
 ### Linux / macOS
 
@@ -54,8 +54,8 @@ git status --short -- config/opencode/cli.json config/global-AGENTS.md plugins
 ls -l "$HOME/.config/opencode/cli.json" 2>/dev/null
 ls -l "$HOME/.config/opencode/plugins" 2>/dev/null
 
-# 从真源恢复 cli.json，并重建插件链接与 AGENTS.md
-./scripts/deploy.sh --apply-recommended-cli --skip-recommended-skills --skip-third-party-skills --skip-dep-check --skip-submodules
+# 从真源恢复 cli.json，并重建插件链接与 AGENTS.md（必须显式选 opencode）
+./scripts/deploy.sh --harness opencode --apply-recommended-cli --skip-recommended-skills --skip-third-party-skills --skip-dep-check --skip-submodules
 
 # 分别验证插件链接与运行态
 ./scripts/link-plugins.sh --verify-only
@@ -100,7 +100,7 @@ readlink "$HOME/.zcode/AGENTS.md"
 - 不要把 live 的最小 `cli.json` 复制回 `config/opencode/cli.json`；先看 `git status` 与 `git log`。
 - 不要用 `-SkipRecommendedCli` / `--skip-recommended-cli` 做恢复；它会明确跳过 `cli.json`。
 - 不要只跑 `link-plugins` 就认为三件配置都恢复了；`cli.json`、`plugins/`、`AGENTS.md` 分别验证。
-- 不要把 `link-skills -VerifyOnly` 的“全部链接正常”当作 AGENTS.md 或 cli.json 已恢复；该命令只校验链接与推荐/第三方 skill。`AGENTS.md` 用 `deploy.ps1 -VerifyOnly` / `deploy.sh --verify-only` 或本文的内容对比核对。
+- 不要把 `link-skills -VerifyOnly -Harness opencode` 的“全部链接正常”当作 AGENTS.md 或 cli.json 已恢复；该命令只校验选中 harness 的链接与推荐/第三方 skill。`AGENTS.md` 用 `deploy.ps1 -VerifyOnly -Harness opencode` / `deploy.sh --verify-only --harness opencode` 或本文的内容对比核对。
 - 不要在未确认备份前删除 `~/.skills-migration-backup/`；实体 skill 目录被替换为链接时，旧内容可能只在这里。
 - 不要用 `link-skills -Unlink` / `--unlink` 做恢复；它只移除链接，不恢复配置。
 - 不要整目录回滚 `~/.config/opencode`；`service.json` 的 `password` / `port` 属于当前服务实例，只恢复缺失的 `cli.json`、`AGENTS.md` 与插件链接。

@@ -3,7 +3,7 @@
 
 实体不入本仓库：首次安装放到第三方共享根目录
 （$THIRD_PARTY_SKILLS_HOME 或 ~/.local/share/skills-for-developer/third-party），
-全部 harness 目录建立链接，避免同一 skill 多份副本与本地配置不同步。
+链接只建到 --harness 选中的目录（默认 agents；all 为五套），避免同一 skill 多份副本。
 
 日常命令：
   python -X utf8 scripts/third-party-skills.py list
@@ -42,7 +42,7 @@ META_NAME = ".third-party-install.json"
 INSTALLER_NAME = "scripts/third-party-skills.py"
 
 
-class RegistryError(Exception):
+class RegistryError(ValueError):
     pass
 
 
@@ -104,14 +104,38 @@ def third_party_home() -> Path:
     )
 
 
+HARNESS_SPEC = "agents"
+
+
+def set_harness_selection(spec: str | None) -> None:
+    """设置本次要处理的 harness；默认 agents，all 表示五套目录。"""
+    global HARNESS_SPEC
+    valid = ["opencode", "codex", "claude", "agents", "dsh"]
+    items = [item.strip().lower() for item in (spec or "agents").split(",") if item.strip()]
+    if not items:
+        items = ["agents"]
+    unknown = [item for item in items if item not in valid and item != "all"]
+    if unknown:
+        raise RegistryError(
+            f"未知 harness: {', '.join(unknown)}（可选: {', '.join(valid)}, all）"
+        )
+    if "all" in items and len(items) > 1:
+        raise RegistryError("harness all 不能与其他 harness 组合")
+    HARNESS_SPEC = "all" if "all" in items else ",".join(dict.fromkeys(items))
+
+
 def harness_targets() -> list[tuple[str, Path]]:
-    return [
+    all_targets = [
         ("opencode", home_dir() / ".config" / "opencode" / "skills"),
         ("codex", home_dir() / ".codex" / "skills"),
         ("claude", home_dir() / ".claude" / "skills"),
         ("agents", agents_home() / "skills"),
         ("dsh", dsh_home() / "skills"),
     ]
+    if HARNESS_SPEC == "all":
+        return all_targets
+    selected = set(HARNESS_SPEC.split(","))
+    return [(label, path) for label, path in all_targets if label in selected]
 
 
 def canonical_dir(entry: Entry) -> Path:
@@ -649,6 +673,12 @@ def add_common(sub, *, require_selection: bool = False) -> None:
     sub.add_argument("--timeout", type=int, default=60, help="下载超时秒数（默认 60）")
     sub.add_argument("--force", action="store_true", help="强制重装或删除（按命令语义）")
     sub.add_argument("--strict", action="store_true", help="verify 时把版本可更新也计为失败")
+    sub.add_argument(
+        "--harness",
+        default=None,
+        help="目标 harness，逗号分隔: opencode/codex/claude/agents/dsh/all；"
+        "默认 agents，uninstall 默认 all",
+    )
     if require_selection:
         sub.add_argument("--all", action="store_true", help="卸载名单内全部（需显式指定）")
 
@@ -682,6 +712,10 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     try:
+        harness = args.harness
+        if harness is None:
+            harness = "all" if args.command == "uninstall" else "agents"
+        set_harness_selection(harness)
         entries = parse_registry()
         names = split_names(args.name)
         if names:

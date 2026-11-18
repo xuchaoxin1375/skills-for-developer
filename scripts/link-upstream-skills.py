@@ -129,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         epilog=(
             "Examples: python scripts/link-upstream-skills.py --verify-only; "
             "python scripts/link-upstream-skills.py --include grill-me; "
+            "python scripts/link-upstream-skills.py --harness all; "
             "python scripts/link-upstream-skills.py --replace; "
             "python scripts/link-upstream-skills.py --unlink --include grill-me. "
             "Missing clones are optional; version/source drift fails. --replace backs up entities, "
@@ -137,6 +138,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--include", action="append", default=[], help="Comma-separated names; repeatable; intersection with config")
+    parser.add_argument(
+        "--harness",
+        default=None,
+        help="Target harnesses: opencode/codex/claude/agents/dsh/all; "
+        "default agents, unlink defaults to all",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--verify-only", action="store_true", help="Read-only source/version/link verification")
     mode.add_argument("--unlink", action="store_true", help="Remove matching direct links only; keep upstream clone")
@@ -144,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         helpers = load_link_helpers()
+        harness = args.harness
+        if harness is None:
+            harness = "all" if args.unlink else "agents"
+        helpers.set_harness_selection(harness)
         include = {name.strip() for value in args.include for name in value.split(",") if name.strip()}
         targets = helpers.harness_targets()
         selected = sources(args.repo_root.resolve(), include, targets)

@@ -6,12 +6,17 @@
 .DESCRIPTION
   串联 git submodule 检查、link-skills.ps1、link-plugins.ps1 与全局 AGENTS.md 同步，避免分开执行时漏步。
   未初始化的子模块默认自动拉取，失败只警告，不阻塞其他 skill。
-  OpenCode 的 AGENTS.md 缺失时复制，内容不一致只警告；ZCode 仅在 ~/.zcode 存在时尝试
+  默认只链 Agents 通用目录；未选择 opencode 时自动跳过插件、全局 AGENTS.md 与 cli.json。
+  选中 OpenCode 时，AGENTS.md 缺失才复制，内容不一致只警告；ZCode 仅在 ~/.zcode 存在时尝试
   symlink 到 OpenCode 副本，无符号链接权限时跳过（不复制、不计失败）。
   结束时打印各阶段耗时与效率复盘提示，便于发现部署流程劣化。
 
 .PARAMETER RepoRoot
   仓库根目录，默认自动推导为脚本所在目录的上级。
+
+.PARAMETER Harness
+  目标 harness 列表，逗号分隔: opencode/codex/claude/agents/dsh/all。
+  默认 agents，只链 Agents 通用目录；未选择 opencode 时自动跳过插件、全局 AGENTS.md 与 cli.json。
 
 .PARAMETER Plan
   只预览，不修改任何文件。
@@ -47,6 +52,12 @@
   powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -Plan
 
 .EXAMPLE
+  powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -Harness opencode
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -Harness all
+
+.EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -ApplyRecommendedCli -ApplyRecommendedSkills -SkipThirdPartySkills
 
 .EXAMPLE
@@ -55,6 +66,7 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
   [string]$RepoRoot = '',
+  [string]$Harness = 'agents',
   [switch]$Plan,
   [switch]$VerifyOnly,
   [switch]$Quiet,
@@ -112,6 +124,13 @@ function Test-OpenCodePresent {
     if (Test-Path -LiteralPath (Join-Path $dir $name) -PathType Leaf) { return $true }
   }
   return $false
+}
+
+function Test-HarnessSelected([string]$Name) {
+  # 本次 -Harness 是否包含指定 harness；all 覆盖全部。
+  $items = @($Harness -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+  if ($items -contains 'all') { return $true }
+  return $items -contains $Name
 }
 
 function Get-UninitializedSubmodules {
@@ -309,7 +328,7 @@ if (-not $SkipSubmodules) {
 
 # 1. skill 链接
 Invoke-Phase 'skill 链接' {
-  $skillArgs = @{}
+  $skillArgs = @{ Harness = $Harness }
   if ($Plan) { $skillArgs['Plan'] = $true }
   if ($VerifyOnly) { $skillArgs['VerifyOnly'] = $true }
   if ($Quiet) { $skillArgs['Quiet'] = $true }
@@ -326,19 +345,27 @@ Invoke-Phase 'skill 链接' {
 
 # 2. OpenCode 插件链接
 if (-not $SkipPlugins) {
-  Invoke-Phase '插件链接' {
-    $pluginArgs = @{}
-    if ($VerifyOnly) { $pluginArgs['VerifyOnly'] = $true }
-    if ($Quiet) { $pluginArgs['Quiet'] = $true }
-    if ($Plan) { $pluginArgs['WhatIf'] = $true }
-    & (Join-Path $RepoRoot 'scripts\link-plugins.ps1') @pluginArgs
-    if (-not $?) { $script:Failures++ }
+  if (-not (Test-HarnessSelected 'opencode')) {
+    Write-Step "跳过 OpenCode 插件：本次 -Harness $Harness 未选择 opencode（需要时加 -Harness opencode 或 all）"
+  } else {
+    Invoke-Phase '插件链接' {
+      $pluginArgs = @{}
+      if ($VerifyOnly) { $pluginArgs['VerifyOnly'] = $true }
+      if ($Quiet) { $pluginArgs['Quiet'] = $true }
+      if ($Plan) { $pluginArgs['WhatIf'] = $true }
+      & (Join-Path $RepoRoot 'scripts\link-plugins.ps1') @pluginArgs
+      if (-not $?) { $script:Failures++ }
+    }
   }
 }
 
 # 3. 全局 AGENTS.md
 if (-not $SkipGlobalAgents) {
-  Invoke-Phase '全局 AGENTS.md' { Sync-GlobalAgents }
+  if (-not (Test-HarnessSelected 'opencode')) {
+    Write-Step "跳过全局 AGENTS.md：本次 -Harness $Harness 未选择 opencode（需要时加 -Harness opencode 或 all）"
+  } else {
+    Invoke-Phase '全局 AGENTS.md' { Sync-GlobalAgents }
+  }
 }
 
 # 4. 依赖套餐检查（只提示，不阻断）

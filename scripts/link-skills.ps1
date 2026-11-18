@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-  [Windows 专用] 将本仓库 skills/ 下的每个 skill 通过 Junction 链接到各 harness 的 skills 目录。
-  Linux/macOS 请用 scripts/link-skills.sh（symlink）。
+  [Windows 专用] 将本仓库 skills/ 下的每个 skill 通过 Junction 链接到选中的 harness skills 目录。
+  默认 agents；用 -Harness 选择，all 为五套目录。Linux/macOS 请用 scripts/link-skills.sh（symlink）。
 
 .DESCRIPTION
   唯一真源: <repo>/skills/<name>/ (内含 SKILL.md)。
@@ -16,7 +16,7 @@
   第三方 skill 登记在 config/third-party-skills.txt, 实体不入本仓库,
   由 scripts/third-party-skills.py 安装到 $env:THIRD_PARTY_SKILLS_HOME
   (默认 $env:USERPROFILE\.local\share\skills-for-developer\third-party),
-  并在各 harness 目录建链接。
+  并只在选中的 harness 目录建链接。
 
   幂等, 可反复执行。只管理仓库中存在的 skill 名, 并顺手清理指向本仓库
   但目标已不存在的悬空链接 (重命名/删除 skill 的残留);
@@ -27,6 +27,11 @@
 
 .PARAMETER Include
   只处理指定的 skill 名 (默认处理 skills/ 下全部含 SKILL.md 的目录)。
+
+.PARAMETER Harness
+  目标 harness 列表, 逗号分隔: opencode/codex/claude/agents/dsh/all。
+  默认 agents, 只链接到 $env:DSH_AGENTS_HOME\skills (默认 $env:USERPROFILE\.agents\skills);
+  all 恢复五套目录全量链接。
 
 .PARAMETER Unlink
   移除本仓库创建的 Junction (仅移除指向本仓库的链接, 实体目录不动)。
@@ -74,12 +79,17 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Include doc-rewrite-review,htmlmini
 .EXAMPLE
+  powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Harness opencode
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -Harness all
+.EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\link-skills.ps1 -SyncThirdPartySkills
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
   [string]$RepoRoot = '',
   [string[]]$Include,
+  [string[]]$Harness = @('agents'),
   [switch]$Unlink,
   [switch]$VerifyOnly,
   [switch]$Plan,
@@ -111,6 +121,26 @@ function Test-FileEqual([string]$Left, [string]$Right) {
 if ($Include) {
   $Include = @($Include | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
+
+# 默认只链接 Agents 通用目录；-Harness all 恢复五套目录全量链接。
+if (-not $Harness -or $Harness.Count -eq 0) { $Harness = @('agents') }
+$Harness = @($Harness | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+$validHarnesses = @('opencode', 'codex', 'claude', 'agents', 'dsh')
+$unknownHarnesses = @($Harness | Where-Object { $validHarnesses -notcontains $_ -and $_ -ne 'all' })
+if ($unknownHarnesses.Count -gt 0) {
+  Write-Error "未知 harness: $($unknownHarnesses -join ', ')（可选: opencode, codex, claude, agents, dsh, all）" -ErrorAction Continue
+  exit 2
+}
+if ($Harness -contains 'all') {
+  if ($Harness.Count -gt 1) {
+    Write-Error '-Harness all 不能与其他 harness 组合' -ErrorAction Continue
+    exit 2
+  }
+  $Harness = $validHarnesses
+}
+$Harness = @($Harness | Select-Object -Unique)
+
+function Test-OpenCodeSelected { return $Harness -contains 'opencode' }
 
 # 默认 UTF-8：5.1 控制台默认 GBK，直接输出中文会被采集侧按 UTF-8 解错；
 # 脚本内设为 UTF-8（仅影响本进程），pwsh 7 下同样无害。
@@ -150,13 +180,20 @@ if ($gitCommand) {
 $dshHome = if (-not [string]::IsNullOrWhiteSpace($env:DSH_HOME)) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
 $agentsHome = if (-not [string]::IsNullOrWhiteSpace($env:DSH_AGENTS_HOME)) { $env:DSH_AGENTS_HOME } else { Join-Path $env:USERPROFILE '.agents' }
 
-$targets = @(
-  (Join-Path $env:USERPROFILE '.config\opencode\skills'),
-  (Join-Path $env:USERPROFILE '.codex\skills'),
-  (Join-Path $env:USERPROFILE '.claude\skills'),
-  (Join-Path $agentsHome 'skills'),
-  (Join-Path $dshHome 'skills')
-)
+$harnessDirs = @{
+  opencode = (Join-Path $env:USERPROFILE '.config\opencode\skills')
+  codex = (Join-Path $env:USERPROFILE '.codex\skills')
+  claude = (Join-Path $env:USERPROFILE '.claude\skills')
+  agents = (Join-Path $agentsHome 'skills')
+  dsh = (Join-Path $dshHome 'skills')
+}
+$targets = @()
+$targetHarness = @{}
+foreach ($h in $Harness) {
+  $dir = $harnessDirs[$h]
+  $targets += $dir
+  $targetHarness[$dir] = $h
+}
 
 $skills = Get-ChildItem -Path $skillsDir -Directory | Where-Object {
   Test-Path (Join-Path $_.FullName 'SKILL.md') -PathType Leaf
@@ -327,12 +364,8 @@ foreach ($targetDir in $targets) {
       continue
     }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $harness = 'other'
-    if ($targetDir -match 'opencode') { $harness = 'opencode' }
-    elseif ($targetDir -match '\.codex') { $harness = 'codex' }
-    elseif ($targetDir -match '\.claude') { $harness = 'claude' }
-    elseif ($targetDir -match '\.agents') { $harness = 'agents' }
-    elseif ($targetDir -match '\.dsh') { $harness = 'dsh' }
+    $harness = $targetHarness[$targetDir]
+    if ([string]::IsNullOrWhiteSpace($harness)) { $harness = 'other' }
     $backup = Join-Path (Join-Path (Join-Path (Join-Path $env:USERPROFILE '.skills-migration-backup') $stamp) $harness) $skill.Name
     if ($PSCmdlet.ShouldProcess($link, "备份实体到 $backup 并创建 Junction -> $dest")) {
       New-Item -ItemType Directory -Force -Path (Split-Path $backup -Parent) | Out-Null
@@ -502,7 +535,7 @@ function Get-PythonCommand {
 
 function Get-ThirdPartyArgs([string]$Action, [string[]]$Names) {
   $script = Join-Path $RepoRoot 'scripts\third-party-skills.py'
-  $pyArgs = @('-X', 'utf8', $script, $Action)
+  $pyArgs = @('-X', 'utf8', $script, $Action, '--harness', ($Harness -join ','))
   foreach ($n in @($Names)) {
     if (-not [string]::IsNullOrWhiteSpace($n)) { $pyArgs += @('--name', $n) }
   }
@@ -582,12 +615,17 @@ function Get-PlanTpState([string]$Name) {
 function Show-DeployPlan {
   $counts = Get-PlanLinkCounts
   Write-Host '== 部署计划（只预览，不修改）=='
+  Write-Host "  harness: $($Harness -join ',')（默认 agents；全量用 -Harness all）"
   Write-Host "  链接: $(@($skills).Count) 个 skill -> $($targets.Count) 个目录；新建 $($counts.Create)，修正/替换 $($counts.Replace)，已就绪 $($counts.Ok)；缺目录 $($counts.MissingDirs)"
-  switch (Get-PlanCliState) {
-    'same' { Write-Host '  cli.json: 已是最新（跳过）' }
-    'missing' { Write-Host '  cli.json: 目标不存在（交互默认应用，-ApplyRecommendedCli 可直接应用）' }
-    'different' { Write-Host '  cli.json: 与真源不同（交互默认保留，覆盖前备份）' }
-    'absent' { Write-Host '  cli.json: 仓库没有推荐文件（跳过）' }
+  if (Test-OpenCodeSelected) {
+    switch (Get-PlanCliState) {
+      'same' { Write-Host '  cli.json: 已是最新（跳过）' }
+      'missing' { Write-Host '  cli.json: 目标不存在（交互默认应用，-ApplyRecommendedCli 可直接应用）' }
+      'different' { Write-Host '  cli.json: 与真源不同（交互默认保留，覆盖前备份）' }
+      'absent' { Write-Host '  cli.json: 仓库没有推荐文件（跳过）' }
+    }
+  } else {
+    Write-Host '  cli.json: 未选择 opencode（跳过）'
   }
   foreach ($s in @(Get-RecommendedSkills)) {
     $st = Get-PlanRecState $s
@@ -610,8 +648,10 @@ function Show-DeployPlan {
 
 function Show-DeploySummary {
   Write-Host '== 完成 =='
-  Write-Host "- skill 链接: 已处理 $(@($skills).Count) 个 -> $($targets.Count) 个目录"
-  if ($SkipRecommendedCli) {
+  Write-Host "- skill 链接: 已处理 $(@($skills).Count) 个 -> $($targets.Count) 个目录（$($Harness -join ',')）"
+  if (-not (Test-OpenCodeSelected)) {
+    Write-Host '- cli.json: 未选择 opencode（跳过）'
+  } elseif ($SkipRecommendedCli) {
     Write-Host '- cli.json: 已跳过（-SkipRecommendedCli）'
   } else {
     switch (Get-PlanCliState) {
@@ -651,39 +691,43 @@ if ($Plan) {
 if (-not $Unlink -and -not $VerifyOnly) {
   # 推荐 cli.json: 缺失或与真源不一致时, 交互终端下询问是否应用;
   # 非交互环境默认跳过 (用 -ApplyRecommendedCli 显式应用)。
-  $repoCli = Join-Path (Join-Path (Join-Path $RepoRoot 'config') 'opencode') 'cli.json'
-  if (Test-Path -LiteralPath $repoCli -PathType Leaf) {
-    $dstDir = Join-Path $env:USERPROFILE '.config\opencode'
-    $dstCli = Join-Path $dstDir 'cli.json'
-    $inSync = (Test-Path -LiteralPath $dstCli -PathType Leaf) -and (Test-FileEqual $repoCli $dstCli)
-    if ($inSync) {
-      Write-Host '推荐 cli.json 已是最新。'
-    } elseif ($SkipRecommendedCli) {
-      Write-Host '已跳过推荐 cli.json (-SkipRecommendedCli)。'
-    } else {
-      $doApply = $false
-      if ($ApplyRecommendedCli) {
-        $doApply = $true
-      } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
-        if (-not (Test-Path -LiteralPath $dstCli -PathType Leaf)) {
-          $ans = Read-Host '推荐 cli.json 不存在, 是否应用? [Y/n]'
-          $doApply = $ans -match '^([yY]([eE][sS])?)?$'
-        } else {
-          $ans = Read-Host '推荐 cli.json 与当前配置不同 (覆盖前备份), 是否应用? [y/N]'
-          $doApply = $ans -match '^(y|Y|yes|YES)$'
-        }
+  if (-not (Test-OpenCodeSelected)) {
+    Write-Host "已跳过推荐 cli.json（本次 -Harness $($Harness -join ',') 未选择 opencode）。"
+  } else {
+    $repoCli = Join-Path (Join-Path (Join-Path $RepoRoot 'config') 'opencode') 'cli.json'
+    if (Test-Path -LiteralPath $repoCli -PathType Leaf) {
+      $dstDir = Join-Path $env:USERPROFILE '.config\opencode'
+      $dstCli = Join-Path $dstDir 'cli.json'
+      $inSync = (Test-Path -LiteralPath $dstCli -PathType Leaf) -and (Test-FileEqual $repoCli $dstCli)
+      if ($inSync) {
+        Write-Host '推荐 cli.json 已是最新。'
+      } elseif ($SkipRecommendedCli) {
+        Write-Host '已跳过推荐 cli.json (-SkipRecommendedCli)。'
       } else {
-        Write-Host '非交互环境, 跳过推荐 cli.json (用 -ApplyRecommendedCli 应用)。'
-      }
-      if ($doApply -and $PSCmdlet.ShouldProcess($dstCli, '应用推荐 cli.json')) {
-        New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
-        if (Test-Path -LiteralPath $dstCli -PathType Leaf) {
-          $bak = "$dstCli.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-          Copy-Item -LiteralPath $dstCli -Destination $bak -Force
-          Write-Host "原 cli.json 已备份到 $bak"
+        $doApply = $false
+        if ($ApplyRecommendedCli) {
+          $doApply = $true
+        } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+          if (-not (Test-Path -LiteralPath $dstCli -PathType Leaf)) {
+            $ans = Read-Host '推荐 cli.json 不存在, 是否应用? [Y/n]'
+            $doApply = $ans -match '^([yY]([eE][sS])?)?$'
+          } else {
+            $ans = Read-Host '推荐 cli.json 与当前配置不同 (覆盖前备份), 是否应用? [y/N]'
+            $doApply = $ans -match '^(y|Y|yes|YES)$'
+          }
+        } else {
+          Write-Host '非交互环境, 跳过推荐 cli.json (用 -ApplyRecommendedCli 应用)。'
         }
-        Copy-Item -LiteralPath $repoCli -Destination $dstCli -Force
-        Write-Host '推荐 cli.json 已应用。'
+        if ($doApply -and $PSCmdlet.ShouldProcess($dstCli, '应用推荐 cli.json')) {
+          New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
+          if (Test-Path -LiteralPath $dstCli -PathType Leaf) {
+            $bak = "$dstCli.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+            Copy-Item -LiteralPath $dstCli -Destination $bak -Force
+            Write-Host "原 cli.json 已备份到 $bak"
+          }
+          Copy-Item -LiteralPath $repoCli -Destination $dstCli -Force
+          Write-Host '推荐 cli.json 已应用。'
+        }
       }
     }
   }
@@ -856,7 +900,7 @@ if (-not $Unlink -and -not $SkipThirdPartySkills) {
       Write-Warning 'Python missing; upstream clone links were NOT checked.'
       $failures++
     } elseif ($VerifyOnly -or $PSCmdlet.ShouldProcess($upstreamConfig, 'Link selected upstream skills (no network)')) {
-      $upstreamArgs = @('-X', 'utf8', (Join-Path $RepoRoot 'scripts\link-upstream-skills.py'), '--repo-root', $RepoRoot)
+      $upstreamArgs = @('-X', 'utf8', (Join-Path $RepoRoot 'scripts\link-upstream-skills.py'), '--repo-root', $RepoRoot, '--harness', ($Harness -join ','))
       if ($VerifyOnly) { $upstreamArgs += '--verify-only' }
       foreach ($name in @($Include)) {
         if (-not [string]::IsNullOrWhiteSpace($name)) { $upstreamArgs += @('--include', $name) }

@@ -143,13 +143,15 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 
 ## Harness 映射（Win / Linux 路径同构，只是家目录写法不同）
 
+默认只部署到 **Agents 通用** 目录（`~/.agents/skills`），它是 Agent Skills 开放目录约定，Codex、OpenCode、Pi、Gemini 等多类工具可读。用 `--harness` / `-Harness` 选择一个或多个 harness，`all` 表示五套目录全量；未选择的目录不会创建、修正或清理。未选择 `opencode` 时，`deploy` 自动跳过 OpenCode 插件、全局 `AGENTS.md` 与 `cli.json`。
+
 | Harness          | Windows skills 目录                                                   | Linux skills 目录                        | 说明                                                             |
 | ---------------- | --------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------- |
-| Agents 通用      | `%DSH_AGENTS_HOME%/skills`（默认 `%USERPROFILE%/.agents/skills`） | `${DSH_AGENTS_HOME:-~/.agents}/skills` | 全量链接；Pi 等标准兼容 harness 共用；第三方实体由 `third-party-skills.py` 管理 |
-| OpenCode         | `%USERPROFILE%/.config/opencode/skills`                             | `~/.config/opencode/skills`            | 全量链接仓库中的 skill                                           |
-| Codex            | `%USERPROFILE%/.codex/skills`                                       | `~/.codex/skills`                      | 全量链接; 自带的`.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
-| Claude           | `%USERPROFILE%/.claude/skills`                                      | `~/.claude/skills`                     | 全量链接                                                         |
-| DeepSeek Harness | `%DSH_HOME%/skills`（默认 `%USERPROFILE%/.dsh/skills`）           | `${DSH_HOME:-~/.dsh}/skills`           | 全量链接；dsh 原生用户级（rank 高于通用位置）                    |
+| Agents 通用      | `%DSH_AGENTS_HOME%/skills`（默认 `%USERPROFILE%/.agents/skills`） | `${DSH_AGENTS_HOME:-~/.agents}/skills` | **默认目标**；Pi 等标准兼容 harness 共用；第三方实体由 `third-party-skills.py` 管理 |
+| OpenCode         | `%USERPROFILE%/.config/opencode/skills`                             | `~/.config/opencode/skills`            | `--harness opencode` 时链接；同时处理插件、`AGENTS.md` 与 `cli.json` |
+| Codex            | `%USERPROFILE%/.codex/skills`                                       | `~/.codex/skills`                      | `--harness codex` 时链接；自带的`.system/`、`AGENTS.md` 等原样保留 |
+| Claude           | `%USERPROFILE%/.claude/skills`                                      | `~/.claude/skills`                     | `--harness claude` 时链接                                         |
+| DeepSeek Harness | `%DSH_HOME%/skills`（默认 `%USERPROFILE%/.dsh/skills`）           | `${DSH_HOME:-~/.dsh}/skills`           | `--harness dsh` 时链接；dsh 原生用户级（rank 高于通用位置）       |
 | ZCode            | `%USERPROFILE%/.zcode/skills`（优先），回退 `%USERPROFILE%/.agents/skills` | `~/.zcode/skills`（优先），回退 `~/.agents/skills` | 只读取不建链，复用 Agents 通用行的链接；个别 skill 只想在 ZCode 内覆盖时放 `~/.zcode/skills`；全局 AGENTS.md 优先 symlink 到 OpenCode 副本，无 symlink 权限时跳过、不保留副本（见「全局 AGENTS.md 同步与合并」） |
 
 ## 链接方式：Junction（Win）/ symlink（Linux）
@@ -163,14 +165,22 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 Windows（PowerShell）：
 
 ```powershell
-# 一键部署（skill + 插件 + 全局 AGENTS.md + 依赖检查, 末尾打印效率复盘）
+# 一键部署（默认只链 Agents 通用目录；含子模块检查与依赖检查, 末尾打印效率复盘）
 powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1
+# 指定 harness（OpenCode 会同时处理插件、AGENTS.md 与 cli.json）
+powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Harness opencode
+powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Harness opencode,codex
+# 五套目录全量
+powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Harness all
 powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Plan
 powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -VerifyOnly
 powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -SkipSubmodules
 
-# 全量链接 (首次迁移 / 新增 skill / 换机器后恢复, 幂等)
+# 默认只链 Agents 通用目录（幂等）
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1
+# 五套目录全量（首次迁移 / 新增 skill / 换机器后恢复）
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Harness all
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Harness opencode,codex
 
 # 只预览部署计划, 不修改
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Plan
@@ -190,8 +200,9 @@ powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -ApplyThirdPart
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipThirdPartySkills
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SyncThirdPartySkills
 
-# 移除本仓库创建的链接 (实体不受影响)
+# 移除选中 harness 中本仓库创建的链接 (实体不受影响)
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Unlink
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Harness all -Unlink
 
 # 插件链接 (Junction 到 ~/.config\opencode\plugins\<name>)
 powershell -ExecutionPolicy Bypass -File scripts/link-plugins.ps1
@@ -202,8 +213,13 @@ powershell -ExecutionPolicy Bypass -File scripts/link-plugins.ps1 -Unlink
 Linux：
 
 ```bash
-# 一键部署（skill + 插件 + 全局 AGENTS.md + 依赖检查）
+# 一键部署（默认只链 Agents 通用目录；含子模块与依赖检查）
 ./scripts/deploy.sh
+# 指定 harness（OpenCode 会同时处理插件、AGENTS.md 与 cli.json）
+./scripts/deploy.sh --harness opencode
+./scripts/deploy.sh --harness opencode,codex
+# 五套目录全量
+./scripts/deploy.sh --harness all
 ./scripts/deploy.sh --plan
 ./scripts/deploy.sh --verify-only
 ./scripts/deploy.sh --skip-submodules
@@ -216,13 +232,16 @@ cd ~/repos/skills-for-developer
 # 已 clone 但没拉子模块时，部署脚本会自动初始化；也可手动执行
 git submodule update --init --depth 1
 
-# 全量链接（幂等）
+# 默认只链 Agents 通用目录（幂等）
 ./scripts/link-skills.sh
+# 五套目录全量（首次迁移 / 新增 skill / 换机器后恢复）
+./scripts/link-skills.sh --harness all
+./scripts/link-skills.sh --harness opencode,codex
 
 # 只预览部署计划，不修改
 ./scripts/link-skills.sh --plan
 
-# 只检查 / 只处理部分 / 移除
+# 只检查 / 只处理部分 / 移除（都只作用于选中的 harness）
 ./scripts/link-skills.sh --verify-only
 ./scripts/link-skills.sh --include doc-rewrite-review,htmlmini
 ./scripts/link-skills.sh --unlink
@@ -255,9 +274,10 @@ git submodule update --init --depth 1
 `name | repo | kind | ref | preserve | description`，当前登记 `anysearch` v3.1.1。
 
 - 部署时交互询问，**默认 No**（第三方上游代码，安装前可先看名单与仓库）；非交互环境默认跳过。
-  显式安装用 `-ApplyThirdPartySkills` / `--apply-third-party-skills`。
+  显式安装用 `-ApplyThirdPartySkills` / `--apply-third-party-skills`；链接跟随本次选中的 harness，
+  单独运行 Python 工具时用 `--harness agents|opencode|codex|claude|dsh|all`（默认 `agents`，`uninstall` 默认 `all`）。
 - 实体只放一份：第三方共享根目录 `$THIRD_PARTY_SKILLS_HOME/<name>`
-  （默认 `~/.local/share/skills-for-developer/third-party/<name>`）；各已登记的 harness 目录都用
+  （默认 `~/.local/share/skills-for-developer/third-party/<name>`）；选中的 harness 目录用
   Junction/symlink 指向它，避免 Key 与 `runtime.conf` 出现多份副本。
   默认不放在仓库内，避免 `git clean -xdf` 误删第三方实体与 `.env`；如确需仓库内共享根，可把
   `THIRD_PARTY_SKILLS_HOME` 指向仓库内的 `third-party/`（`.gitignore` 已预留），安装器按同一路径管理。
@@ -277,39 +297,45 @@ git submodule update --init --depth 1
 
 ## 部署清单（新机 / 首次 / 代理执行）
 
-部署 = 子模块检查 + 推荐基线依赖 + skill 链接安装 + 全局 AGENTS.md 合并 + 两级校验。按下列顺序一次跑完，避免来回补步；各步细则见对应小节，此处只给顺序与开关。
+部署 = 子模块检查 + 推荐基线依赖 + 选中 harness 的 skill 链接 + （选中 OpenCode 时）插件与全局 AGENTS.md + 两级校验。默认只链 Agents 通用目录；`-Harness` / `--harness` 选 `opencode`、`codex`、`claude`、`agents`、`dsh` 或 `all`。按下列顺序一次跑完，避免来回补步；各步细则见对应小节，此处只给顺序与开关。
 
 先跑 `--plan` / `-Plan` 可预览链接新建与替换数量、cli.json、推荐 skill 和第三方状态，不修改任何文件。交互模式只对未就绪项提问：cli.json 缺失默认应用、已存在差异默认保留；推荐依赖默认安装；第三方 skill 默认不装。完成后会打印已处理与未处理的摘要。
 
-优先用一键脚本 `scripts/deploy.ps1`（Windows）/ `scripts/deploy.sh`（Linux）串起下面各步（子模块检查、skill 链接、插件链接、全局 AGENTS.md、依赖检查），并在末尾打印各阶段耗时与效率复盘；分步命令只在排障或只做单步时使用。一键脚本同样支持 `-Plan` / `--plan`、`-VerifyOnly` / `--verify-only`、`-Quiet` / `--quiet` 与 `-SkipSubmodules` / `--skip-submodules`。
+优先用一键脚本 `scripts/deploy.ps1`（Windows）/ `scripts/deploy.sh`（Linux）串起下面各步（子模块检查、skill 链接、插件链接、全局 AGENTS.md、依赖检查），并在末尾打印各阶段耗时与效率复盘；分步命令只在排障或只做单步时使用。一键脚本同样支持 `-Plan` / `--plan`、`-VerifyOnly` / `--verify-only`、`-Quiet` / `--quiet`、`-SkipSubmodules` / `--skip-submodules` 与 `-Harness` / `--harness`。未选择 `opencode` 时，插件、全局 AGENTS.md 与 cli.json 自动跳过并提示。
 
 `codex-model-config` 是 git submodule：一键脚本默认检测并初始化（失败只警告，不阻塞其他 skill）；zip/部分包不含子模块内容时该 skill 会被跳过。只要 skill 链接、不处理 OpenCode 专属步骤的轻量环境（如 arena 沙箱）可用：
 
 ```bash
-./scripts/deploy.sh --skip-plugins --skip-global-agents --skip-dep-check
+./scripts/deploy.sh --harness agents --skip-dep-check
+```
+
+只链 OpenCode 或需要恢复 OpenCode 本机配置时，必须显式选择 `opencode`，否则插件、AGENTS.md 与 cli.json 会被跳过：
+
+```bash
+./scripts/deploy.sh --harness opencode
 ```
 
 链接只对支持原生 skill 发现/扫描的 harness 有意义；链接存在、`--verify-only` 通过都不等于当前会话已发现或触发 skill。没有 Skill 工具或列表接口的环境（如部分沙箱）直接按路径读取 `skills/<name>/SKILL.md`，`references/`、`scripts/` 同样按相对路径读取；需要把技能放进工作区时，复制或链接到工作区可读目录，并在任务说明中给出路径。原生发现是否生效以宿主暴露的 skill 列表/调用结果为准，不能从链接推断。
 
 1. **推荐基线依赖（强烈建议）**：按 `minimal` / `standard` / `full` 选套餐（默认 `standard`，含全局 mmdc；PowerShell 7 仅 Windows）；`full` 再补 uv、jq 与 Scrapling（推荐项）。它们覆盖 resource-inventory、htmlmini、mermaid-render-fix、browser-automation、network-access 等，缺了会退化到在线回退、人工路径或能力不全。基础命令行工具 git、ripgrep、fd 与 Playwright、Scrapling 为推荐项（缺失只警告），部署脚本结束时会检测并提示安装命令，不阻断部署。检查命令与安装明细见 [依赖套餐](docs/skill-dependencies.md#部署基线)。
-2. **链接安装（首跑即定 cli.json）**：命令见「常用操作」。交互终端只对未就绪项询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
+2. **链接安装（选中 OpenCode 时首跑即定 cli.json）**：命令见「常用操作」，默认只处理 `agents`，需要其他 harness 时加 `--harness`。交互终端只对未就绪项询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
    ```bash
-   ./scripts/link-skills.sh --apply-recommended-cli   # 应用推荐 TUI 配置
-   ./scripts/link-skills.sh --skip-recommended-cli   # 保持本机 TUI 配置
+   ./scripts/link-skills.sh --harness opencode --apply-recommended-cli   # 应用推荐 TUI 配置
+   ./scripts/link-skills.sh --harness opencode --skip-recommended-cli    # 保持本机 TUI 配置
    ```
-   Windows 对应 `scripts\link-skills.ps1 -ApplyRecommendedCli` / `-SkipRecommendedCli`。
+   Windows 对应 `scripts\link-skills.ps1 -Harness opencode -ApplyRecommendedCli` / `-SkipRecommendedCli`。
    推荐 skill（`config/recommended-skills.txt`，当前为 htmlmini）同次一并处理：
    只对未就绪项询问，一次确认是否安装依赖（`pnpm install`）并创建命令，缺省 Yes；
    非交互默认跳过依赖（同一次带 `--apply-recommended-skills` 显式安装），命令仍装成
    直接可调用（Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH），
    用 `--skip-recommended-skills` 两者都不装。
    第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
-   非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本。
-   插件（`plugins/`）由一键脚本一并处理；分步执行时跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
-3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——OpenCode 副本缺才复制，不一致只提示；未检测到 OpenCode（命令不在 PATH 且无现有配置）时只提示，不计失败；ZCode 仅在 `~/.zcode` 存在时尝试 symlink 到 OpenCode 副本，失败跳过（不复制）。`cli.json`、插件链接或 AGENTS.md 被环境重置/误删时，按 [OpenCode 本机配置丢失与恢复](docs/opencode-config-recovery.md) 处理；恢复 `cli.json` 必须显式带 `--apply-recommended-cli` / `-ApplyRecommendedCli`。
-4. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径、第三方名单与各 harness 安装数全过，见「结构校验」。
-5. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」；该命令只校验链接与推荐/第三方 skill，不校验全局 AGENTS.md（由 `deploy.sh --verify-only` / `deploy.ps1 -VerifyOnly` 负责）。插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`）。
-6. **服务端计数对照**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
+   非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本；实体共享，链接只建到选中的 harness。
+   插件（`plugins/`）只在选中 `opencode` 时由一键脚本处理；分步执行时跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
+3. **全局 AGENTS.md 恢复/合并（选中 OpenCode 时）**：见「全局 AGENTS.md 同步与合并」——OpenCode 副本缺才复制，不一致只提示；未检测到 OpenCode（命令不在 PATH 且无现有配置）时只提示，不计失败；ZCode 仅在 `~/.zcode` 存在时尝试 symlink 到 OpenCode 副本，失败跳过（不复制）。`cli.json`、插件链接或 AGENTS.md 被环境重置/误删时，按 [OpenCode 本机配置丢失与恢复](docs/opencode-config-recovery.md) 处理；恢复时必须带 `--harness opencode`，并显式带 `--apply-recommended-cli` / `-ApplyRecommendedCli`。
+4. **结构校验**：`python3 scripts/check-skills.py --harness <选中名单>`，frontmatter、README 索引、红线路径、第三方名单与选中 harness 的安装数全过；默认只查 `agents`，全量用 `--harness all`，只看仓库侧用 `--no-harness`。见「结构校验」。
+5. **链接校验**：`./scripts/link-skills.sh --verify-only --harness <选中名单>`（Windows `-VerifyOnly -Harness ...`），须回显「全部链接正常」；该命令只校验选中 harness 的链接与推荐/第三方 skill，不校验全局 AGENTS.md（选中 `opencode` 时由 `deploy.sh --verify-only` / `deploy.ps1 -VerifyOnly` 负责）。插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`），仅在选中 `opencode` 时需要。
+6. **服务端计数对照（选中 OpenCode 时）**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
 
 ### 部署后效率复盘（可选反馈）
 
@@ -325,17 +351,17 @@ WSL（Windows 子系统）首次部署除上述步骤外，还要复用 Windows 
 ## 推荐的 OpenCode TUI 设置
 
 真源：`config/opencode/cli.json`（图片预览、侧栏、tabs、主题等本机备份）。
-跑链接脚本部署时，交互终端下若目标缺失或不一致会询问是否应用
+只有选中 `opencode` 时才会处理；交互终端下若目标缺失或不一致会询问是否应用
 （覆盖前原文件备份为同目录 `cli.json.bak-<时间戳>`）；非交互环境默认跳过：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -ApplyRecommendedCli
-powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipRecommendedCli
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Harness opencode -ApplyRecommendedCli
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -Harness opencode -SkipRecommendedCli
 ```
 
 ```bash
-./scripts/link-skills.sh --apply-recommended-cli
-./scripts/link-skills.sh --skip-recommended-cli
+./scripts/link-skills.sh --harness opencode --apply-recommended-cli
+./scripts/link-skills.sh --harness opencode --skip-recommended-cli
 ```
 
 `opencode.json`（供应商）与密钥（`service.json`/`auth.json`）不在此列，
@@ -350,8 +376,10 @@ powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -SkipRecommende
 改 skill 后跑一遍零依赖的 `scripts/check-skills.py`（Windows/Linux 通用）：
 
 ```powershell
-# 全量：frontmatter + README 索引 + 红线路径 + 各 harness 安装数
+# 默认检查 agents；其他 harness 用 --harness，五套全量用 all
 python3 scripts/check-skills.py
+python3 scripts/check-skills.py --harness opencode
+python3 scripts/check-skills.py --harness all
 
 # 只查仓库侧（含 CI，不碰 harness）
 python3 scripts/check-skills.py --no-harness
@@ -363,6 +391,7 @@ python3 scripts/check-skills.py --strict
 
 ```bash
 python3 scripts/check-skills.py
+python3 scripts/check-skills.py --harness opencode
 python3 scripts/check-skills.py --no-harness
 ```
 
@@ -371,14 +400,14 @@ python3 scripts/check-skills.py --no-harness
 通过后再跑链接校验与服务端计数对照（`skill.list` 应含全部真源数 + 兼容源/内置）。JSON 较长，先落盘再解析，避免管道截断半截输出；两段计数命令都在仓库根目录执行，整段贴进同一次调用一次跑完（每次独立调用都有服务调度与快照开销，拆散跑更慢）。`reload` 后等约 5 秒再 `list`——重扫是异步的，紧跟查询可能读到中间态；若 `missing` 非 `none`，隔几秒重查一次，仍非 `none` 才算异常：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -VerifyOnly
+powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1 -VerifyOnly -Harness opencode
 opencode reload
 opencode api skill.list > $env:TEMP\skills.json
 python3 -c "import json,os;ids={s['id'] for s in json.load(open(os.environ['TEMP']+'/skills.json'))['data']};src={d for d in os.listdir('skills') if os.path.isfile('skills/'+d+'/SKILL.md')};print('server:',len(ids),'| in-source:',len(src&ids),'/',len(src),'| missing:',sorted(src-ids) or 'none')"
 ```
 
 ```bash
-./scripts/link-skills.sh --verify-only
+./scripts/link-skills.sh --verify-only --harness opencode
 opencode reload
 sleep 5   # 等重扫落定，紧跟查询可能读到中间态
 f="${TMPDIR:-/tmp}/opencode-skills.json"
@@ -392,7 +421,7 @@ python3 -c "import json,sys,os;ids={s['id'] for s in json.load(open(sys.argv[1])
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
 
-真源：`config/global-AGENTS.md`（以它为基准；OpenCode 副本按真源维护，内容不一致只警告，不自动覆盖）。OpenCode 落 `~/.config/opencode/AGENTS.md`。ZCode 的用户级指令文件只认 `~/.zcode/AGENTS.md`，不回退 `~/.agents`，因此优先把该路径做成指向 OpenCode 副本的 symlink，不再保存第二份副本：`~/.zcode` 不存在时跳过（未安装/未使用）；symlink 创建失败（常见于 Windows 权限）时也跳过 ZCode 全局规则同步，不落回副本、不计失败。已有普通文件与 OpenCode 副本一致时，部署脚本会替换为 symlink；内容不同则保留本机文件并跳过，由人决定是否合并。链接脚本不碰各 harness 的 `AGENTS.md`，其 `-VerifyOnly`/`--verify-only` 也不再校验；一键部署脚本负责 OpenCode 副本与 ZCode 链接。`deploy.ps1 -VerifyOnly` / `deploy.sh --verify-only` 在检测到 OpenCode 时对副本缺失计异常，未检测到 OpenCode 时只提示；内容不一致警告并给差异方向（**真源独有 N 行**表示本机副本缺内容，**仅本机独有 M 行**属允许的本机定制）；ZCode 链接只提示、不阻断。ZCode 后续若支持公共 `AGENTS.md`，改为直接共享并移除专用链接。
+真源：`config/global-AGENTS.md`（以它为基准；OpenCode 副本按真源维护，内容不一致只警告，不自动覆盖）。OpenCode 落 `~/.config/opencode/AGENTS.md`。ZCode 的用户级指令文件只认 `~/.zcode/AGENTS.md`，不回退 `~/.agents`，因此优先把该路径做成指向 OpenCode 副本的 symlink，不再保存第二份副本：`~/.zcode` 不存在时跳过（未安装/未使用）；symlink 创建失败（常见于 Windows 权限）时也跳过 ZCode 全局规则同步，不落回副本、不计失败。已有普通文件与 OpenCode 副本一致时，部署脚本会替换为 symlink；内容不同则保留本机文件并跳过，由人决定是否合并。链接脚本不碰各 harness 的 `AGENTS.md`，其 `-VerifyOnly`/`--verify-only` 也不再校验；一键部署脚本在选中 `opencode` 时负责 OpenCode 副本与 ZCode 链接。`deploy.ps1 -VerifyOnly -Harness opencode` / `deploy.sh --verify-only --harness opencode` 在检测到 OpenCode 时对副本缺失计异常，未检测到 OpenCode 时只提示；内容不一致警告并给差异方向（**真源独有 N 行**表示本机副本缺内容，**仅本机独有 M 行**属允许的本机定制）；ZCode 链接只提示、不阻断。ZCode 后续若支持公共 `AGENTS.md`，改为直接共享并移除专用链接。
 
 Windows（PowerShell）：
 
@@ -435,9 +464,9 @@ fi
 
 ## 日常工作流
 
-1. 改 skill: 直接改仓库里的 `skills/<name>/`，改完即对**本机**所有 harness 生效, 无需重新链接；跨机器用 `git push/pull` 同步，声称已对齐前按 `skill-authoring-sync` 的「跨机器同步与对齐判定」直接核对远端，不以 `git status -sb` 代替。
+1. 改 skill: 直接改仓库里的 `skills/<name>/`，改完即对**本机已链接的 harness** 生效, 无需重新链接；跨机器用 `git push/pull` 同步，声称已对齐前按 `skill-authoring-sync` 的「跨机器同步与对齐判定」直接核对远端，不以 `git status -sb` 代替。
 2. 新增 skill: 在 `skills/` 下新建目录 + `SKILL.md`, 然后在**每台机器**上运行一次该平台的链接脚本。
-3. 删除 skill: 先运行 `-Unlink` / `--unlink` (或手工删除各 harness 下对应链接), 再删仓库目录。注意删除链接只删链接不删实体：Win 用 `Remove-Item <junction>`（不要加 `-Recurse`），Linux 用 `rm <symlink>`（不要加 `-r`，且路径末尾不要加 `/`）。
+3. 删除 skill: 先在要清理的 harness 上运行 `-Unlink` / `--unlink`（或手工删除这些 harness 下的对应链接），再删仓库目录。注意删除链接只删链接不删实体：Win 用 `Remove-Item <junction>`（不要加 `-Recurse`），Linux 用 `rm <symlink>`（不要加 `-r`，且路径末尾不要加 `/`）。
 4. 原位置的实体在首次替换为链接时会自动备份到 `~/.skills-migration-backup/<时间戳>/<harness>/<name>`（Win 下即 `%USERPROFILE%/.skills-migration-backup/...`），备份移出 skills 目录是为了避免被 harness 误扫为重复 skill，确认无误后可手工删除备份。
 5. 跑 skill-creator 评估时，过程产物（`outputs/`、`benchmark.json`、`review.html` 等 `*-workspace/` 目录）统一放仓库根 `.workspaces/<skill-name>-workspace/`（已在 `.gitignore` 忽略，本地独占）；**禁止**放入 `skills/` 下（链接脚本会对无 `SKILL.md` 目录告警，且过程产物不许进入真源同步）。留到 skill 稳定作回归基线，过时后整目录删除。
 
