@@ -67,10 +67,11 @@ effort（low / medium / high / xhigh / max）不是单调收益：
 
 做法：
 
-1. 取"分数—成本"散点。AA 的模型页与 agent 页都有 `Intelligence/Coding Index vs. Cost per Task`，ModelDial 的"表现与消耗"图可开启帕累托前沿。
+1. 取"分数—成本"散点。AA 的模型页与 agent 页都有 `Intelligence/Coding Index vs. Cost per Task`，ModelDial 的"表现与消耗"图可开启帕累托前沿，Arena 有独立的 `leaderboard/agent/pareto` 页并给出 cost/task 中位数。
 2. 读前沿：落在前沿上的配置各有存在理由（更便宜、分更高、上下文更长）；前沿之外且被某配置全面压制的，才是可以排除的。
 3. 每个入选项写清"它换来了什么、代价是什么"，不给单一"最佳"。
 4. 按用户约束在前沿上选：预算上限、延迟上限、上下文长度、数据合规、是否要开源权重。
+5. 多个来源的前沿并列呈现时，先对齐口径再合并；口径不同的前沿不合成一条曲线。
 
 读前沿的常见错误：
 

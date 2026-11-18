@@ -9,7 +9,7 @@
 | 层级 | 入口 | 拿什么 |
 |---|---|---|
 | 一手：评测机构 | Artificial Analysis `/changelog`（新评测结果按模型逐条列出）；ModelDial 首页"新模型实测"与 `/leaderboard/coding` | 独立分数、思考档位、是否已收录 |
-| 一手：竞技场 | Arena（arena.ai）官方榜与博客。该站对自动化访问常返回站点级 Cloudflare 封禁，取不到时用 openlm.ai/chatbot-arena 等二次汇总并标注来源 | 偏好 Elo、对战类相对位置 |
+| 一手：竞技场 | Arena（arena.ai）的 Agent Arena、对话榜与 Pareto 页；静态抓取常被 Cloudflare 拦，需指定出口并强制渲染引擎（见 `eval-sources.md` 的竞技场一节） | 偏好 Elo、真实会话成功率、自带 cost/task 的帕累托前沿 |
 | 一手：模型厂商 | OpenAI / Anthropic / Google DeepMind / Meta AI / xAI / Mistral 官方博客与模型页；DeepSeek 的 news 与 changelog；阿里 Qwen 博客；智谱 Z.ai 博客；Moonshot（Kimi）公告 | 发布事实、模型 ID、上下文、档位、价格、可得性 |
 | 一手：定价与文档 | 各厂商 pricing 页与 API 文档的模型列表 | 单价、缓存价、长上下文规则、限流、GA 状态 |
 | 二手：汇总站 | 模型目录与比价站（models.dev、OpenRouter models、各类 "new models this week" 汇总） | 发现线索、交叉确认时间线；不作为唯一依据 |
@@ -17,7 +17,9 @@
 
 巡检顺序：先看评测机构 changelog 与厂商公告确认"发生了什么"，再用定价页确认"能不能买、多少钱"，最后才参考二手汇总补充背景。
 
-某个来源取不到时的处理：**站点级封禁或权限拒绝，判定后改走替代源并在结论里写明来源**，不换 UA、不逐个试渲染引擎、不绕过限流。这和"可解的 JS 挑战"不同——后者才走渲染路径，规则见 [resilient-browser-fetch](../../resilient-browser-fetch/SKILL.md)。
+某个来源取不到时的处理：**先分清拦截类型**——`Just a moment...` / `cf-mitigated: challenge` 是可解挑战，换出口或换渲染引擎；`Attention Required` / `cf-error-details` 是 IP 层拒绝，换出口才可能有效。两者都不要靠反复原样重试。同一来源换了出口与引擎仍失败，才改走替代源并在结论里写明。
+
+出口不是只有一个：本机代理可能有多个监听端口，且同一客户端里还挂着几十个节点，默认选中的那个被拒不代表其他节点不可用。取数前先确认有几个可用入口，逐个用目标请求验证，不拿"默认出口失败"当"站点不可达"。判定与回退细则见 [resilient-browser-fetch](../../resilient-browser-fetch/SKILL.md)。
 
 ## 时间窗与范围
 

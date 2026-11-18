@@ -70,15 +70,17 @@
 
 这类榜测的是**人类或模型裁判的偏好**，不是任务通过率，与上述基准量纲不同。用途是补充"人更喜欢哪个输出"，不能替代能力基准，也不要与通过率混排。
 
-- **Arena（arena.ai）**：LMSYS 体系的对话与代码对战榜。该站在本机所有出口（直连、7897、10808）与全部渲染引擎（static、scrapling、cloak-cdp、playwright、headful）均返回 Cloudflare 硬阻断，属**站点级封禁而非可解 JS 挑战**，渲染解决不了。遇到时应直接改走替代源，不反复换引擎。
-- **openlm.ai/chatbot-arena**：可达（实测 200，静态抓取即可），汇总 Arena Elo、Coding、Vision、MII、ARC-AGI 等列，适合快速看相对位置；它是对 Arena 数据的二次汇总，引用时说明来源与读取日期。
+- **Arena（arena.ai）**：LMSYS 体系的 Agent Arena 与对话对战榜，有原生的 Pareto Frontier 页面。**该站有 Cloudflare 防护，但可解**：静态抓取和默认渲染引擎会拿到 403；显式指定可用出口 + `htmlmini --render=always` 走 scrapling/patchright 引擎能取到（实测 200）。取不到时先换出口、再换引擎，仍失败才改用 openlm.ai/chatbot-arena 等二次汇总并标注来源。
+- **openlm.ai/chatbot-arena**：静态抓取即可达（200），汇总 Arena Elo、Coding、Vision、MII、ARC-AGI 等列，适合快速看相对位置；它是对 Arena 数据的二次汇总，引用时说明来源与读取日期。
 - 第三方整理的 LMArena 榜单（含 WebDev Arena、Text Arena 等分类）同样属于二次汇总，名次与置信区间要用原榜核对。
 
 判读要点：
 
 - Elo 分差小于置信区间时视为并列，不硬排名。
 - 投票数与模型是否匿名、是否有 style control 会显著影响名次，跨榜不可直接比较。
-- 对战偏好的 claude/风格偏好明显，不能当作代码正确性证据；编程选型仍以任务基准为主。
+- 对战偏好受文风影响明显，不能当作代码正确性证据；编程选型仍以任务基准为主。
+- Agent Arena 的分数来自真实会话的成功率、满意度与可控性信号，属于**产品使用侧**证据，与基准测试的通过率互补但不等价。
+- Arena 自带 Pareto Frontier 与 Cost/task（按最近一段时间中位数），可直接作为性价比前沿的一手来源；引用时带日期与统计窗口。
 
 ## 厂商页面
 
@@ -96,7 +98,7 @@
 ## 已知会误导的点
 
 - 第三方榜单截图或二手汇总里的名次常常滞后一到两个版本，并且经常混用不同基准版本。
-- 站点级封禁（如 Cloudflare 返回 `Sorry, you have been blocked`）不是可解挑战，换 UA、换代理、加渲染都不会成功；判定后直接走替代源，别反复试引擎。
+- 站点级封禁（Cloudflare 返回 `Sorry, you have been blocked`）与可解挑战（`Just a moment...`）是两种拦截，前者要换出口 IP，后者换渲染引擎即可；把两者都当"不可达"会漏掉能取到的来源。
 - "最便宜"的条目常是缓存命中价、批量价或促销价，不能当标准单价。
 - 上下文窗口标称值与实际计费阈值不同：超过某个长度后单价可能翻倍，长上下文场景要单独算。
 - 开源权重与开放 API 是两件事：权重可下载不等于有官方托管端点，也不等于可商用（许可证另算）。
