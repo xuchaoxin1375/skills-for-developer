@@ -4,14 +4,22 @@
 
 ## 远端与镜像
 
-本仓库同步托管在两个远端，完成提交后逐个推送并核对：
+本仓库同步托管在 GitHub 与 Gitee；GitHub 可以同时配置直连 remote 和加速 fetch remote：
 
 | 远端 | 地址 | 角色 |
 | --- | --- | --- |
-| `origin` | <https://github.com/xuchaoxin1375/skills-for-developer> | 主源 |
-| `gitee` | <https://gitee.com/xuchaoxin1375/skills-for-developer> | 镜像 |
+| `github` | <https://github.com/xuchaoxin1375/skills-for-developer> | GitHub 直连；推送首选 |
+| `gitee` | <https://gitee.com/xuchaoxin1375/skills-for-developer> | 镜像；推送 |
+| `origin` | fetch 可带加速前缀（如 `https://gh-proxy.com/https://github.com/xuchaoxin1375/skills-for-developer.git`），push 必须指向 GitHub 原站 | 加速拉取；**不向加速前缀推送** |
 
-换机器后先运行 `git remote -v`；缺少 `gitee` 时用 `git remote add gitee https://gitee.com/xuchaoxin1375/skills-for-developer.git` 补上再同步。镜像允许短暂滞后，但每次推送后用 `git ls-remote gitee main` 与本地 `HEAD` 核对，不能只凭 `git status -sb` 判断已同步。
+换机器后先运行 `git remote -v`，同时看 fetch 与 push 两列；缺少 `gitee` 时用 `git remote add gitee https://gitee.com/xuchaoxin1375/skills-for-developer.git` 补上，缺少 GitHub 直连时用 `git remote add github https://github.com/xuchaoxin1375/skills-for-developer.git` 补上。加速前缀（如 `gh-proxy.com`）只用于公开资源的只读拉取；若 `origin` 的 push 列仍指向加速前缀，先改成原站再推送：
+
+```bash
+git remote set-url --push origin https://github.com/xuchaoxin1375/skills-for-developer.git
+git remote -v
+```
+
+推送只走 `github`（或已改成原站 pushurl 的 `origin`）与 `gitee`；每次推送后用 `git ls-remote gitee main` 与本地 `HEAD` 核对，不能只凭 `git status -sb` 判断已同步。
 
 ## 日常 AI 编程先看这里
 
