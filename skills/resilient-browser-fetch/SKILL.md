@@ -73,6 +73,8 @@ flowchart TD
 
 前置：先确认已走 `network-access` 排除选路问题；普通超时/直连失败不直接启动浏览器，仅当正文为挑战/拦截特征时才用本 skill，选路结论同一任务内复用。该站已有观测记录或本次已确认挑战特征时，不必再发裸请求复现 403，直接按上图取 HTML 快照或升档（判定位置见 `network-access` 的“抓取前先查同站观测”）。
 
+渲染前先确认目标不在静态 HTML：用 `--mode html`/`-t` 能拿到正文、FAQ 或表格就不渲染。单页总预算 180s，连续两次同法失败换源或降级；目标出现即停，不等 networkidle。分档见 [htmlmini 的取数预算](../htmlmini/SKILL.md#取数预算与停止条件)。
+
 1. 如果需要将本 Skill 安装到 Codex、Claude Code、Cursor 或 Gemini CLI，先读取 [references/installation.md](references/installation.md)。依赖按引擎分层安装，**只装当前任务需要的层**：层 0（`static`）零第三方依赖，层 1 装 `playwright`+浏览器，层 2 装 `requirements-stealth.txt` 并运行 `scrapling install`。层 3 的 `cloak-cdp` 是**可选**的 CloakBrowser 指纹底座，默认不装、不参与 `auto`；只有明确需要它的指纹底座时才装 `requirements-cloak.txt` 并运行 `python -m cloakbrowser install`，用 `--engine cloak-cdp` 显式指定。直接 CDP 备用（可选）再装 `requirements-nodriver.txt`，复用系统 Chrome，不需要 `playwright install`；其许可为 AGPL-3.0，商用或 SaaS 先评估。装层 2 会带入 Patchright，层 1 的默认 API 也会随之改变；做原版 Playwright/Patchright A/B 时用 `--playwright-api` 固定。层 2 的 `scrapling install` 实际调用 Playwright 的安装器，而运行时用 Patchright；装完在同一环境补跑 `python -m patchright install chromium`，并用两边的 `install --dry-run chromium` 核对 revision，避免 `Executable doesn't exist`。随后根据当前系统读取 [references/platforms.md](references/platforms.md)，选定独立 Python 3.10+ 环境；国内安装先配置下载路线，`scrapling install` 的系统依赖步骤与页面代理分开处理。环境可以由 Conda、`venv` 或 `uv venv` 管理；Linux 是默认部署目标。先运行 `uv --version`；可用时优先执行 `uv pip install --python <目标环境解释器> ...`，不可用时回退到该环境的 `python -m pip`，不要混用两个安装器修改同一环境。安装新层会改动本机环境（下载量、浏览器二进制、系统依赖）。会话或本机偏好没有禁止安装时按默认授权处理：报出缺哪层、装什么、大概多大，按任务选最小可用层直接安装并重跑，不要停在“是否安装”的请示上；只有用户已声明禁止安装，或安装涉及付费、账号、系统级改动时才先确认。不得以“本机没装该层”为由跳过，也不得因此默认改用第三方服务。
 2. 运行只读环境诊断：
 
