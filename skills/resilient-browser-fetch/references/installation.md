@@ -153,9 +153,9 @@ Gemini 的默认发现位置是：
 | 1/备用 | 直接 CDP（系统 Chrome） | `requirements-nodriver.txt`；需系统 Chrome；无需 `playwright install`；AGPL-3.0 |
 | 1/备用 | 晚接入（先让挑战跑完再接入） | 复用层 1 的 `playwright`/`patchright`（只需它的 CDP 连接能力）+ 系统 Chrome/Chromium/Edge；**不需要** `playwright install chromium` |
 | 2 | 挑战求解 | `requirements-stealth.txt` + `scrapling install` |
-| 3 | 指纹底座 | `requirements-cloak.txt` + `python -m cloakbrowser install` |
+| 3（可选） | 指纹底座；**不参与 `auto`，默认不推荐安装** | 仅明确需要时：`requirements-cloak.txt` + `python -m cloakbrowser install`，再用 `--engine cloak-cdp` 显式指定 |
 
-层号表示能力档位，不是隐蔽性排名。层 2 的 `scrapling[fetchers]` 会安装 Patchright；层 1 默认也优先 Patchright，所以装层 2 后层 1 的实际驱动可能变化。要固定或对照，使用 `--playwright-api playwright|patchright`（只影响层 1）。层 2/3 的控制面仍是 Patchright，层 3 只替换指纹底座；详细矩阵见 [检测层与引擎选择](detection-layers.md)。
+层号表示能力档位，不是隐蔽性排名。层 2 的 `scrapling[fetchers]` 会安装 Patchright；层 1 默认也优先 Patchright，所以装层 2 后层 1 的实际驱动可能变化。要固定或对照，使用 `--playwright-api playwright|patchright`（只影响层 1）。层 2/3 的控制面仍是 Patchright，层 3 只替换指纹底座；`cloak-cdp` 是可选项，默认不装、不参与 `auto`。详细矩阵见 [检测层与引擎选择](detection-layers.md)。
 
 ### 浏览器 revision 与 install 命令
 
@@ -229,7 +229,7 @@ python <skill-dir>/scripts/check_environment.py --list-envs --require-stealth  #
 
 候选来源包括当前解释器、`VIRTUAL_ENV`/`CONDA_PREFIX`、PATH 上的 `python`/`python3`/`python3.1x`、Windows `py -0p` 启动器、conda 环境（`~/.conda/environments.txt` 与常见根目录及其 `envs/`）、venv/virtualenv/uv 常见目录；按解析后的真实路径去重，最多探测 12 个，每个用子进程 `-X utf8` 探测，不 activate、不改环境。`--list-envs` 可与 `--json` 组合，便于脚本解析。
 
-只有需要 CloakBrowser 底座（层 3）时才安装可选依赖：
+只有明确需要 CloakBrowser 指纹底座（层 3）时才安装可选依赖；默认安装到层 2 即可，`cloak-cdp` 不参与 `auto`：
 
 ```bash
 uv pip install --python <目标环境解释器> -r "$SKILL_DIR/requirements-cloak.txt"

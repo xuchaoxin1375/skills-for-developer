@@ -22,7 +22,7 @@
 | `static` | 无（HTTP） | stdlib；可选 curl_cffi TLS/HTTP2 | 否 | 是 |
 | `playwright` | Playwright，或显式选择的 Patchright | 安装的 Chromium / 系统 Chrome | 否 | 是 |
 | `scrapling` | Patchright（Scrapling 0.5） | Patchright + Chromium | 是 | 是 |
-| `cloak-cdp` | Patchright `connect_over_cdp` | CloakBrowser Chromium | 是 | 是 |
+| `cloak-cdp` | Patchright `connect_over_cdp` | CloakBrowser Chromium | 是 | **否**（仅显式） |
 | `nodriver` | 直接 CDP | 系统 Chrome，不伪造指纹 | 否 | 仅 `--headful` |
 
 关键事实：
@@ -37,12 +37,12 @@
 
 先判断失败发生在哪一层，再选引擎；不要只按层号机械升档。
 
-**注意这套顺序是手工选引擎的判据，与 `auto` 阶梯不是一回事**：`auto` 是机器跑的兜底阶梯，它按"会不会白跑一趟"排——先试零成本的 `static`，**装了求解引擎就直接从求解层起步**（层 1 过不了挑战页，先跑它只多花一次浏览器往返），层 1 降为阶梯末尾兜底。手工选层则按下面的判据走：先确认静态层够不够、失败发生在哪一层，再决定升不升。
+**注意这套顺序是手工选引擎的判据，与 `auto` 阶梯不是一回事**：`auto` 是机器跑的兜底阶梯，它按"会不会白跑一趟"排——先试零成本的 `static`，**装了 `scrapling` 就直接从求解层起步**（`playwright` 过不了挑战页，先跑它只多花一次浏览器往返），`playwright` 降为阶梯末尾兜底；`cloak-cdp` 默认不参与 `auto`，需要时显式指定。手工选层则按下面的判据走：先确认静态层够不够、失败发生在哪一层，再决定升不升。
 
 1. **静态正文可取**：用层 0。TLS/客户端指纹拦截再试 `--impersonate`；不要为静态页启动浏览器。
 2. **需要 JS 渲染**：层 1。真实桌面优先 `--real-chrome`；做驱动 A/B 时显式指定 `--playwright-api`。
-3. **返回 Cloudflare/Turnstile 挑战**：层 2。仍失败时先 `--headful` 人工接管，再考虑层 3；不要跳过有头直接叠加同类引擎。
-4. **指纹/环境不匹配**（canvas、WebGL、字体、Linux 服务器）：层 3；或改用真实桌面 + 系统 Chrome。
+3. **返回 Cloudflare/Turnstile 挑战**：层 2。仍失败时先 `--headful` 人工接管，再考虑显式 `--engine cloak-cdp`；不要跳过有头直接叠加同类引擎。
+4. **指纹/环境不匹配**（canvas、WebGL、字体、Linux 服务器）：显式层 3（`--engine cloak-cdp`，需先安装可选依赖）；或改用真实桌面 + 系统 Chrome。
 5. **层 2 和层 3 以同一挑战签名失败，且有头/真 Chrome 也失败**：更像控制面或 IP 问题。用户自己的浏览器能打开同一 URL 时，先换控制面试 `--engine nodriver --headful`（系统 Chrome 直接 CDP）——换出口只改 IP 信誉，改不了 Patchright 的驱动痕迹；用户浏览器也打不开时才轮到核对 ASN/地区。返回硬 403/Access Denied、页面不出现 Cloudflare 挑战时，`solve_cloudflare` 与层 2/3 都不会起作用，不要按 CF 挑战继续加层。
 6. **间歇成功、换出口后结果明显变化**：按 IP 信誉/限流处理，不换引擎。
 7. **所有浏览器层都失败，但层 0/curl_cffi 能拿到正文**：回到层 0 或检查是否根本不需要浏览器。

@@ -1,5 +1,5 @@
-# 层 3：CloakBrowser 指纹底座，页面操作仍交给层 2 的 StealthyFetcher。
+# 层 3（可选）：CloakBrowser 指纹底座，页面操作仍交给层 2 的 StealthyFetcher。
 # 安装后还要运行 `python -m cloakbrowser install` 下载 Chromium。
-# 只有层 2 失败后才需要这一层（--engine cloak-cdp 或 auto 升档）。
+# 默认不装、不参与 auto；只有明确需要指纹底座时用 --engine cloak-cdp 显式指定。
 -r requirements-stealth.txt
 cloakbrowser>=0.4.10,<0.5

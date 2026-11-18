@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   challengeSignals,
+  bodyChallengeSignals,
   decodeHtml,
   extractHtml,
   findCapablePython,
@@ -18,9 +19,11 @@ import {
   applyOptionMarkers,
   injectOptionMarkers,
   isInterpreterRetryable,
+  isTerminalBlockSignal,
   pickStrongerPython,
   pickHydrationEngine,
   pythonBinOverride,
+  readRenderAttempts,
   resetEnvScanCache,
   resolveSavePageEngine,
   savePageArgs,
@@ -165,6 +168,13 @@ let base;
         'x-robots-tag': 'noindex',
       });
       res.end('<html><head><title>Just a moment</title></head><body>challenge</body></html>');
+    } else if (req.url === '/block403') {
+      // Cloudflare 1020: 标题仍是 Attention Required, 正文才是终局封禁判据。
+      res.writeHead(403, { 'content-type': 'text/html', server: 'cloudflare' });
+      res.end(
+        '<html><head><title>Attention Required! | Cloudflare</title></head>'
+          + '<body><h1>Sorry, you have been blocked</h1><div id="cf-error-details">Error 1020</div></body></html>',
+      );
     } else if (req.url === '/always502') {
       res.writeHead(502, { 'content-type': 'text/plain', server: 'cloudflare' });
       res.end('error code: 502');
@@ -679,7 +689,17 @@ async function cli(args, { input, env } = {}) {
   }
   ok(c403 && /HTTP 403/.test(c403.message), '挑战页 403 抛错带状态码');
   ok(c403 && /challenge suspected/.test(c403.message), '挑战信号被点名');
-  ok(c403 && /resilient-browser-fetch/.test(c403.message), '挑战页指引渲染流水线');
+  ok(c403 && /--render/.test(c403.message), '挑战页指引渲染流水线');
+
+  let block403 = null;
+  try {
+    await runExtract(`${base}/block403`, 'markdown');
+  } catch (e) {
+    block403 = e;
+  }
+  ok(block403 && block403.terminalBlock === true, '终局封禁被标记为 terminalBlock');
+  ok(block403 && /terminal block page/.test(block403.message), '终局封禁提示明确的拒绝页');
+  ok(block403 && !/--render/.test(block403.message), '终局封禁不再建议渲染');
 
   let e502 = null;
   try {
@@ -824,16 +844,21 @@ open(out, 'w', encoding='utf-8').write(
 
         const leftoversOf = () => readdirSync(os.tmpdir()).filter((e) => e.startsWith('htmlmini-render-'));
         process.env.STUB_RESIDUE = '1';
+        const beforeSuccess = new Set(leftoversOf());
         const mdRes = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
-        ok(mdRes.includes('渲染正文内容足够长') && leftoversOf().length === 0, '成功时诊断残留一并清理');
+        const addedBySuccess = leftoversOf().filter((e) => !beforeSuccess.has(e));
+        ok(mdRes.includes('渲染正文内容足够长') && addedBySuccess.length === 0, '成功时诊断残留一并清理');
         let erRes = null;
         process.env.STUB_RENDER_FAIL = '1';
+        const beforeFailure = new Set(leftoversOf());
         try {
           await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000 });
         } catch (e) {
           erRes = e;
         }
-        ok(erRes && /browser render failed/.test(erRes.message) && leftoversOf().length === 0, '失败时诊断残留一并清理');
+        const keptByFailure = leftoversOf().filter((e) => !beforeFailure.has(e));
+        ok(erRes && /browser render failed/.test(erRes.message) && keptByFailure.length > 0, '失败时保留诊断产物供复查');
+        await Promise.all(keptByFailure.map((e) => rm(path.join(os.tmpdir(), e), { recursive: true, force: true })));
         delete process.env.STUB_RENDER_FAIL;
         delete process.env.STUB_RESIDUE;
 
@@ -1125,7 +1150,8 @@ open(out, 'w', encoding='utf-8').write(
       ok(!isInterpreterRetryable(new Error('--python-bin/HTMLMINI_PYTHON interpreter is not usable: x')), '解释器配置错误不触发升档');
       ok(!isInterpreterRetryable(new Error('no python found (tried python/python3)')), '没有 python 时不触发升档');
 
-      // 5) 求解环境的挑选：只认装了 scrapling/cloak-cdp 的解释器
+      // 5) 求解环境的挑选：自动升档只认 scrapling；cloak-cdp 与 scrapling-cli
+      //    都不再算"更强"，否则只有诊断 CLI 的环境会被误当成求解环境。
       const solverFound = await findSolverPython();
       ok(solverFound && solverFound.path === strong, '挑出带挑战求解引擎的解释器');
       ok((solverFound?.engines ?? []).includes('scrapling'), '求解环境带上引擎列表');
@@ -1142,6 +1168,21 @@ open(out, 'w', encoding='utf-8').write(
       process.env.HTMLMINI_ENV_SCAN_SCRIPT = path.join(noSolverScan, 'check_environment.py');
       resetEnvScanCache();
       ok((await findSolverPython()) === null, '没有求解引擎时不给推荐环境');
+      const cliOnly = 'C:/fake/python313/python.exe';
+      const cliOnlyScan = path.join(dir, 'scan-cli-only');
+      await mkdir(cliOnlyScan, { recursive: true });
+      await writeFile(
+        path.join(cliOnlyScan, 'check_environment.py'),
+        'def scan_environments(required, scripts_dir):\n'
+          + '    return [\n'
+          + `        {"ok": True, "path": ${JSON.stringify(cliOnly)}, "engines": ["static", "playwright", "scrapling-cli", "cloak-cdp"], "levels": [0, 1, 3], "manager": "scoop", "satisfies": []},\n`
+          + '    ]\n',
+        'utf8',
+      );
+      process.env.HTMLMINI_ENV_SCAN_SCRIPT = path.join(cliOnlyScan, 'check_environment.py');
+      resetEnvScanCache();
+      ok((await findSolverPython()) === null, '只有 scrapling-cli/cloak-cdp 的环境不算求解环境');
+      ok((await pickStrongerPython({ pythonBin: undefined, current: weak })) === null, '只有诊断 CLI/显式引擎的环境不再被当成更强');
     } finally {
       for (const k of Object.keys(saved)) {
         if (saved[k] === undefined) delete process.env[k];
@@ -1450,6 +1491,25 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
     process.env.HTMLMINI_CHROME_EXTRA_ARGS = fakeChrome;
     process.env.CHROME_MARKER = chromeMarker;
 
+    // 0) 分类判据：Cloudflare 1020 的标题仍是 Attention Required，
+    //    必须靠正文 "you have been blocked" 判成终局封禁，而不是可解挑战。
+    const cfBlockSigs = bodyChallengeSignals(
+      '<html><head><title>Attention Required! | Cloudflare</title></head>'
+        + '<body>Sorry, you have been blocked. Error 1020</body></html>',
+    );
+    ok(cfBlockSigs.some(isTerminalBlockSignal), 'Cloudflare 1020 被判为终局封禁');
+    const cfChallengeSigs = bodyChallengeSignals(
+      '<html><head><title>Just a moment...</title></head><body>challenge</body></html>',
+    );
+    ok(!cfChallengeSigs.some(isTerminalBlockSignal), 'Just a moment 仍按可解挑战处理');
+    ok(isInterpreterRetryable(new Error('challenge')) === true, '普通挑战仍可升档');
+    const terminalErr = new Error('challenge');
+    terminalErr.terminalBlock = true;
+    ok(isInterpreterRetryable(terminalErr) === false, 'terminalBlock 不再触发升档');
+    const edgeErr = new Error('block');
+    edgeErr.edgeBlock = true;
+    ok(isInterpreterRetryable(edgeErr) === false, 'edgeBlock 不再触发升档');
+
     // 1) 渲染后仍是挑战空壳：报挑战而不是"像客户端渲染壳"，并给可行下一步。
     process.env.STUB_BODY = 'challenge';
     let guardErr = null;
@@ -1482,7 +1542,7 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
       blockErr = e;
     }
     ok(blockErr && /block page/.test(blockErr.message), `WAF 拒绝页被判为拒绝页（实得 ${blockErr && blockErr.message.slice(0, 80)}）`);
-    ok(blockErr && /chrome-late/.test(blockErr.message), '拒绝页给出晚接入引擎的下一步');
+    ok(blockErr && /browser-brand edge/.test(blockErr.message), '拒绝页给出换客户端品牌的下一步');
     ok(blockErr && !/looks like a challenge/.test(blockErr.message), '拒绝页不误报成挑战页');
     const blockKept = await runExtract(`${base}/always502`, 'markdown', { render: true, renderTimeoutMs: 30000, allowEmpty: true });
     ok(typeof blockKept === 'string', '--allow-empty 仍可取回拒绝页 HTML 供排查');
@@ -1727,6 +1787,33 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   ok(guarded[guarded.indexOf('--timeout-ms') + 1] === '60000', '等选择器时页面超时压到渲染预算');
   ok(withoutBin[withoutBin.indexOf('--timeout-ms') + 1] === '300000', '不等选择器时保留原页面超时');
   ok(!savePageArgs(base).includes('--expect-text'), '未给断言时不带 --expect-text');
+  const skipped = savePageArgs({ ...base, skipStatic: true });
+  ok(skipped.includes('--skip-static'), 'render=always 透传 --skip-static');
+  ok(!withoutBin.includes('--skip-static'), '普通渲染不传 --skip-static');
+}
+
+// 失败产物里的 attempts.json 是结构化分类依据：不解析 2KB 日志尾巴。
+{
+  const out = path.join(os.tmpdir(), `htmlmini-attempts-${process.pid}.html`);
+  await writeFile(
+    `${out}.attempts.json`,
+    JSON.stringify({
+      summary: '所有已尝试引擎都返回挑战页',
+      attempts: [{ engine: 'scrapling', reasons: ['hint:sorry, you have been blocked', 'http_status:403'] }],
+    }),
+    'utf8',
+  );
+  const classified = await readRenderAttempts(out);
+  ok(classified.terminalBlock === true, 'attempts.json 识别终局封禁');
+  await rm(`${out}.attempts.json`, { force: true });
+  await writeFile(
+    `${out}.attempts.json`,
+    JSON.stringify({ attempts: [{ engine: 'playwright', reasons: ['akamai_edge_block'] }] }),
+    'utf8',
+  );
+  const edgeClassified = await readRenderAttempts(out);
+  ok(edgeClassified.edgeBlock === true && edgeClassified.terminalBlock === false, 'attempts.json 识别边缘封禁');
+  await rm(`${out}.attempts.json`, { force: true });
 }
 
 // ---- 17. --keep-options / --keep-details：控件值与被压平的折叠块 ----

@@ -6,24 +6,26 @@ validation, and normalized diagnostics around a layered engine set:
 - level 0 ``static``: stdlib HTTP, no third-party dependency;
 - level 1 ``playwright``: plain rendering through Playwright or Patchright;
 - level 2 ``scrapling``: Patchright-based rendering with Cloudflare solving;
-- level 3 ``cloak-cdp``: CloakBrowser fingerprint base driven through Scrapling;
+- level 3 ``cloak-cdp``: optional CloakBrowser fingerprint base driven through Scrapling;
 - explicit ``nodriver``: direct-CDP control plane on system Chrome, no solver;
 - explicit ``chrome-late``: let the page load first, then attach and read.
 
 ``auto`` tries only the engines that are actually installed, so a missing
 enhancement package downgrades the run instead of failing it. The order is not
 purely by layer number: ``static`` is always tried first (it costs nothing), and
-when a solving engine is installed the browser leg starts there -- layer 1 is a
-subset of what layers 2/3 can do, so trying it first only adds a browser
+when ``scrapling`` is installed the browser leg starts there -- layer 1 is a
+subset of what scrapling can do, so trying it first only adds a browser
 round-trip that a challenge page will not survive anyway. Layer 1 is kept as the
-last fallback. Layer numbers describe capability, not stealth: layers 2 and 3
-still use Patchright as the control plane. ``nodriver`` runs only when the
-caller explicitly selects it, or in ``auto`` with ``--headful`` because its
-headless mode is substantially weaker. ``chrome-late`` is a different axis
-rather than a higher tier: it changes *when* the debugger attaches, so it stays
-out of the automatic ladder unless the caller asks for it. It is intentionally
-optimized for reliable single-page jobs; callers that need a continuous batch
-should reuse a session manager instead.
+last fallback. ``cloak-cdp`` is no longer part of ``auto``: it is less commonly
+useful than scrapling and its dependency is not recommended by default; select
+it explicitly when its fingerprint base is actually needed. Layer numbers
+describe capability, not stealth. ``nodriver`` runs only when the caller
+explicitly selects it, or in ``auto`` with ``--headful`` because its headless
+mode is substantially weaker. ``chrome-late`` is a different axis rather than a
+higher tier: it changes *when* the debugger attaches, so it stays out of the
+automatic ladder unless the caller asks for it. It is intentionally optimized
+for reliable single-page jobs; callers that need a continuous batch should reuse
+a session manager instead.
 """
 
 from __future__ import annotations
@@ -97,6 +99,15 @@ BLOCK_HINTS = (
     "error 1015",
     "sorry, you have been blocked",
     "cf-error-details",
+)
+# 终局封禁: 这是出口/IP 或 WAF 规则直接拒绝, 没有挑战窗口。
+# 换引擎、换解释器、换指纹、--headful 都不会改变结果, 只能换出口。
+# "attention required" / "cf-error-details" 单独出现时仍可能是可解挑战, 不能算终局。
+TERMINAL_BLOCK_HINTS = (
+    "error 1020",
+    "error 1015",
+    "sorry, you have been blocked",
+    "you have been blocked",
 )
 # 站点自己吐的错误外壳: HTTP 200, 内容是站点框架 + 一句通用错误文案。
 # 命中说明状态码正常但没有正文, 按内容缺失处理(升档或换路线), 不要当成成功。
@@ -233,6 +244,7 @@ class FetchOptions:
     proxy: str | None = None
     discover_proxy: bool = False
     engine: str = "auto"
+    skip_static: bool = False
     timeout_ms: int = DEFAULT_TIMEOUT_MS
     wall_timeout_ms: int | None = None
     retries: int = 1
@@ -337,6 +349,15 @@ class FetchFailed(FetchError):
             item.engine for item in self.attempts if item.kind in (KIND_BLOCKED, KIND_EMPTY)
         )
 
+    @property
+    def terminal_block(self) -> bool:
+        """Report whether the site refused this exit outright (no challenge window)."""
+
+        return any(
+            is_terminal_block(item.reasons)
+            for item in self.attempts
+        )
+
     def describe(self) -> str:
         """Summarize the failure for logs and calling agents."""
 
@@ -349,9 +370,15 @@ class FetchFailed(FetchError):
                 "(如 conda run -n <env> --no-capture-output python ...)，"
                 "或用 check_environment.py --list-envs 查看哪个环境具备所需层"
             )
+        if self.terminal_block:
+            return (
+                "已尝试引擎都返回同一个终局封禁页(you have been blocked / Error 1020)；"
+                "这是出口/IP 层拒绝，没有挑战窗口：换引擎、换解释器、换指纹或 --headful 都不会改变结果，"
+                "只能换 --proxy/出口后重试。诊断见 attempts.json"
+            )
         if self.attempts and len(self.blocked_engines) == len(self.attempts):
             return (
-                "所有已尝试引擎都返回挑战页或空内容；请升档、换代理或改用有头人工验证"
+                "所有已尝试引擎都返回挑战页或空内容；请换出口、换求解引擎或改用有头人工验证"
                 + self.late_attach_hint()
                 + self.browser_brand_hint()
             )
@@ -539,6 +566,13 @@ def block_reasons(page_html: str, status: int | None = None) -> list[str]:
     if any(marker in sample for marker in BROWSER_ERROR_MARKERS):
         reasons.append("browser_error_page")
     return sorted(set(reasons))
+
+
+def is_terminal_block(reasons: Sequence[str]) -> bool:
+    """Tell whether rejection reasons point to an exit/IP block, not a solvable challenge."""
+
+    sample = " ".join(reasons).lower()
+    return any(hint in sample for hint in TERMINAL_BLOCK_HINTS)
 
 
 def log_manual_verification_hint(wait_ms: int, *, headful: bool) -> None:
@@ -2524,6 +2558,7 @@ ENGINES: dict[str, EngineSpec] = {
             frozenset({CAP_RENDER, CAP_SOLVE, CAP_CDP}),
             ("cloakbrowser",),
             probe_cloak_cdp,
+            in_auto=False,
         ),
         EngineSpec(
             "nodriver",
@@ -2612,16 +2647,20 @@ def engine_capabilities(selected: str) -> frozenset[str]:
     return frozenset(capabilities)
 
 
-def engine_order(selected: str, *, headful: bool = False) -> list[str]:
+def engine_order(selected: str, *, headful: bool = False, skip_static: bool = False) -> list[str]:
     """List engines to try: explicit selection stays strict, ``auto`` upgrades by order.
 
     ``auto`` 的顺序不是单纯按层号从低到高，而是按"能不能白跑一趟"排：
 
     - ``static`` 永远排最前：零成本的 HTTP 尝试，成了就不用开浏览器。
-    - 装了带挑战求解的引擎（scrapling / cloak-cdp）时，浏览器段直接从求解引擎起步。
+      ``skip_static=True`` 时跳过它（``render=always`` 要求 DOM 已执行 JS，
+      先用 static 只会拿到未水合的壳）。
+    - 装了带挑战求解的引擎（``scrapling``）时，浏览器段直接从求解引擎起步。
       纯渲染层（playwright）是求解引擎的子集能力，遇到挑战页必然过不去，
       先试它只会多花一次浏览器往返。纯渲染引擎不删掉，留在后面当求解引擎真出
       问题时的兜底。
+    - ``cloak-cdp`` 现在默认不参与 auto：它不是常用层，依赖也不再默认推荐。
+      需要时用 ``--engine cloak-cdp`` 显式指定。
     - 没有求解引擎时维持原样：按层号从低到高逐级尝试。
     """
 
@@ -2632,6 +2671,7 @@ def engine_order(selected: str, *, headful: bool = False) -> list[str]:
         for name in available_engines()
         if ENGINES[name].in_auto
         and (headful or not ENGINES[name].auto_requires_headful)
+        and not (skip_static and name == "static")
     ]
     static_first = [name for name in usable if name == "static"]
     browsers = [name for name in usable if name != "static"]
@@ -2665,14 +2705,28 @@ def attempt_kind(reasons: Sequence[str], error: str | None) -> str:
     return KIND_BLOCKED if blockers else KIND_EMPTY
 
 
-def stops_auto_escalation(result: FetchResult) -> bool:
-    """Tell whether a server status makes further engine upgrades pointless.
+def auto_stop_reason(result: FetchResult) -> str | None:
+    """Explain why auto should stop instead of trying another engine.
 
-    404/410 是资源级结论，换浏览器或换指纹不会改变服务端答案；但正文若仍带
-    挑战特征，说明这次状态码可能来自拦截层，仍应继续升档。
+    - ``terminal_block``: the exit is refused outright; another engine cannot change it.
+    - ``terminal_status``: 404/410 is a resource-level answer; another engine cannot change it.
     """
 
-    return result.status in TERMINAL_STATUS_CODES and not result.block_reasons
+    if is_terminal_block(result.block_reasons):
+        return "terminal_block"
+    if result.status in TERMINAL_STATUS_CODES and not result.block_reasons:
+        return "terminal_status"
+    return None
+
+
+def stops_auto_escalation(result: FetchResult) -> bool:
+    """Tell whether a server response makes further engine upgrades pointless.
+
+    404/410 是资源级结论；终局封禁是出口级结论。两者都不该继续换引擎。
+    正文若仍带可解挑战特征，说明状态码可能来自拦截层，仍应继续升档。
+    """
+
+    return auto_stop_reason(result) is not None
 
 
 def accepts_by_content(result: FetchResult, byte_count: int, expected_texts: list[str]) -> bool:
@@ -2721,6 +2775,8 @@ def validate_options(options: FetchOptions) -> None:
         raise ValueError("url 必须是完整的 HTTP(S) URL。")
     if options.engine not in ENGINE_CHOICES:
         raise ValueError(f"未知 engine: {options.engine} (可选: {', '.join(ENGINE_CHOICES)})")
+    if options.skip_static and options.engine == "static":
+        raise ValueError("--skip-static 不能与显式 --engine static 同用；要不跑 static 请改用 auto 或浏览器引擎。")
     if options.wait_until not in WAIT_UNTIL_CHOICES:
         raise ValueError(
             f"未知 wait_until: {options.wait_until} (可选: {', '.join(WAIT_UNTIL_CHOICES)})"
@@ -2932,15 +2988,26 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
     order = (
         ["cdp-attach"]
         if options.cdp_url
-        else engine_order(selected_engine, headful=options.headful)
+        else engine_order(
+            selected_engine, headful=options.headful, skip_static=options.skip_static
+        )
     )
+    if options.skip_static and selected_engine == "auto":
+        logging.info("按 --skip-static 跳过 static 层，直接从浏览器层起步。")
+    if not order and options.skip_static:
+        raise ValueError(
+            "--skip-static 跳过了 static，但本机没有已安装的浏览器引擎"
+            "（playwright/scrapling）；请先安装所需层，或去掉 --skip-static。"
+        )
     skipped = (
         [
             name
             for name, spec in sorted(
                 ENGINES.items(), key=lambda item: (item[1].order or item[1].level * 10, item[0])
             )
-            if spec.in_auto and name not in order
+            if spec.in_auto
+            and name not in order
+            and not (options.skip_static and name == "static")
         ]
         if selected_engine == "auto"
         else []
@@ -3034,7 +3101,15 @@ def fetch_page(options: FetchOptions) -> FetchOutcome:
             )
             attempts.append(attempt)
             if reasons:
-                if options.engine == "auto" and stops_auto_escalation(result):
+                stop_reason = auto_stop_reason(result) if options.engine == "auto" else None
+                if stop_reason == "terminal_block":
+                    logging.warning(
+                        "检测到终局封禁(you have been blocked / Error 1020)；auto 停止升档："
+                        "这是出口/IP 层拒绝，换引擎、换指纹或 --headful 都不会改变结果，"
+                        "只能换 --proxy/出口后重试。"
+                    )
+                    break
+                if stop_reason == "terminal_status":
                     logging.warning(
                         "站点返回 HTTP %s；auto 停止升档，避免用更高层引擎重复请求同一不可用资源。"
                         "如需确认是否为站点可见性问题，可在同一会话中用对照页或公开接口核对，"
@@ -3122,11 +3197,11 @@ def save_page(options: FetchOptions, out: str | Path) -> FetchOutcome:
 CLI_DESCRIPTION = """\
 按能力分层抓取页面并保存渲染后 HTML。
 
-引擎阶梯: static -> playwright -> scrapling -> cloak-cdp
+引擎阶梯: static -> scrapling -> playwright（cloak-cdp 仅显式指定）
   static       裸 HTTP(可用 curl_cffi 做 TLS 伪装)
   playwright   层 1: Playwright/Patchright 驱动, 只渲染不求解
-  scrapling    层 2: Patchright + 挑战求解
-  cloak-cdp    层 2: CloakBrowser 直连 CDP, 带挑战求解
+  scrapling    层 2: Patchright + 挑战求解（auto 的求解起点）
+  cloak-cdp    层 3: CloakBrowser 直连 CDP, 可选；不参与 auto，需 --engine cloak-cdp
   nodriver     层 1 备用: 系统 Chrome 直接 CDP, 仅 --headful 时可用
   chrome-late  晚接入: 先让站点的挑战跑完再接入读已渲染 DOM, 只能显式指定
 """
@@ -3168,7 +3243,7 @@ CLI_BRIEF = """\
 用法:
   python scripts/resilient_fetch.py --url "<URL>" --out page.html [选项]
 
-引擎阶梯: static -> playwright -> scrapling -> cloak-cdp
+引擎阶梯: static -> scrapling -> playwright（cloak-cdp 仅显式）
   chrome-late  晚接入: 先让站点的挑战跑完再接入读已渲染 DOM, 只能显式指定
   nodriver     层 1 备用: 系统 Chrome 直接 CDP, 仅 --headful 时可用
 
@@ -3177,6 +3252,7 @@ CLI_BRIEF = """\
   --out <文件>            输出路径(默认 page.html)
   --engine <名称>         钉住引擎: auto | static | playwright | scrapling | cloak-cdp
                            | nodriver | chrome-late | scrapling-cli
+  --skip-static           auto 跳过 static，要求 DOM 已执行 JS 时用
   --proxy <地址>          代理; 也可 --discover-proxy 按本机登记逐个探测
   --expect-text <文本>    断言正文含该文本(可重复); 抓具体资源时务必给
   --render-timeout-ms <毫秒>  chrome-late 接入后等渲染稳定的上限(默认 15000)
@@ -3229,11 +3305,20 @@ def main(argv: list[str] | None = None) -> int:
         choices=ENGINE_CHOICES,
         default="auto",
         help=(
-            "auto 按可用引擎顺序尝试: static → 有求解引擎则 scrapling/cloak-cdp 起步、playwright 兜底，"
+            "auto 按可用引擎顺序尝试: static → 有 scrapling 则从求解层起步、playwright 兜底，"
             "无求解引擎时才是 static → playwright；"
+            "cloak-cdp 仅显式指定时使用（不参与 auto）；"
             "nodriver 仅在 --headful 时加入 auto，或显式 --engine nodriver。"
             "chrome-late 先让页面自然加载再接入调试器(需 --settle-ms 调整窗口)，"
             "只能显式指定。显式指定某个引擎时缺件会直接失败。"
+        ),
+    )
+    parser.add_argument(
+        "--skip-static",
+        action="store_true",
+        help=(
+            "auto 模式跳过 static 层，直接从浏览器层起步。"
+            "render=always 这类要求 DOM 已执行 JS 的场景用，避免先拿到未水合的空壳。"
         ),
     )
     parser.add_argument(
@@ -3322,9 +3407,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--geoip",
         action="store_true",
-        help="CloakBrowser 按代理出口推导地区；需要 cloakbrowser[geoip]。",
+        help="CloakBrowser 按代理出口推导地区；需要 cloakbrowser[geoip]，且仅 --engine cloak-cdp 时生效。",
     )
-    parser.add_argument("--humanize", action="store_true", help="CloakBrowser 使用人类化输入行为。")
+    parser.add_argument("--humanize", action="store_true", help="CloakBrowser 使用人类化输入行为（仅 --engine cloak-cdp）。")
     parser.add_argument("--hide-canvas", action="store_true")
     parser.add_argument(
         "--real-chrome", action="store_true", help="层 1/2 使用系统 Chrome 而非安装的浏览器。"
@@ -3443,6 +3528,7 @@ def main(argv: list[str] | None = None) -> int:
         proxy=args.proxy,
         discover_proxy=args.discover_proxy,
         engine=args.engine,
+        skip_static=args.skip_static,
         timeout_ms=args.timeout_ms,
         wall_timeout_ms=args.wall_timeout_ms,
         retries=args.retries,

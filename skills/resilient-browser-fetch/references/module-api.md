@@ -13,7 +13,7 @@
 | Cloudflare 求解算法 | Scrapling 原生实现 | 仍使用 Scrapling，不声称更强 |
 | 浏览器生命周期 | 调用者管理 | 每个引擎在隔离子进程中运行，并有硬超时和进程树回收 |
 | 引擎可用性 | 调用者自行判断 | 注册表 + 进程内探测；`auto` 只升档到已安装的引擎 |
-| 失败回退 | 调用者编排 | `auto` 先试 `static`，浏览器段从求解引擎（`scrapling`/`cloak-cdp`）起步、层 1 兜底；无求解引擎时才是 `static → playwright`；`nodriver` 仅在显式选择或 `--headful` 的 `auto` 中作为最后后备 |
+| 失败回退 | 调用者编排 | `auto` 先试 `static`（`--skip-static` 可跳过），浏览器段从 `scrapling` 起步、`playwright` 兜底；无 `scrapling` 时才是 `static → playwright`；`cloak-cdp` 默认不参与 `auto`，仅在显式选择时使用；`nodriver` 仅在显式选择或 `--headful` 的 `auto` 中作为最后后备 |
 | 代理安全 | 调用者处理 | 代理预检、本地端口发现、默认禁止静默直连、凭据遮蔽 |
 | 成功判断 | 通常由调用者判断 | 同时检查 HTTP 状态、挑战特征、最小字节数和业务文本 |
 | 结果模型 | Scrapling `Response` | 统一为 `FetchResult`、`FetchAttempt`（含 `kind` 失败分类）和 `FetchOutcome` |
@@ -34,17 +34,19 @@ flowchart TD
     Worker --> Static[层 0 static: stdlib HTTP]
     Static --> Validate{状态与内容验证}
     Validate -->|有效| Outcome[FetchOutcome]
-    Validate -->|挑战或空页| Playwright[层 1 playwright 渲染]
-    Playwright --> Validate2{再次验证}
+    Validate -->|挑战或空页| Scrapling[层 2 scrapling 求解]
+    Scrapling --> Validate2{再次验证}
     Validate2 -->|有效| Outcome
-    Validate2 -->|挑战或空页| Scrapling[层 2 scrapling 求解]
-    Scrapling --> Validate3{再次验证}
+    Validate2 -->|挑战或空页| Playwright[层 1 playwright 渲染]
+    Playwright --> Validate3{再次验证}
     Validate3 -->|有效| Outcome
-    Validate3 -->|仍被拦截| Cloak[层 3 cloak-cdp 求解]
+    Validate3 -->|失败| Failed[FetchFailed + FetchAttempt 列表]
+    Static -.->|--skip-static| Scrapling
+    Explicit[显式 --engine cloak-cdp] -.-> Cloak[层 3 cloak-cdp]
     Cloak --> Validate4{再次验证}
     Validate4 -->|有效| Outcome
-    Validate4 -->|失败| Failed[FetchFailed + FetchAttempt 列表]
-    Validate & Validate2 & Validate3 & Validate4 -->|"404/410 且无挑战特征"| Stopped["资源级结论: 停止升档"]
+    Validate4 -->|失败| Failed
+    Validate & Validate2 & Validate3 & Validate4 -->|"404/410 或终局封禁"| Stopped["资源/出口级结论: 停止升档"]
     Stopped --> Failed
     Outcome --> Pure[fetch_page: 只返回内存结果]
     Outcome --> Files[save_page: 原子写入 HTML 与诊断]
@@ -59,7 +61,7 @@ flowchart TD
 - `wall_timeout_ms` 是调用者可预测的硬上限，不等同于 Scrapling 的页面操作超时。
 - 回退引擎返回 HTTP `200` 也必须经过内容验证，避免把挑战页当成业务页面。
 - 状态码不单独判拦截：403 且正文无拦截特征、长度达标、调用方期望文本命中时按可用内容接受，并在 `result.notes` 记 `http_status:403:accepted_by_content`；其余 4xx/5xx 仍失败。
-- `auto` 在 404/410 且正文无挑战特征时停止升档：资源级结论不会因换引擎而改变，调用方应核对 URL、权限或站点可见性。
+- `auto` 在 404/410 且正文无挑战特征时停止升档：资源级结论不会因换引擎而改变，调用方应核对 URL、权限或站点可见性。检测到 `you have been blocked` / `Error 1020` 这类终局封禁时也立即停止：这是出口/IP 层拒绝，换引擎、换解释器或 `--headful` 都不会改变结果，只能换出口。
 - `wait_until` 决定取源码与关闭窗口的时机（层 1/2/3 与 nodriver）：`commit` / `domcontentloaded` / `load`(默认) / `networkidle`；层 2/3 把前两者映射为 Scrapling 的 `load_dom=False`，nodriver 通过轮询 `document.readyState` 实现，`networkidle` 会告警并按 `load` 处理。
 - `playwright_api` 只控制层 1：`auto` 优先 Patchright，也可显式指定 `playwright` / `patchright`。装层 2 会带入 Patchright，做 A/B 或复现时要固定；层 2/3 内部固定使用 Patchright。浏览器结果的 `notes` 会记录 `control_plane`、`browser_channel`、`headless`；Playwright 系引擎另有 `playwright_api`，用于区分“同层但驱动/渠道不同”。
 - `impersonate` 只作用于层 0：非空时改用 curl_cffi 以浏览器同族的 TLS/HTTP2 指纹出网（需安装 curl_cffi，否则构造 `FetchOptions` 即报错），结果里记 `notes: impersonate:<目标>`；浏览器层自带指纹，传了会告警忽略。

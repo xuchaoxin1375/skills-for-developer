@@ -250,18 +250,18 @@ def test_fetch_page_returns_structured_outcome(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_fetch_page_falls_back_after_rejected_content(monkeypatch: pytest.MonkeyPatch) -> None:
-    stub_availability(monkeypatch, ("scrapling", "cloak-cdp"))
+    stub_availability(monkeypatch, ("static", "playwright"))
     results = iter(
         [
-            make_result(status=403, html="challenge", block_reasons=["cloudflare_interstitial"]),
-            make_result(engine="cloak-cdp"),
+            make_result(engine="static", status=403, html="challenge", block_reasons=["cloudflare_interstitial"]),
+            make_result(engine="playwright"),
         ]
     )
     monkeypatch.setattr(subject, "run_isolated_engine", lambda *args: next(results))
     outcome = subject.fetch_page(
         subject.FetchOptions(url="https://example.com", timeout_ms=60_000, min_bytes=1)
     )
-    assert outcome.result.engine == "cloak-cdp"
+    assert outcome.result.engine == "playwright"
     assert [attempt.ok for attempt in outcome.attempts] == [False, True]
     assert outcome.attempts[0].rejected_html == "challenge"
     assert outcome.attempts[0].kind == subject.KIND_BLOCKED
@@ -290,6 +290,64 @@ def test_fetch_page_stops_auto_escalation_on_terminal_status(
     assert calls == ["static"]
     assert len(captured.value.attempts) == 1
     assert captured.value.attempts[0].status == status
+
+
+def test_fetch_page_stops_auto_escalation_on_terminal_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub_availability(monkeypatch, ("static", "scrapling", "playwright"))
+    calls: list[str] = []
+
+    def fetch(engine: str, *_args: object) -> subject.FetchResult:
+        calls.append(engine)
+        return make_result(
+            engine=engine,
+            status=403,
+            html="<html><title>Attention Required! | Cloudflare</title><body>Sorry, you have been blocked. Error 1020</body></html>",
+            block_reasons=["hint:attention required", "hint:sorry, you have been blocked"],
+        )
+
+    monkeypatch.setattr(subject, "run_isolated_engine", fetch)
+    with pytest.raises(subject.FetchFailed) as captured:
+        subject.fetch_page(subject.FetchOptions(url="https://example.com", min_bytes=1))
+    assert calls == ["static"]
+    assert captured.value.terminal_block is True
+    assert "出口/IP" in captured.value.describe()
+
+
+def test_fetch_page_skip_static_starts_from_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub_availability(monkeypatch, ("static", "playwright"))
+    calls: list[str] = []
+
+    def fetch(engine: str, *_args: object) -> subject.FetchResult:
+        calls.append(engine)
+        return make_result(engine=engine)
+
+    monkeypatch.setattr(subject, "run_isolated_engine", fetch)
+    outcome = subject.fetch_page(
+        subject.FetchOptions(url="https://example.com", skip_static=True, min_bytes=1)
+    )
+    assert calls == ["playwright"]
+    assert outcome.result.engine == "playwright"
+
+
+def test_fetch_page_skip_static_without_browser_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub_availability(monkeypatch, ("static",))
+    with pytest.raises(ValueError, match="skip-static"):
+        subject.fetch_page(
+            subject.FetchOptions(url="https://example.com", skip_static=True, min_bytes=1)
+        )
+
+
+def test_validate_options_rejects_skip_static_with_explicit_static() -> None:
+    with pytest.raises(ValueError, match="skip-static"):
+        subject.validate_options(
+            subject.FetchOptions(url="https://example.com", engine="static", skip_static=True)
+        )
 
 
 def test_fetch_page_still_escalates_when_status_page_has_challenge_markers(
@@ -341,7 +399,9 @@ def test_fetch_page_records_missing_engines_without_running_them(
     )
     with pytest.raises(subject.FetchFailed) as captured:
         subject.fetch_page(subject.FetchOptions(url="https://example.com"))
-    assert captured.value.unavailable_engines == AUTO_LEVELS
+    assert captured.value.unavailable_engines == tuple(
+        name for name in AUTO_LEVELS if name != "cloak-cdp"
+    )
     assert all(item.kind == subject.KIND_UNAVAILABLE for item in captured.value.attempts)
     assert "缺件" in captured.value.describe()
 
@@ -437,7 +497,13 @@ def test_engine_order_keeps_explicit_selection_strict(selected: str) -> None:
 
 def test_engine_order_auto_upgrades_by_level(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_availability(monkeypatch, ("scrapling", "cloak-cdp"))
-    assert subject.engine_order("auto") == ["scrapling", "cloak-cdp"]
+    # cloak-cdp 是显式引擎，不再参与 auto；只装它时不应被自动选中。
+    assert subject.engine_order("auto") == ["scrapling"]
+
+
+def test_engine_order_auto_keeps_cloak_explicit_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_availability(monkeypatch, ("static", "scrapling", "cloak-cdp", "playwright"))
+    assert subject.engine_order("auto") == ["static", "scrapling", "playwright"]
 
 
 def test_engine_order_auto_uses_only_installed_engines(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -463,7 +529,13 @@ def test_engine_order_auto_keeps_render_only_engine_as_fallback(
 ) -> None:
     # 求解引擎真出问题时还有路可走：纯渲染引擎保留在阶梯末尾。
     stub_availability(monkeypatch, ("static", "playwright", "scrapling", "cloak-cdp"))
-    assert subject.engine_order("auto") == ["static", "scrapling", "cloak-cdp", "playwright"]
+    assert subject.engine_order("auto") == ["static", "scrapling", "playwright"]
+
+
+def test_engine_order_auto_can_skip_static(monkeypatch: pytest.MonkeyPatch) -> None:
+    # render=always 要的是已执行 JS 的 DOM，static 只会交回未水合的空壳。
+    stub_availability(monkeypatch, ("static", "playwright"))
+    assert subject.engine_order("auto", skip_static=True) == ["playwright"]
 
 
 def test_engine_order_auto_without_solver_keeps_level_order(

@@ -73,7 +73,7 @@ python -m pip install -r <skill-dir>/requirements-stealth.txt
 scrapling install
 ```
 
-启用 CloakBrowser CDP 回退：
+可选：仅当明确需要 CloakBrowser 指纹底座时安装（默认不装、不参与 `auto`，必须显式 `--engine cloak-cdp`）：
 
 ```bash
 uv pip install --python .venv/bin/python -r <skill-dir>/requirements-cloak.txt

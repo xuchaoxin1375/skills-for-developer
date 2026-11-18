@@ -211,8 +211,9 @@ htmlmini "https://example.com/app" --render --headful
 
 # Python 环境选择（save_page 与 Trafilatura 都靠它；默认 PATH 的 python 往往不是目标环境）
 htmlmini "https://example.com/app" --render --python-bin auto
-# 不指定时：默认解释器只会渲染、不会求解挑战，就自动换到本机装了 scrapling/cloak-cdp 的那个环境
-# （日志打印"改用更强环境"）；它仍失败再回退默认解释器重试一次（日志打印两次用的解释器）。
+# 不指定时：默认解释器只会渲染、不会求解挑战，就自动换到本机装了 scrapling 的那个环境
+# （日志打印"改用更强环境"）；只有它像"缺浏览器二进制"这类能力缺口时才回退默认解释器重试一次。
+# cloak-cdp 是显式可选，不参与 auto；只有 scrapling-cli / cloak-cdp 的环境不会被当成"更强"。
 # 显式指定 --python-bin / HTMLMINI_PYTHON 则不自动换；关闭扫描 HTMLMINI_ENV_SCAN=0
 # 或 export HTMLMINI_PYTHON=<解释器路径>
 

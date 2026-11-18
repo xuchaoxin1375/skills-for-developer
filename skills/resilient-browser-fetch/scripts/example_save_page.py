@@ -31,6 +31,7 @@ def build_fetch_options(args: argparse.Namespace) -> FetchOptions:
         proxy=args.proxy,
         discover_proxy=args.discover_proxy,
         engine=args.engine,
+        skip_static=bool(getattr(args, "skip_static", False)),
         playwright_api=getattr(args, "playwright_api", DEFAULT_PLAYWRIGHT_API),
         timeout_ms=args.timeout_ms,
         wall_timeout_ms=args.wall_timeout_ms,
@@ -58,6 +59,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-p", "--proxy", default=os.getenv("SCRAPE_PROXY"))
     parser.add_argument("--discover-proxy", action="store_true")
     parser.add_argument("-e", "--engine", choices=ENGINE_CHOICES, default="auto")
+    parser.add_argument(
+        "--skip-static",
+        action="store_true",
+        help="auto 模式跳过 static 层，直接从浏览器层起步（render=always 这类要求 DOM 已执行 JS 的场景）。",
+    )
     parser.add_argument(
         "--playwright-api",
         choices=PLAYWRIGHT_API_CHOICES,

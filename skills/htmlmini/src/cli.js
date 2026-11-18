@@ -102,7 +102,8 @@ ${engineList()}
     --cdp-url <地址>           接管你已开着的浏览器（如 --remote-debugging-port 启动的
                                Chrome/Edge），复用它自己的 profile/cookie/放行凭据，只读已
                                渲染的 DOM，不会关闭它。给了它就走 save_page 的接管路线
-    --render-timeout-ms <毫秒> 渲染超时上限（默认 300000；chrome dump-dom 上限 120000）
+    --render-timeout-ms <毫秒> 整条渲染阶梯的总预算（默认 300000；每次引擎/解释器尝试只拿
+                               剩余时间）。避免多层回退各给一份超时叠成十几分钟。
     --chrome-bin <路径>        渲染用的浏览器可执行文件（默认自动探测）。零依赖 Chrome 直渲
                                与 save_page 渲染（chrome-late 等）都用它；显式指定时
                                晚接入引擎会拉起这个浏览器，而不是默认的 Chrome——
@@ -244,15 +245,20 @@ ${ENV_HELP.map((line) => `  ${line}`).join('\n')}
 
 常见症状与对策 (TROUBLESHOOTING)
   403（静态抓取）             → 加 --render（只在 403/5xx 时回退渲染）。
-                               仍被拒说明站点按出口封禁，见下一条。
-  "Access Denied" 拒绝页      → 站点直接拒绝了这次请求，不是"内容少"。换出口/代理，或改用
-                               --render-engine chrome-late；别把它当正文交出去。
-                               同一出口 Chrome 被拒而 Edge 放行时，用
-                               --chrome-bin "<Edge 路径>" 换客户端品牌。
+                               仍被拒先看响应体：出现 "you have been blocked"/Error 1020
+                               是出口/IP 层终局封禁，换引擎/解释器/--headful 都无效，
+                               只能换 --proxy/出口；不要反复升档。
+  "Access Denied" 拒绝页      → 站点直接拒绝了这次请求，不是"内容少"。优先换出口/代理；
+                               Akamai 一类边缘封禁还可能按客户端品牌判负，可试
+                               --browser-brand edge 或 --chrome-bin "<Edge 路径>"。
+                               别把它当正文交出去，也别继续叠加同类引擎。
   正文只有几十字、像应用壳     → 加 --render=always 让页面水合；确实没内容再加 --allow-empty 保留。
-  渲染后仍是挑战页            → 换求解引擎：--python-bin auto（scrapling/cloak-cdp），
-                               或 --render-engine chrome-late（先让挑战跑完再接入）。
-  渲染超时                    → 调大 --render-timeout-ms；客户端渲染的站点常要 30~60 s。
+  渲染后仍是挑战页            → 先区分可解挑战与终局封禁：
+                               "Just a moment" 类挑战换求解引擎 --python-bin auto（scrapling），
+                               或 --render-engine chrome-late；"you have been blocked"/1020
+                               只能换出口。cloak-cdp 是显式可选，不参与 auto。
+  渲染超时                    → 调大 --render-timeout-ms（整条阶梯的总预算）；客户端渲染的
+                               站点常要 30~60 s。
    提取结果太多/太少           → 换 --mode 或 --extractor；用 --json 的 used 确认实际引擎。
   中文乱码                    → 输出是 UTF-8：文件与 --output 不受影响；控制台显示乱码多半是
                                Windows 旧代码页（chcp 936），先 chcp 65001；被 shell 重定向的

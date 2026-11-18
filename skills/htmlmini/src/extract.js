@@ -1,4 +1,4 @@
-import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve as resolvePath } from 'node:path';
@@ -57,10 +57,10 @@ export const FORMAT_POLICY_DESCRIPTIONS = {
   pretty: '重新缩进，便于人读（需要 js-beautify 依赖）',
 };
 export const RENDER_ENGINE_DESCRIPTIONS = {
-  auto: '逐层升档（默认）：静态优先；装了求解引擎就从 scrapling/cloak-cdp 起步，playwright 兜底',
+  auto: '逐层升档（默认）：静态优先；装了 scrapling 就从求解层起步，playwright 兜底；cloak-cdp 仅显式',
   playwright: '层 1：Playwright/Patchright 驱动，只渲染不求解',
-  scrapling: '层 2：Patchright + 挑战求解（需 ≥60s 预算）',
-  'cloak-cdp': '层 2：CloakBrowser 直连 CDP，带挑战求解（需 ≥60s 预算）',
+  scrapling: '层 2：Patchright + 挑战求解（需 ≥60s 预算；auto 的求解起点）',
+  'cloak-cdp': '层 3（可选）：CloakBrowser 直连 CDP，带挑战求解（需 ≥60s 预算；不参与 auto）',
   'chrome-late': '晚接入：先让站点的挑战跑完，再接入读已渲染 DOM（挑战站点专用）',
   nodriver: '层 1 备用：系统 Chrome 直接 CDP，不伪造指纹',
 };
@@ -232,28 +232,49 @@ export function bodyChallengeSignals(html) {
   const s = String(html ?? '');
   const sigs = [];
   const title = (s.match(/<title[^>]*>([\s\S]{0,120}?)<\/title>/i)?.[1] ?? '').replace(/\s+/g, ' ').trim();
+  // 可见文本按需计算：只有终局封禁判据与后续短页判据用得上，长页面不必先剥一遍标签。
+  let textCache = null;
+  const visibleText = () => {
+    textCache ??= s
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return textCache;
+  };
+  const terminalBody = /you have been blocked|error 10(15|20)/i.test(s);
+  const terminalTitle = /^(access denied|forbidden|you have been blocked)\b|^error 10(15|20)\b/i.test(title);
+  // Cloudflare 的 "Attention Required" 既可能是可解挑战，也可能是 1020 终局封禁。
+  // 标题本身不足以区分，body 里的 "you have been blocked" 才是终局判据；
+  // 这个判据必须排在 "attention required" 挑战标题之前，否则永远走不到。
+  if (terminalBody && (visibleText().length <= BODY_CHALLENGE_MAX_CHARS || /attention required|just a moment/i.test(title))) {
+    return ['block page body "you have been blocked"'];
+  }
+  if (terminalTitle) {
+    return [`block page title "${title}"`];
+  }
   // 标题是强判据：挑战中间页的标题就是这几句，正常内容页不会长这样。
   if (/just a moment|attention required|checking your browser|verifying you are human|请稍候|正在验证/i.test(title)) {
     return [`challenge title "${title}"`];
   }
-  // WAF 直接拒绝的页面（Akamai 的 "Access Denied"）也是强判据：没有正常内容页用这种标题。
-  // 它和"挑战还在跑"不是一回事：挑战页再等就有机会，拒绝页是终局，处置方式不同。
-  if (/access denied|^forbidden$|^error 10(15|20)$|you have been blocked/i.test(title)) {
-    return [`block page title "${title}"`];
-  }
   // 其余判据只在正文极短时才认：避免把讲 Cloudflare / 嵌入 Turnstile 组件但确有内容的页面误判。
-  const text = s
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (text.length > BODY_CHALLENGE_MAX_CHARS) return sigs;
+  if (visibleText().length > BODY_CHALLENGE_MAX_CHARS) return sigs;
   // 这些是 Cloudflare 自己的内部标识（DOM id、挑战脚本 URL），几乎不会出现在正常正文里；
   // 裸词 "turnstile" / "challenges.cloudflare.com" 不算——文档页与表单页都会有。
   if (/cf-chl|__cf_chl|_cf_chl_opt|cdn-cgi\/challenge/i.test(s)) sigs.push('cloudflare challenge markers');
   if (/challenges\.cloudflare\.com\/(turnstile|[^"'\s]*\.js)/i.test(s)) sigs.push('cloudflare turnstile script');
   return sigs;
+}
+
+/** 终局封禁信号（不是"挑战还在跑"，换渲染方式/解释器/headful 都不会改变结果）。 */
+export function isTerminalBlockSignal(signal) {
+  return /^block page (title|body)/.test(String(signal ?? ''));
+}
+
+/** 边缘封禁：可能按客户端品牌判负，换出口之外还可以换浏览器品牌。 */
+export function isEdgeBlockSignal(signal) {
+  return /^block page title "(access denied|forbidden)/i.test(String(signal ?? ''));
 }
 
 const PROXY_REGISTRY_ENV = 'HTMLMINI_PROXY_REGISTRY';
@@ -285,18 +306,27 @@ function registryHint(source, proxy) {
   const shown = cands.map((u) => maskProxy(u)).join(', ');
   return origin === 'none'
     ? `; no proxy in use and this machine has a proxy registry (~/.config/proxy-resources.json): ${shown} — htmlmini does not read it automatically, pass --proxy <url> or set HTTPS_PROXY`
-    : `; the ${origin} proxy failed; the machine registry also lists: ${shown} — try them one by one instead of concluding the site is unreachable`;
+    : `; the ${origin} proxy failed; the machine registry also lists: ${shown} — htmlmini does not switch egress automatically; retry with --proxy <a distinct exit> only if that exit is allowed`;
 }
 
-function failureHint(res) {
+function failureHint(res, bodySignals = []) {
   const status = res.status;
   if (status === 429) {
     return '; rate-limited: honor Retry-After/cooldown, do not bypass by switching egress or reader';
   }
   if (status === 403) {
+    const terminal = bodySignals.filter(isTerminalBlockSignal);
+    if (terminal.length) {
+      const edge = terminal.filter(isEdgeBlockSignal);
+      if (edge.length) {
+        return `; the response body is an edge block (${edge.join(', ')}): this client/exit was refused outright — stop switching engines; try --browser-brand edge (or --chrome-bin "<Edge path>") or change --proxy/exit`;
+      }
+      return `; the response body is a terminal block page (${terminal.join(', ')}): this exit/IP is blocked outright — changing render engine, interpreter, headless mode, or browser brand will not help; retry with a different --proxy/exit`;
+    }
     const sigs = challengeSignals(res.headers);
-    if (sigs.length) {
-      return `; challenge suspected (${sigs.join(', ')}): static fetch cannot solve JS/cookie challenges – render via resilient-browser-fetch save_page (same proxy), then extract the saved file with htmlmini_extract_file`;
+    if (sigs.length || bodySignals.length) {
+      const all = [...new Set([...sigs, ...bodySignals])];
+      return `; challenge suspected (${all.join(', ')}): add --render (auto only on 403/5xx) or --render=always to solve it with the browser path; if the response is a block page, change --proxy/exit`;
     }
   }
   if (status === 403 || (status >= 500 && status <= 599)) {
@@ -309,6 +339,27 @@ async function fetchOnce(source, { headers, timeoutMs, dispatcher }) {
   const init = { headers, redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) };
   if (dispatcher) init.dispatcher = dispatcher;
   return fetch(source, init);
+}
+
+/** 只读响应体的前 limit 字节：403 判据用不到整份大响应。 */
+async function readBodySample(res, limit = 256 * 1024) {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (size < limit) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const take = value.subarray(0, limit - size);
+      chunks.push(take);
+      size += take.length;
+      if (take.length < value.length) break;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return decodeHtml(Buffer.concat(chunks));
 }
 
 export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS, proxy } = {}) {
@@ -354,10 +405,25 @@ export async function readSource(source, { timeoutMs = FETCH_TIMEOUT_MS, proxy }
     }
     if (!res.ok) {
       const initial = firstStatus && firstStatus !== res.status ? ` (initial ${firstStatus} with minimal headers)` : '';
+      // 403 的 body 是最早的判据：Cloudflare 1020 会在正文写 "you have been blocked"，
+      // 只看 Set-Cookie/响应头会把终局封禁误判成可解挑战，进而白跑整条渲染阶梯。
+      // 限长读取，避免为一个错误页吞掉大响应。
+      let bodySignals = [];
+      if (res.status === 403) {
+        try {
+          bodySignals = bodyChallengeSignals(await readBodySample(res));
+        } catch {
+          // 读 body 失败不影响状态码错误本身；退回只看响应头。
+        }
+      }
+      const terminalBlock = bodySignals.some((s) => isTerminalBlockSignal(s) && !isEdgeBlockSignal(s));
+      const edgeBlock = bodySignals.some(isEdgeBlockSignal);
       // 登记提示只对"可能是路线问题"的状态出现：404/410 是资源级结论，换出口不会变。
       const routeHint = res.status === 403 || (res.status >= 500 && res.status <= 599) ? registryHint(source, proxy) : '';
-      const err = new Error(`HTTP ${res.status} fetching ${source}${initial}${via}${failureHint(res)}${routeHint}`);
+      const err = new Error(`HTTP ${res.status} fetching ${source}${initial}${via}${failureHint(res, bodySignals)}${routeHint}`);
       err.statusCode = res.status;
+      if (terminalBlock) err.terminalBlock = true;
+      else if (edgeBlock) err.edgeBlock = true;
       throw err;
     }
     const contentType = res.headers.get('content-type');
@@ -498,7 +564,7 @@ export async function findSolverPython() {
   for (const entry of candidates) {
     const engines = entry.engines ?? [];
     if (!entry.path) continue;
-    if (!engines.some((name) => SOLVER_ENGINES.includes(name))) continue;
+    if (!engines.some((name) => AUTO_SOLVER_ENGINES.includes(name))) continue;
     return { path: entry.path, engines, manager: entry.manager ?? null, level: candidateLevel(entry) };
   }
   return null;
@@ -507,14 +573,21 @@ export async function findSolverPython() {
 /**
  * 渲染失败后是否可以换更强的解释器再试。
  * 显式指定了解释器就尊重用户选择；配置类错误换环境也没用。
+ * 只认尚未试过的"自动求解引擎"（scrapling）：cloak-cdp 与 scrapling-cli
+ * 都不再算默认升档理由，避免把没有新能力的解释器当成"更强"。
  */
-export async function pickStrongerPython({ pythonBin, current = null, minLevel = 2 } = {}) {
+export async function pickStrongerPython({ pythonBin, current = null, tried = [] } = {}) {
   if (pythonBinOverride(pythonBin)) return null;
   const candidates = await scanPythonEnvironments(['playwright']);
-  const currentPath = current ? resolvePath(String(current)).toLowerCase() : null;
+  const triedPaths = new Set(
+    [current, ...tried]
+      .filter(Boolean)
+      .map((p) => resolvePath(String(p)).toLowerCase()),
+  );
   for (const entry of candidates) {
-    if (candidateLevel(entry) < minLevel) continue;
-    if (currentPath && resolvePath(String(entry.path)).toLowerCase() === currentPath) continue;
+    if (!entry.path) continue;
+    if (!(entry.engines ?? []).some((name) => AUTO_SOLVER_ENGINES.includes(name))) continue;
+    if (triedPaths.has(resolvePath(String(entry.path)).toLowerCase())) continue;
     return {
       recommended: entry.path,
       engines: entry.engines ?? [],
@@ -687,10 +760,24 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   if (!bin) throw new Error('no system Chrome/Chromium found; set HTMLMINI_CHROME_BIN to its path to use chrome rendering');
   if (info) Object.assign(info, { engine: 'chrome-dump', status: null });
   const proxyUrl = resolveProxy(url, { proxy });
-  const args = [...chromeExtraArgs(), '--headless=new', '--disable-gpu', '--no-sandbox', '--hide-scrollbars', '--virtual-time-budget=15000'];
+  // 零依赖 Chrome 也必须用独立 profile：默认 profile 可能正被用户已开的 Chrome 占用，
+  // 会以退出码 21 一类难懂的错误失败，也会碰到用户的 cookie/扩展。
+  const profileDir = await mkdtemp(join(tmpdir(), 'htmlmini-chrome-'));
+  const args = [
+    ...chromeExtraArgs(),
+    '--headless=new',
+    '--disable-gpu',
+    '--no-sandbox',
+    '--hide-scrollbars',
+    '--no-first-run',
+    '--disable-extensions',
+    `--user-data-dir=${profileDir}`,
+    '--virtual-time-budget=15000',
+  ];
   if (proxyUrl) {
     const masked = maskProxy(proxyUrl);
     if (/^https?:\/\/[^/@]+@/.test(proxyUrl)) {
+      await rm(profileDir, { recursive: true, force: true }).catch(() => {});
       throw new Error(`chrome --proxy-server cannot carry credentials; use credential-less proxy or save_page path (${masked})`);
     }
     args.push(`--proxy-server=${proxyUrl}`);
@@ -698,7 +785,8 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
   args.push('--dump-dom', url);
   log.info('render', `engine=chrome-dump src=${chromeSource} bin=${bin} [proxy: ${describeProxy(url, proxy)}]`);
   let stdout = '';
-  await new Promise((resolve, reject) => {
+  try {
+    await new Promise((resolve, reject) => {
     let child;
     try {
       child = spawn(bin, args, { windowsHide: true });
@@ -740,12 +828,18 @@ export async function runChromeDump(url, { proxy, timeoutMs = 60_000, chromeBin,
       done = true;
       clearTimeout(timer);
       if (code !== 0) {
-        reject(new Error(`chrome render failed for ${url} (exit ${code ?? '?'}): ${stderrTail}`));
+        // Chrome 失败时 stderr 经常是空的；stdout 里可能有错误页或半截 DOM，
+        // 截一小段一起报出来，别只给一个退出码。
+        const detail = (stderrTail || stdout.slice(-600)).trim();
+        reject(new Error(`chrome render failed for ${url} (exit ${code ?? '?'})${detail ? `: ${detail}` : ''}`));
         return;
       }
       resolve();
     });
   });
+  } finally {
+    await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+  }
   const html = stdout.trim();
   if (!html) throw new Error(`chrome render returned empty page for ${url}`);
   log.debug('render', `chrome dump-dom done (${html.length} chars)`);
@@ -808,6 +902,7 @@ export async function renderViaBrowser(url, { proxy, renderTimeoutMs = RENDER_TI
     browserBrand,
     info,
     solver,
+    forceRender,
     expectTexts,
     waitSelector,
     postWaitMs,
@@ -883,11 +978,24 @@ function pythonHint(python, alternative) {
 export function isInterpreterRetryable(e) {
   const m = String(e?.message ?? '');
   if (!m) return false;
+  // 终局封禁/边缘封禁是出口或客户端层结论：换解释器、换引擎、换 headful 都不会改变结果。
+  if (e?.terminalBlock || e?.edgeBlock) return false;
+  // 预算耗尽换环境也不会变出时间。
+  if (e?.budgetExhausted) return false;
   // 目标文本缺失是页面/数据源的问题，换解释器不会变。
   if (e?.expectedTextMissing) return false;
   if (/renderer not found|no python found|interpreter is not usable/i.test(m)) return false;
   if (/ENOTFOUND|EAI_AGAIN|\b(?:404|410)\b/.test(m)) return false;
   return /challenge|save_page|engine|引擎|render|渲染|chrome|dump-dom|timeout|超时/i.test(m);
+}
+
+/**
+ * 首选的"强环境"是否只是缺浏览器/依赖，值得回退默认环境再试。
+ * 挑战、封禁、超时都不在此列：换到弱环境只会重复同一个结果。
+ */
+function isCapabilityFallbackError(e) {
+  return Boolean(e?.capabilityGap)
+    || /executable doesn't exist|browser.*not found|failed to launch|playwright.*install|chrome.*not found|ENOENT/i.test(String(e?.message ?? ''));
 }
 
 
@@ -898,6 +1006,8 @@ export function isInterpreterRetryable(e) {
 // 或显式钉了 chrome-late 这类"先让挑战跑完再接入"的引擎。
 const BROWSER_ENGINES = ['playwright', 'scrapling', 'cloak-cdp', 'chrome-late', 'nodriver'];
 const SOLVER_ENGINES = ['scrapling', 'cloak-cdp'];
+/** 默认自动升档只认 scrapling；cloak-cdp 是显式选项，scrapling-cli 只是诊断入口。 */
+const AUTO_SOLVER_ENGINES = ['scrapling'];
 /** 求解引擎的最低预算：挑战页自身要等满时长（与 resilient-browser-fetch 的 MIN_SOLVER_TIMEOUT_MS 对齐）。 */
 const MIN_SOLVER_TIMEOUT_MS = 60_000;
 const RENDER_ENGINES_ENV = 'HTMLMINI_RENDER_ENGINES';
@@ -958,8 +1068,8 @@ async function renderCapability(pythonBin, { renderTimeoutMs = RENDER_TIMEOUT_MS
     }
   }
   log.debug('render', `save_page 可用引擎: ${engines.join(', ') || '无'} (python: ${python})`);
-  let solver = engines.some((name) => SOLVER_ENGINES.includes(name));
-  // 默认解释器只会渲染、不会求解挑战，而本机另有装了 scrapling/cloak-cdp 的环境：
+  let solver = engines.some((name) => AUTO_SOLVER_ENGINES.includes(name));
+  // 默认解释器只会渲染、不会求解挑战，而本机另有装了 scrapling 的环境：
   // 直接用那个环境，省掉"弱引擎先跑一遍"的往返（层 1 遇到挑战页必然过不去）。
   // 显式指定了解释器就尊重用户选择，不静默换环境。
   // 求解引擎至少要 60s 预算：预算不够时它用不上，别为一个用不了的引擎换环境。
@@ -967,7 +1077,7 @@ async function renderCapability(pythonBin, { renderTimeoutMs = RENDER_TIMEOUT_MS
     const stronger = await findSolverPython();
     if (stronger && resolvePath(String(stronger.path)).toLowerCase() !== resolvePath(String(python)).toLowerCase()) {
       const probed = await probeRenderEngines(stronger.path, script);
-      if (probed && probed.some((name) => SOLVER_ENGINES.includes(name))) {
+      if (probed && probed.some((name) => AUTO_SOLVER_ENGINES.includes(name))) {
         log.info(
           'render',
           `默认解释器不具备挑战求解能力，改用更强环境: ${stronger.path} (${stronger.manager ?? '未知管理方式'}; 引擎: ${probed.join(', ')})`,
@@ -1011,6 +1121,7 @@ export function savePageArgs({
   expectTexts = [],
   waitSelector = null,
   postWaitMs = null,
+  skipStatic = false,
 }) {
   // -X utf8 + PYTHONUTF8：子进程日志强制 UTF-8 输出，本侧按 UTF-8 增量解码、
   // 逐行透传（Windows 控制台查看侧按 shell-pitfalls 的 PowerShell UTF-8 模板设置）。
@@ -1023,6 +1134,8 @@ export function savePageArgs({
   // "接入后等渲染稳定"的引擎要拿到同样的上限, 否则会在半渲染状态下被读走。
   // 上限取 60s: 够 SPA 水合, 又不至于把外层预算全耗在等一个永不稳定的 DOM 上。
   args.push('--render-timeout-ms', String(Math.min(renderTimeoutMs, 60_000)));
+  // render=always 的契约是"DOM 已执行 JS"：让 save_page 跳过 static，别先交回未水合的空壳。
+  if (skipStatic) args.push('--skip-static');
   if (proxyUrl) args.push('--proxy', proxyUrl);
   else args.push('--discover-proxy');
   // 接管用户已开着的浏览器: 复用它的 profile/cookie/放行凭据, 只读已渲染的 DOM。
@@ -1062,12 +1175,12 @@ export function pickHydrationEngine({ engines = null, renderTimeoutMs = RENDER_T
   if (engines === null) return 'playwright';
   const browser = engines.filter((name) => BROWSER_ENGINES.includes(name));
   for (const name of ['playwright', 'nodriver']) if (browser.includes(name)) return name;
-  const solver = browser.find((name) => SOLVER_ENGINES.includes(name));
+  const solver = browser.find((name) => AUTO_SOLVER_ENGINES.includes(name));
   if (solver) return renderTimeoutMs >= MIN_SOLVER_TIMEOUT_MS ? solver : null;
   return null;
 }
 
-async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info = null, solver = false, expectTexts = [], waitSelector = null, postWaitMs = null }) {
+async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pythonBin, python, renderEngine, cdpUrl, chromeBin, browserBrand, info = null, solver = false, forceRender = false, expectTexts = [], waitSelector = null, postWaitMs = null }) {
   const interpreter = python ?? (await findPython({ pythonBin }));
   const proxyUrl = resolveProxy(url, { proxy });
   const out = join(tmpdir(), `htmlmini-render-${process.pid}-${Date.now()}-${renderSeq++}.html`);
@@ -1094,6 +1207,7 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
     expectTexts,
     waitSelector,
     postWaitMs,
+    skipStatic: forceRender,
   });
   const proxyNote = describeProxy(url, proxy);
   const browserNote = chromeBin
@@ -1111,6 +1225,7 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
     while (tailSize > TAIL_CAP && tail.length > 1) tailSize -= tail.shift().length + 1;
   };
   const limit = renderTimeoutMs + 60_000;
+  let success = false;
   try {
     await new Promise((resolve, reject) => {
     let child;
@@ -1158,23 +1273,47 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
         rest = '';
       }
       if (code !== 0) {
-        reject(new Error(`browser render failed for ${url} (exit ${code ?? '?'}): ${tail.join('\n').slice(-2000)}`));
+        // 完整子进程日志写到 <out>.log；错误消息只带摘要，避免把已经流式打印过的
+        // 2KB 日志再重复一遍（对 agent 是纯噪声）。
+        reject(new Error(`browser render failed for ${url} (exit ${code ?? '?'})`));
         return;
       }
       resolve();
     });
   });
     const html = decodeHtml(await readFile(out));
-    // save_page 把最终 URL、状态码与引擎写在 <out>.meta.json；渲染通路的真实状态码只在这里，
-    // 读完正文立刻取（finally 里会清理临时产物）。
+    // save_page 把最终 URL、状态码与引擎写在 <out>.meta.json；渲染通路的真实状态码只在这里。
     if (info) Object.assign(info, await readRenderMeta(out));
     if (!html.trim()) throw new Error(`browser render returned empty page for ${url}`);
+    success = true;
     return html;
+  } catch (err) {
+    // 失败时保留 save_page 的 .attempts.json / .<engine>.blocked.html 与子进程日志：
+    // 日志里让用户去看的文件不能在命令结束前被自己删掉。
+    const logPath = `${out}.log`;
+    try {
+      await writeFile(logPath, `${tail.join('\n')}\n`, 'utf8');
+    } catch {
+      // 日志落盘失败不影响原始错误。
+    }
+    const attempts = await readRenderAttempts(out);
+    if (attempts.terminalBlock || /you have been blocked|error 10(15|20)/i.test(tail.join('\n'))) {
+      err.terminalBlock = true;
+    } else if (attempts.edgeBlock || /akamai_edge_block|access denied/i.test(tail.join('\n'))) {
+      err.edgeBlock = true;
+    }
+    // 子进程日志不再内联到错误里，能力缺口要单独留标志，供"回退默认环境"判断。
+    if (/executable doesn't exist|browser.*not found|failed to launch|playwright.*install|chrome.*not found|ENOENT/i.test(tail.join('\n'))) {
+      err.capabilityGap = true;
+    }
+    const kept = `${out}.*`;
+    const suffix = `; render artifacts kept at ${kept}`;
+    err.message = err.message.includes(suffix) ? err.message : `${err.message}${suffix}`;
+    err.renderArtifacts = out;
+    throw err;
   } finally {
-    // save_page 成功/失败都会在 out 旁落文件（正文、.meta.json、.attempts.json、
-    // .<engine>.blocked.html）；basename 唯一，按前缀全清，不留残留。
-    // finally 包住 spawn（失败早抛也清），读文件在 finally 之前（先读后删）。
-    await cleanupRenderArtifacts(out);
+    // 成功才清理临时产物；失败保留，供调用方和用户复查。
+    if (success) await cleanupRenderArtifacts(out);
   }
 }
 
@@ -1195,6 +1334,31 @@ async function readRenderMeta(out) {
     return info;
   } catch {
     return {};
+  }
+}
+
+/**
+ * 读 save_page 失败时写的 `<out>.attempts.json`，给错误补结构化分类。
+ * 不解析日志尾巴：attempts 里有每个引擎的 reasons/error，终局封禁判据更可靠。
+ */
+export async function readRenderAttempts(out) {
+  try {
+    const meta = JSON.parse(await readFile(`${out}.attempts.json`, 'utf8'));
+    const lines = [
+      String(meta?.summary ?? ''),
+      ...(Array.isArray(meta?.attempts) ? meta.attempts : []).flatMap((a) => [
+        ...(Array.isArray(a?.reasons) ? a.reasons : []),
+        String(a?.error ?? ''),
+      ]),
+    ];
+    const sample = lines.join(' ');
+    const terminalBlock = /you have been blocked|error 10(15|20)/i.test(sample);
+    return {
+      terminalBlock,
+      edgeBlock: !terminalBlock && /akamai_edge_block|access denied/i.test(sample),
+    };
+  } catch {
+    return { terminalBlock: false, edgeBlock: false };
   }
 }
 
@@ -1279,36 +1443,78 @@ export async function readWithRender(
     if (!sigs.length || allowEmpty) return r;
     // WAF 拒绝页与"挑战还在跑"处置不同：拒绝页是终局（再换渲染方式也没用），
     // 挑战页再等就有机会。下一步提示也要分开写。
-    const blocked = sigs.filter((s) => s.startsWith('block page title'));
+    const blocked = sigs.filter(isTerminalBlockSignal);
     if (blocked.length) {
-      throw new Error(
-        `rendered page is the site's block page (${blocked.join(', ')}): the request was refused outright — don't keep switching render modes, the site rejected this one. Use --render-engine chrome-late (attach late: let the site's challenge finish before attaching) on the same proxy, or change the exit/proxy. Pass --allow-empty to keep the block HTML anyway.`,
+      const edge = blocked.filter(isEdgeBlockSignal);
+      if (edge.length) {
+        const err = new Error(
+          `rendered page is an edge block (${edge.join(', ')}): this client/exit was refused outright — stop switching engines. Try --browser-brand edge (or --chrome-bin "<Edge path>") on the same proxy, or change the exit/proxy. Pass --allow-empty to keep the block HTML anyway.`,
+        );
+        err.edgeBlock = true;
+        throw err;
+      }
+      const err = new Error(
+        `rendered page is the site's terminal block page (${blocked.join(', ')}): this exit/IP was refused outright — changing engine, interpreter, headless mode, or browser brand will not help. Retry with a different --proxy/exit, or pass --allow-empty to keep the block HTML anyway.`,
       );
+      err.terminalBlock = true;
+      throw err;
     }
     throw new Error(
-      `rendered page still looks like a challenge (${sigs.join(', ')}): the rendering pathway does not solve challenges — add --python-bin auto (or set HTMLMINI_PYTHON=auto) so the save_page engine (scrapling/cloak-cdp) solves it, or fetch it with resilient-browser-fetch (--headful for manual verification). Pass --allow-empty to keep the challenge HTML anyway.`,
+      `rendered page still looks like a challenge (${sigs.join(', ')}): the rendering pathway does not solve challenges — add --python-bin auto (or set HTMLMINI_PYTHON=auto) so the save_page engine (scrapling) solves it, or fetch it with resilient-browser-fetch (--headful for manual verification). Pass --allow-empty to keep the challenge HTML anyway.`,
     );
   };
-  // 静态 200 也可能是 WAF 拒绝页（标题 "Access Denied" 一类）。当正文交出去是假成功，
-  // 必须报错：标题判据足够强，正常内容页不会用这种标题。
+  // 静态 200 也可能是 WAF 拒绝页（标题 "Access Denied" 一类）或挑战壳。当正文交出去是假成功，
+  // 必须报错：标题/短正文判据足够强，正常内容页不会长这样。
   const guardBlocked = (r) => {
-    const blocked = bodyChallengeSignals(r.html ?? '').filter((s) => s.startsWith('block page title'));
-    if (!blocked.length || allowEmpty) return r;
-    const err = new Error(
-      `this page is the site's block page (${blocked.join(', ')}), not content — the request was refused outright. Re-fetch from a different exit/proxy, or render it via resilient-browser-fetch --engine chrome-late (attach late) on the same proxy. Pass --allow-empty to keep the HTML anyway.`,
-    );
-    // 静态正文就是拒绝页时，值得再渲染一次：真实浏览器可能过得去（403/5xx 也是这个处置）。
-    err.blockPage = true;
-    throw err;
+    const sigs = bodyChallengeSignals(r.html ?? '');
+    if (!sigs.length || allowEmpty) return r;
+    const blocked = sigs.filter(isTerminalBlockSignal);
+    if (blocked.length) {
+      const edge = blocked.filter(isEdgeBlockSignal);
+      if (edge.length) {
+        const err = new Error(
+          `this page is an edge block (${edge.join(', ')}), not content — the request was refused outright. Try --browser-brand edge (or --chrome-bin "<Edge path>") on the same proxy, or re-fetch from a different exit/proxy. Pass --allow-empty to keep the HTML anyway.`,
+        );
+        err.blockPage = true;
+        err.edgeBlock = true;
+        throw err;
+      }
+      const err = new Error(
+        `this page is the site's terminal block page (${blocked.join(', ')}), not content — the request was refused outright. Re-fetch from a different exit/proxy; changing engine, interpreter, or headless mode will not help. Pass --allow-empty to keep the HTML anyway.`,
+      );
+      // 静态正文就是终局封禁：继续渲染只会把同一个出口再撞一次。
+      err.terminalBlock = true;
+      throw err;
+    }
+    const challenge = sigs.filter((s) => s.startsWith('challenge'));
+    if (challenge.length) {
+      const err = new Error(
+        `static page is a challenge shell (${challenge.join(', ')}), not content — add --render (auto only on 403/5xx) or --render=always to solve it with the browser path; pass --allow-empty to keep the shell anyway.`,
+      );
+      err.blockPage = true;
+      throw err;
+    }
+    return r;
   };
   // 渲染一次并做挑战判定；bin 为空表示沿用默认解释器（PATH 的 python/python3）。
+  // renderTimeoutMs 是整条阶梯的总预算：每次尝试只拿剩余时间，避免"每个引擎各 300s"
+  // 在多层解释器回退时叠成十几分钟。
+  const totalBudgetMs = renderTimeoutMs ?? RENDER_TIMEOUT_MS;
+  const deadline = Date.now() + totalBudgetMs;
+  const remainingBudget = () => Math.max(0, deadline - Date.now());
   const renderHtml = async (bin) => {
+    const budget = remainingBudget();
+    if (budget <= 0) {
+      const err = new Error(`render budget exhausted (${totalBudgetMs}ms) for ${source}`);
+      err.budgetExhausted = true;
+      throw err;
+    }
     // 只清上一轮渲染的结果，保留静态回退时记下的状态码（info.staticStatus）。
     for (const k of ['status', 'engine', 'notes', 'python', 'proxy']) delete info[k];
     const html = await renderViaBrowser(source, {
       proxy,
       info,
-      ...(renderTimeoutMs == null ? {} : { renderTimeoutMs }),
+      renderTimeoutMs: budget,
       ...(headful ? { headful: true } : {}),
       ...(chromeBin == null ? {} : { chromeBin }),
       ...(browserBrand == null ? {} : { browserBrand }),
@@ -1322,14 +1528,19 @@ export async function readWithRender(
     });
     return guardRendered({ html, source, contentType: 'text/html', rendered: true });
   };
-  // 渲染没成功时的处置顺序：先换默认环境（更强环境可能没装浏览器二进制），
-  // 再换另一个更强环境。显式指定了解释器就尊重用户选择，不自动换。
+  // 渲染没成功时的处置顺序：只有"强环境缺浏览器二进制"这类能力缺口才回退默认环境；
+  // 挑战/封禁回退到弱环境不会变好。再换一个具备新求解能力的解释器（只换一次）。
   const renderWithEscalation = async () => {
     let firstError = null;
+    const tried = new Set();
+    const markTried = (p) => {
+      if (p) tried.add(resolvePath(String(p)).toLowerCase());
+    };
     const tryRender = async (bin) => {
       try {
         return done(await renderHtml(bin));
       } catch (e) {
+        if (e?.terminalBlock || e?.edgeBlock || e?.budgetExhausted) throw e;
         if (!isInterpreterRetryable(e)) throw e;
         if (!firstError) firstError = e;
         return null;
@@ -1338,33 +1549,47 @@ export async function readWithRender(
     const rendered = await tryRender(pythonBin);
     if (rendered) return rendered;
     const used = info.python ?? null;
+    markTried(used);
+    markTried(pythonBin);
     let current = null;
     try {
       current = await findPython({ pythonBin });
     } catch {
       current = null;
     }
-    // 首选的更强环境失败 → 回退到默认环境再试一次。
+    // 首选的更强环境失败 → 仅当它像"缺浏览器二进制"时才回退默认环境。
     if (
       !pythonBinOverride(pythonBin)
       && used
       && current
       && resolvePath(String(used)).toLowerCase() !== resolvePath(String(current)).toLowerCase()
+      && isCapabilityFallbackError(firstError)
     ) {
-      log.info('render', `更强环境未成功，回退到默认解释器重试: ${current}`);
+      log.info('render', `更强环境缺少可用的浏览器/依赖，回退到默认解释器重试: ${current}`);
       const fallback = await tryRender(current);
       if (fallback) return fallback;
+      markTried(current);
     }
-    const stronger = await pickStrongerPython({ pythonBin, current: used ?? current }).catch(() => null);
+    const stronger = await pickStrongerPython({
+      pythonBin,
+      current: used ?? current,
+      tried: [...tried],
+    }).catch(() => null);
     if (!stronger) throw firstError;
     log.info(
       'render',
-      `渲染未成功，改用更强的解释器重试: ${stronger.recommended} (层 ${stronger.level}; 引擎: ${stronger.engines.join(', ') || '未知'})`,
+      `渲染未成功，改用具备新求解能力的解释器重试: ${stronger.recommended} (引擎: ${stronger.engines.join(', ') || '未知'})`,
     );
     try {
       return done(await renderHtml(stronger.recommended));
     } catch (retryErr) {
-      throw new Error(`${firstError.message}; 改用 ${stronger.recommended} 重试后仍失败: ${retryErr.message}`);
+      const err = new Error(`${firstError.message}; 改用 ${stronger.recommended} 重试后仍失败: ${retryErr.message}`);
+      if (firstError.terminalBlock || retryErr.terminalBlock) err.terminalBlock = true;
+      if (firstError.edgeBlock || retryErr.edgeBlock) err.edgeBlock = true;
+      if (firstError.budgetExhausted || retryErr.budgetExhausted) err.budgetExhausted = true;
+      if (firstError.capabilityGap || retryErr.capabilityGap) err.capabilityGap = true;
+      err.renderArtifacts = retryErr.renderArtifacts ?? firstError.renderArtifacts;
+      throw err;
     }
   };
   // render="always"：静态 200 也照样渲染。客户端渲染页的正文在水合后才进 DOM，
@@ -1378,7 +1603,10 @@ export async function readWithRender(
   try {
     return done(guardBlocked(await readSource(source, { timeoutMs, proxy })));
   } catch (e) {
-    // 403/5xx，或静态 200 但正文就是拒绝页：都换渲染通路再试一次。
+    // 终局封禁/边缘封禁：继续渲染只会把同一个出口或客户端再撞一次。
+    // 静态 body 已经明确是 "you have been blocked"/1020/Access Denied 时，直接失败并提示换路线。
+    if (e?.terminalBlock || e?.edgeBlock) throw e;
+    // 403/5xx，或静态 200 但正文就是拒绝页/挑战壳：都换渲染通路再试一次。
     if (!isRenderableError(e) && !e?.blockPage) throw e;
     // 记下静态阶段的状态码：渲染后状态码未知时，日志能说明"静态 403 才转渲染"。
     if (Number.isFinite(e.statusCode)) info.staticStatus = e.statusCode;
