@@ -1,6 +1,6 @@
 # 面向代理的文档写作
 
-本文件维护“怎么写”这一层：`SKILL.md` 正文、`AGENTS.md`、以及任何通过指针按需加载的文档。目录、命名、README 索引与分发仍按 [skill-authoring-sync](../SKILL.md)；内容边界与语言风格按 [内容与语言规范](skill-content-guidelines.md)。两处冲突时以正文规范为准。
+本文件维护“怎么写”这一层：`SKILL.md` 正文、`AGENTS.md`、以及任何通过指针按需加载的文档。目录、命名、README 索引与分发仍按 [skill-authoring-sync](../SKILL.md)；内容边界与语言风格按 [内容与语言规范](skill-content-guidelines.md)。两处冲突时以内容与语言规范为准。
 
 代理每次执行的是**过程**，不是固定输出。文档的作用是让这个过程稳定、可预测，而不是把模型当成只会照抄的脚本。
 

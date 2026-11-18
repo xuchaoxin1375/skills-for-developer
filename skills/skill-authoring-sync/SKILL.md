@@ -5,7 +5,7 @@ description: >
   以及把本机 harness 配置偏好（如 OpenCode TUI `cli.json`）回写真源、按真源恢复本机配置。
   第三方保持上游原样，支持现成 CLI 单项安装或独立 clone 精选链接，重合处只调整自有 skill。
   当用户要求新建 skill、判断是否值得新建 skill、把 skill 安装到 harness、说“同步配置”“同步 opencode 设置/偏好”，
-  或复盘/同步/分发/校验/查变更已有 skill，以及需要定位真源仓库、避免在任意目录全盘搜索时使用此 Skill。从零描述能力与行为评估用社区版 skill-creator；从材料提炼规则用 reference-to-skill；单次实战补丁用 skill-patcher。
+  或核对/排查已有 skill 的真源、分发、同步与变更状态，以及需要定位真源仓库、避免在任意目录全盘搜索时使用此 Skill。从零描述能力与行为评估用社区版 skill-creator；从材料提炼规则用 reference-to-skill；单次实战补丁用 skill-patcher。
 ---
 
 # Skill 新建与真源同步规范

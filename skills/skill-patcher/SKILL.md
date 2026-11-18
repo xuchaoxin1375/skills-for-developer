@@ -19,7 +19,7 @@ description: >
 - 根据真实逃逸给存量 skill 加必要规则/自检条目、改措辞、搬例子、中性化项目专名。
 - 给存量 skill 加参考截图素材（配对照表、WebP 入库，参数见真源治理素材纪律）。
 - 评审他人打的补丁（按文末自检逐项打勾）。
-- 不用本 skill：一般编写审查或新建（走可用的 `skill-creator`，真源分发按 `skill-authoring-sync`）、多来源整体改进（走 `reference-to-skill`）、纯触发描述调优（走 skill-creator 描述优化环）。
+- 不用本 skill：一般编写审查或新建（走可用的 `skill-creator`，真源分发按 `skill-authoring-sync`）、多来源整体改进（走 `reference-to-skill`）、纯触发描述调优按 `skill-authoring-sync` 的触发评测，需要长期优化再用 `skill-creator` 的描述优化环。
 
 ## 工作流程（按 1–4）
 
