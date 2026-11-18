@@ -110,6 +110,7 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 - [仓库维护入口](AGENTS.md)：供代理读取的短入口。
 - [全局 AGENTS.md 真源](config/global-AGENTS.md)：会话入口、跨任务协作与授权底线；个人工具默认由 `user-profile` 维护，领域细则留在对应 skill。新机恢复与本机合并见下文，链接脚本不覆盖各 harness 的 AGENTS.md。
 - [WSL 复用 Windows 侧 OpenCode 配置](docs/wsl-opencode-reuse.md)：完整配置（含模型配置）在 WSL 侧的复用范围、方式选型、密钥红线与验证（复用后默认不测活）；skill 分发仍走链接脚本。
+- [OpenCode 本机配置丢失与恢复](docs/opencode-config-recovery.md)：`cli.json`、`plugins/`、`AGENTS.md` 被环境重置或误删后的真源对照、备份位置、恢复命令与验证；避免把最小默认 `cli.json` 写回仓库。
 - [Skill 仓库治理](docs/skill-governance.md)：规则归属、职责划分、变更流程与分级验证。
 - [Skill 依赖声明与部署基线](docs/skill-dependencies.md)：`dependencies.json` 格式、检查命令与新机推荐依赖。
 - [第三方 skill 推荐名单](config/third-party-skills.txt)：上游仓库、固定版本、升级保留文件；实体不入本仓库，部署时询问，按需同步。
@@ -295,7 +296,7 @@ git submodule update --init --depth 1
    第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
    非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本。
    插件（`plugins/`）由一键脚本一并处理；分步执行时跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
-3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——OpenCode 副本缺才复制，不一致只提示；未检测到 OpenCode（命令不在 PATH 且无现有配置）时只提示，不计失败；ZCode 仅在 `~/.zcode` 存在时尝试 symlink 到 OpenCode 副本，失败跳过（不复制）。
+3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——OpenCode 副本缺才复制，不一致只提示；未检测到 OpenCode（命令不在 PATH 且无现有配置）时只提示，不计失败；ZCode 仅在 `~/.zcode` 存在时尝试 symlink 到 OpenCode 副本，失败跳过（不复制）。`cli.json`、插件链接或 AGENTS.md 被环境重置/误删时，按 [OpenCode 本机配置丢失与恢复](docs/opencode-config-recovery.md) 处理；恢复 `cli.json` 必须显式带 `--apply-recommended-cli` / `-ApplyRecommendedCli`。
 4. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径、第三方名单与各 harness 安装数全过，见「结构校验」。
 5. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」；该命令只校验链接与推荐/第三方 skill，不校验全局 AGENTS.md（由 `deploy.sh --verify-only` / `deploy.ps1 -VerifyOnly` 负责）。插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`）。
 6. **服务端计数对照**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
