@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
 import { ATTR_POLICIES, ATTR_POLICY_DESCRIPTIONS, EXTRACTORS, EXTRACTOR_DESCRIPTIONS, FORMAT_POLICIES, FORMAT_POLICY_DESCRIPTIONS, MODES, MODE_DESCRIPTIONS, RENDER_ENGINE_CHOICES, RENDER_ENGINE_DESCRIPTIONS, runExtractDetailed } from './extract.js';
-import { fmtBytes, fmtMs, log, setLogLevel } from './log.js';
+import { enableLogFile, fmtBytes, fmtMs, log, logFilePath, setLogLevel } from './log.js';
 import { markSource, padPayload } from './output.js';
 import { VERSION, VERSION_LINE } from './version.js';
 
@@ -56,6 +56,7 @@ ${modeList()}
   --allow-empty              保留"像应用壳"的结果（默认报错并提示 --render=always）
   --keep-svg                 保留内联 <svg> 与 SVG data URI 图片（默认删除）
   --quiet / --verbose        日志静音 / 详细日志
+  --log[=<文件>]             完整日志另存文件（默认系统临时目录，保留最近 20 份）
 
 更多
   --help full                完整选项、取值说明、环境变量、退出码、示例与常见症状
@@ -176,6 +177,9 @@ ${engineList()}
     --noproxy                  强制直连，忽略环境代理
     --quiet                    只输出错误（进度日志静音）
     --verbose                  额外细节：解析/抽取内部信息、耗时、体积
+    --log[=<文件>]             把完整日志（含 --verbose 级细节）另存到文件。不给路径时写到
+                               系统临时目录的 htmlmini-logs/（保留最近 20 份、7 天内）；
+                               与 --quiet 同用可"终端零输出、现场留档"。失败时错误里带路径
     --source-marks             输出来源哨兵行：HTML 注释风格，包住载荷并写明
                                url / 状态码 / 抓取方式 / 时刻；默认关（别名 --marks）
     --no-source-marks          显式关闭来源哨兵行（默认即关；别名 --no-marks）
@@ -246,6 +250,9 @@ ${ENV_HELP.map((line) => `  ${line}`).join('\n')}
   htmlmini "https://example.com/tool" -m --keep-options=html    # 下拉框写成真正的 <select>
   htmlmini "https://example.com/tool" -m --keep-options=none    # 只要正文可见文字
   htmlmini "https://example.com/faq" -m --keep-details          # details 原位包回 HTML
+
+  # 13) agent / 批量：终端只留载荷，日志落到临时文件备查
+  htmlmini "https://example.com/app" --quiet --log
 
 常见症状与对策 (TROUBLESHOOTING)
   403（静态抓取）             → 加 --render（只在 403/5xx 时回退渲染）。
@@ -347,6 +354,8 @@ let keepValues = false;
 let keepDetails = false;
 let keepSvg = false;
 let logLevelOverride = null;
+// `--log` 的取值：null = 不写文件；空串 = 默认临时路径；其他 = 用户指定路径。
+let logFile = null;
 // 来源哨兵行：默认关（HTML 注释风格）。显式 `--source-marks` 或 HTMLMINI_SOURCE_MARKS=1 才加。
 let sourceMarks = process.env.HTMLMINI_SOURCE_MARKS === '1';
 
@@ -504,6 +513,16 @@ for (let i = 0; i < argv.length; i++) {
     logLevelOverride = 'quiet';
   } else if (a === '--verbose') {
     logLevelOverride = 'debug';
+  } else if (a === '--log') {
+    logFile = '';
+  } else if (a.startsWith('--log=')) {
+    // 可选值只认 `=` 形式：空格形式会把来源路径当值吞掉（同 --keep-options）。
+    const [, v] = splitEq(a);
+    if (!v) {
+      log.error('--log needs a file path after "=", or use --log without a value for the default');
+      process.exit(2);
+    }
+    logFile = v;
   } else if (a === '--noproxy') {
     proxy = 'direct';
   } else if (a === '--render') {
@@ -586,6 +605,14 @@ if (!FORMAT_POLICIES.includes(format)) {
   process.exit(2);
 }
 if (logLevelOverride) setLogLevel(logLevelOverride);
+if (logFile !== null) {
+  try {
+    log.info('log', enableLogFile(logFile || undefined));
+  } catch (err) {
+    // 日志文件只是旁路：写不了就继续，别让提取因日志失败。
+    log.error(`--log cannot write ${logFile || 'the default temp dir'}: ${err.message} (logs stay on stderr)`);
+  }
+}
 if (keepValues && keepOptions === 'none') {
   log.info('options', '--keep-values 只作用于选项清单：已用 --keep-options=none 关闭，value 不会出现');
 }
@@ -618,7 +645,8 @@ try {
     log.info('write', `stdout ${fmtBytes(Buffer.byteLength(out, 'utf8'))} (${total})`);
   }
 } catch (err) {
-  log.error(err.message);
+  const savedLog = logFilePath();
+  log.error(savedLog ? `${err.message}\n(full log: ${savedLog})` : err.message);
   // 不用 process.exit(1)：Windows 上静态抓取失败后 undici 句柄仍在收尾，
   // 立刻 exit 会在管道 stdout/stderr 写入未落定时触发 libuv 断言
   // （Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\win\async.c），

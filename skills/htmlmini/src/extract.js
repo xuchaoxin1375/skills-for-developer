@@ -1248,12 +1248,16 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
     timer.unref?.();
     const decoder = new StringDecoder('utf8');
     let rest = '';
+    // save_page 自己也用 Python logging 的 asctime（[YYYY-MM-DD HH:MM:SS]）；转发时去掉，
+    // 只留 htmlmini 的接收时刻，避免同一行叠两层时间戳。
+    const relay = (line) =>
+      log.info('render', line.replace(/^\[\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d{1,3})?\]\s*/, ''));
     const emit = (buf) => {
       const parts = (rest + decoder.write(buf)).split('\n');
       rest = parts.pop();
       for (const line of parts) {
         remember(line);
-        log.info('render', line);
+        relay(line);
       }
     };
     child.stderr.on('data', emit);
@@ -1269,7 +1273,7 @@ async function runSavePage(url, { script, proxy, renderTimeoutMs, headful, pytho
       clearTimeout(timer);
       if (rest) {
         remember(rest);
-        log.info('render', rest);
+        relay(rest);
         rest = '';
       }
       if (code !== 0) {

@@ -109,7 +109,7 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 [2026-10-20 16:22:46,495] htmlmini: [write] copilot.clean.html 200.3 KB (total 2.24s)
 ```
 
-`[read]` 汇总行把 `status=<码>` 放在最前面，并在终端里按 2xx 绿 / 3xx 黄 / 4xx 红 / 5xx 洋红 / 未知暗色着色（重定向到文件或管道时自动退化成纯文本）。静态抓取与 save_page 渲染取真实状态码；零依赖 chrome dump-dom 拿不到状态码，显示 `status=unknown` 并追加一行说明，静态 403 后才转渲染时显示 `status=unknown (static 403)`。时间戳按写入时刻取，所以相邻两行之差就是该阶段耗时；`--render` 时转发自渲染子进程的多行输出也逐行带时间。要还原成没有时间戳的旧格式（例如按行首 `htmlmini:` 匹配的脚本），设 `HTMLMINI_LOG_TIME=0`。
+`[read]` 汇总行把 `status=<码>` 放在最前面，并在终端里按 2xx 绿 / 3xx 黄 / 4xx 红 / 5xx 洋红 / 未知暗色着色（重定向到文件或管道时自动退化成纯文本）。静态抓取与 save_page 渲染取真实状态码；零依赖 chrome dump-dom 拿不到状态码，显示 `status=unknown` 并追加一行说明，静态 403 后才转渲染时显示 `status=unknown (static 403)`。时间戳按写入时刻取，所以相邻两行之差就是该阶段耗时；`--render` 时转发自渲染子进程的多行输出也逐行带时间，子进程自带的 asctime 会被去掉，避免同一行叠两层时间。要还原成没有时间戳的旧格式（例如按行首 `htmlmini:` 匹配的脚本），设 `HTMLMINI_LOG_TIME=0`。
 
 ### 来源哨兵行
 
@@ -145,7 +145,13 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 | `info`（默认） | — | 上述阶段级进度：每段耗时与体积 |
 | `debug` | `--verbose` | 追加细节：source/contentType/proxy/render、引擎链结果、`reduction%`、标题 |
 
-级别也可用环境变量 `HTMLMINI_LOG=quiet|info|debug` 预设，CLI 开关覆盖环境变量；MCP 侧只认环境变量。时间戳用 `HTMLMINI_LOG_TIME=0` 关闭。慢的阶段（网络抓取、`--render` 回退、`pretty` 重排）都会先报开始再报耗时，所以长时间等待不会静默。
+级别也可用环境变量 `HTMLMINI_LOG=quiet|info|debug` 预设，CLI 开关覆盖环境变量；MCP 侧只认环境变量。时间戳用 `HTMLMINI_LOG_TIME=0` 关闭。慢的阶段（网络抓取、`--render` 回退、`pretty` 重排）都会先报开始再报耗时，所以长时间等待不会静默；agent / 批量调用一般显式加 `--quiet`，进度日志正是给人看的。
+
+### 日志文件
+
+`--log`（不带值）把本次完整日志写到系统临时目录的 `htmlmini-logs/`，文件名 `htmlmini-<YYYYMMDD-HHmmss>-<pid>.log`；`--log=<文件>` 指定路径。文件记录含 `--verbose` 级的全部细节，行首始终带时间戳（不受 `HTMLMINI_LOG_TIME=0` 影响），默认目录只保留最近 20 份、超过 7 天的自动清理。
+
+日志文件与 stderr 级别相互独立，`--quiet --log` 就是"终端零输出、现场留档"：成功时 stderr 完全安静，失败时错误末尾给出 `(full log: <路径>)`。不加 `--log` 时不产生任何日志文件。
 
 ### 表单可选项与折叠块（默认保留 / `--keep-options` / `--keep-details`）
 

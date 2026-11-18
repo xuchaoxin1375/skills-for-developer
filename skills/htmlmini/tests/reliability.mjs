@@ -399,6 +399,26 @@ async function cli(args, { input, env } = {}) {
     const v = await cli([page, '--mode', 'html', '--verbose']);
     ok(v.stderr.includes('source=') && v.stderr.includes('reduction='), '--verbose 追加细节行');
 
+    // --log：完整日志另存文件，与 stderr 级别独立；--quiet --log 是"终端零输出、现场留档"。
+    const logFile = path.join(dir, 'run.log');
+    const named = await cli([page, '--mode', 'html', '--log=' + logFile]);
+    ok(named.code === 0 && named.stderr.includes('[log]') && named.stderr.includes(logFile), '--log 在 stderr 点名日志路径');
+    const savedLog = await readFile(logFile, 'utf8');
+    ok(
+      savedLog.includes('htmlmini: [read]') && /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\]/m.test(savedLog),
+      '--log 落盘完整日志并带时间戳',
+    );
+    const quietLog = await cli([page, '--mode', 'html', '--quiet', '--log=' + path.join(dir, 'quiet.log')]);
+    ok(quietLog.code === 0 && quietLog.stderr.trim() === '', '--quiet --log 终端仍静默');
+    const badLog = await cli([page, '--log=']);
+    ok(badLog.code === 2 && badLog.stderr.includes('--log needs a file path'), '--log= 空路径退出 2');
+    const failedLog = path.join(dir, 'failed.log');
+    const failed = await cli([path.join(dir, 'missing.html'), '--quiet', '--log=' + failedLog]);
+    ok(
+      failed.code === 1 && failed.stderr.includes('(full log:') && failed.stderr.includes(failedLog),
+      '--quiet 下失败仍报错并指出日志路径',
+    );
+
     // 状态码与来源哨兵：状态码进 [read] 行；哨兵行默认关，显式开启才是 HTML 注释。
     const live = await cli([`${base}/article`]);
     ok(live.code === 0 && /\[read\] status=200 /.test(live.stderr), '抓取状态码放在 [read] 行最前面');
@@ -436,11 +456,13 @@ async function cli(args, { input, env } = {}) {
     // 代理来源必须写进 [read] 行：只设环境变量时旧日志谎报 proxy=none。
     // 抓 127.0.0.1:9（discard，必被拒）保证秒失败，只断言 stderr 文本，不看退出码。
     const dead = 'http://127.0.0.1:9/x';
-    const envProxy = await cli([dead, '--mode', 'html'], { env: { HTTP_PROXY: 'http://127.0.0.1:18080' } });
+    // 显式清掉宿主 NO_PROXY：它的内容随机器而异，否则会把"环境代理生效"测成直连。
+    const noBypass = { NO_PROXY: '', no_proxy: '' };
+    const envProxy = await cli([dead, '--mode', 'html'], { env: { HTTP_PROXY: 'http://127.0.0.1:18080', ...noBypass } });
     ok(envProxy.stderr.includes('[proxy: http://127.0.0.1:18080 (HTTP_PROXY)]'), '环境变量代理连来源一起写进 [read] 行');
     const bypass = await cli([dead, '--mode', 'html'], { env: { HTTP_PROXY: 'http://127.0.0.1:18080', NO_PROXY: '*' } });
     ok(bypass.stderr.includes('[proxy: direct (NO_PROXY)]'), 'NO_PROXY 命中显示为直连');
-    const forced = await cli([dead, '--mode', 'html', '--noproxy'], { env: { HTTP_PROXY: 'http://127.0.0.1:18080' } });
+    const forced = await cli([dead, '--mode', 'html', '--noproxy'], { env: { HTTP_PROXY: 'http://127.0.0.1:18080', ...noBypass } });
     ok(forced.stderr.includes('[proxy: direct (--noproxy)]'), '--noproxy 覆盖环境显示为直连');
     const flag = await cli([dead, '--mode', 'html', '--proxy', 'http://user:pw@127.0.0.1:18080']);
     ok(flag.stderr.includes('[proxy: http://127.0.0.1:18080 (--proxy)]') && !flag.stderr.includes('user:pw'), '--proxy 显示且不泄凭据');
@@ -488,7 +510,7 @@ async function cli(args, { input, env } = {}) {
   const saved = process.env.HTMLMINI_PROXY_REGISTRY;
   // 本段要的是"没在用代理"那条提示文案；机器上若有全局 HTTP(S)_PROXY，
   // CLI 会走代理并给出另一种文案，断言会与本机环境耦合而偶发失败。
-  const proxyEnv = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy'];
+  const proxyEnv = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy'];
   const savedProxyEnv = Object.fromEntries(proxyEnv.map((k) => [k, process.env[k]]));
   try {
     for (const k of proxyEnv) delete process.env[k];
@@ -797,7 +819,7 @@ if os.getenv('STUB_RENDER_FAIL') == '1':
 marker = os.getenv('STUB_MARKER') or ''
 if marker:
     open(marker, 'a').write(url + '\\n')
-sys.stderr.write('stub log line: rendering ' + url + '\\n')
+sys.stderr.write('[2026-01-02 03:04:05] INFO: stub log line: rendering ' + url + '\\n')
 open(out, 'w', encoding='utf-8').write(
     '<!doctype html><html><head><title>渲染页</title></head><body>'
     '<article><h1>渲染标题</h1><p>' + '渲染正文内容足够长可以被识别为主体。' * 10 + '</p></article>'
@@ -878,6 +900,10 @@ open(out, 'w', encoding='utf-8').write(
         ok(cr.code === 0 && stripMarks(cr.stdout).trim() === '渲染页', 'CLI --render 回退成功');
         ok(/status=unknown \(static 502\)/.test(cr.stderr), '静态 502 转渲染后日志保留静态状态码');
         ok(cr.stderr.includes('htmlmini: [render]'), '渲染日志透传到 stderr 供参考');
+        ok(
+          cr.stderr.includes('INFO: stub log line') && !cr.stderr.includes('htmlmini: [render] [2026-01-02'),
+          '子进程自带的 asctime 被去掉，同一行不叠两层时间戳',
+        );
 
         const hf = await runExtract(`${base}/always502`, 'title', { render: true, headful: true, renderTimeoutMs: 30000 });
         ok(hf.trim() === '渲染页', '--headful 透传后仍取回正文');
