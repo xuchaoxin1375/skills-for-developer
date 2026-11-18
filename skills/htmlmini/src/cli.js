@@ -54,6 +54,7 @@ ${modeList()}
   --wait-selector <选择器>   渲染时等该 CSS 选择器可见（需 save_page 通路）
   --output <文件>            结果写文件而不是 stdout
   --allow-empty              保留"像应用壳"的结果（默认报错并提示 --render=always）
+  --keep-svg                 保留内联 <svg> 与 SVG data URI 图片（默认删除）
   --quiet / --verbose        日志静音 / 详细日志
 
 更多
@@ -169,6 +170,9 @@ ${engineList()}
                                "文本（value）"；默认只写文本。需选项清单开启（默认开启）
     --keep-details             把正文里被压平的 <details> 原位包回 HTML（FAQ/手风琴页）。
                                需能在正文里定位到该段并比对成功，否则保持纯文本
+    --keep-svg                 保留内联 <svg> 与 data:image/svg+xml 图片。默认删除
+                               这些不承载正文的矢量内容；有 alt 的图片只保留 alt 文本。
+                               图表、信息图或需要矢量结构时用；text 模式仍按纯文本删除
     --noproxy                  强制直连，忽略环境代理
     --quiet                    只输出错误（进度日志静音）
     --verbose                  额外细节：解析/抽取内部信息、耗时、体积
@@ -341,6 +345,7 @@ let allowEmpty = false;
 let keepOptions = 'list';
 let keepValues = false;
 let keepDetails = false;
+let keepSvg = false;
 let logLevelOverride = null;
 // 来源哨兵行：默认关（HTML 注释风格）。显式 `--source-marks` 或 HTMLMINI_SOURCE_MARKS=1 才加。
 let sourceMarks = process.env.HTMLMINI_SOURCE_MARKS === '1';
@@ -487,6 +492,8 @@ for (let i = 0; i < argv.length; i++) {
     process.exit(2);
   } else if (a === '--keep-details') {
     keepDetails = true;
+  } else if (a === '--keep-svg') {
+    keepSvg = true;
   } else if (a === '--keep-values') {
     keepValues = true;
   } else if (a === '--no-source-marks' || a === '--no-marks') {
@@ -594,7 +601,7 @@ if (source === '-' && process.stdin.isTTY) {
 
 try {
   const startedAt = Date.now();
-  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }), ...(keepOptions !== 'list' ? { keepOptions } : {}), ...(keepValues ? { keepValues: true } : {}), ...(keepDetails ? { keepDetails: true } : {}) });
+  const { output: raw, info } = await runExtractDetailed(source, mode, { extractor, attrs, format, pruneEmpty, textMax, allowEmpty, ...(proxy === undefined ? {} : { proxy }), ...(render ? { render } : {}), ...(renderTimeoutMs === undefined ? {} : { renderTimeoutMs }), ...(headful ? { headful: true } : {}), ...(chromeBin === undefined ? {} : { chromeBin }), ...(browserBrand === undefined ? {} : { browserBrand }), ...(pythonBin === undefined ? {} : { pythonBin }), ...(renderEngine === undefined ? {} : { renderEngine }), ...(cdpUrl === undefined ? {} : { cdpUrl }), ...(saveHtml === undefined ? {} : { saveHtml }), ...(expectTexts.length ? { expectTexts } : {}), ...(waitSelector === undefined ? {} : { waitSelector }), ...(postWaitMs === undefined ? {} : { postWaitMs }), ...(keepOptions !== 'list' ? { keepOptions } : {}), ...(keepValues ? { keepValues: true } : {}), ...(keepDetails ? { keepDetails: true } : {}), ...(keepSvg ? { keepSvg: true } : {}) });
   // JSON 模式不包哨兵行（否则不再可解析），来源由 JSON 里的 source/fetchStatus/fetchedAt 字段承载。
   const out = mode === 'json' || !sourceMarks ? raw : markSource(raw, info);
   const total = `total ${fmtMs(Date.now() - startedAt)}`;

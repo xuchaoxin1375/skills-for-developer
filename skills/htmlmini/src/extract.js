@@ -35,7 +35,7 @@ export const MODE_DESCRIPTIONS = {
   json: 'JSON：title / used / requested / version / content / stats{reductionPct} / meta?',
   title: '只打印页面标题',
   ui: '界面组件清单：标签、按钮、输入框、表格',
-  html: '清理后的 HTML：保留完整 DOM 结构与文字顺序，去掉脚本/样式/模板/图标/注释',
+  html: '清理后的 HTML：保留完整 DOM 结构与文字顺序，去掉脚本/样式/模板/图标（含 SVG）/注释',
 };
 export const EXTRACTOR_DESCRIPTIONS = {
   auto: '自动选择（默认）：非 HTML 原样透传 → Defuddle → Trafilatura（装了才用，否则静默跳过）→ semantic → ui 清单',
@@ -43,7 +43,7 @@ export const EXTRACTOR_DESCRIPTIONS = {
   trafilatura: '正文抽取（备选，需 pip install trafilatura）',
   semantic: '按语义标签抽正文',
   ui: '界面组件清单',
-  sanitize: '只做清理（去脚本/样式/事件属性），不抽正文；--mode html 就是它',
+  sanitize: '只做清理（去脚本/样式/SVG/事件属性），不抽正文；--mode html 就是它',
   passthrough: '原样透传，不做任何处理',
 };
 export const ATTR_POLICY_DESCRIPTIONS = {
@@ -1783,13 +1783,61 @@ function buttonName(doc, el) {
  * - 属性：none 全清（最省 token，丢链接目标与合并单元格）/ semantic 保留语义属性 / all 只去脚本样式
  * - 排版选项：compact 压掉源码缩进空白（默认）/ pruneEmpty 顺带剪掉清洗后变空的容器（非默认）
  */
-const SANITIZE_DROP_TAGS = 'script,style,noscript,template,link,meta,base,canvas,svg,path,source,track';
+const SANITIZE_DROP_TAGS_BASE = 'script,style,noscript,template,link,meta,base,canvas,source,track';
+const SANITIZE_DROP_TAGS = `${SANITIZE_DROP_TAGS_BASE},svg,path`;
+const SANITIZE_DROP_TAGS_KEEP_SVG = SANITIZE_DROP_TAGS_BASE;
 // ui / semantic 用 textContent 收集文本，script/style 的源码会被当成正文
 // （叶子 div 包一层 script 时尤其明显）。取内容前先删这些非内容标签，与 html 模式同口径。
 const NON_CONTENT_TAGS = 'script,style,noscript,template';
 
 function stripNonContent(doc) {
   for (const el of doc.querySelectorAll(NON_CONTENT_TAGS)) el.remove();
+}
+
+const SVG_DATA_URI_RE = /^data:image\/svg\+xml(?:[;,]|$)/i;
+
+function isSvgDataUri(value) {
+  return SVG_DATA_URI_RE.test(String(value ?? '').trim());
+}
+
+/** srcset 里是否只有 SVG data URI 候选（混入 http(s) 或其他 data:image 就保守保留）。 */
+function isOnlySvgDataUri(value) {
+  const text = String(value ?? '').trim();
+  if (!isSvgDataUri(text)) return false;
+  return !/https?:\/\/|data:image\/(?!svg\+xml)/i.test(text);
+}
+
+function isSvgDataImage(img) {
+  const src = img.getAttribute('src');
+  const srcset = img.getAttribute('srcset');
+  // src 是 SVG data URI 时按图处理；但 srcset 另有非 SVG 候选就保守保留，
+  // 避免把本来能用的位图一起删掉。
+  if (isSvgDataUri(src) && (!srcset || isOnlySvgDataUri(srcset))) return true;
+  return !src && isOnlySvgDataUri(srcset);
+}
+
+/**
+ * 默认清掉不承载正文的矢量内容：
+ * - 内联 `<svg>` 整个删除（图标、装饰、隐藏的 path 数据经常比正文还长）；
+ * - `<img src="data:image/svg+xml,...">` 与 SVG 的 `<source srcset>` 删除，
+ *   有 alt 时把 alt 文本留在原位置，避免正文里出现空洞；
+ * - 独立 SVG 文档（`image/svg+xml`）在 `looksLikeHtml` 之前就透传了，不受这里影响。
+ * `--keep-svg` 会跳过本函数，保留原始 SVG 结构与属性。
+ */
+export function stripSvgArtifacts(doc) {
+  for (const el of doc.querySelectorAll('svg')) el.remove();
+  for (const el of doc.querySelectorAll('source')) {
+    if (isOnlySvgDataUri(el.getAttribute('srcset')) || isSvgDataUri(el.getAttribute('src'))) {
+      el.remove();
+    }
+  }
+  for (const img of doc.querySelectorAll('img')) {
+    if (!isSvgDataImage(img)) continue;
+    const alt = (img.getAttribute('alt') || '').trim();
+    const hidden = (img.getAttribute('aria-hidden') || '').toLowerCase() === 'true';
+    if (alt && !hidden) img.replaceWith(doc.createTextNode(alt));
+    else img.remove();
+  }
 }
 
 // CSS 生成内容（::before / ::after 的 content）不在 DOM 文本里，textContent 取不到。
@@ -1943,6 +1991,8 @@ const PRUNE_KEEP_TAGS = new Set([
   'object', 'picture', 'slot', 'template',
 ]);
 
+const SVG_SCOPE = new Set(['svg']);
+
 function hasAncestorIn(node, tags) {
   for (let p = node.parentNode; p && p.nodeType === 1; p = p.parentNode) {
     if (tags.has((p.tagName || '').toLowerCase())) return true;
@@ -2016,6 +2066,9 @@ export function pruneEmptyElements(doc) {
     changed = false;
     for (const el of [...doc.querySelectorAll('*')]) {
       const tag = (el.tagName || '').toLowerCase();
+      // --keep-svg 时整棵 SVG 子树原样保留：path/circle/rect 这类空元素
+      // 会被"空元素剪除"误伤，剪完只剩一个空 <svg>。
+      if (tag === 'svg' || hasAncestorIn(el, SVG_SCOPE)) continue;
       if (PRUNE_KEEP_TAGS.has(tag) || hasAncestorIn(el, WS_PRESERVE_TAGS)) continue;
       if (!isBlank(el)) continue;
       el.remove();
@@ -2049,16 +2102,25 @@ export async function prettifyHtml(html) {
   return out.trim();
 }
 
-export function sanitizeHtml(doc, attrs = 'semantic', { compact = false, pruneEmpty = false } = {}) {
+export function sanitizeHtml(doc, attrs = 'semantic', { compact = false, pruneEmpty = false, keepSvg = false } = {}) {
   if (!ATTR_POLICIES.includes(attrs)) {
     throw new Error(`unknown attrs policy "${attrs}"（可选: ${ATTR_POLICIES.join(', ')}）`);
   }
-  for (const el of doc.querySelectorAll(SANITIZE_DROP_TAGS)) el.remove();
+  // 直接调用 sanitizeHtml 的调用方也享受同一口径：默认连 SVG data URI 图片一起清。
+  if (!keepSvg) stripSvgArtifacts(doc);
+  const dropTags = keepSvg ? SANITIZE_DROP_TAGS_KEEP_SVG : SANITIZE_DROP_TAGS;
+  for (const el of doc.querySelectorAll(dropTags)) el.remove();
   for (const el of doc.querySelectorAll('*')) {
     for (const node of [...el.childNodes]) {
       if (node.nodeType === 8) node.remove(); // 注释
     }
     if (attrs === 'all') continue;
+    // 显式 --keep-svg 时保留 SVG 子树的全部属性：viewBox / d / fill 这些
+    // 不是"表观属性"，按 semantic/none 清掉会让保留的 SVG 变成不可渲染的空壳。
+    // SVG data URI 的 <img> 同理：src 被清掉就只剩一个空 <img>。
+    const tag = (el.tagName || '').toLowerCase();
+    const svgImage = tag === 'img' && isSvgDataImage(el);
+    if (keepSvg && (tag === 'svg' || svgImage || hasAncestorIn(el, SVG_SCOPE))) continue;
     for (const attr of [...el.attributes]) {
       if (attrs === 'semantic' && SANITIZE_KEEP_ATTRS.has(attr.name.toLowerCase())) continue;
       el.removeAttribute(attr.name);
@@ -2439,7 +2501,7 @@ export function titleFromText(s) {
  * 非 HTML 输入（markdown/纯文本/JSON）任何模式下都透传原文，不硬抽；
  * 强制指定 extractor 时同理（硬把 markdown 当 HTML 解析只会得到空标题）。
  */
-export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, fetchCss = false, proxy, pythonBin } = {}) {
+export async function extractHtml(html, { url = 'about:blank', extractor = 'auto', contentType = null, attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, fetchCss = false, keepSvg = false, proxy, pythonBin } = {}) {
   if (!EXTRACTORS.includes(extractor)) {
     throw new Error(`unknown extractor "${extractor}"（可选: ${EXTRACTORS.join(', ')}）`);
   }
@@ -2485,10 +2547,19 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   const document = parseOnce(raw);
   log.info('parse', `dom ${fmtMs(Date.now() - tParse)}`);
 
+  // SVG 图标默认在抽取前删掉：Defuddle 会把带 <text> 的 SVG 当内容写进 Markdown，
+  // text 模式又会把它压成残缺标签。先删能让所有模式口径一致；--keep-svg 跳过。
+  if (!keepSvg) stripSvgArtifacts(document);
+
   // CSS 生成内容先并入 DOM，后续 textContent / Defuddle / ui 都能看到
   //（价格里用 ::before 画小数点这类页面的主要失真来源）。
   const cssGenerated = await inlineGeneratedContent(document, { baseUrl: url, fetchExternal: fetchCss, proxy });
   if (cssGenerated) log.debug('extract', `css-generated text +${cssGenerated}`);
+  // Trafilatura 走的是原始 HTML 字符串而不是这里的 DOM。默认删 SVG 时
+  // 必须把删过的 DOM 序列化给它，否则 SVG 里的 <text> 仍可能被抽进正文。
+  // 只在真的需要 Trafilatura 时序列化，Defuddle 成功时不为它多付一次开销。
+  let trafilaturaHtml;
+  const htmlForTrafilatura = () => (trafilaturaHtml ??= keepSvg ? html : document.toString());
 
   // [extract] 只报一次：sanitize 分支要赶在 pretty 之前先报，所以由分支显式记账。
   const tEngine = Date.now();
@@ -2526,7 +2597,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   if (extractor === 'sanitize') {
     // html 模式的“清洗”与“排版”分开计时：pretty 往往是整条命令里最慢的一段。
     const tClean = Date.now();
-    const cleaned = sanitizeHtml(document, attrs, { compact: format !== 'raw', pruneEmpty });
+    const cleaned = sanitizeHtml(document, attrs, { compact: format !== 'raw', pruneEmpty, keepSvg });
     markExtract(`used=sanitize attrs=${attrs} format=${format} ${fmtBytes(cleaned.length)} in ${fmtMs(Date.now() - tClean)}`);
     if (format !== 'pretty') return finish(cleaned, 'sanitize');
     const tPretty = Date.now();
@@ -2551,7 +2622,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
   }
 
   if (extractor === 'trafilatura') {
-    const alt = await tryTrafilatura(html, { pythonBin });
+    const alt = await tryTrafilatura(htmlForTrafilatura(), { pythonBin });
     if (alt.ok && alt.text.length >= MIN_ARTICLE_CHARS) {
       return finish(alt.text, 'trafilatura', defuddle ?? {});
     }
@@ -2570,7 +2641,7 @@ export async function extractHtml(html, { url = 'about:blank', extractor = 'auto
     return finish(defuddle.content, 'defuddle', defuddle);
   }
 
-  const alt = await tryTrafilatura(html, { pythonBin });
+  const alt = await tryTrafilatura(htmlForTrafilatura(), { pythonBin });
   // 与下面 semantic 档同口径：面板/表单页（UI 信号多）且抽出的文字不长时，
   // Trafilatura 只能拿到导航/表头碎片，应交回 UI 清单，而不是抢走结果。
   if (alt.ok && alt.text.length >= MIN_ARTICLE_CHARS && (alt.text.length >= UI_SWITCH_CHARS || uiSignalCount(html) < 3)) {
@@ -2976,7 +3047,7 @@ export async function runExtract(source, mode = 'markdown', options = {}) {
  * 与 runExtract 相同，但把来源信息（URL、状态码、是否渲染、抓取时刻）一起返回，
  * 供调用方做来源标记或 JSON 字段；CLI 用它生成起止行。
  */
-export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = 'list', keepValues = false, keepDetails = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
+export async function runExtractDetailed(source, mode = 'markdown', { forceContent, extractor = 'auto', attrs = 'semantic', format = 'compact', pruneEmpty = false, textMax = 150, allowEmpty = false, keepOptions = 'list', keepValues = false, keepDetails = false, keepSvg = false, timeoutMs, proxy, render = false, renderTimeoutMs, headful = false, chromeBin, browserBrand, pythonBin, renderEngine, cdpUrl, saveHtml, expectTexts = [], waitSelector = null, postWaitMs = null } = {}) {
   if (!MODES.includes(mode)) {
     throw new Error(`unknown mode "${mode}"（可选: ${MODES.join(', ')}）`);
   }
@@ -3047,7 +3118,13 @@ export async function runExtractDetailed(source, mode = 'markdown', { forceConte
       optionBlocks = injected.blocks;
     }
   }
-  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, fetchCss: rendered || Boolean(sibling && /^https?:/i.test(sibling.url)), ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
+  // text 模式最终会把 HTML 标签压成纯文本，保留 SVG 只会留下残缺标签；
+  // --keep-svg 只对能表达结构的模式生效，text 仍按默认删除。
+  const effectiveKeepSvg = keepSvg && mode !== 'text';
+  if (keepSvg && !effectiveKeepSvg) {
+    log.info('extract', '--keep-svg 不作用于 text 模式：纯文本无法表示 SVG，已按默认删除');
+  }
+  const res = await extractHtml(html, { url, extractor: mode === 'ui' ? 'ui' : mode === 'html' ? 'sanitize' : extractor, contentType, attrs, format, pruneEmpty, textMax, keepSvg: effectiveKeepSvg, fetchCss: rendered || Boolean(sibling && /^https?:/i.test(sibling.url)), ...(proxy === undefined ? {} : { proxy }), ...(pythonBin == null ? {} : { pythonBin }) });
   // 被压平的 <details> 先按原位包回 HTML；选项标记随内容一起被包进去，之后在原位替换。
   if (keepDetails) {
     if (mode === 'markdown') {

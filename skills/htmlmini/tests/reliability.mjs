@@ -1941,5 +1941,56 @@ process.stdout.write('<!doctype html><html><head><title>Chrome页</title></head>
   }
 }
 
+// ---- 18. 内联 SVG 默认删除 / --keep-svg ----
+{
+  const SVG_PAGE = `<html><head><title>SVG 页</title></head><body><article>
+<h1>正文标题</h1>
+<p>这是一段足够长的正常正文，用来确认内联 SVG 不会把文章整体挤成界面清单。这里继续补充文字，让 Defuddle 稳定识别为文章正文，而不是短小的应用壳。</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <text x="10" y="20">SVG 内文字</text>
+  <path d="M0 0h100v100H0z"/>
+</svg>
+<p>正文继续：这一段也必须保留，用来确认删除的只是 SVG 而不是整段内容。</p>
+</article></body></html>`;
+  const md = await runExtract(null, 'markdown', { forceContent: SVG_PAGE });
+  ok(!md.includes('<svg') && !md.includes('SVG 内文字'), '默认删除内联 SVG 与其中文字');
+  ok(md.includes('正文继续'), '删除 SVG 后正文仍在');
+  const mdKeep = await runExtract(null, 'markdown', { forceContent: SVG_PAGE, keepSvg: true });
+  ok(mdKeep.includes('<svg') && mdKeep.includes('SVG 内文字'), '--keep-svg 保留内联 SVG');
+  const textKeep = await runExtract(null, 'text', { forceContent: SVG_PAGE, keepSvg: true });
+  ok(!textKeep.includes('<svg') && textKeep.includes('正文继续'), '--keep-svg 在 text 模式仍按纯文本删除 SVG');
+  const jsonDefault = JSON.parse(await runExtract(null, 'json', { forceContent: SVG_PAGE }));
+  ok(!jsonDefault.content.includes('<svg'), 'json 模式默认也删 SVG');
+  const jsonKeep = JSON.parse(await runExtract(null, 'json', { forceContent: SVG_PAGE, keepSvg: true }));
+  ok(jsonKeep.content.includes('<svg'), '--keep-svg 在 json 模式也生效');
+
+  const SVG_DATA = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxwYXRoIGQ9Ik0wIDBoMTB2MTBIMHoiLz48L3N2Zz4=';
+  const IMG_PAGE = `<html><head><title>SVG 图片</title></head><body><article>
+<h1>图片页</h1><p>这是一段足够长的正常正文，用来确认 SVG data URI 图片删除后文章仍然保留。这里继续补充一些文字，让正文长度稳定超过阈值。</p>
+<img src="${SVG_DATA}" alt="示例图标">
+<img src="${SVG_DATA}">
+<p>图片后面的正文也要在。</p>
+</article></body></html>`;
+  const mdImg = await runExtract(null, 'markdown', { forceContent: IMG_PAGE });
+  ok(!mdImg.includes('data:image/svg+xml'), '默认删除 SVG data URI 图片');
+  ok(mdImg.includes('示例图标'), 'SVG 图片有 alt 时保留 alt 文本');
+  const htmlImg = await runExtract(null, 'html', { forceContent: IMG_PAGE });
+  ok(!htmlImg.includes('data:image/svg+xml') && !htmlImg.includes('<svg'), 'html 模式默认也删 SVG');
+  ok(htmlImg.includes('示例图标'), 'html 模式保留 SVG 图片的 alt 文本');
+  const htmlKeep = await runExtract(null, 'html', {
+    forceContent: SVG_PAGE,
+    keepSvg: true,
+    attrs: 'none',
+    pruneEmpty: true,
+  });
+  ok(htmlKeep.includes('viewBox=') && htmlKeep.includes('d="M0 0h100v100H0z"'), '--keep-svg 保留 SVG 几何属性');
+  ok(htmlKeep.includes('<svg') && /<path\b/.test(htmlKeep), '--keep-svg + pruneEmpty 不剪 SVG 子树');
+
+  const passthrough = await extractHtml(SVG_PAGE, { extractor: 'passthrough' });
+  ok(passthrough.content.includes('<svg') && passthrough.content.includes('SVG 内文字'), '显式 passthrough 仍原样保留 SVG');
+  const svgDoc = await extractHtml('<svg xmlns="http://www.w3.org/2000/svg"><text>独立 SVG</text></svg>');
+  ok(svgDoc.used === 'passthrough' && svgDoc.content.includes('<svg'), '独立 SVG 文档按非 HTML 原样透传');
+}
+
 await new Promise((resolve) => server.close(resolve));
 console.log(`\nPASS ${n} assertions`);

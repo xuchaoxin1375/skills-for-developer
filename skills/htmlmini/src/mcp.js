@@ -12,7 +12,7 @@ const formatEnum = z.enum(FORMAT_POLICIES);
 const extractorDesc =
   '抽取引擎。默认 auto：非 HTML 原样透传 → Defuddle → Trafilatura（装了才用，否则静默跳过）→ semantic → ui 清单。非 HTML 输入原样透传；显式指定某引擎即返回它的原始结果，不再静默换引擎。';
 const modeDesc =
-  '输出样式。默认 markdown。"html" 返回清理后的 HTML：保留完整 DOM 结构与文字顺序，去掉脚本/样式/模板/图标/注释；比 markdown 或界面清单更费 token，但不截断——需要结构（表格、表单状态、嵌套）时用它。';
+  '输出样式。默认 markdown。"html" 返回清理后的 HTML：保留完整 DOM 结构与文字顺序，去掉脚本/样式/模板/图标/注释；比 markdown 或界面清单更费 token，但不截断——需要结构（表格、表单状态、嵌套）时用它。内联 SVG 与 data:image/svg+xml 图片默认删除，需要时传 keep_svg。';
 const attrsDesc =
   '属性策略，仅对 mode "html" 有效。semantic（默认）：保留 href/src/alt/title/colspan/rowspan/scope 与表格/表单状态（value/selected/checked/name/type），去掉 class/style/id/data-*/aria-*。none：清空全部属性（最小，但丢链接目标、合并单元格与表单状态）。all：保留全部属性，只去掉脚本与样式。';
 const formatDesc =
@@ -29,6 +29,8 @@ const keepDetailsDesc =
   '把正文里被压平的 <details> 原位包回 HTML 块（FAQ、手风琴页），保留折叠结构。需要能在正文里定位到该段并比对成功；定位不到时保持纯文本，不会错包或丢内容。仅 markdown 模式生效。';
 const keepValuesDesc =
   '选项清单开启时（默认开启）让选项同时输出 value。列表里写成"文本（value）"，<select> 里保留 value 属性（option/datalist/单选多选都算）。默认 false 只写显示文本——value 是提交用的编码值。';
+const keepSvgDesc =
+  '保留内联 <svg> 与 data:image/svg+xml 图片。默认 false：删除这些不承载正文的矢量内容，<img> 有 alt 时只保留 alt 文本；图表、信息图或需要矢量结构时设 true。mode "html" 下 true 还会保留 SVG 的全部属性（viewBox/d/fill 等）；mode "text" 最终只出纯文本，仍按默认删除。';
 const toTexts = (v) => (v == null ? undefined : Array.isArray(v) ? v : [v]);
 
 /**
@@ -52,6 +54,7 @@ const toOptions = (a) => ({
   keepOptions: a.keep_options === false ? 'none' : a.keep_options === true ? 'list' : a.keep_options ?? 'list',
   keepValues: a.keep_values ?? false,
   keepDetails: a.keep_details ?? false,
+  keepSvg: a.keep_svg ?? false,
   proxy: a.proxy,
   render: a.render ?? false,
   renderTimeoutMs: a.render_timeout_ms,
@@ -91,6 +94,7 @@ const shapeFile = {
   keep_options: z.union([z.boolean(), z.enum(['list', 'html', 'none'])]).optional().describe(keepOptionsDesc),
   keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
+  keep_svg: z.boolean().optional().describe(keepSvgDesc),
 };
 const shapeUrl = {
   url: z.string().describe('http(s) URL'),
@@ -104,6 +108,7 @@ const shapeUrl = {
   keep_options: z.union([z.boolean(), z.enum(['list', 'html', 'none'])]).optional().describe(keepOptionsDesc),
   keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
+  keep_svg: z.boolean().optional().describe(keepSvgDesc),
   proxy: z
     .string()
     .optional()
@@ -169,6 +174,7 @@ const shapeHtml = {
   keep_options: z.union([z.boolean(), z.enum(['list', 'html', 'none'])]).optional().describe(keepOptionsDesc),
   keep_values: z.boolean().optional().describe(keepValuesDesc),
   keep_details: z.boolean().optional().describe(keepDetailsDesc),
+  keep_svg: z.boolean().optional().describe(keepSvgDesc),
 };
 
 // 正确命名（v2）。旧拼写 htmmini_* 保留为别名以兼容已配置的客户端。

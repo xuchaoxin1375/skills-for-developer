@@ -71,7 +71,8 @@ if (!urlProps.proxy || !urlProps.render || !urlProps.headful || !urlProps.chrome
 if (!urlProps.attrs) throw new Error('extract_url missing attrs param');
 if (!urlProps.format || !urlProps.prune_empty) throw new Error('extract_url missing format/prune_empty params');
 if (!urlProps.allow_empty) throw new Error('extract_url missing allow_empty param');
-console.log('ok - extract_url 含 proxy/render/headful/chrome_bin/attrs/format/prune_empty/allow_empty 参数');
+if (!urlProps.keep_svg) throw new Error('extract_url missing keep_svg param');
+console.log('ok - extract_url 含 proxy/render/headful/chrome_bin/attrs/format/prune_empty/allow_empty/keep_svg 参数');
 
 // 内嵌帮助（工具描述）必须与实现一致：新增引擎或取值后别漏改描述。
 // 历史上工具描述里的引擎清单落后于代码，调用方因此选不到新引擎。
@@ -105,6 +106,19 @@ const stripped = await rpc('tools/call', {
 });
 if (/colspan/.test(stripped.result.content[0].text)) throw new Error('attrs=none did not strip colspan');
 console.log('ok - html 模式与 attrs 参数可用（semantic 保 colspan / none 清空）');
+
+const SVG_PAGE = `<!doctype html><html><body><p>正文</p><svg viewBox="0 0 10 10"><path d="M0 0h10v10H0z"/></svg><p>结尾</p></body></html>`;
+const svgDefault = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: SVG_PAGE, mode: 'html' },
+});
+if (svgDefault.result.content[0].text.includes('<svg')) throw new Error('SVG should be dropped by default');
+const svgKept = await rpc('tools/call', {
+  name: 'htmlmini_extract_html',
+  arguments: { html_content: SVG_PAGE, mode: 'html', keep_svg: true },
+});
+if (!svgKept.result.content[0].text.includes('<svg')) throw new Error('keep_svg did not keep the SVG');
+console.log('ok - keep_svg 参数默认删 SVG，显式开启后保留');
 
 const SPACY = `<!doctype html><html><body>
   <div></div>

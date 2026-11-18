@@ -7,6 +7,7 @@
 - 需要"结构"而不是"摘要"时用 `--mode html`：保守清洗后的 HTML（去脚本/样式/表观属性，保留完整 DOM 与文本顺序），默认按 `compact` 排版压掉源码缩进与空行，比 markdown 费 token，但看表格、嵌套层级与表单初始态时不必回读原始 HTML。`--pretty` 重排为可读缩进，`--prune-empty` 额外剪掉清洗后变空的容器。
 - 两类"正文不在静态 DOM"的页面各有一个显式入口：客户端水合后才出现正文的用 `--render=always` 强制渲染；`ui` 清单默认不收超过 150 字符的长段落，用 `--text-max 0` 取消上限。两处都会在日志/输出里说明实际走了哪条，不静默降级。
 - CSS 生成内容会并入文本：`::before` / `::after` 的短标点 `content`（如把小数点做成 `content:"."` 的价格 `$`+`1`+`00`）不再被漏成 `$100`，插入条数记在 `--json` 的 `stats.cssGenerated`。只并 1~3 个安全标点，图标字体（`\e900`）、`url()`、`attr()`、`counter()` 一律跳过；外链 CSS 只在浏览器渲染通路和带 `.meta.json` 的落盘文件上抓取。
+- 内联 SVG 图标默认不保留：`<svg>` 与 `data:image/svg+xml` 图片视为非正文删除，`<img>` 有 `alt` 时保留 `alt` 文本；图表、信息图或需要矢量结构时加 `--keep-svg`。独立 SVG 文件（`image/svg+xml`）仍按非 HTML 输入原样透传。
 - 静态抓取成功但正文极短（< 200 字符且 HTML ≥ 5 KB）时默认报错，提示改用 `--render=always`，避免把应用壳 / 离线页当成正文；确认页面本来就这么短时加 `--allow-empty`。`title` / `skeleton` 不受此检查影响。
 - 页面数据由后端接口下发（SPA、白标商城、后台面板）时，先提取可见字段，再按[案例 11](references/usage-cases.md#11-后端接口--xhr-数据源)查页面自己的 XHR/fetch 接口核对；渲染文本只作展示校验，接口也不是公开契约。
 
@@ -23,6 +24,7 @@
 | 403 / 挑战 / 自动化被拦 | `htmlmini "<URL>" --render` 或 `--render=always --render-engine chrome-late` | 静态优先，挑战站点走晚接入引擎 |
 | 面板、仪表盘、设计稿 | `htmlmini page.html -u` | 按可访问语义出组件清单（标签/按钮/字段/表格） |
 | 要结构不要摘要 | `htmlmini page.html --mode html --attrs semantic` | 保留 DOM 顺序与表格/表单状态（含 value/selected/checked） |
+| 图表 / 信息图要保留 SVG | `htmlmini page.html --mode html --keep-svg` | 默认删 `<svg>` 与 SVG data URI 图片；需要矢量结构时显式开启 |
 | 抓一次、多视图复用 | `htmlmini "<URL>" --render=always --save-html page.html` | 之后 `htmlmini page.html -m` / `-u` 不再联网 |
 
 ## 为什么是这个选型（结论）
@@ -194,6 +196,16 @@ $ htmlmini "https://github.com/features/copilot" --mode html --pretty -o copilot
 - 只在 `markdown` 模式生效（`text` 会剥掉 HTML）；嵌套 `<details>` 只包最外层。
 - 查看器支持度不一样：GitHub 渲染 `<details>`，但会过滤 `<select>` 等表单控件；VS Code、Obsidian、Typora 之类大多能显示。要"到处都能读"用默认列表，要交互再用 `=html`。
 - 只作用于正文模式：`--mode html` 原文里本来就有；`--mode ui` 的"表单字段"只列前 10 条且整行截断；`--json` 不受影响。MCP 默认同样插入，传 `keep_options: false` 或 `"none"` 关闭，`keep_values: true` 带 value。
+
+### 内联 SVG（默认删除 / `--keep-svg`）
+
+SVG 图标、装饰和 `path` 数据往往不承载正文，却可能比正文本身还长；Defuddle 遇到带 `<text>` 的 SVG 还会把它当内容写进 Markdown，`text` 模式则可能压出残缺标签。默认在抽取前删除：
+
+- 所有内联 `<svg>` 元素（含其中的 `<text>`、`<metadata>` 与 `path` 数据）。
+- `<img src="data:image/svg+xml;base64,...">` 这类图片；有 `alt` 时把 `alt` 文本留在原位置，没有 `alt` 或 `aria-hidden="true"` 时直接删除。
+- `<source srcset="data:image/svg+xml,...">` 这类 SVG 候选；同组里另有非 SVG 位图候选时保守保留。
+
+需要图表、信息图或矢量结构时加 `--keep-svg`。它会让 markdown / json / html 等能表达结构的模式保留 SVG；`--mode html` 下还会保留 SVG 子树的全部属性（`viewBox`、`d`、`fill` 等），否则按 `semantic`/`none` 清掉后只剩不可渲染的空壳。`--keep-svg` 关闭的是 htmlmini 的主动删除，Defuddle 仍可能把微小/隐藏的 SVG 当图标剔除；要求逐字保留时用 `--mode html --keep-svg` 或 `--save-html`。如果页面主体就是一张 SVG 信息图，删除后正文可能不足阈值，这类页面也应加 `--keep-svg`。`text` 模式最终只出纯文本，仍按默认删除 SVG，避免留下残缺标签。`--extractor passthrough` 与 `--save-html` 是显式的原样路径，不受默认删除影响。
 
 ## 与 resilient-browser-fetch 的流水线
 
