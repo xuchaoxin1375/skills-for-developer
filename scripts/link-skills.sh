@@ -833,34 +833,65 @@ deploy_recommended_skills
 deploy_third_party_skills
 unlink_recommended_commands
 
+resolve_path() {
+  local p="$1"
+  if [[ "$p" != /* ]]; then p="$PWD/$p"; fi
+  (cd "$(dirname "$p")" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$(basename "$p")") || printf '%s\n' "$p"
+}
+
+zcode_link_matches() {
+  [[ -L "$1" ]] || return 1
+  local target
+  target="$(readlink "$1" 2>/dev/null || true)"
+  [[ -n "$target" ]] || return 1
+  if [[ "$target" != /* ]]; then target="$(dirname "$1")/$target"; fi
+  [[ "$(resolve_path "$target")" == "$(resolve_path "$2")" ]]
+}
+
 check_global_agents() {
-  # 全局 AGENTS.md 差异提示：缺失计异常，不一致只警告（允许本机定制，通用条目手工合并，不自动覆盖）。
+  # OpenCode 副本：缺失计异常，不一致只警告（允许本机定制，通用条目手工合并，不自动覆盖）。
+  # ZCode：优先 symlink 到 OpenCode 副本；缺失/普通文件/无权限只提示，不计失败。
   [[ $VERIFY_ONLY -eq 1 ]] || return 0
   local repo_agents="$REPO_ROOT/config/global-AGENTS.md"
   [[ -f "$repo_agents" ]] || return 0
-  # 每个消费全局 AGENTS.md 的 harness 一个目标路径，与 README「全局 AGENTS.md 同步与合并」保持一致
-  local target name live delta truth_only local_only
-  for target in "OpenCode|$HOME/.config/opencode/AGENTS.md" "ZCode|$HOME/.zcode/AGENTS.md"; do
-    name="${target%%|*}"
-    live="${target#*|}"
-    if [[ ! -f "$live" ]]; then
-      echo "全局 AGENTS.md($name) 缺失（期望按 README 从 config/global-AGENTS.md 恢复）" >&2
-      failures=$((failures + 1))
-    elif cmp -s "$repo_agents" "$live"; then
-      echo "全局 AGENTS.md($name) 与真源一致。"
+  local opencode="$HOME/.config/opencode/AGENTS.md"
+  local delta truth_only local_only
+  if [[ ! -f "$opencode" ]]; then
+    echo "全局 AGENTS.md(OpenCode) 缺失（期望按 README 从 config/global-AGENTS.md 恢复）" >&2
+    failures=$((failures + 1))
+  elif cmp -s "$repo_agents" "$opencode"; then
+    echo "全局 AGENTS.md(OpenCode) 与真源一致。"
+  else
+    # 给出差异方向：真源独有行 = 本机副本缺内容（多为旧版缩略）；本机独有行 = 本机定制
+    delta="$(diff "$repo_agents" "$opencode" || true)"
+    truth_only="$(printf '%s\n' "$delta" | grep -c '^<' || true)"
+    local_only="$(printf '%s\n' "$delta" | grep -c '^>' || true)"
+    echo "全局 AGENTS.md(OpenCode) 与真源存在差异：真源独有 ${truth_only} 行，本机独有 ${local_only} 行。" >&2
+    if [[ $truth_only -gt 0 ]]; then
+      echo "  → 本机副本缺少真源内容（多为旧版缩略或改写过通用条目）：按真源对齐通用条目，本机专属内容留在末尾「个性化规则补充」。" >&2
     else
-      # 给出差异方向：真源独有行 = 本机副本缺内容（多为旧版缩略）；本机独有行 = 本机定制
-      delta="$(diff "$repo_agents" "$live" || true)"
-      truth_only="$(printf '%s\n' "$delta" | grep -c '^<' || true)"
-      local_only="$(printf '%s\n' "$delta" | grep -c '^>' || true)"
-      echo "全局 AGENTS.md($name) 与真源存在差异：真源独有 ${truth_only} 行，本机独有 ${local_only} 行。" >&2
-      if [[ $truth_only -gt 0 ]]; then
-        echo "  → 本机副本缺少真源内容（多为旧版缩略或改写过通用条目）：按真源对齐通用条目，本机专属内容留在末尾「个性化规则补充」。" >&2
-      else
-        echo "  → 仅本机新增内容：确认属于本机定制后保留，可跨机的通用条目回写真源。" >&2
-      fi
+      echo "  → 仅本机新增内容：确认属于本机定制后保留，可跨机的通用条目回写真源。" >&2
     fi
-  done
+  fi
+
+  local zcode_dir="$HOME/.zcode" zcode="$HOME/.zcode/AGENTS.md"
+  if [[ ! -d "$zcode_dir" ]]; then
+    echo "全局 AGENTS.md(ZCode): 未检测到 ~/.zcode，跳过（未安装/未使用）。"
+  elif zcode_link_matches "$zcode" "$opencode"; then
+    echo "全局 AGENTS.md(ZCode) 已链接 -> $opencode"
+  elif [[ -L "$zcode" ]]; then
+    echo "WARN: 全局 AGENTS.md(ZCode) 已链接到其他目标（$(readlink "$zcode" 2>/dev/null || true)），保留不动。" >&2
+  elif [[ -e "$zcode" && ! -f "$zcode" ]]; then
+    echo "WARN: 全局 AGENTS.md(ZCode) 路径不是普通文件，跳过。" >&2
+  elif [[ -f "$zcode" ]]; then
+    if cmp -s "$opencode" "$zcode"; then
+      echo "全局 AGENTS.md(ZCode) 是普通文件（与 OpenCode 一致），部署时将替换为 symlink。"
+    else
+      echo "WARN: 全局 AGENTS.md(ZCode) 是普通文件且与 OpenCode 不同；保留本机文件，ZCode 同步跳过。" >&2
+    fi
+  else
+    echo "全局 AGENTS.md(ZCode) 未建立链接；部署时尝试，无符号链接权限则跳过。"
+  fi
 }
 
 check_global_agents

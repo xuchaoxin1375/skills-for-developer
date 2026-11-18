@@ -18,7 +18,8 @@
 #   --apply-recommended-skills / --skip-recommended-skills
 #   --apply-third-party-skills / --skip-third-party-skills / --sync-third-party-skills
 #
-# 全局 AGENTS.md 只在目标缺失时复制；内容不一致只警告，不覆盖本机文件。
+# OpenCode 的 AGENTS.md 缺失时复制；内容不一致只警告。
+# ZCode 仅在 ~/.zcode 存在时尝试 symlink 到 OpenCode 副本；无符号链接权限时跳过，不复制、不计失败。
 set -euo pipefail
 
 PLAN=0
@@ -105,6 +106,21 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 say() { [[ $QUIET -eq 1 ]] || echo "$@"; }
 
+resolve_path() {
+  local p="$1"
+  if [[ "$p" != /* ]]; then p="$PWD/$p"; fi
+  (cd "$(dirname "$p")" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$(basename "$p")") || printf '%s\n' "$p"
+}
+
+zcode_link_matches() {
+  [[ -L "$1" ]] || return 1
+  local target
+  target="$(readlink "$1" 2>/dev/null || true)"
+  [[ -n "$target" ]] || return 1
+  if [[ "$target" != /* ]]; then target="$(dirname "$1")/$target"; fi
+  [[ "$(resolve_path "$target")" == "$(resolve_path "$2")" ]]
+}
+
 failures=0
 timings=()
 total_start=$SECONDS
@@ -140,27 +156,71 @@ if [[ $SKIP_AGENTS -eq 0 ]]; then
     echo "WARN: 缺少 config/global-AGENTS.md，跳过全局 AGENTS.md 同步" >&2
     failures=$((failures + 1))
   else
-    for dst in "$HOME/.config/opencode/AGENTS.md" "$HOME/.zcode/AGENTS.md"; do
-      if [[ -f "$dst" ]]; then
-        if cmp -s "$src" "$dst"; then
-          say "全局 AGENTS.md($dst) 已与真源一致"
-        else
-          diff_out="$(diff "$src" "$dst" || true)"
-          truth_only="$(printf '%s\n' "$diff_out" | grep -c '^<' || true)"
-          local_only="$(printf '%s\n' "$diff_out" | grep -c '^>' || true)"
-          echo "WARN: 全局 AGENTS.md($dst) 与真源不同（真源独有 ${truth_only} 行，本机独有 ${local_only} 行）；保留本机文件，按真源对齐通用条目，本机定制留在末尾「个性化规则补充」" >&2
-        fi
-      elif [[ $PLAN -eq 1 ]]; then
-        say "全局 AGENTS.md($dst) 计划复制"
-      elif [[ $VERIFY_ONLY -eq 1 ]]; then
-        echo "WARN: 全局 AGENTS.md($dst) 缺失" >&2
-        failures=$((failures + 1))
+    opencode_agents="$HOME/.config/opencode/AGENTS.md"
+    if [[ -f "$opencode_agents" ]]; then
+      if cmp -s "$src" "$opencode_agents"; then
+        say "全局 AGENTS.md(OpenCode) 已与真源一致"
       else
-        mkdir -p "$(dirname "$dst")"
-        cp "$src" "$dst"
-        echo "全局 AGENTS.md($dst) 已恢复"
+        diff_out="$(diff "$src" "$opencode_agents" || true)"
+        truth_only="$(printf '%s\n' "$diff_out" | grep -c '^<' || true)"
+        local_only="$(printf '%s\n' "$diff_out" | grep -c '^>' || true)"
+        echo "WARN: 全局 AGENTS.md(OpenCode) 与真源不同（真源独有 ${truth_only} 行，本机独有 ${local_only} 行）；保留本机文件，按真源对齐通用条目，本机定制留在末尾「个性化规则补充」" >&2
       fi
-    done
+    elif [[ $PLAN -eq 1 ]]; then
+      say "全局 AGENTS.md(OpenCode) 计划复制"
+    elif [[ $VERIFY_ONLY -eq 1 ]]; then
+      echo "WARN: 全局 AGENTS.md(OpenCode) 缺失" >&2
+      failures=$((failures + 1))
+    else
+      mkdir -p "$(dirname "$opencode_agents")"
+      cp "$src" "$opencode_agents"
+      echo "全局 AGENTS.md(OpenCode) 已恢复"
+    fi
+
+    # ZCode 只认 ~/.zcode/AGENTS.md；优先 symlink 到 OpenCode 副本。
+    # 不允许建链时跳过，不落回副本，也不计失败；~/.zcode 不存在时视为未使用。
+    zcode_dir="$HOME/.zcode"
+    zcode_agents="$zcode_dir/AGENTS.md"
+    if [[ ! -d "$zcode_dir" ]]; then
+      say "全局 AGENTS.md(ZCode): 未检测到 ~/.zcode，跳过（未安装/未使用）"
+    elif zcode_link_matches "$zcode_agents" "$opencode_agents"; then
+      say "全局 AGENTS.md(ZCode) 已链接 -> $opencode_agents"
+    elif [[ -L "$zcode_agents" ]]; then
+      echo "WARN: 全局 AGENTS.md(ZCode) 已链接到其他目标（$(readlink "$zcode_agents" 2>/dev/null || true)），保留不动" >&2
+    elif [[ -e "$zcode_agents" && ! -f "$zcode_agents" ]]; then
+      echo "WARN: 全局 AGENTS.md(ZCode) 路径不是普通文件，跳过" >&2
+    elif [[ -f "$zcode_agents" ]] && ! cmp -s "$opencode_agents" "$zcode_agents"; then
+      echo "WARN: 全局 AGENTS.md(ZCode) 是普通文件且与 OpenCode 不同；保留本机文件，ZCode 同步跳过（如需共享，手工合并后删除该文件）" >&2
+    elif [[ $PLAN -eq 1 ]]; then
+      if [[ -f "$zcode_agents" ]]; then
+        say "全局 AGENTS.md(ZCode) 计划替换为 symlink"
+      else
+        say "全局 AGENTS.md(ZCode) 计划建立 symlink（无权限时跳过）"
+      fi
+    elif [[ $VERIFY_ONLY -eq 1 ]]; then
+      if [[ -f "$zcode_agents" ]]; then
+        say "全局 AGENTS.md(ZCode) 是普通文件（与 OpenCode 一致），部署时将替换为 symlink"
+      else
+        say "全局 AGENTS.md(ZCode) 未建立链接；部署时尝试，无符号链接权限则跳过"
+      fi
+    elif [[ ! -f "$opencode_agents" ]]; then
+      say "全局 AGENTS.md(ZCode): OpenCode 副本缺失，跳过"
+    elif [[ -f "$zcode_agents" ]]; then
+      tmp="$zcode_agents.tmp-$$"
+      if ln -s "$opencode_agents" "$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$zcode_agents"
+        echo "全局 AGENTS.md(ZCode) 已建立 symlink -> $opencode_agents"
+      else
+        rm -f "$tmp"
+        echo "WARN: 全局 AGENTS.md(ZCode) 未建立：本机符号链接不可用，跳过 ZCode 全局规则同步（不落回副本）" >&2
+      fi
+    else
+      if ln -s "$opencode_agents" "$zcode_agents" 2>/dev/null; then
+        echo "全局 AGENTS.md(ZCode) 已建立 symlink -> $opencode_agents"
+      else
+        echo "WARN: 全局 AGENTS.md(ZCode) 未建立：本机符号链接不可用，跳过 ZCode 全局规则同步（不落回副本）" >&2
+      fi
+    fi
   fi
   timings+=("全局 AGENTS.md:$((SECONDS - start))")
 fi

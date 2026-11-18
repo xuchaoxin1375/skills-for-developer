@@ -5,7 +5,8 @@
 
 .DESCRIPTION
   串联 link-skills.ps1、link-plugins.ps1 与全局 AGENTS.md 同步，避免三步分开执行时漏步。
-  AGENTS.md 只在目标缺失时复制；内容不一致只警告，不覆盖本机文件。
+  OpenCode 的 AGENTS.md 缺失时复制，内容不一致只警告；ZCode 仅在 ~/.zcode 存在时尝试
+  symlink 到 OpenCode 副本，无符号链接权限时跳过（不复制、不计失败）。
   结束时打印各阶段耗时与效率复盘提示，便于发现部署流程劣化。
 
 .PARAMETER RepoRoot
@@ -98,6 +99,74 @@ function Invoke-Phase([string]$Name, [scriptblock]$Action) {
   $script:Timings += [pscustomobject]@{ Step = $Name; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1) }
 }
 
+function Get-AgentsLinkTarget([string]$Path) {
+  $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+  if (-not $item -or [string]::IsNullOrEmpty($item.LinkType)) { return $null }
+  $target = @($item.Target)[0]
+  if ([string]::IsNullOrWhiteSpace($target)) { return $null }
+  if (-not [System.IO.Path]::IsPathRooted($target)) {
+    $target = Join-Path (Split-Path -Parent $Path) $target
+  }
+  return [System.IO.Path]::GetFullPath($target)
+}
+
+function Sync-ZCodeAgentsLink([string]$OpenCodeAgents) {
+  # ZCode 只认 ~/.zcode/AGENTS.md；优先 symlink 到 OpenCode 副本，不另存副本。
+  # 本机不允许创建符号链接（常见于 Windows 权限）时跳过，不计失败，也不落回副本。
+  $zcodeDir = Join-Path $env:USERPROFILE '.zcode'
+  $zcodeAgents = Join-Path $zcodeDir 'AGENTS.md'
+  if (-not (Test-Path -LiteralPath $zcodeDir -PathType Container)) {
+    Write-Step '全局 AGENTS.md(ZCode): 未检测到 ~/.zcode，跳过（未安装/未使用）'
+    return
+  }
+  if (-not (Test-Path -LiteralPath $OpenCodeAgents -PathType Leaf)) {
+    if ($Plan) {
+      Write-Step '全局 AGENTS.md(ZCode) 计划在 OpenCode 副本就绪后建立 symlink（无权限时跳过）'
+    } else {
+      Write-Step '全局 AGENTS.md(ZCode): OpenCode 副本缺失，跳过'
+    }
+    return
+  }
+  $target = [System.IO.Path]::GetFullPath($OpenCodeAgents)
+  $current = Get-AgentsLinkTarget $zcodeAgents
+  if ($null -ne $current) {
+    if ($current -ieq $target) {
+      Write-Step "全局 AGENTS.md(ZCode) 已链接 -> $target"
+    } else {
+      Write-Warning "全局 AGENTS.md(ZCode) 已链接到其他目标（$current），保留不动"
+    }
+    return
+  }
+  if (Test-Path -LiteralPath $zcodeAgents -PathType Container) {
+    Write-Warning '全局 AGENTS.md(ZCode) 路径是目录，跳过'
+    return
+  }
+  $regular = Test-Path -LiteralPath $zcodeAgents -PathType Leaf
+  if ($regular -and -not (Test-FileEqual $OpenCodeAgents $zcodeAgents)) {
+    Write-Warning '全局 AGENTS.md(ZCode) 是普通文件且与 OpenCode 副本不同；保留本机文件，跳过 ZCode 同步（如需共享，手工合并后删除该文件）'
+    return
+  }
+  if ($Plan) {
+    if ($regular) { Write-Step "全局 AGENTS.md(ZCode) 计划替换为 symlink -> $target" }
+    else { Write-Step "全局 AGENTS.md(ZCode) 计划建立 symlink -> $target（无权限时跳过）" }
+    return
+  }
+  if ($VerifyOnly) {
+    if ($regular) { Write-Step '全局 AGENTS.md(ZCode) 是普通文件（与 OpenCode 一致），部署时将替换为 symlink' }
+    else { Write-Step '全局 AGENTS.md(ZCode) 未建立链接；部署时尝试，无符号链接权限则跳过' }
+    return
+  }
+  $tmp = Join-Path $zcodeDir ("AGENTS.md.tmp-" + [guid]::NewGuid().ToString('N'))
+  try {
+    New-Item -ItemType SymbolicLink -Path $tmp -Target $target -ErrorAction Stop | Out-Null
+    Move-Item -LiteralPath $tmp -Destination $zcodeAgents -Force -ErrorAction Stop
+    Write-Host "全局 AGENTS.md(ZCode) 已建立 symlink -> $target"
+  } catch {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+    Write-Host '全局 AGENTS.md(ZCode) 未建立：本机符号链接不可用或创建失败，跳过 ZCode 全局规则同步（不落回副本）'
+  }
+}
+
 function Sync-GlobalAgents {
   $src = Join-Path $RepoRoot 'config\global-AGENTS.md'
   if (-not (Test-Path -LiteralPath $src -PathType Leaf)) {
@@ -105,38 +174,27 @@ function Sync-GlobalAgents {
     $script:Failures++
     return
   }
-  $targets = @(
-    @{ Name = 'OpenCode'; Path = (Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md') },
-    @{ Name = 'ZCode'; Path = (Join-Path $env:USERPROFILE '.zcode\AGENTS.md') }
-  )
-  foreach ($t in $targets) {
-    $dst = $t.Path
-    if (Test-Path -LiteralPath $dst -PathType Leaf) {
-      if (Test-FileEqual $src $dst) {
-        Write-Step "全局 AGENTS.md($($t.Name)) 已与真源一致"
-      } else {
-        $cmp = @(Compare-Object -ReferenceObject @(Get-Content -LiteralPath $src -Encoding UTF8) -DifferenceObject @(Get-Content -LiteralPath $dst -Encoding UTF8))
-        $truthOnly = @($cmp | Where-Object { $_.SideIndicator -eq '<=' }).Count
-        $localOnly = @($cmp | Where-Object { $_.SideIndicator -eq '=>' }).Count
-        Write-Warning "全局 AGENTS.md($($t.Name)) 与真源不同（真源独有 $truthOnly 行，本机独有 $localOnly 行）；保留本机文件，按真源对齐通用条目，本机定制留在末尾「个性化规则补充」"
-      }
-      continue
+  $opencodeAgents = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
+  if (Test-Path -LiteralPath $opencodeAgents -PathType Leaf) {
+    if (Test-FileEqual $src $opencodeAgents) {
+      Write-Step '全局 AGENTS.md(OpenCode) 已与真源一致'
+    } else {
+      $cmp = @(Compare-Object -ReferenceObject @(Get-Content -LiteralPath $src -Encoding UTF8) -DifferenceObject @(Get-Content -LiteralPath $opencodeAgents -Encoding UTF8))
+      $truthOnly = @($cmp | Where-Object { $_.SideIndicator -eq '<=' }).Count
+      $localOnly = @($cmp | Where-Object { $_.SideIndicator -eq '=>' }).Count
+      Write-Warning "全局 AGENTS.md(OpenCode) 与真源不同（真源独有 $truthOnly 行，本机独有 $localOnly 行）；保留本机文件，按真源对齐通用条目，本机定制留在末尾「个性化规则补充」"
     }
-    if ($Plan) {
-      Write-Step "全局 AGENTS.md($($t.Name)) 计划复制 -> $dst"
-      continue
-    }
-    if ($VerifyOnly) {
-      Write-Warning "全局 AGENTS.md($($t.Name)) 缺失: $dst"
-      $script:Failures++
-      continue
-    }
-    if ($PSCmdlet.ShouldProcess($dst, '复制全局 AGENTS.md')) {
-      New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
-      Copy-Item -LiteralPath $src -Destination $dst
-      Write-Host "全局 AGENTS.md($($t.Name)) 已恢复 -> $dst"
-    }
+  } elseif ($Plan) {
+    Write-Step "全局 AGENTS.md(OpenCode) 计划复制 -> $opencodeAgents"
+  } elseif ($VerifyOnly) {
+    Write-Warning "全局 AGENTS.md(OpenCode) 缺失: $opencodeAgents"
+    $script:Failures++
+  } elseif ($PSCmdlet.ShouldProcess($opencodeAgents, '复制全局 AGENTS.md')) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $opencodeAgents) | Out-Null
+    Copy-Item -LiteralPath $src -Destination $opencodeAgents
+    Write-Host "全局 AGENTS.md(OpenCode) 已恢复 -> $opencodeAgents"
   }
+  Sync-ZCodeAgentsLink $opencodeAgents
 }
 
 function Invoke-DepCheck {

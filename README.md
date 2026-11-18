@@ -140,7 +140,7 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 | Codex            | `%USERPROFILE%/.codex/skills`                                       | `~/.codex/skills`                      | 全量链接; 自带的`.system/`、`AGENTS.md` 等原样保留, 脚本不碰 |
 | Claude           | `%USERPROFILE%/.claude/skills`                                      | `~/.claude/skills`                     | 全量链接                                                         |
 | DeepSeek Harness | `%DSH_HOME%/skills`（默认 `%USERPROFILE%/.dsh/skills`）           | `${DSH_HOME:-~/.dsh}/skills`           | 全量链接；dsh 原生用户级（rank 高于通用位置）                    |
-| ZCode            | `%USERPROFILE%/.zcode/skills`（优先），回退 `%USERPROFILE%/.agents/skills` | `~/.zcode/skills`（优先），回退 `~/.agents/skills` | 只读取不建链，复用 Agents 通用行的链接；个别 skill 只想在 ZCode 内覆盖时放 `~/.zcode/skills`；全局 AGENTS.md 落 `~/.zcode/AGENTS.md`（见「全局 AGENTS.md 同步与合并」） |
+| ZCode            | `%USERPROFILE%/.zcode/skills`（优先），回退 `%USERPROFILE%/.agents/skills` | `~/.zcode/skills`（优先），回退 `~/.agents/skills` | 只读取不建链，复用 Agents 通用行的链接；个别 skill 只想在 ZCode 内覆盖时放 `~/.zcode/skills`；全局 AGENTS.md 优先 symlink 到 OpenCode 副本，无 symlink 权限时跳过、不保留副本（见「全局 AGENTS.md 同步与合并」） |
 
 ## 链接方式：Junction（Win）/ symlink（Linux）
 
@@ -282,7 +282,7 @@ cd ~/repos/skills-for-developer
    第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
    非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本。
    插件（`plugins/`）由一键脚本一并处理；分步执行时跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
-3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——缺才复制；不一致只提示，由人或代理对比后合并，不直接覆盖。
+3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——OpenCode 副本缺才复制，不一致只提示；ZCode 仅在 `~/.zcode` 存在时尝试 symlink 到 OpenCode 副本，失败跳过（不复制）。
 4. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径、第三方名单与各 harness 安装数全过，见「结构校验」。
 5. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」；插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`）。
 6. **服务端计数对照**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
@@ -368,22 +368,30 @@ python3 -c "import json,sys,os;ids={s['id'] for s in json.load(open(sys.argv[1])
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
 
-真源：`config/global-AGENTS.md`（以它为基准；允许各 harness 保留本机定制，通用条目两边保持一致）。每个消费全局 `AGENTS.md` 的 harness 一个部署目标：OpenCode 落 `~/.config/opencode/AGENTS.md`，ZCode 落 `~/.zcode/AGENTS.md`（ZCode 的用户级指令文件只认该路径，不回退 `~/.agents`）。链接脚本不碰各 harness 的 `AGENTS.md`；一键部署脚本 `scripts/deploy.ps1` / `deploy.sh` 会在目标缺失时复制，内容不一致只警告（通用条目由人或代理对比合并，本机定制保留，不自动覆盖）。分步执行时 `-VerifyOnly`/`--verify-only` 会一并提示差异：目标缺失计异常，内容不一致只警告，并给出差异方向——**真源独有 N 行**表示本机副本缺内容（多为旧版缩略或改写过通用条目，按真源对齐），**仅本机独有 M 行**属允许的本机定制。新机 clone 后跑一次一键脚本即可；已存在且不一致时合并通用条目，本机专属条目留在本机副本。
+真源：`config/global-AGENTS.md`（以它为基准；OpenCode 副本按真源维护，内容不一致只警告，不自动覆盖）。OpenCode 落 `~/.config/opencode/AGENTS.md`。ZCode 的用户级指令文件只认 `~/.zcode/AGENTS.md`，不回退 `~/.agents`，因此优先把该路径做成指向 OpenCode 副本的 symlink，不再保存第二份副本：`~/.zcode` 不存在时跳过（未安装/未使用）；symlink 创建失败（常见于 Windows 权限）时也跳过 ZCode 全局规则同步，不落回副本、不计失败。已有普通文件与 OpenCode 副本一致时，部署脚本会替换为 symlink；内容不同则保留本机文件并跳过，由人决定是否合并。链接脚本不碰各 harness 的 `AGENTS.md`；一键部署脚本负责 OpenCode 副本与 ZCode 链接。分步执行时 `-VerifyOnly`/`--verify-only` 对 OpenCode 副本缺失计异常、内容不一致警告并给差异方向（**真源独有 N 行**表示本机副本缺内容，**仅本机独有 M 行**属允许的本机定制）；ZCode 链接只提示、不阻断。ZCode 后续若支持公共 `AGENTS.md`，改为直接共享并移除专用链接。
 
 Windows（PowerShell）：
 
 ```powershell
 $src = Join-Path (git rev-parse --show-toplevel) 'config\global-AGENTS.md'
-$targets = @(
-  (Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'),
-  (Join-Path $env:USERPROFILE '.zcode\AGENTS.md')
-)
+$opencode = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-foreach ($dst in $targets) {
-  if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null; Copy-Item -LiteralPath $src -Destination $dst; "$dst restored" }
-  elseif ([System.Linq.Enumerable]::SequenceEqual([byte[]][System.IO.File]::ReadAllBytes($src), [byte[]][System.IO.File]::ReadAllBytes($dst))) { "$dst already in sync" }
-  else { "$dst differs from the source (local customization allowed); merge shared entries manually, will not overwrite" }
+if (-not (Test-Path -LiteralPath $opencode)) {
+  New-Item -ItemType Directory -Force -Path (Split-Path $opencode) | Out-Null
+  Copy-Item -LiteralPath $src -Destination $opencode
+  "$opencode restored"
+} elseif ([System.Linq.Enumerable]::SequenceEqual([byte[]][System.IO.File]::ReadAllBytes($src), [byte[]][System.IO.File]::ReadAllBytes($opencode))) {
+  "$opencode already in sync"
+} else {
+  "$opencode differs from the source (local customization allowed); merge shared entries manually, will not overwrite"
+}
+# ZCode: 仅在 ~/.zcode 存在且尚未有 AGENTS.md 时尝试 symlink；失败不落回副本
+$zcodeDir = Join-Path $env:USERPROFILE '.zcode'
+$zcode = Join-Path $zcodeDir 'AGENTS.md'
+if ((Test-Path -LiteralPath $zcodeDir -PathType Container) -and -not (Test-Path -LiteralPath $zcode)) {
+  try { New-Item -ItemType SymbolicLink -Path $zcode -Target $opencode -ErrorAction Stop | Out-Null; "$zcode linked" }
+  catch { "ZCode AGENTS.md link unavailable; skipped (no copy fallback)" }
 }
 ```
 
@@ -391,11 +399,14 @@ Linux：
 
 ```bash
 src="$(git rev-parse --show-toplevel)/config/global-AGENTS.md"
-for dst in ~/.config/opencode/AGENTS.md ~/.zcode/AGENTS.md; do
-  if [ ! -f "$dst" ]; then mkdir -p "$(dirname "$dst")"; cp "$src" "$dst"; echo "$dst restored";
-  elif cmp -s "$src" "$dst"; then echo "$dst already in sync";
-  else echo "$dst differs from the source (local customization allowed); merge shared entries manually, will not overwrite"; fi
-done
+opencode="$HOME/.config/opencode/AGENTS.md"
+if [ ! -f "$opencode" ]; then mkdir -p "$(dirname "$opencode")"; cp "$src" "$opencode"; echo "$opencode restored";
+elif cmp -s "$src" "$opencode"; then echo "$opencode already in sync";
+else echo "$opencode differs from the source (local customization allowed); merge shared entries manually, will not overwrite"; fi
+# ZCode: 仅在 ~/.zcode 存在且尚未有 AGENTS.md 时尝试 symlink；失败不落回副本
+if [ -d "$HOME/.zcode" ] && [ ! -e "$HOME/.zcode/AGENTS.md" ] && [ ! -L "$HOME/.zcode/AGENTS.md" ]; then
+  ln -s "$opencode" "$HOME/.zcode/AGENTS.md" && echo "ZCode AGENTS.md linked" || echo "ZCode AGENTS.md link unavailable; skipped (no copy fallback)"
+fi
 ```
 
 ## 日常工作流

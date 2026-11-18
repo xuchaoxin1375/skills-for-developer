@@ -160,10 +160,10 @@ skills-for-developer/
 
 用户说“同步”“同步仓库”“同步 skills”时，范围不止 git 提交；逐项核对，缺项要说明未做的原因。
 
-- **偏好回写**：本机 `cli.json` 与全局 `AGENTS.md` 的最新偏好按「同步 harness 配置偏好」比对，可跨机的差异合入真源。
+- **偏好回写**：全局 `AGENTS.md` 的最新偏好按「同步 harness 配置偏好」比对，可跨机的差异合入真源；OpenCode `cli.json` 不再默认检查，只在用户明确要求“同步配置”时比对。
 - **skill 实体与索引**：本机新建或改过的 skill 已落真源，README 检索表与 `description` 语义一致；第三方名单的 `ref` 是否该更新。
 - **提交与远端对齐**：按仓库风格提交，再按「跨机器同步与对齐判定」核对每个远端。
-- **链接与检查**：`-VerifyOnly`、`check-skills.py`、`check-links.py` 通过；harness 侧无实体副本漂移。
+- **链接与检查**：`-VerifyOnly`、`check-skills.py`、`check-links.py` 通过；harness 侧无实体副本漂移。ZCode 全局 `AGENTS.md` 为 best-effort symlink，创建失败只提示、不阻断。
 
 先核对实体与偏好差异，再提交与推送，最后报告各项事实（含未做项）。
 
@@ -216,6 +216,7 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 用户说“同步配置”“同步 opencode 设置/偏好”时，指把本机 TUI 偏好回写真源：OpenCode 侧真源是
 `config/opencode/cli.json`，对应本机 `%USERPROFILE%/.config/opencode/cli.json`
 （Linux `~/.config/opencode/cli.json`）；全局偏好真源是 `config/global-AGENTS.md`。
+该比对只在用户明确要求“同步配置”时执行，不随默认“同步 skills”触发。
 仓库 `config/` 只收非密配置；`opencode.json`（providers）与密钥（`service.json`、`auth.json`）不入库。
 
 先按[治理规范](references/skill-governance.md)的“用户级偏好与 skill 的归属”定位置并查重，再执行下面的比对与写入：
@@ -224,7 +225,7 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 2. **取舍**：环境相关或临时调试项留在本机；可跨机的偏好合入真源。偏好条目写判断原则与思维方式；具体操作、检查项、命令和领域流程放对应 skill，只保留选择、覆盖或指针，不复制清单。
 3. **写入**：`cli.json` 让真源与本机字节一致（链接脚本按文件 hash 判断“已是最新”，不一致时下次部署会提示覆盖）；`global-AGENTS.md` 允许本机自定义副本，但新增的通用条目要两边一致；本机差异只写末尾「个性化规则补充」，与通用条目冲突时按该节说明处理（本机环境差异就地覆盖并注明覆盖对象，通用条目过时先询问再改真源）。修改被 harness 加载的 `AGENTS.md` 会触发指令重载，定稿后一次写入，避免先加后改。
 4. **校验**：`python3 scripts/check-skills.py --no-harness`，以及
-   `scripts\link-skills.ps1 -VerifyOnly`（Linux `./scripts/link-skills.sh --verify-only`）。`-VerifyOnly` 不判失败，只按方向报告全局 AGENTS 漂移：
+   `scripts\link-skills.ps1 -VerifyOnly`（Linux `./scripts/link-skills.sh --verify-only`）。`-VerifyOnly` 不判失败，只按方向报告 OpenCode 副本的全局 AGENTS 漂移；ZCode 链接缺失或不可用只提示：
    - **真源独有行 > 0**：本机副本缺内容，通常是旧版缩略或改写过通用条目，按真源对齐；改写过的条目保留本机判断时，写明覆盖对象。
    - **仅本机独有行**：属允许的本机定制；确认通用条目两边一致即可，可跨机的条目回写真源。
 5. **报告**：列出采纳与保留项及依据；提交与同步按当前有效的全局或仓库授权。
@@ -232,6 +233,8 @@ harness 侧出现**实体目录**（非链接）即视为漂移：链接脚本�
 反向分发（真源 → 本机）由链接脚本承担：`-ApplyRecommendedCli`（Linux `--apply-recommended-cli`）
 应用推荐配置，覆盖前备份为同目录 `cli.json.bak-<时间戳>`；`-SkipRecommendedCli` 跳过，
 非交互环境默认跳过。`-VerifyOnly` 只提示 `config/global-AGENTS.md` 漂移并给出差异方向，不检查 `cli.json`。
+
+ZCode 全局 `AGENTS.md` 不保存副本：`~/.zcode` 存在时，部署脚本尝试把它 symlink 到 `~/.config/opencode/AGENTS.md`；本机不允许创建符号链接（常见于 Windows）时跳过 ZCode 全局规则同步，不落回副本，也不计失败。ZCode 后续若支持公共 `AGENTS.md`，改为直接共享并移除专用链接。
 
 ## 验证协议
 
