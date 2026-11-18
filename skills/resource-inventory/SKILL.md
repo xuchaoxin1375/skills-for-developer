@@ -36,7 +36,7 @@ python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会�
 
 | 分组 | 看什么 | 关键判据 |
 |---|---|---|
-| 平台与硬件 | OS 名称/版本/build/release、架构、WSL/容器、CPU 型号与核数、内存、Apple Silicon/CUDA、磁盘、低电量模式 | 选型前先看 OS 版本与加速器；内存与磁盘决定能不能上重模型；`None` 表示该平台无此项或未探测到 |
+| 平台与硬件 | OS 名称/版本/build/release、架构、WSL/容器、CPU 型号与物理/逻辑核数、内存、Apple Silicon/CUDA、Windows 显示适配器、磁盘、低电量模式 | 选型前先看 OS 版本与加速器；Windows 显示适配器含虚拟设备，未连接会标注；内存与磁盘决定能不能上重模型；`None` 表示该平台无此项或未探测到 |
 | 会话环境 | `VIRTUAL_ENV`、`CONDA_PREFIX`、镜像与 Playwright 路径等 | 说明当前 shell 在哪个环境；与 PATH 上的工具不是一回事 |
 | 运行时 | 名称、版本、路径 | 缺失的才需要安装；版本以工具自身输出为准，不按印象判断 |
 | Python 环境 | `层`、引擎、已装包 | 层 ≥ 2 才有挑战求解能力；`建议` 取首个层 ≥ 1 的解释器；PATH 上的 `python` 常只有层 1 |

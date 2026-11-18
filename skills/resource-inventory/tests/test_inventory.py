@@ -180,6 +180,22 @@ def test_hardware_section() -> None:
         assert section["os"]["kernel"] is None
         assert section["os"]["release"]
         assert "Family" not in (section["cpu"]["model"] or "")
+        assert isinstance(section["cpu"]["physical"], int)
+        assert 0 < section["cpu"]["physical"] <= section["cpu"]["logical"]
+        assert isinstance(section["accelerators"]["displayAdapters"], list)
+    else:
+        assert section["accelerators"]["displayAdapters"] is None
+
+
+def test_windows_display_adapters_shape() -> None:
+    if os.name != "nt":
+        return
+    module = load_inventory_module()
+    adapters = module._windows_display_adapters()
+    assert isinstance(adapters, list)
+    for item in adapters:
+        assert isinstance(item["name"], str) and item["name"]
+        assert isinstance(item["attached"], bool)
 
 
 def test_windows_os_profile_composition() -> None:

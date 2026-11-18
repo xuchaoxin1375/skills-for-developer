@@ -461,6 +461,38 @@ def _cpu_model() -> str | None:
     return platform.processor() or None
 
 
+def _windows_physical_cores() -> int | None:
+    """物理核数：统计 GetLogicalProcessorInformationEx 的核心关系项。"""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.GetLogicalProcessorInformationEx.argtypes = [
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.GetLogicalProcessorInformationEx.restype = wintypes.BOOL
+    length = wintypes.DWORD(0)
+    kernel32.GetLogicalProcessorInformationEx(0, None, ctypes.byref(length))
+    if not length.value:
+        return None
+    buffer = ctypes.create_string_buffer(length.value)
+    if not kernel32.GetLogicalProcessorInformationEx(0, buffer, ctypes.byref(length)):
+        return None
+    offset = 0
+    cores = 0
+    while offset + 8 <= length.value:
+        relationship = ctypes.c_uint.from_buffer(buffer, offset).value
+        size = ctypes.c_uint.from_buffer(buffer, offset + 4).value
+        if not size or offset + size > length.value:
+            break
+        if relationship == 0:  # RelationProcessorCore
+            cores += 1
+        offset += size
+    return cores or None
+
+
 def _physical_cores() -> int | None:
     """物理核数；Linux 用 physical id + core id 去重，取不到时返回 None。"""
     if sys.platform == "darwin":
@@ -487,6 +519,8 @@ def _physical_cores() -> int | None:
             elif key == "core id":
                 core = value.strip()
         return len(pairs) or None
+    if os.name == "nt":
+        return _windows_physical_cores()
     return None
 
 
@@ -566,11 +600,57 @@ def _low_power_mode() -> bool | None:
     return None
 
 
+def _windows_display_adapters() -> list[dict[str, Any]]:
+    """枚举 Windows 显示适配器；包含虚拟适配器，attached 表示当前连接到桌面。"""
+    import ctypes
+    from ctypes import wintypes
+
+    class DisplayDeviceW(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("DeviceName", wintypes.WCHAR * 32),
+            ("DeviceString", wintypes.WCHAR * 128),
+            ("StateFlags", wintypes.DWORD),
+            ("DeviceID", wintypes.WCHAR * 128),
+            ("DeviceKey", wintypes.WCHAR * 128),
+        ]
+
+    user32 = ctypes.windll.user32
+    user32.EnumDisplayDevicesW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        ctypes.POINTER(DisplayDeviceW),
+        wintypes.DWORD,
+    ]
+    user32.EnumDisplayDevicesW.restype = wintypes.BOOL
+    attached_to_desktop = 0x1
+    mirroring_driver = 0x8
+    adapters: dict[str, dict[str, Any]] = {}
+    index = 0
+    while True:
+        device = DisplayDeviceW()
+        device.cb = ctypes.sizeof(DisplayDeviceW)
+        if not user32.EnumDisplayDevicesW(None, index, ctypes.byref(device), 0):
+            break
+        index += 1
+        name = str(device.DeviceString).strip()
+        if not name or device.StateFlags & mirroring_driver:
+            continue
+        attached = bool(device.StateFlags & attached_to_desktop)
+        current = adapters.get(name)
+        if current is None:
+            adapters[name] = {"name": name, "attached": attached}
+        elif attached:
+            current["attached"] = True
+    return list(adapters.values())
+
+
 def section_hardware(timeout: float) -> dict[str, Any]:
     """平台与硬件：OS、CPU、内存、加速器、磁盘与虚拟化标记。"""
     cpu_model = _cpu_model()
     memory = _memory_total()
     apple_silicon = sys.platform == "darwin" and platform.machine() == "arm64"
+    display_adapters = _windows_display_adapters() if os.name == "nt" else None
     disks: list[dict[str, Any]] = []
     seen_devices: set[int] = set()
     for path in (Path.cwd(), Path.home()):
@@ -588,7 +668,7 @@ def section_hardware(timeout: float) -> dict[str, Any]:
     return {
         "available": True,
         "owner": "resource-inventory",
-        "source": "platform + 各平台系统命令（sw_vers / sysctl / /proc / nvidia-smi / pmset）",
+        "source": "platform + 系统命令与 API（sw_vers / sysctl / /proc / nvidia-smi / pmset / EnumDisplayDevices）",
         "os": _os_profile(),
         "cpu": {
             "model": cpu_model,
@@ -600,6 +680,7 @@ def section_hardware(timeout: float) -> dict[str, Any]:
             "appleSilicon": apple_silicon,
             "chip": cpu_model if apple_silicon else None,
             "cuda": _nvidia_gpus(timeout),
+            "displayAdapters": display_adapters,
         },
         "disks": disks,
         "lowPowerMode": _low_power_mode(),
@@ -944,6 +1025,13 @@ def render_human(report: dict[str, Any]) -> str:
             memory_text = f" {gpu['memoryMiB']} MiB" if gpu.get("memoryMiB") else ""
             parts.append(f"CUDA: {gpu['name']}{memory_text}")
         lines.append(f"  加速器: {'；'.join(parts) or '未检测到 Apple Silicon / CUDA'}")
+        adapters = accel.get("displayAdapters")
+        if adapters is not None:
+            names = "；".join(
+                f"{item['name']}{'' if item.get('attached') else '（未连接）'}"
+                for item in adapters
+            )
+            lines.append(f"  显示适配器: {names or '未检测到'}")
         for disk in hardware.get("disks") or []:
             lines.append(f"  磁盘 {disk['path']}: {disk['freeGiB']}/{disk['totalGiB']} GiB 可用")
         if hardware.get("lowPowerMode") is not None:
