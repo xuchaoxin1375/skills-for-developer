@@ -174,6 +174,31 @@ def test_hardware_section() -> None:
     assert isinstance(section["accelerators"]["cuda"], list)
     assert section["disks"]
     assert section["lowPowerMode"] is None or isinstance(section["lowPowerMode"], bool)
+    if os.name == "nt":
+        assert section["os"]["name"].startswith("Windows")
+        assert section["os"]["build"] and not section["os"]["build"].startswith("SP")
+        assert section["os"]["kernel"] is None
+        assert section["os"]["release"]
+        assert "Family" not in (section["cpu"]["model"] or "")
+
+
+def test_windows_os_profile_composition() -> None:
+    module = load_inventory_module()
+    profile = module._windows_os_profile(
+        ("11", "10.0.26200", "SP0", "Multiprocessor Free"),
+        {"release": "25H2", "build": "26200", "ubr": "8875"},
+    )
+    assert profile["name"] == "Windows 11"
+    assert profile["version"] == "10.0.26200"
+    assert profile["build"] == "26200.8875"
+    assert profile["release"] == "25H2"
+
+
+def test_windows_os_profile_build_fallback() -> None:
+    module = load_inventory_module()
+    profile = module._windows_os_profile(("10", "10.0.19045", "SP0", ""), {})
+    assert profile["build"] == "19045"
+    assert profile["release"] == ""
 
 
 def test_console_script_version_fallback() -> None:
@@ -343,11 +368,74 @@ def test_registry_absent_and_custom() -> None:
         assert section["updated"] == "2026-01-01"
 
 
+def test_registry_url_is_masked_and_malformed_degrades() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        registry = Path(tmp) / "proxy-resources.json"
+        registry.write_text(
+            json.dumps(
+                {
+                    "updated": "2026-01-01",
+                    "default": "stub",
+                    "proxies": [
+                        {
+                            "name": "stub",
+                            "type": "http",
+                            "url": "http://user:secret@127.0.0.1:7897",
+                            "source": "registry",
+                            "verified": "2026-01-01",
+                            "notes": "stub",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        code, report, stderr = run_inventory("--json", "--only", "proxies", "--registry", str(registry))
+        assert code == 0, stderr
+        assert report["proxies"]["registry"]["entries"][0]["url"] == "http://***@127.0.0.1:7897"
+
+        registry.write_text(json.dumps({"proxies": {}}), encoding="utf-8")
+        code, report, stderr = run_inventory("--json", "--only", "proxies", "--registry", str(registry))
+        assert code == 0, stderr
+        section = report["proxies"]["registry"]
+        assert section["available"] is False
+        assert "proxies" in section["reason"]
+
+
 def test_human_output_lists_sections() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         skills_root = make_skills_root(Path(tmp))
+        registry = Path(tmp) / "proxy-resources.json"
+        registry.write_text(
+            json.dumps(
+                {
+                    "updated": "2026-01-01",
+                    "default": "stub",
+                    "proxies": [
+                        {
+                            "name": "stub",
+                            "type": "http",
+                            "url": "http://user:secret@127.0.0.1:1",
+                            "source": "registry",
+                            "verified": "2026-01-01",
+                            "notes": "stub",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
         proc = subprocess.run(
-            [sys.executable, "-X", "utf8", str(INVENTORY), "--skills-root", str(skills_root)],
+            [
+                sys.executable,
+                "-X",
+                "utf8",
+                str(INVENTORY),
+                "--skills-root",
+                str(skills_root),
+                "--registry",
+                str(registry),
+            ],
             capture_output=True,
             timeout=180,
             env=child_env(),
@@ -357,6 +445,10 @@ def test_human_output_lists_sections() -> None:
         assert proc.returncode == 0
         for heading in ("[运行时]", "[Python 环境与引擎层]", "[浏览器]", "[代理]"):
             assert heading in stdout
+        assert "上次核验" in stdout
+        assert "上次核验日期不代表当前可用" in stdout
+        assert "未做启动验证" in stdout
+        assert "secret" not in stdout
 
 
 def test_help_is_available() -> None:

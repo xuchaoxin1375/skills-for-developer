@@ -36,12 +36,12 @@ python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会�
 
 | 分组 | 看什么 | 关键判据 |
 |---|---|---|
-| 平台与硬件 | OS 名称/版本/架构、WSL/容器、CPU 型号与核数、内存、Apple Silicon/CUDA、磁盘、低电量模式 | 选型前先看 OS 版本与加速器；内存与磁盘决定能不能上重模型；`None` 表示该平台无此项或未探测到 |
+| 平台与硬件 | OS 名称/版本/build/release、架构、WSL/容器、CPU 型号与核数、内存、Apple Silicon/CUDA、磁盘、低电量模式 | 选型前先看 OS 版本与加速器；内存与磁盘决定能不能上重模型；`None` 表示该平台无此项或未探测到 |
 | 会话环境 | `VIRTUAL_ENV`、`CONDA_PREFIX`、镜像与 Playwright 路径等 | 说明当前 shell 在哪个环境；与 PATH 上的工具不是一回事 |
 | 运行时 | 名称、版本、路径 | 缺失的才需要安装；版本以工具自身输出为准，不按印象判断 |
 | Python 环境 | `层`、引擎、已装包 | 层 ≥ 2 才有挑战求解能力；`建议` 取首个层 ≥ 1 的解释器；PATH 上的 `python` 常只有层 1 |
-| 浏览器 | `可用/不可用`、来源 | `eligible:false` 多为 shim/wrapper；Playwright 缓存里的 chromium 同样是候选 |
-| 代理 | 环境变量、登记条目、`verified` 日期 | 环境变量会直接影响子进程抓取；登记 ≠ 可用；只有 `--probe-proxy` 给可用性与实际出口 |
+| 浏览器 | `可用/不可用`、来源 | `eligible:false` 多为 shim/wrapper；Playwright 缓存里的 chromium 同样是候选；`可用` 只代表文件格式可用，人类输出会标注未启动验证 |
+| 代理 | 环境变量、登记条目、`verified` 上次核验日期 | 环境变量会直接影响子进程抓取；登记 ≠ 可用；人类输出会提示当前可用性未验证，只有 `--probe-proxy` 给可用性与实际出口 |
 | 项目 | lockfile、scripts、测试框架、`installed` | lockfile 判定包管理器；`installed` 是已装证据（`node_modules/.bin`、项目虚拟环境包），有就不必重装；文件存在不等于能跑 |
 
 ## 约束

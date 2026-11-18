@@ -337,12 +337,59 @@ def _is_container() -> bool:
     return any(marker in cgroup for marker in ("docker", "kubepods", "containerd", "podman"))
 
 
+def _windows_version_info() -> dict[str, str]:
+    """从注册表读取 Windows 展示版本与 build 号；读不到时返回空字典。"""
+    info: dict[str, str] = {}
+    try:
+        winreg = importlib.import_module("winreg")
+    except ImportError:
+        return info
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion",
+        ) as key:
+            for value_name, field in (
+                ("DisplayVersion", "release"),
+                ("CurrentBuildNumber", "build"),
+                ("UBR", "ubr"),
+            ):
+                try:
+                    value, _ = winreg.QueryValueEx(key, value_name)
+                except OSError:
+                    continue
+                info[field] = str(value).strip()
+    except OSError:
+        return info
+    return info
+
+
+def _windows_os_profile(
+    win: tuple[str, str, str, str], extra: dict[str, str]
+) -> dict[str, str]:
+    """组合 Windows 名称、版本与 build；win32_ver 的第三项是 SP0，不能当 build。"""
+    release = win[0].strip()
+    version = win[1].strip() or platform.version()
+    build_number = extra.get("build") or (
+        version.rsplit(".", 1)[-1] if "." in version else ""
+    )
+    ubr = extra.get("ubr") or ""
+    build = f"{build_number}.{ubr}" if build_number and ubr else build_number
+    return {
+        "name": f"Windows {release}".strip(),
+        "version": version,
+        "build": build,
+        "release": extra.get("release") or "",
+    }
+
+
 def _os_profile() -> dict[str, Any]:
     """系统名称、版本、构建、内核与架构。"""
     name = platform.system()
     version = platform.version()
     build = ""
-    kernel = platform.release()
+    release: str | None = None
+    kernel: str | None = platform.release()
     if sys.platform == "darwin":
         mac = platform.mac_ver()
         name = "macOS"
@@ -357,18 +404,40 @@ def _os_profile() -> dict[str, Any]:
         name = info.get("PRETTY_NAME") or info.get("NAME") or name
         version = info.get("VERSION_ID") or version
     elif os.name == "nt":
-        win = platform.win32_ver()
-        version = win[1] or version
-        build = win[2]
+        windows = _windows_os_profile(platform.win32_ver(), _windows_version_info())
+        name = windows["name"]
+        version = windows["version"]
+        build = windows["build"]
+        release = windows["release"] or None
+        kernel = None
     return {
         "name": name,
         "version": version,
         "build": build,
+        "release": release,
         "arch": platform.machine(),
         "kernel": kernel,
         "wsl": _is_wsl(),
         "container": _is_container(),
     }
+
+
+def _windows_cpu_model() -> str | None:
+    """从注册表读取 CPU 展示名称；读不到时返回 None。"""
+    try:
+        winreg = importlib.import_module("winreg")
+    except ImportError:
+        return None
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+    except OSError:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _cpu_model() -> str | None:
@@ -385,6 +454,10 @@ def _cpu_model() -> str | None:
             if line.lower().startswith("model name"):
                 return line.split(":", 1)[1].strip()
         return None
+    if os.name == "nt":
+        model = _windows_cpu_model()
+        if model:
+            return model
     return platform.processor() or None
 
 
@@ -653,24 +726,33 @@ def section_browsers(skills_root: Path | None) -> dict[str, Any]:
 
 
 def read_proxy_registry(registry: Path) -> dict[str, Any]:
-    """读取代理登记文件的结构化内容。"""
+    """读取代理登记文件的结构化内容；URL 脱敏，结构异常只降级该组。"""
     if not registry.is_file():
         return {"available": False, "reason": f"无登记文件: {registry}"}
     try:
         data = json.loads(registry.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         return {"available": False, "reason": f"登记文件无法解析: {error}"}
-    entries = [
-        {
-            "name": item.get("name"),
-            "type": item.get("type"),
-            "url": item.get("url"),
-            "source": item.get("source"),
-            "verified": item.get("verified"),
-            "notes": item.get("notes"),
-        }
-        for item in data.get("proxies", [])
-    ]
+    if not isinstance(data, dict):
+        return {"available": False, "reason": "登记文件顶层不是对象"}
+    raw_entries = data.get("proxies", [])
+    if not isinstance(raw_entries, list):
+        return {"available": False, "reason": "登记文件 proxies 字段不是数组"}
+    entries: list[dict[str, Any]] = []
+    for item in raw_entries:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        entries.append(
+            {
+                "name": item.get("name"),
+                "type": item.get("type"),
+                "url": mask_url(url) if isinstance(url, str) and url else None,
+                "source": item.get("source"),
+                "verified": item.get("verified"),
+                "notes": item.get("notes"),
+            }
+        )
     return {
         "available": True,
         "path": str(registry),
@@ -840,13 +922,15 @@ def render_human(report: dict[str, Any]) -> str:
         os_info = hardware["os"]
         cpu = hardware["cpu"]
         memory = hardware["memory"].get("totalGiB")
+        os_version = os_info.get("release") or os_info.get("version") or "?"
+        build_text = f" ({os_info['build']})" if os_info.get("build") else ""
         cores = (
             f"{cpu['physical']} 物理 / {cpu['logical']} 逻辑"
             if cpu.get("physical")
             else f"{cpu.get('logical') or '?'} 逻辑"
         )
         lines.append(
-            f"\n[平台与硬件] {os_info['name']} {os_info['version'] or '?'} {os_info['arch']}"
+            f"\n[平台与硬件] {os_info['name']} {os_version}{build_text} {os_info['arch']}"
             f"  {cpu.get('model') or 'CPU 型号未识别'}  {cores}  {memory or '?'} GiB"
         )
         flags = [name for name, on in (("WSL", os_info.get("wsl")), ("容器", os_info.get("container"))) if on]
@@ -904,6 +988,7 @@ def render_human(report: dict[str, Any]) -> str:
             for item in browsers["candidates"]:
                 mark = "可用" if item.get("eligible") else "不可用"
                 lines.append(f"  [{mark}] {item.get('browser'):<9} {item.get('path')}  ({item.get('source')})")
+            lines.append("  注: [可用] 仅表示候选文件格式可用，未做启动验证")
         else:
             lines.append(f"\n[浏览器] 不可用: {browsers['reason']}")
 
@@ -920,7 +1005,9 @@ def render_human(report: dict[str, Any]) -> str:
         if registry.get("available"):
             lines.append(f"  登记: {registry['path']}（updated {registry.get('updated')}，默认 {registry.get('default')}）")
             for entry in registry["entries"]:
-                lines.append(f"  {entry['name']}  {entry['url']}  verified {entry['verified']}")
+                lines.append(f"  {entry['name']}  {entry['url']}  上次核验 {entry['verified'] or '未知'}")
+            if registry["entries"]:
+                lines.append("  说明: 上次核验日期不代表当前可用；需要当前结论请加 --probe-proxy")
         else:
             lines.append(f"  登记不可用: {registry['reason']}")
         probe = proxies["probe"]
