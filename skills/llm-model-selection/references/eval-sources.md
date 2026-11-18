@@ -32,6 +32,9 @@
 - 同一模型不同 effort 档位在榜单上是独立条目，取"最高分档"和取"最便宜的高分档"会得到不同结论。
 - 榜单会标注 `No publicly available API`、限量发布或仅订阅可得；这类条目不能默认可采购。
 - 若模型配置里存在安全回退（拒绝后由另一个模型接手），部分尝试并非由名义模型完成，读分数时要留意脚注。
+- **帕累托是原生的**：`Intelligence/Coding Index vs. Cost per Task` 图自带 `Pareto line` 与 `Most attractive quadrant` 两个标注，首页、`/models` 与 Intelligence Index 评测页都有；`by Model Release` 变体把同一发布的所有 effort 档位画在一起，用来判断加档位的边际收益。Coding Agent Index 页另有 `Index vs. Total Tokens` 图，是 token 效率的对照视图。
+- **token 效率看三处**：模型页 `Verbosity`（output/input 比例）、Intelligence Index 页 `Output Tokens per Task`（reasoning 与 answer 拆分）、Coding Agent 页 `Token Usage per Task`（input / cache / output 分列）。缓存命中率是 endpoint 实测值，不是全局常数。
+- **订阅与按 token 是两种计费**：Coding Agent 页的 cost per task 是 pay-per-token API 成本；通过订阅用 harness 时账单不随 token 线性变化，该成本只能当相对参考，不能当订阅用户的实付。
 
 ## ModelDial
 

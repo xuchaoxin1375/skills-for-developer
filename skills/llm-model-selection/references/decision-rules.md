@@ -20,6 +20,7 @@
 - 输出含推理 token 时按输出价计费；同一模型不同 effort 的输出量差异可达数倍。
 - 订阅额度无法折算成 per-task 成本；用订阅时改看"额度能用多少任务"，不要用 API 单价推。
 - 自建推理的成本是 GPU 小时与利用率，不与 API 单价直接可比，需单独建模。
+- **单价相同不代表每任务成本相同**：verbosity（输出/输入 token 比例）、缓存命中率、推理 token 占比各自独立地改变每任务成本。同单价、同分数的两个模型可以差数倍；单价相同只说明标价相同，比较要落到每任务成本或每成功任务成本。
 
 判断规则：**当每任务成本相差不到 2 倍、分数相差在噪声内时，优先选便宜的那个**；当分数差距能改变任务成败（如通过率从"经常失败"跨到"基本可靠"）时，先满足质量再谈成本。
 
@@ -67,7 +68,7 @@ effort（low / medium / high / xhigh / max）不是单调收益：
 
 做法：
 
-1. 取"分数—成本"散点。AA 的模型页与 agent 页都有 `Intelligence/Coding Index vs. Cost per Task`，ModelDial 的"表现与消耗"图可开启帕累托前沿，Arena 有独立的 `leaderboard/agent/pareto` 页并给出 cost/task 中位数。
+1. 取"分数—成本"散点。AA 的 `Intelligence/Coding Index vs. Cost per Task` 图自带 `Pareto line` 与 `Most attractive quadrant`，`by Model Release` 变体把同一发布的各 effort 档位画在一起；ModelDial 的"表现与消耗"图可开启帕累托前沿；Arena 有独立的 `leaderboard/agent/pareto` 页并给出 cost/task 中位数。
 2. 读前沿：落在前沿上的配置各有存在理由（更便宜、分更高、上下文更长）；前沿之外且被某配置全面压制的，才是可以排除的。
 3. 每个入选项写清"它换来了什么、代价是什么"，不给单一"最佳"。
 4. 按用户约束在前沿上选：预算上限、延迟上限、上下文长度、数据合规、是否要开源权重。
