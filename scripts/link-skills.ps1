@@ -32,9 +32,10 @@
   移除本仓库创建的 Junction (仅移除指向本仓库的链接, 实体目录不动)。
 
 .PARAMETER VerifyOnly
-  只检查链接状态与全局 AGENTS.md 是否漂移, 不做任何修改;
+  只检查链接状态与推荐/第三方 skill 状态, 不做任何修改;
   悬空链接 (目标已不存在) 也计为异常。
-  有异常时以非零退出码返回 (AGENTS 缺失计异常, 内容不一致只警告; 允许本机定制)。
+  全局 AGENTS.md 由 scripts\deploy.ps1 负责, 本脚本不再校验。
+  有异常时以非零退出码返回。
 
 .PARAMETER Plan
   只打印部署计划, 不修改链接、配置或依赖。
@@ -128,6 +129,24 @@ if (-not (Test-Path $skillsDir -PathType Container)) {
   exit 1
 }
 
+# 未初始化的 git 子模块：只用于把“缺少 SKILL.md”提示得可操作。
+$uninitializedSubmodules = @()
+$gitCommand = Get-Command git -ErrorAction SilentlyContinue
+if ($gitCommand) {
+  $insideWorkTree = & git -C $RepoRoot rev-parse --is-inside-work-tree 2>$null
+  if ($LASTEXITCODE -eq 0 -and $insideWorkTree -eq 'true') {
+    $submoduleStatus = @(& git -C $RepoRoot submodule status 2>$null)
+    if ($LASTEXITCODE -eq 0) {
+      foreach ($line in $submoduleStatus) {
+        if ($line -match '^-') {
+          $parts = $line.Substring(1).Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+          if ($parts.Count -ge 2) { $uninitializedSubmodules += $parts[1].Replace('\', '/') }
+        }
+      }
+    }
+  }
+}
+
 $dshHome = if (-not [string]::IsNullOrWhiteSpace($env:DSH_HOME)) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
 $agentsHome = if (-not [string]::IsNullOrWhiteSpace($env:DSH_AGENTS_HOME)) { $env:DSH_AGENTS_HOME } else { Join-Path $env:USERPROFILE '.agents' }
 
@@ -163,7 +182,11 @@ $skills = @($skills | Where-Object { $null -ne $_ })
 
 foreach ($s in (Get-ChildItem -Path $skillsDir -Directory)) {
   if (-not (Test-Path (Join-Path $s.FullName 'SKILL.md') -PathType Leaf)) {
-    Write-Warning "跳过 $($s.Name): 缺少 SKILL.md"
+    if ($uninitializedSubmodules -contains "skills/$($s.Name)") {
+      Write-Warning "跳过 $($s.Name): git submodule 未初始化 (运行 git submodule update --init --depth 1, 或 scripts\deploy.ps1 自动处理)"
+    } else {
+      Write-Warning "跳过 $($s.Name): 缺少 SKILL.md"
+    }
   }
 }
 
@@ -783,64 +806,6 @@ if ($Unlink) {
 }
 
 if ($VerifyOnly) {
-  $repoAgents = Join-Path (Join-Path $RepoRoot 'config') 'global-AGENTS.md'
-  if (Test-Path -LiteralPath $repoAgents -PathType Leaf) {
-    # OpenCode 副本：与真源逐字节比较，缺失计异常，差异给出方向。
-    $opencodeAgents = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
-    if (-not (Test-Path -LiteralPath $opencodeAgents -PathType Leaf)) {
-      Write-Warning '全局 AGENTS.md(OpenCode) 缺失 (期望按 README 从 config/global-AGENTS.md 恢复)'
-      $failures++
-    } elseif (-not (Test-FileEqual $repoAgents $opencodeAgents)) {
-      # 给出差异方向：真源独有行 = 本机副本缺内容（多为旧版缩略）；本机独有行 = 本机定制
-      $truthLines = @(Get-Content -LiteralPath $repoAgents -Encoding UTF8)
-      $liveLines = @(Get-Content -LiteralPath $opencodeAgents -Encoding UTF8)
-      $cmp = @(Compare-Object -ReferenceObject $truthLines -DifferenceObject $liveLines)
-      $truthOnly = @($cmp | Where-Object { $_.SideIndicator -eq '<=' }).Count
-      $localOnly = @($cmp | Where-Object { $_.SideIndicator -eq '=>' }).Count
-      Write-Warning "全局 AGENTS.md(OpenCode) 与真源存在差异：真源独有 $truthOnly 行，本机独有 $localOnly 行。"
-      if ($truthOnly -gt 0) {
-        Write-Warning '  -> 本机副本缺少真源内容（多为旧版缩略或改写过通用条目）：按真源对齐通用条目，本机专属内容留在末尾「个性化规则补充」。'
-      } else {
-        Write-Warning '  -> 仅本机新增内容：确认属于本机定制后保留，可跨机的通用条目回写真源。'
-      }
-    } else {
-      Write-Host '全局 AGENTS.md(OpenCode) 与真源一致。'
-    }
-
-    # ZCode 只认 ~/.zcode/AGENTS.md；优先 symlink 到 OpenCode 副本。
-    # 链接缺失/普通文件/无权限都只提示，不计失败；部署脚本会尝试建链。
-    $zcodeDir = Join-Path $env:USERPROFILE '.zcode'
-    $zcodeAgents = Join-Path $zcodeDir 'AGENTS.md'
-    if (-not (Test-Path -LiteralPath $zcodeDir -PathType Container)) {
-      Write-Host '全局 AGENTS.md(ZCode): 未检测到 ~/.zcode，跳过（未安装/未使用）。'
-    } elseif (Test-Path -LiteralPath $zcodeAgents -PathType Container) {
-      Write-Warning '全局 AGENTS.md(ZCode) 路径是目录，跳过。'
-    } else {
-      $zcodeTarget = Get-LinkTarget $zcodeAgents
-      if ($null -ne $zcodeTarget) {
-        $resolved = @($zcodeTarget)[0]
-        if (-not [System.IO.Path]::IsPathRooted($resolved)) {
-          $resolved = Join-Path (Split-Path -Parent $zcodeAgents) $resolved
-        }
-        $resolved = [System.IO.Path]::GetFullPath($resolved)
-        $opencodeFull = [System.IO.Path]::GetFullPath($opencodeAgents)
-        if ($resolved -ieq $opencodeFull) {
-          Write-Host "全局 AGENTS.md(ZCode) 已链接 -> $opencodeFull"
-        } else {
-          Write-Warning "全局 AGENTS.md(ZCode) 已链接到其他目标（$resolved），保留不动。"
-        }
-      } elseif (Test-Path -LiteralPath $zcodeAgents -PathType Leaf) {
-        if ((Test-Path -LiteralPath $opencodeAgents -PathType Leaf) -and (Test-FileEqual $opencodeAgents $zcodeAgents)) {
-          Write-Host '全局 AGENTS.md(ZCode) 是普通文件（与 OpenCode 一致），部署时将替换为 symlink。'
-        } else {
-          Write-Warning '全局 AGENTS.md(ZCode) 是普通文件且与 OpenCode 不同；保留本机文件，ZCode 同步跳过。'
-        }
-      } else {
-        Write-Host '全局 AGENTS.md(ZCode) 未建立链接；部署时尝试，无符号链接权限则跳过。'
-      }
-    }
-  }
-
   if (-not $SkipRecommendedSkills) {
     foreach ($s in @(Get-RecommendedSkills)) {
       if ((Test-Path (Join-Path $skillsDir "$s\package.json") -PathType Leaf) -and `

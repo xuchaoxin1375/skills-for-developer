@@ -1,10 +1,11 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-  一键部署：skill 链接、OpenCode 插件链接、全局 AGENTS.md 恢复与校验。
+  一键部署：git submodule 检查、skill 链接、OpenCode 插件链接、全局 AGENTS.md 恢复与校验。
 
 .DESCRIPTION
-  串联 link-skills.ps1、link-plugins.ps1 与全局 AGENTS.md 同步，避免三步分开执行时漏步。
+  串联 git submodule 检查、link-skills.ps1、link-plugins.ps1 与全局 AGENTS.md 同步，避免分开执行时漏步。
+  未初始化的子模块默认自动拉取，失败只警告，不阻塞其他 skill。
   OpenCode 的 AGENTS.md 缺失时复制，内容不一致只警告；ZCode 仅在 ~/.zcode 存在时尝试
   symlink 到 OpenCode 副本，无符号链接权限时跳过（不复制、不计失败）。
   结束时打印各阶段耗时与效率复盘提示，便于发现部署流程劣化。
@@ -16,7 +17,7 @@
   只预览，不修改任何文件。
 
 .PARAMETER VerifyOnly
-  只校验链接、插件运行态与 AGENTS.md 状态，不修改。
+  只校验链接、插件运行态、子模块与 AGENTS.md 状态，不修改。
 
 .PARAMETER Quiet
   隐藏逐项成功/进度行，保留警告、失败与汇总。
@@ -29,6 +30,9 @@
 
 .PARAMETER SkipDepCheck
   跳过依赖套餐检查。
+
+.PARAMETER SkipSubmodules
+  跳过 git submodule 的初始化与检查。
 
 .PARAMETER ApplyRecommendedCli
 .PARAMETER SkipRecommendedCli
@@ -57,6 +61,7 @@ param(
   [switch]$SkipPlugins,
   [switch]$SkipGlobalAgents,
   [switch]$SkipDepCheck,
+  [switch]$SkipSubmodules,
   [switch]$ApplyRecommendedCli,
   [switch]$SkipRecommendedCli,
   [switch]$ApplyRecommendedSkills,
@@ -97,6 +102,82 @@ function Invoke-Phase([string]$Name, [scriptblock]$Action) {
   & $Action
   $sw.Stop()
   $script:Timings += [pscustomobject]@{ Step = $Name; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1) }
+}
+
+function Test-OpenCodePresent {
+  # 只看命令或已有配置文件，不把链接脚本刚创建的 skills\ 目录当成 OpenCode 已安装。
+  if (Get-Command opencode -ErrorAction SilentlyContinue) { return $true }
+  $dir = Join-Path $env:USERPROFILE '.config\opencode'
+  foreach ($name in @('AGENTS.md', 'opencode.json', 'auth.json', 'cli.json')) {
+    if (Test-Path -LiteralPath (Join-Path $dir $name) -PathType Leaf) { return $true }
+  }
+  return $false
+}
+
+function Get-UninitializedSubmodules {
+  # 返回未初始化子模块的相对路径；git 不可用或当前不是 git 工作区时返回空。
+  $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+  if (-not $gitCommand) { return @() }
+  $insideWorkTree = & git -C $RepoRoot rev-parse --is-inside-work-tree 2>$null
+  if ($LASTEXITCODE -ne 0 -or $insideWorkTree -ne 'true') { return @() }
+  $lines = @(& git -C $RepoRoot submodule status 2>$null)
+  if ($LASTEXITCODE -ne 0) { return @() }
+  $paths = foreach ($line in $lines) {
+    if ($line -match '^-') {
+      $parts = $line.Substring(1).Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+      if ($parts.Count -ge 2) { $parts[1].Replace('\', '/') }
+    }
+  }
+  return @($paths)
+}
+
+function Sync-Submodules {
+  # codex-model-config 是 git submodule；zip/部分包不含内容时只提示，不阻塞其他 skill。
+  $uninitialized = @(Get-UninitializedSubmodules)
+  if ($uninitialized.Count -eq 0) {
+    $missingSkill = $false
+    foreach ($dir in @(Get-ChildItem (Join-Path $RepoRoot 'skills') -Directory -ErrorAction SilentlyContinue)) {
+      if (-not (Test-Path (Join-Path $dir.FullName 'SKILL.md') -PathType Leaf)) {
+        $missingSkill = $true
+        break
+      }
+    }
+    if ($missingSkill -and (Test-Path -LiteralPath (Join-Path $RepoRoot '.gitmodules') -PathType Leaf)) {
+      if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Warning '未找到 git，无法初始化子模块（codex-model-config 可能缺失）'
+      } elseif (-not (Test-Path -LiteralPath (Join-Path $RepoRoot '.git'))) {
+        Write-Warning '当前目录不是 git 工作区，无法初始化子模块（codex-model-config 可能缺失）；需要该 skill 时用 git clone --recurse-submodules 重新获取'
+      }
+    }
+    return
+  }
+  $names = $uninitialized -join ' '
+  if ($Plan) {
+    Write-Step "计划初始化子模块（$($uninitialized.Count) 个）: $names"
+    return
+  }
+  if ($VerifyOnly) {
+    Write-Warning "子模块未初始化（$($uninitialized.Count) 个）: $names"
+    Write-Host "  运行 scripts\deploy.ps1 或 git -C `"$RepoRoot`" submodule update --init --depth 1 修复；不阻塞其他 skill。"
+    return
+  }
+  Write-Step "== 初始化子模块（$($uninitialized.Count) 个）: $names =="
+  $previousPrompt = $env:GIT_TERMINAL_PROMPT
+  $env:GIT_TERMINAL_PROMPT = '0'
+  try {
+    & git -C $RepoRoot submodule update --init --depth 1
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "子模块初始化失败，继续部署其他 skill；可稍后手动运行: git -C `"$RepoRoot`" submodule update --init --depth 1"
+    } else {
+      Write-Step '子模块已初始化'
+    }
+  } finally {
+    if ($null -eq $previousPrompt) {
+      Remove-Item Env:GIT_TERMINAL_PROMPT -ErrorAction SilentlyContinue
+    } else {
+      $env:GIT_TERMINAL_PROMPT = $previousPrompt
+    }
+  }
 }
 
 function Get-AgentsLinkTarget([string]$Path) {
@@ -175,6 +256,7 @@ function Sync-GlobalAgents {
     return
   }
   $opencodeAgents = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
+  $opencodeWasPresent = Test-OpenCodePresent
   if (Test-Path -LiteralPath $opencodeAgents -PathType Leaf) {
     if (Test-FileEqual $src $opencodeAgents) {
       Write-Step '全局 AGENTS.md(OpenCode) 已与真源一致'
@@ -185,14 +267,26 @@ function Sync-GlobalAgents {
       Write-Warning "全局 AGENTS.md(OpenCode) 与真源不同（真源独有 $truthOnly 行，本机独有 $localOnly 行）；保留本机文件，按真源对齐通用条目，本机定制留在末尾「个性化规则补充」"
     }
   } elseif ($Plan) {
-    Write-Step "全局 AGENTS.md(OpenCode) 计划复制 -> $opencodeAgents"
+    if ($opencodeWasPresent) {
+      Write-Step "全局 AGENTS.md(OpenCode) 计划复制 -> $opencodeAgents"
+    } else {
+      Write-Step "全局 AGENTS.md(OpenCode): 未检测到 OpenCode，计划预置副本 -> $opencodeAgents"
+    }
   } elseif ($VerifyOnly) {
-    Write-Warning "全局 AGENTS.md(OpenCode) 缺失: $opencodeAgents"
-    $script:Failures++
+    if ($opencodeWasPresent) {
+      Write-Warning "全局 AGENTS.md(OpenCode) 缺失: $opencodeAgents"
+      $script:Failures++
+    } else {
+      Write-Step '全局 AGENTS.md(OpenCode): 未检测到 OpenCode，跳过（需要时运行 scripts\deploy.ps1 预置）'
+    }
   } elseif ($PSCmdlet.ShouldProcess($opencodeAgents, '复制全局 AGENTS.md')) {
     New-Item -ItemType Directory -Force -Path (Split-Path $opencodeAgents) | Out-Null
     Copy-Item -LiteralPath $src -Destination $opencodeAgents
-    Write-Host "全局 AGENTS.md(OpenCode) 已恢复 -> $opencodeAgents"
+    if ($opencodeWasPresent) {
+      Write-Host "全局 AGENTS.md(OpenCode) 已恢复 -> $opencodeAgents"
+    } else {
+      Write-Host "全局 AGENTS.md(OpenCode) 已预置（未检测到 OpenCode） -> $opencodeAgents"
+    }
   }
   Sync-ZCodeAgentsLink $opencodeAgents
 }
@@ -206,6 +300,11 @@ function Invoke-DepCheck {
   Write-Step '== 依赖套餐检查（standard，推荐项，不阻断）=='
   & python -X utf8 (Join-Path $RepoRoot 'scripts\check-skill-deps.py') --profile standard
   if (-not $?) { Write-Warning '依赖套餐检查有缺失项（推荐项，不阻断部署）' }
+}
+
+# 0. git submodule（未初始化时自动拉取；失败只警告）
+if (-not $SkipSubmodules) {
+  Invoke-Phase '子模块' { Sync-Submodules }
 }
 
 # 1. skill 链接

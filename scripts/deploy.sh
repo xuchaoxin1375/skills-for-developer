@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# 一键部署：skill 链接、OpenCode 插件链接、全局 AGENTS.md 恢复与校验。
-# 串联 link-skills.sh、link-plugins.sh 与 AGENTS.md 同步，避免漏步；
+# 一键部署：子模块检查、skill 链接、OpenCode 插件链接、全局 AGENTS.md 恢复与校验。
+# 串联子模块检查、link-skills.sh、link-plugins.sh 与 AGENTS.md 同步，避免漏步；
 # 结束时打印各阶段耗时与效率复盘提示，便于发现部署流程劣化。
 #
 # 用法（仓库根）：
@@ -12,6 +12,7 @@
 #   scripts/deploy.sh --skip-plugins       # 跳过 OpenCode 插件
 #   scripts/deploy.sh --skip-global-agents # 跳过全局 AGENTS.md
 #   scripts/deploy.sh --skip-dep-check     # 跳过依赖套餐检查
+#   scripts/deploy.sh --skip-submodules    # 跳过 git submodule 初始化/检查
 #
 # 以下开关原样转给 link-skills.sh：
 #   --apply-recommended-cli / --skip-recommended-cli
@@ -28,6 +29,7 @@ QUIET=0
 SKIP_PLUGINS=0
 SKIP_AGENTS=0
 SKIP_DEPS=0
+SKIP_SUBMODULES=0
 SKILL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -59,6 +61,10 @@ while [[ $# -gt 0 ]]; do
     SKIP_DEPS=1
     shift
     ;;
+  --skip-submodules)
+    SKIP_SUBMODULES=1
+    shift
+    ;;
   --apply-recommended-cli)
     SKILL_ARGS+=(--apply-recommended-cli)
     shift
@@ -88,7 +94,7 @@ while [[ $# -gt 0 ]]; do
     shift
     ;;
   -h | --help)
-    sed -n '2,27p' "$0"
+    sed -n '2,23p' "$0"
     exit 0
     ;;
   *)
@@ -121,9 +127,68 @@ zcode_link_matches() {
   [[ "$(resolve_path "$target")" == "$(resolve_path "$2")" ]]
 }
 
+opencode_present() {
+  # 只看命令或已有配置文件，不把链接脚本刚创建的 skills/ 目录当成 OpenCode 已安装。
+  command -v opencode >/dev/null 2>&1 && return 0
+  local dir="$HOME/.config/opencode"
+  [[ -f "$dir/AGENTS.md" || -f "$dir/opencode.json" || -f "$dir/auth.json" || -f "$dir/cli.json" ]]
+}
+
+uninitialized_submodules() {
+  command -v git >/dev/null 2>&1 || return 0
+  git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  git -C "$REPO_ROOT" submodule status 2>/dev/null | awk '$1 ~ /^-/ {print $2}'
+}
+
+sync_submodules() {
+  # codex-model-config 是 git submodule；zip/部分包不含内容时只提示，不阻塞其他 skill。
+  local uninit count
+  uninit="$(uninitialized_submodules || true)"
+  if [[ -z "$uninit" ]]; then
+    local missing_skill=0 d
+    for d in "$REPO_ROOT"/skills/*/; do
+      [[ -f "$d/SKILL.md" ]] || {
+        missing_skill=1
+        break
+      }
+    done
+    if [[ -f "$REPO_ROOT/.gitmodules" && $missing_skill -eq 1 ]]; then
+      if ! command -v git >/dev/null 2>&1; then
+        echo "WARN: 未找到 git，无法初始化子模块（codex-model-config 可能缺失）" >&2
+      elif ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "WARN: 当前目录不是 git 工作区，无法初始化子模块（codex-model-config 可能缺失）；需要该 skill 时用 git clone --recurse-submodules 重新获取" >&2
+      fi
+    fi
+    return 0
+  fi
+  count="$(printf '%s\n' "$uninit" | grep -c . || true)"
+  if [[ $PLAN -eq 1 ]]; then
+    say "计划初始化子模块（${count} 个）: $(printf '%s' "$uninit" | tr '\n' ' ')"
+    return 0
+  fi
+  if [[ $VERIFY_ONLY -eq 1 ]]; then
+    echo "WARN: 子模块未初始化（${count} 个）: $(printf '%s' "$uninit" | tr '\n' ' ')" >&2
+    echo "  运行 scripts/deploy.sh 或 git -C \"$REPO_ROOT\" submodule update --init --depth 1 修复；不阻塞其他 skill。" >&2
+    return 0
+  fi
+  say "== 初始化子模块（${count} 个）: $(printf '%s' "$uninit" | tr '\n' ' ') =="
+  if GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" submodule update --init --depth 1; then
+    say "子模块已初始化"
+  else
+    echo "WARN: 子模块初始化失败，继续部署其他 skill；可稍后手动运行: git -C \"$REPO_ROOT\" submodule update --init --depth 1" >&2
+  fi
+}
+
 failures=0
 timings=()
 total_start=$SECONDS
+
+# 0. git submodule（未初始化时自动拉取；失败只警告）
+if [[ $SKIP_SUBMODULES -eq 0 ]]; then
+  start=$SECONDS
+  sync_submodules
+  timings+=("子模块:$((SECONDS - start))")
+fi
 
 # 1. skill 链接
 start=$SECONDS
@@ -157,6 +222,8 @@ if [[ $SKIP_AGENTS -eq 0 ]]; then
     failures=$((failures + 1))
   else
     opencode_agents="$HOME/.config/opencode/AGENTS.md"
+    opencode_was_present=0
+    opencode_present && opencode_was_present=1
     if [[ -f "$opencode_agents" ]]; then
       if cmp -s "$src" "$opencode_agents"; then
         say "全局 AGENTS.md(OpenCode) 已与真源一致"
@@ -167,14 +234,26 @@ if [[ $SKIP_AGENTS -eq 0 ]]; then
         echo "WARN: 全局 AGENTS.md(OpenCode) 与真源不同（真源独有 ${truth_only} 行，本机独有 ${local_only} 行）；保留本机文件，按真源对齐通用条目，本机定制留在末尾「个性化规则补充」" >&2
       fi
     elif [[ $PLAN -eq 1 ]]; then
-      say "全局 AGENTS.md(OpenCode) 计划复制"
+      if [[ $opencode_was_present -eq 1 ]]; then
+        say "全局 AGENTS.md(OpenCode) 计划复制"
+      else
+        say "全局 AGENTS.md(OpenCode): 未检测到 OpenCode，计划预置副本"
+      fi
     elif [[ $VERIFY_ONLY -eq 1 ]]; then
-      echo "WARN: 全局 AGENTS.md(OpenCode) 缺失" >&2
-      failures=$((failures + 1))
+      if [[ $opencode_was_present -eq 1 ]]; then
+        echo "WARN: 全局 AGENTS.md(OpenCode) 缺失" >&2
+        failures=$((failures + 1))
+      else
+        say "全局 AGENTS.md(OpenCode): 未检测到 OpenCode，跳过（需要时运行 scripts/deploy.sh 预置）"
+      fi
     else
       mkdir -p "$(dirname "$opencode_agents")"
       cp "$src" "$opencode_agents"
-      echo "全局 AGENTS.md(OpenCode) 已恢复"
+      if [[ $opencode_was_present -eq 1 ]]; then
+        echo "全局 AGENTS.md(OpenCode) 已恢复"
+      else
+        echo "全局 AGENTS.md(OpenCode) 已预置（未检测到 OpenCode）"
+      fi
     fi
 
     # ZCode 只认 ~/.zcode/AGENTS.md；优先 symlink 到 OpenCode 副本。

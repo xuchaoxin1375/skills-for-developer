@@ -31,6 +31,7 @@
 import argparse
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -447,6 +448,33 @@ def read_third_party(repo):
     return rows, errors, warnings
 
 
+def uninitialized_submodules(repo):
+    """返回未初始化子模块的路径（如 skills/foo），失败时返回空集合。
+
+    只用于把“缺少 SKILL.md”提示得可操作；非 git 工作区或 git 不可用时
+    不影响其他检查，交由部署脚本或人工处理。
+    """
+    if not (repo / ".gitmodules").is_file():
+        return set()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "submodule", "status"],
+            capture_output=True, encoding="utf-8", errors="replace", timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if result.returncode != 0:
+        return set()
+    paths = set()
+    for line in result.stdout.splitlines():
+        if not line.startswith("-"):
+            continue
+        parts = line[1:].split()
+        if len(parts) >= 2:
+            paths.add(parts[1].replace("\\", "/"))
+    return paths
+
+
 def harness_targets():
     home = Path.home()
     agents = Path(
@@ -490,10 +518,17 @@ def main(argv=None):
         d.name for d in skills_dir.iterdir()
         if d.is_dir() and not (d / "SKILL.md").is_file()
     )
+    uninit_submodules = uninitialized_submodules(repo)
     errors, warnings = [], []
     for d in no_skb:
         if not want or d in want:
-            warnings.append(f"{d}: 缺少 SKILL.md（链接脚本将跳过）")
+            if f"skills/{d}" in uninit_submodules:
+                warnings.append(
+                    f"{d}: git 子模块未初始化"
+                    "（运行 git submodule update --init --depth 1，或 scripts/deploy.sh 自动处理）"
+                )
+            else:
+                warnings.append(f"{d}: 缺少 SKILL.md（链接脚本将跳过）")
 
     for s in skills:
         e, w = check_skill(s)

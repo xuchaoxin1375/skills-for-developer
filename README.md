@@ -158,6 +158,7 @@ Windows（PowerShell）：
 powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1
 powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -Plan
 powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -VerifyOnly
+powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 -SkipSubmodules
 
 # 全量链接 (首次迁移 / 新增 skill / 换机器后恢复, 幂等)
 powershell -ExecutionPolicy Bypass -File scripts/link-skills.ps1
@@ -196,10 +197,15 @@ Linux：
 ./scripts/deploy.sh
 ./scripts/deploy.sh --plan
 ./scripts/deploy.sh --verify-only
+./scripts/deploy.sh --skip-submodules
 
 # 先把仓库同步过去（以 remote 为准，两边推拉即可；路径不必与 Windows 一致）
-git clone <remote-url> ~/repos/skills-for-developer
+# codex-model-config 是 submodule；zip/打包分发不含其内容，需要时用 --recurse-submodules
+git clone --recurse-submodules <remote-url> ~/repos/skills-for-developer
 cd ~/repos/skills-for-developer
+
+# 已 clone 但没拉子模块时，部署脚本会自动初始化；也可手动执行
+git submodule update --init --depth 1
 
 # 全量链接（幂等）
 ./scripts/link-skills.sh
@@ -262,11 +268,17 @@ cd ~/repos/skills-for-developer
 
 ## 部署清单（新机 / 首次 / 代理执行）
 
-部署 = 推荐基线依赖 + skill 链接安装 + 全局 AGENTS.md 合并 + 两级校验。按下列顺序一次跑完，避免来回补步；各步细则见对应小节，此处只给顺序与开关。
+部署 = 子模块检查 + 推荐基线依赖 + skill 链接安装 + 全局 AGENTS.md 合并 + 两级校验。按下列顺序一次跑完，避免来回补步；各步细则见对应小节，此处只给顺序与开关。
 
 先跑 `--plan` / `-Plan` 可预览链接新建与替换数量、cli.json、推荐 skill 和第三方状态，不修改任何文件。交互模式只对未就绪项提问：cli.json 缺失默认应用、已存在差异默认保留；推荐依赖默认安装；第三方 skill 默认不装。完成后会打印已处理与未处理的摘要。
 
-优先用一键脚本 `scripts/deploy.ps1`（Windows）/ `scripts/deploy.sh`（Linux）串起下面各步（skill 链接、插件链接、全局 AGENTS.md、依赖检查），并在末尾打印各阶段耗时与效率复盘；分步命令只在排障或只做单步时使用。一键脚本同样支持 `-Plan` / `--plan`、`-VerifyOnly` / `--verify-only` 与 `-Quiet` / `--quiet`。
+优先用一键脚本 `scripts/deploy.ps1`（Windows）/ `scripts/deploy.sh`（Linux）串起下面各步（子模块检查、skill 链接、插件链接、全局 AGENTS.md、依赖检查），并在末尾打印各阶段耗时与效率复盘；分步命令只在排障或只做单步时使用。一键脚本同样支持 `-Plan` / `--plan`、`-VerifyOnly` / `--verify-only`、`-Quiet` / `--quiet` 与 `-SkipSubmodules` / `--skip-submodules`。
+
+`codex-model-config` 是 git submodule：一键脚本默认检测并初始化（失败只警告，不阻塞其他 skill）；zip/部分包不含子模块内容时该 skill 会被跳过。只要 skill 链接、不处理 OpenCode 专属步骤的轻量环境（如 arena 沙箱）可用：
+
+```bash
+./scripts/deploy.sh --skip-plugins --skip-global-agents --skip-dep-check
+```
 
 1. **推荐基线依赖（强烈建议）**：按 `minimal` / `standard` / `full` 选套餐（默认 `standard`，含全局 mmdc；PowerShell 7 仅 Windows）；`full` 再补 uv、jq 与 Scrapling（推荐项）。它们覆盖 resource-inventory、htmlmini、mermaid-render-fix、browser-automation、network-access 等，缺了会退化到在线回退、人工路径或能力不全。基础命令行工具 git、ripgrep、fd 与 Playwright、Scrapling 为推荐项（缺失只警告），部署脚本结束时会检测并提示安装命令，不阻断部署。检查命令与安装明细见 [依赖套餐](docs/skill-dependencies.md#部署基线)。
 2. **链接安装（首跑即定 cli.json）**：命令见「常用操作」。交互终端只对未就绪项询问；非交互环境（代理执行、CI）没有询问环节，默认跳过，若要应用推荐配置必须在**同一次**执行带开关，否则得二次全量跑：
@@ -283,9 +295,9 @@ cd ~/repos/skills-for-developer
    第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
    非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本。
    插件（`plugins/`）由一键脚本一并处理；分步执行时跑 `scripts/link-plugins.sh`（Windows `scripts\link-plugins.ps1`），链到 `~/.config/opencode/plugins/`；只对 OpenCode 生效，不进 skills 目录。
-3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——OpenCode 副本缺才复制，不一致只提示；ZCode 仅在 `~/.zcode` 存在时尝试 symlink 到 OpenCode 副本，失败跳过（不复制）。
+3. **全局 AGENTS.md 恢复/合并**：见「全局 AGENTS.md 同步与合并」——OpenCode 副本缺才复制，不一致只提示；未检测到 OpenCode（命令不在 PATH 且无现有配置）时只提示，不计失败；ZCode 仅在 `~/.zcode` 存在时尝试 symlink 到 OpenCode 副本，失败跳过（不复制）。
 4. **结构校验**：`python3 scripts/check-skills.py`，frontmatter、README 索引、红线路径、第三方名单与各 harness 安装数全过，见「结构校验」。
-5. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」；插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`）。
+5. **链接校验**：`./scripts/link-skills.sh --verify-only`（Windows `-VerifyOnly`），须回显「全部链接正常」；该命令只校验链接与推荐/第三方 skill，不校验全局 AGENTS.md（由 `deploy.sh --verify-only` / `deploy.ps1 -VerifyOnly` 负责）。插件另跑 `scripts/link-plugins.sh --verify-only`（Windows `scripts\link-plugins.ps1 -VerifyOnly`）。
 6. **服务端计数对照**：`opencode reload` 后拉 `skill.list` 落盘计数，真源须全部在列，片段见「结构校验」末尾。
 
 ### 部署后效率复盘（可选反馈）
@@ -369,7 +381,7 @@ python3 -c "import json,sys,os;ids={s['id'] for s in json.load(open(sys.argv[1])
 
 > 重点任务,部署此仓库既包括普通skill部署安装,也包括全局agents.md的合并.
 
-真源：`config/global-AGENTS.md`（以它为基准；OpenCode 副本按真源维护，内容不一致只警告，不自动覆盖）。OpenCode 落 `~/.config/opencode/AGENTS.md`。ZCode 的用户级指令文件只认 `~/.zcode/AGENTS.md`，不回退 `~/.agents`，因此优先把该路径做成指向 OpenCode 副本的 symlink，不再保存第二份副本：`~/.zcode` 不存在时跳过（未安装/未使用）；symlink 创建失败（常见于 Windows 权限）时也跳过 ZCode 全局规则同步，不落回副本、不计失败。已有普通文件与 OpenCode 副本一致时，部署脚本会替换为 symlink；内容不同则保留本机文件并跳过，由人决定是否合并。链接脚本不碰各 harness 的 `AGENTS.md`；一键部署脚本负责 OpenCode 副本与 ZCode 链接。分步执行时 `-VerifyOnly`/`--verify-only` 对 OpenCode 副本缺失计异常、内容不一致警告并给差异方向（**真源独有 N 行**表示本机副本缺内容，**仅本机独有 M 行**属允许的本机定制）；ZCode 链接只提示、不阻断。ZCode 后续若支持公共 `AGENTS.md`，改为直接共享并移除专用链接。
+真源：`config/global-AGENTS.md`（以它为基准；OpenCode 副本按真源维护，内容不一致只警告，不自动覆盖）。OpenCode 落 `~/.config/opencode/AGENTS.md`。ZCode 的用户级指令文件只认 `~/.zcode/AGENTS.md`，不回退 `~/.agents`，因此优先把该路径做成指向 OpenCode 副本的 symlink，不再保存第二份副本：`~/.zcode` 不存在时跳过（未安装/未使用）；symlink 创建失败（常见于 Windows 权限）时也跳过 ZCode 全局规则同步，不落回副本、不计失败。已有普通文件与 OpenCode 副本一致时，部署脚本会替换为 symlink；内容不同则保留本机文件并跳过，由人决定是否合并。链接脚本不碰各 harness 的 `AGENTS.md`，其 `-VerifyOnly`/`--verify-only` 也不再校验；一键部署脚本负责 OpenCode 副本与 ZCode 链接。`deploy.ps1 -VerifyOnly` / `deploy.sh --verify-only` 在检测到 OpenCode 时对副本缺失计异常，未检测到 OpenCode 时只提示；内容不一致警告并给差异方向（**真源独有 N 行**表示本机副本缺内容，**仅本机独有 M 行**属允许的本机定制）；ZCode 链接只提示、不阻断。ZCode 后续若支持公共 `AGENTS.md`，改为直接共享并移除专用链接。
 
 Windows（PowerShell）：
 
