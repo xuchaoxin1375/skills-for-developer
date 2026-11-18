@@ -21,7 +21,7 @@
 
 - 模型榜：`/leaderboards/models`，`/models` 有散点图与筛选；单模型页 `/models/<slug>`，含各 effort 档位与 provider 价格。
 - 编程 agent 榜：`/agents/coding-agents`；单个 harness 页 `/agents/coding-agents/<harness>`（如 `claude-code`、`codex`、`antigravity-cli`、`kimi-code-cli`、`opencode`、`muse-code`、`devin-fusion-cli`）。
-- 组合对比：`/agents/coding-agents/comparisons/<a>-vs-<b>`，页面表格给出同一 harness 下各模型档位的分数、成本、耗时、token 用量——这是取"同 harness 横向比模型"最快的一页。
+- 组合对比：`/agents/coding-agents/comparisons/<a>-vs-<b>`，页面表格给出同一 harness 下各模型档位的分数、成本、耗时、token 用量——这是取"同 harness 横向比模型"最快的一页。`<a>`/`<b>` 的 slug 从榜单页链接提取，不要按模型名猜；猜错会 404。
 - 方法论：`/methodology/coding-agents-benchmarking`、`/methodology/intelligence-benchmarking`。
 
 判读要点：

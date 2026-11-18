@@ -10,12 +10,14 @@
 |---|---|---|
 | 一手：评测机构 | Artificial Analysis `/changelog`（新评测结果按模型逐条列出）；ModelDial 首页"新模型实测"与 `/leaderboard/coding` | 独立分数、思考档位、是否已收录 |
 | 一手：竞技场 | Arena（arena.ai）的 Agent Arena、对话榜与 Pareto 页；静态抓取常被 Cloudflare 拦，需指定出口并强制渲染引擎（见 `eval-sources.md` 的竞技场一节） | 偏好 Elo、真实会话成功率、自带 cost/task 的帕累托前沿 |
-| 一手：模型厂商 | OpenAI / Anthropic / Google DeepMind / Meta AI / xAI / Mistral 官方博客与模型页；DeepSeek 的 news 与 changelog；阿里 Qwen 博客；智谱 Z.ai 博客；Moonshot（Kimi）公告 | 发布事实、模型 ID、上下文、档位、价格、可得性 |
+| 补充：模型厂商（可选） | OpenAI / Anthropic / Google DeepMind / Meta AI / xAI / Mistral 官方博客与模型页；DeepSeek 的 news 与 changelog；阿里 Qwen 博客；智谱 Z.ai 博客；Moonshot（Kimi）公告 | 模型 ID、上下文、档位、价格、可得性；能力主张不采用，访问不到不阻塞 |
 | 一手：定价与文档 | 各厂商 pricing 页与 API 文档的模型列表 | 单价、缓存价、长上下文规则、限流、GA 状态 |
 | 二手：汇总站 | 模型目录与比价站（models.dev、OpenRouter models、各类 "new models this week" 汇总） | 发现线索、交叉确认时间线；不作为唯一依据 |
 | 二手：社区 | 官方 Discord / X 账号、Hacker News、Reddit 相关版块 | 早期信号与实测反馈；标为社区消息 |
 
-巡检顺序：先看评测机构 changelog 与厂商公告确认"发生了什么"，再用定价页确认"能不能买、多少钱"，最后才参考二手汇总补充背景。
+巡检顺序：先看评测机构 changelog 确认"发生了什么"与独立分数，再用定价页确认"能不能买、多少钱"，最后才参考二手汇总补充背景。厂商公告只用于补模型 ID、价格与可得性，不用它定能力；访问不到就跳过，不阻塞。
+
+不要猜深链：先取列表页（`/news`、`/changelog`、榜单页、`/models`）用 htmlmini 的 markdown 模式提取真实链接，或读 sitemap。只有同站已确认过命名规律时才构造候选；构造出来的 URL 404 就立即回到列表页，不连续试。
 
 某个来源取不到时的处理：**先分清拦截类型**——`Just a moment...` / `cf-mitigated: challenge` 是可解挑战，换出口或换渲染引擎；`Attention Required` / `cf-error-details` 是 IP 层拒绝，换出口才可能有效。两者都不要靠反复原样重试。同一来源换了出口与引擎仍失败，才改走替代源并在结论里写明。
 
