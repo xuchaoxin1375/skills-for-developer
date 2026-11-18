@@ -25,6 +25,7 @@ htmlmini 的静态抓取与正文提取是本职；浏览器由 `resilient-brows
 | `ui`清单截断／长正文丢失 | 查[界面预算案例](usage-cases.md#3-面板仪表盘设计稿)，换正文模式或本地按锚点切片，不重复抓URL |
 | 确认挑战或403／5xx需渲染 | 按[挑战案例](usage-cases.md#6-静态-4035xx-或挑战特征)进入渲染通路；仍是挑战壳就换适用引擎，不反复切模式。需要用户登录态时可请其导出HTML，第三方读取需授权 |
 | 渲染失败且解释器似乎不对 | 先查自动升档与回退日志，再用渲染提供方的环境检查入口定位可用解释器；全面资源盘点才读 [resource-inventory](../../resource-inventory/SKILL.md) |
+| 渲染后仍 403，未显式指定出口 | 先看日志里 `render script discovers its own` 之后实际使用的出口：渲染通路自行从本机登记取了第一个可连通候选，该出口被拒不等于站点不可达。改传 `--proxy <另一可用入口>` 重试一次；两个不同出口的响应体不同（如一个 `Attention Required`、另一个 `Just a moment...`）时，前者是 IP 层拒绝只能换出口，后者是可解挑战应换引擎 |
 | “There was an error processing your request.”等软错误壳 | 不当成短正文；按[晚接入案例](usage-cases.md#13-自动化全被拦但普通浏览器能打开)取完成挑战后的DOM |
 | Access Denied／Forbidden／Error 1020 | 是明确拒绝而非正文少或挑战未跑完；按[拒绝页案例](usage-cases.md#15-waf-直接拒绝的商城页拒绝页不是正文出口才是变量)区分出口与客户端身份，不绕过限流 |
 | “Unable to connect to the Internet”等站内错误态 | 应用接口未取到数据或仍在加载；查实际出口、跨域接口与渲染等待，不把错误态当正文 |
