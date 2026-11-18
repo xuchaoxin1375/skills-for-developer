@@ -32,6 +32,8 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 三个横切选项与套餐独立：**输出格式**（只听 320k MP3 / 存档 FLAC）、**stem 数**（2 轨 / 4 轨 / 6 轨）、**裁剪模式**（`cut` 改时间轴 / `mute` 保对轨）。
 
+**默认只保留 2 轨**：人声 + 综合伴奏。优先用模型的 2 轨模式；只有 4/6 轨输出时，先合成综合伴奏并校验，再清理中间 stem。需要分轨混音、采样或单独修复时才保留全部。
+
 选型不是一次性的：模型换代快（同一数据集上 vocals SDR 一年能涨 1 dB 以上），距上次确认超过半年、或要批量交付时，按 [模型选型核对](references/model-selection.md) 查一次当前权重。
 
 ## 精剪前对齐：文件、时间轴与剪什么
@@ -141,6 +143,7 @@ ffmpeg -i song.mp3 -af "pan=stereo|c0=c0-c1|c1=c1-c0" preview.wav
 | 存档 / 进 DAW / 继续处理 | Demucs 用 `--flac`；MLX/audio-separator 用 `--output_format FLAC`（16-bit 足够） | 体积约为 MP3 的 3–4 倍；不恢复源损失 |
 | 只听后分发 | Demucs 用 `--mp3 --mp3-bitrate 320`；C 档从 FLAC 母版转一次 | 别反复转码 |
 | 要鼓、贝斯、钢琴等 | `-n htdemucs_6s`，或 `demucs-mlx` 4 轨 | 六轨模型，乐器分离弱于专用模型 |
+| 多轨模型输出 | 默认折成 2 轨（vocals + 综合伴奏），删除中间 stem | 省空间；以后要分轨需重跑分离 |
 
 耗时取决于设备。这里的 `x 实时` 指处理速度是播放速度的 x 倍（1× = 边播边算，5:02 用 33 秒即 10.5×），换算与 RTF 见 [环境与依赖](references/environment.md#性能与资源)。CPU 基准（Apple M5 16GB、torch 2.15、`htdemucs`）：30 秒片段推理 13 秒，加约 2.5 秒模型加载共 15.5 秒，约 2.6× 实时（≈0.4× 音频时长）；5 分钟的歌约 2–3 分钟。同一台机器切到自动 MPS（demucs 4.1.0）：5:02 的曲目推理 33 秒（≈10.5× 实时，进度条约 10 seconds/s），含模型加载共 1:13，FLAC 与 MP3 源基本同量级；换 MLX `BS-Roformer-SW`（6 轨）跑 5 分钟级曲目 1–2 分钟（首跑 2:00，热跑 0:59）。上述耗时均在启用低电量模式时测得，未与正常模式对照，正常供电下应更快。对比数据与 M5 注意事项见 [环境与依赖](references/environment.md#apple-silicon-加速)。
 
@@ -174,6 +177,7 @@ MLX 要 macOS 26.2+ 才能用上 M5 的 GPU Neural Accelerators；旧系统仍�
 
 - [ ] 已按「先对齐」的三问定下套餐（A/B/C），机器条件来自 `hardware` 组实测，而不是凭印象
 - [ ] 分离命令真实跑完，退出码为 0，产物文件存在
+- [ ] 多轨输出已折成 2 轨（vocals + 综合伴奏）并校验，中间 stem 已清理；需要分轨时才保留全部
 - [ ] 分离前量过源的有效带宽（`check_audio_quality.py` 有 `ceiling` 与 `verdict` 两行），套餐与带宽匹配
 - [ ] 选 C 档时按 [模型选型核对](references/model-selection.md) 看过当前权重；结论里写明模型版本、评测数据集、检索日期，以及哪些是本机实测
 - [ ] Apple Silicon 上未固定 `-d cpu`；追求速度时按“Apple Silicon 加速”选 MPS 或 MLX，并记录实际后端

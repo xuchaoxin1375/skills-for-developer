@@ -83,7 +83,7 @@ python -m pip install -U demucs numpy
 - **别用长任务的总时长当性能基准**：macOS 合盖休眠会暂停进程、笔记本降频、容器 CPU 配额都会让 wall-clock 严重失真。判断推理速度看进度条里的 `x seconds/s`（每秒处理多少秒音频），或测时用 `caffeinate -i`（macOS）/ 关闭休眠（Linux）/ 电源计划设为高性能（Windows）。
 - 进程被 SIGTERM 或休眠打断时会在原目录留下半成品，重跑前清掉输出目录。
 - 内存峰值约 2–4GB（单曲、`htdemucs`）；多文件并行 `-j N` 会按倍数放大。
-- 磁盘：venv 约 1.5GB，每个模型约 84MB，输出 mp3 与源文件同量级。
+- 磁盘：venv 约 1.5GB，每个模型约 84MB，输出 mp3 与源文件同量级；6 轨 FLAC 默认折成 2 轨（vocals + 综合伴奏）后删除中间 stem，避免 6 份常驻。
 - 想更省时：Apple Silicon 用 Demucs 4.1+ 的 MPS 或 MLX；换量化模型（`mdx_q` / `mdx_extra_q`，体积与耗时更小、质量略降）、缩小 `--segment`、或有 CUDA 时用 `-d cuda`。
 
 ### Apple Silicon 加速
