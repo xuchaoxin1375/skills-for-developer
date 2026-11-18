@@ -9,12 +9,15 @@
 | 层级 | 入口 | 拿什么 |
 |---|---|---|
 | 一手：评测机构 | Artificial Analysis `/changelog`（新评测结果按模型逐条列出）；ModelDial 首页"新模型实测"与 `/leaderboard/coding` | 独立分数、思考档位、是否已收录 |
+| 一手：竞技场 | Arena（arena.ai）官方榜与博客。该站对自动化访问常返回站点级 Cloudflare 封禁，取不到时用 openlm.ai/chatbot-arena 等二次汇总并标注来源 | 偏好 Elo、对战类相对位置 |
 | 一手：模型厂商 | OpenAI / Anthropic / Google DeepMind / Meta AI / xAI / Mistral 官方博客与模型页；DeepSeek 的 news 与 changelog；阿里 Qwen 博客；智谱 Z.ai 博客；Moonshot（Kimi）公告 | 发布事实、模型 ID、上下文、档位、价格、可得性 |
 | 一手：定价与文档 | 各厂商 pricing 页与 API 文档的模型列表 | 单价、缓存价、长上下文规则、限流、GA 状态 |
 | 二手：汇总站 | 模型目录与比价站（models.dev、OpenRouter models、各类 "new models this week" 汇总） | 发现线索、交叉确认时间线；不作为唯一依据 |
 | 二手：社区 | 官方 Discord / X 账号、Hacker News、Reddit 相关版块 | 早期信号与实测反馈；标为社区消息 |
 
 巡检顺序：先看评测机构 changelog 与厂商公告确认"发生了什么"，再用定价页确认"能不能买、多少钱"，最后才参考二手汇总补充背景。
+
+某个来源取不到时的处理：**站点级封禁或权限拒绝，判定后改走替代源并在结论里写明来源**，不换 UA、不逐个试渲染引擎、不绕过限流。这和"可解的 JS 挑战"不同——后者才走渲染路径，规则见 [resilient-browser-fetch](../../resilient-browser-fetch/SKILL.md)。
 
 ## 时间窗与范围
 
