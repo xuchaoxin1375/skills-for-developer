@@ -366,6 +366,8 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - provider 与规则集：`online-sub1` 的 `interval` 是 43200（12h），缓存落在 `<HomeDir>/proxies/<url 的 md5>`；4 个规则集 `interval` 86400，显式 `path: ./ruleset/*.yaml`。`s4`/`s6` 两个 file provider 的路径不存在，因此对应组退化成空组。`updatedAt` 在重启后会等于缓存 mtime，只看它会把"刚重启"误判成"刚更新"。
 - `-ext-ctl-pipe` 不校验 secret；本机 Verge 用命名管道给 GUI，同时保留 TCP 控制口，报告默认按 TCP 读，管道只在进程参数里出现时记录、不当 HTTP 入口。
 - 测速也受同一个端点变化影响：provider 节点 `/proxies/{name}/delay` 返回 404；对 `ALL-LB` 这类成员全是叶子的组调用 `/group/ALL-LB/delay` 约 5 秒可用，而对 `PROXY`（成员是子组）调用返回的是子组名。脚本因此先试单节点，失败后只挑成员全为叶子的组整组测，并记录本次用了哪种方式。
+- BP6 缺失复核：`online-sub1` 的 `updatedAt` 与缓存 mtime 都是 11:37，但缓存内容仍是 BP1-3（9997.48 GB）；同一 URL 用 `clash.meta` UA 直接 GET 返回 42 个节点，含 BP6 与 2 个澳门节点（9992.23 GB）。未启用的 `雪山 Link` profile 文件（前一日 23:08）也有 BP6。结论：`美国-LB` 的 filter 没问题，是 provider 缓存旧于订阅；内容新鲜度不能靠 `updatedAt`/mtime 判断。
+- Verge 的本地 profile 菜单没有"更新"（只有使用/编辑/删除），"使用"只重新加载配置；缓存年龄小于 `interval` 时不会重拉。强制刷新走 `PUT /providers/proxies/online-sub1`（写操作，204 只表示受理），或等 12h 到点；`--compare-subscriptions` 可在只读范围内先确认差异。
 - 结论：端口探测通过不等于配置健康；`round-robin` 对无登录公开页爬虫是刻意选择，报告只按场景提示，不判缺陷。
 
 未验证：逐节点真实出口（需 `PUT /proxies/{name}` 切节点，属写操作）、目标站的限流与风控、mihomo-party/FlClash 的目录差异、macOS 与 Linux、v1.19.33 之前版本的 `/proxies` 行为是否稳定。

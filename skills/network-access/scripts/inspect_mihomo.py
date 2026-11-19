@@ -713,6 +713,88 @@ def delay_group_targets(base: str, secret: str, targets: list[str], proxies: dic
     return results
 
 
+def fetch_subscription(url: str, proxy_url: str | None = None, timeout: float = 20.0) -> str:
+    """只读 GET 订阅地址，UA 与内核一致；不打印 URL 与凭据。"""
+    handlers = [urlreq.ProxyHandler({"http": proxy_url, "https": proxy_url} if proxy_url else {})]
+    opener = urlreq.build_opener(*handlers)
+    req = urlreq.Request(
+        url,
+        headers={"User-Agent": "clash.meta", "Accept": "*/*", "Accept-Encoding": "identity"},
+    )
+    with opener.open(req, timeout=timeout) as resp:
+        return resp.read(2_000_000).decode("utf-8", "replace")
+
+
+def parse_subscription_names(text: str) -> list[str]:
+    """从 Clash 配置响应的 proxies 段取节点名，兼容 flow 与 block 写法。"""
+    names: list[str] = []
+    in_section = False
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        if not raw.startswith((" ", "\t", "-")):
+            in_section = bool(re.match(r"^proxies\s*:", raw))
+            if in_section and "[" in raw:
+                for match in re.finditer(r"\{[^{}]*?\bname:\s*['\"]?([^,'\"}]+)", raw):
+                    names.append(match.group(1).strip())
+            continue
+        if not in_section:
+            continue
+        flow = re.match(r"^\s*-\s*\{.*?\bname:\s*['\"]?([^,'\"}]+)", raw)
+        if flow:
+            names.append(flow.group(1).strip())
+            continue
+        block = re.match(r"^\s*-\s+name\s*:\s*(.+)$", raw)
+        if block:
+            names.append(unquote(strip_comment(block.group(1))).strip())
+    return list(dict.fromkeys(name for name in names if name))
+
+
+def compare_subscriptions(defs: dict, proxy_api: dict, proxy_url: str | None, timeout: float = 20.0) -> list[dict]:
+    """对比本地 provider 节点与订阅当前返回的节点名；只读 GET，不改配置。"""
+    rows = []
+    for (kind, name), entry in defs.items():
+        if kind != "proxy" or str(entry.get("type")).lower() != "http" or not entry.get("url"):
+            continue
+        local = [
+            node.get("name")
+            for node in ((proxy_api.get(name) or {}).get("proxies") or [])
+            if node.get("name")
+        ]
+        row = {
+            "name": name,
+            "host": host_only(entry["url"]),
+            "localCount": len(local),
+            "remoteCount": None,
+            "added": [],
+            "removed": [],
+            "error": None,
+        }
+        attempts = [proxy_url, None] if proxy_url else [None]
+        last_error = None
+        for attempt in attempts:
+            try:
+                remote = parse_subscription_names(fetch_subscription(entry["url"], attempt, timeout))
+                if not remote:
+                    last_error = "响应里没有解析到 proxies（可能不是 Clash 配置）"
+                    continue
+                row.update(
+                    remoteCount=len(remote),
+                    added=[n for n in remote if n not in local],
+                    removed=[n for n in local if n not in remote],
+                )
+                row["addedReal"] = [n for n in row["added"] if not JUNK_NAME_RE.search(n)]
+                row["addedInfo"] = [n for n in row["added"] if JUNK_NAME_RE.search(n)]
+                row["removedReal"] = [n for n in row["removed"] if not JUNK_NAME_RE.search(n)]
+                last_error = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_error = f"{type(exc).__name__}: {exc}"
+        row["error"] = last_error
+        rows.append(row)
+    return rows
+
+
 def leaf_names(proxies: dict) -> list[str]:
     return [
         n
@@ -850,7 +932,7 @@ def build_providers(proxy_api: dict, rule_api: dict, defs: dict, home_dir: str |
     return rows
 
 
-def build_model(ctx: dict, api: dict, delay: dict | None) -> dict:
+def build_model(ctx: dict, api: dict, delay: dict | None, subscriptions: list[dict] | None = None) -> dict:
     text = ctx["_text"]
     cfg = parse_config_text(text)
     chain = parse_profile_chain(
@@ -983,6 +1065,7 @@ def build_model(ctx: dict, api: dict, delay: dict | None) -> dict:
             "groups": groups,
         },
         "providers": provs,
+        "subscriptions": subscriptions,
         "rules": {
             "count": len(rules),
             "types": rule_types,
@@ -1133,6 +1216,25 @@ def findings(model: dict, proxies: dict) -> list[dict]:
             f"{', '.join(no_interval)} 没有写 interval，按内核语义视为 0：只在启动时拉一次，之后不轮询。",
         )
 
+    for row in model.get("subscriptions") or []:
+        if row.get("error"):
+            add("info", "订阅内容对比失败", f"{row['name']}（{row.get('host')}）：{row['error']}")
+            continue
+        if row.get("addedReal"):
+            sample = "、".join(row["addedReal"][:5]) + ("…" if len(row["addedReal"]) > 5 else "")
+            add(
+                "warn",
+                "订阅有新增节点但本地 provider 没有",
+                f"{row['name']}：{sample}。本地缓存可能早于订阅变更；先触发 provider 更新，再查分组过滤。",
+            )
+        if row.get("removedReal"):
+            sample = "、".join(row["removedReal"][:5]) + ("…" if len(row["removedReal"]) > 5 else "")
+            add(
+                "info",
+                "线上已移除的节点仍在本地",
+                f"{row['name']}：{sample}。可能是缓存未更新，或显式 path 固定了旧文件。",
+            )
+
     if not any(r.get("type") == "Match" for r in model["rules"]["all"]):
         add("warn", "缺少兜底规则", "没有 MATCH/FINAL 规则时，未命中的流量行为取决于内核默认值。")
 
@@ -1239,6 +1341,27 @@ def render(model: dict) -> str:
             "未写 `path` 的 HTTP provider 缓存按 URL 的 MD5 落在 `<HomeDir>/proxies/`（规则集在 `rules/`）。")
         add("")
 
+    if model.get("subscriptions") is not None:
+        add("## 订阅内容对比")
+        add("")
+        if not model["subscriptions"]:
+            add("没有可对比的 HTTP provider。")
+        else:
+            add("| provider | 本地 | 订阅当前 | 本地缺失 | 线上已移除 |")
+            add("| --- | --- | --- | --- | --- |")
+            for row in model["subscriptions"]:
+                if row.get("error"):
+                    add(f"| `{row['name']}` | {row['localCount']} | — | — | {row['error']} |")
+                else:
+                    added = "、".join((row.get("addedReal") or [])[:6]) or "—"
+                    if row.get("addedInfo"):
+                        added += f"（另有 {len(row['addedInfo'])} 个信息节点）"
+                    removed = "、".join((row.get("removedReal") or [])[:6]) or "—"
+                    add(f"| `{row['name']}` | {row['localCount']} | {row['remoteCount']} | {added} | {removed} |")
+            add("")
+            add("对比是主动 GET 订阅 URL，会计入订阅流量；它不更新配置，也不写缓存。")
+        add("")
+
     add("## 分组与当前选中")
     add("")
     add("| 分组 | 类型 | 成员 | 当前选中 | 策略/条件 |")
@@ -1315,6 +1438,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="输出机器可读 JSON（stdout 只留 JSON）")
     parser.add_argument("--report", metavar="PATH", help="把 Markdown 报告另存到文件")
     parser.add_argument("--delay", action="store_true", help="追加延迟测速（会真实出网）")
+    parser.add_argument("--compare-subscriptions", action="store_true",
+                        help="主动 GET 订阅 URL，对比当前节点与本地 provider（会计入订阅流量）")
+    parser.add_argument("--subscription-proxy", default="auto",
+                        help="对比订阅时的路线：auto（用 mixed 端口）/ direct / <proxy-url>")
     parser.add_argument("--group", action="append", default=[], help="只测指定分组的叶子成员，可重复")
     parser.add_argument("--test-url", default=DEFAULT_TEST_URL, help=f"延迟测试 URL（默认 {DEFAULT_TEST_URL}）")
     parser.add_argument("--delay-timeout", type=int, default=DEFAULT_DELAY_TIMEOUT, help="单节点超时毫秒数")
@@ -1377,6 +1504,22 @@ def main(argv: list[str] | None = None) -> int:
     else:
         api["error"] = "配置里没有 external-controller"
 
+    subscriptions = None
+    if args.compare_subscriptions and api_ok:
+        mixed_port = (api.get("configs") or {}).get("mixed-port")
+        route = (args.subscription_proxy or "auto").strip()
+        if route.lower() == "direct":
+            proxy_url = None
+        elif route.lower() == "auto":
+            proxy_url = f"http://127.0.0.1:{mixed_port}" if mixed_port else None
+        else:
+            proxy_url = route
+        subscriptions = compare_subscriptions(
+            parse_provider_defs(text),
+            (api.get("providers") or {}).get("providers") or {},
+            proxy_url,
+        )
+
     delay = None
     if args.delay and api_ok:
         raw_proxies = api["proxies"].get("proxies") or {}
@@ -1432,7 +1575,7 @@ def main(argv: list[str] | None = None) -> int:
             "results": sorted(results, key=lambda x: (x["delay"] is None, x["delay"] or 0)),
         }
 
-    model = build_model(ctx, api, delay)
+    model = build_model(ctx, api, delay, subscriptions)
     model["apiOk"] = api_ok
     model["config"]["controller"] = controller
     report = render(model)

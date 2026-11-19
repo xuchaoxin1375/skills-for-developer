@@ -418,10 +418,43 @@ def test_delay_group_targets_uses_leaf_groups_only() -> None:
     assert not any("/group/TOP/" in call for call in calls)
 
 
+def test_parse_subscription_names_reads_proxies_section() -> None:
+    module = load_module()
+    text = (
+        "proxies:\n"
+        "- { name: A, type: vless }\n"
+        '- { name: "B node", type: ss }\n'
+        "- name: D\n"
+        "  type: trojan\n"
+        "proxy-groups:\n"
+        "- name: GROUP\n"
+    )
+    assert module.parse_subscription_names(text) == ["A", "B node", "D"]
+
+
+def test_compare_subscriptions_separates_real_and_info_nodes() -> None:
+    module = load_module()
+    defs = {("proxy", "p"): {"name": "p", "kind": "proxy", "type": "http",
+                             "url": "https://example.invalid/sub"}}
+    api = {"p": {"proxies": [{"name": "A"}, {"name": "OLD"}, {"name": "剩余流量：1 GB"}]}}
+    original = module.fetch_subscription
+    module.fetch_subscription = lambda url, proxy_url=None, timeout=20: (
+        "proxies:\n- name: A\n- name: NEW\n- name: 剩余流量：2 GB\n"
+    )
+    try:
+        rows = module.compare_subscriptions(defs, api, None)
+    finally:
+        module.fetch_subscription = original
+    assert rows[0]["addedReal"] == ["NEW"]
+    assert rows[0]["addedInfo"] == ["剩余流量：2 GB"]
+    assert rows[0]["removedReal"] == ["OLD"]
+
+
 def test_help_lists_core_options() -> None:
     code, out, _ = run_script("--help")
     assert code == 0
-    for option in ("--config", "--controller", "--json", "--delay", "--report", "--process", "--no-process"):
+    for option in ("--config", "--controller", "--json", "--delay", "--report", "--process", "--no-process",
+                   "--compare-subscriptions", "--subscription-proxy"):
         assert option in out
 
 
