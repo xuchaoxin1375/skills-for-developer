@@ -4,7 +4,7 @@ description: >
   公开电商商品采集的工作流与决策层：站点分诊、实体层级与身份、发现与判型分离、入口产出率、
   网址发现（XML／HTML sitemap、sitemap 变体与部分枚举、多门店分片、分类／全量列表、分页、公开 JSON、公开 API 分页）、获取有效内容（静态 HTTP、SPA 公开 JSON、渲染、
   限流与挑战分流）、按页面层级选源（列表／型号页优先，详情按需）、基础字段判定、变体／价格区间、多市场币种、marketplace 商品／offer 与进阶字段分层、
-  采集深度与规模估算、停止条件（覆盖为进阶审计）。
+  采集深度与规模估算、采集框架选型与同条件对照、停止条件（覆盖为进阶审计）。
   用于新站分析、采集方案规划、多层目录／型号零件、网址发现与判型、商品链接与分页排查、字段漏采定位、抓取难度分级。
   获取与挑战处理走 resilient-browser-fetch，HTML 提取与快照走 htmlmini，浏览器交互走 browser-automation；
   业务字段口径与导出格式按项目数据标准，不在本 Skill 固化。
@@ -28,6 +28,7 @@ description: >
 - **基础字段优先，进阶字段按需**：默认先保证身份与来源 URL、名称、价格与币种、可售状态、主图和描述存在性；完整正文／规格、兼容关系、变体、全量覆盖属于进阶项，任务未要求时不作为默认目标。
 - **覆盖率是进阶项**：结构清晰、入口和身份稳定时，以路径覆盖、样本代表性、字段完整性和停止条件为主；只有需要全站审计或有可靠分母时才计算覆盖率，不默认阻塞交付。
 - **证据决定工具**：静态 HTTP → 公开 JSON → 浏览器 → 有界挑战处理；一次只改一个变量，不用“换工具”掩盖字段或样本错误。
+- **框架选型按约束与同条件证据**：静态批量、动态/挑战、队列/状态各有主选；没有同一样本、同预算的小对照，不引用框架排名。候选画像和对照底线见 [references/framework-selection.md](references/framework-selection.md)。
 - **分阶段默认**：分诊 1 个入口请求 → 发现 sitemap／公开 API／列表 → 获取含基础字段的最便宜来源 → 详情只补缺 → 10–30 个分层样本校验；效率按每有效商品请求数／字节数衡量。详见 [references/stage-strategy.md](references/stage-strategy.md)。
 - **结构化数据优先**：JSON-LD、嵌入 JSON、公开商品接口优先于 CSS 选择器，选择器优先于文本兜底；记录每个字段实际使用的来源。
 - **2xx 不等于有效内容**：商品身份、报价上下文、正文完整性和最终 URL 要分别核对，空壳页、软错误页和挑战页都可能是 200。
@@ -331,4 +332,4 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 
 ## 参考
 
-网址发现、判型分离、入口产出率与客户端差异见 [references/discovery-strategy.md](references/discovery-strategy.md)；采集深度、层级取数和规模估算见 [references/depth-and-efficiency.md](references/depth-and-efficiency.md)；分阶段策略、基准站复盘与效率计算见 [references/stage-strategy.md](references/stage-strategy.md)；行业来源、关键结论和适用限制见 [references/industry-notes.md](references/industry-notes.md)。原则用于形成假设，目标站点的实际响应仍是最终证据。
+网址发现、判型分离、入口产出率与客户端差异见 [references/discovery-strategy.md](references/discovery-strategy.md)；采集深度、层级取数和规模估算见 [references/depth-and-efficiency.md](references/depth-and-efficiency.md)；分阶段策略、基准站复盘与效率计算见 [references/stage-strategy.md](references/stage-strategy.md)；采集框架选型、候选画像与同条件对照见 [references/framework-selection.md](references/framework-selection.md)；行业来源、关键结论和适用限制见 [references/industry-notes.md](references/industry-notes.md)。原则用于形成假设，目标站点的实际响应仍是最终证据。
