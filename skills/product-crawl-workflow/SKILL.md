@@ -2,7 +2,7 @@
 name: product-crawl-workflow
 description: >
   公开电商商品采集的工作流与决策层：站点分诊、实体层级与身份、发现与判型分离、入口产出率、
-  网址发现（XML／HTML sitemap、分类／全量列表、分页、公开 JSON）、获取有效内容（静态 HTTP、渲染、
+  网址发现（XML／HTML sitemap、sitemap 变体与部分枚举、分类／全量列表、分页、公开 JSON）、获取有效内容（静态 HTTP、渲染、
   限流与挑战分流）、按页面层级选源（列表／型号页优先，详情按需）、采集深度与规模估算、覆盖与停止条件。
   用于新站分析、采集方案规划、多层目录／型号零件、网址发现与判型、商品链接与分页排查、字段漏采定位、抓取难度分级。
   获取与挑战处理走 resilient-browser-fetch，HTML 提取与快照走 htmlmini，浏览器交互走 browser-automation；
@@ -95,6 +95,8 @@ description: >
 | external | 其他域名 | 记录，不默认抓取 |
 
 - **sitemap 条目不等于商品**：可能混合分类、商品、政策和图片；用页面内容或结构化数据确认，不只看 `<loc>`。
+- **sitemap 格式先验证**：可能是 index、urlset、`.xml.gz` 或命名子图；解析失败先查状态、`content-type` 和压缩，不要直接判“无 sitemap”。子图未取全时标“部分枚举”。
+- **没有 JSON-LD 仍可能是商品**：用标题、价格、购买区、重复卡片和父子关系综合判断。
 - **多入口交叉验证**：分别记录 XML sitemap、HTML 索引、分类／全量列表、分页、搜索的贡献和重叠；用并集扩大召回，不把单一入口当全量。
 - **客户端差异先比较一个变量**：同一 URL 在 200／406／403 间变化时，区分 UA、headers、HTTP 客户端和访问控制；不把一次失败当站点不可采，也不靠伪装绕过。
 - **robots 按 UA 组匹配**：`Crawl-delay` 可能只属于特定 user-agent 组；按实际 UA 组和更保守值执行。

@@ -38,6 +38,15 @@
 
 多入口要**交叉验证**：分别记录 XML sitemap、HTML 索引、分类、分页、搜索的贡献和重叠。用并集扩大召回，用重叠和页面证据判断哪个入口更完整。不要因为一个入口缺失就判定站点不可采。
 
+### sitemap 不是一种格式
+
+- sitemap 可能是 `urlset`、`sitemapindex`、命名子图，也可能是 `.xml.gz` 压缩文件；先看状态、`content-type` 和文件头，再决定解析方式。
+- 解析失败不等于“没有 sitemap”：可能是 403 的 HTML、挑战页、编码问题或 gzip 未解压。先记录状态、内容类型、字节数和首字节。
+- sitemap index 可能有上百个子图；只取前几个时必须标“部分枚举”，不能把子图计数当全站总量。
+- 命名子图本身是发现地图：按名称识别 `product.entity`、`category.product-list`、`variant`、`review`、`qna` 等类型，优先取商品实体图，不盲目抓全部。
+- 无 sitemap 且带 `Crawl-delay` 时，HTML 索引、分类页和公开目录是主路径；商品与分类 URL 可能共用路径形态，必须按内容判型。
+- 没有 Product JSON-LD 仍可能是商品页；用标题、价格、购买区、重复卡片和父子关系综合判断。
+
 ## 产出率与 frontier
 
 发现预算按“每抓一页新增多少实体 URL”分配，而不是按页面类型平均分配：
@@ -77,6 +86,11 @@
 | Shopify 站 | sitemap index 共 813 条，706 条 `/products/`；商品样页含 Product JSON-LD | sitemap 可作主入口，但仍要抽样确认商品身份 |
 | 体育用品站 | sitemap 8,397 条，商品 URL 形如 `87-156.htm`，没有 `/product/` 字样；样页含 JSON-LD | 不能按路径关键词判型；用页面内容验证 |
 | 目录型站（Magento 风格） | sitemap 2,528 条，2,382 条带图片且 priority 1.0；通用 Python 客户端 406，另一 HTTP 客户端 200 | sitemap 可用图片／优先级做线索；客户端差异不是站点级结论 |
+| Shopify 大图站 | sitemap index 6 个子图、568 条，104 个 `/products/`；`/products.json` 200；3 个商品页 838 KB–1.3 MB，含 JSON-LD | 公开 JSON 状态会变；商品页很重，只取主容器 |
+| 大型 sitemap index | 131 个子图；只取前 8 个已有 1,499 条、1,215 个商品候选；样页 500–586 KB | 子图未取全时标“部分枚举”，不能当全站总量 |
+| Shopware 风格 `.gz` | 4 个子图；首个 `.xml.gz` 解压后 5.7 MB、28,078 条；启发式商品候选 26,898 个；样页无 JSON-LD | `.gz` 先解压；无 JSON-LD 仍可能是商品 |
+| 无 sitemap + Crawl-delay | sitemap 404；`Crawl-delay: 10`；首页 508 个链接；分类页商品与分类链接混合；商品页有价格和 Add to Cart、无 JSON-LD | 分类优先；URL 形态重叠，按内容判型；无 JSON-LD 仍可能是商品 |
+| 挑战／路由 | sitemap 403、首页挑战、200 但 `text/html` 的 sitemap 路径、DNS 失败 | 区分访问限制、环境和“无 sitemap”；200 的 HTML 不是 sitemap，不绕过 |
 | 多层零件目录 | 无 XML sitemap；HTML `/site-map` 可发现数百个型号；分类列表页单页约 373 个型号、456 KB；型号页约 24 行零件；一次快照中初始 URL 规则把 1,681 个三段商品 URL 归为 `other`，抽样后确认是含 JSON-LD 的商品页 | HTML 索引和分类列表可弥补 XML sitemap 缺失；URL 规则必须用样本校验，高扇出页优先 |
 
 一次 1,600 页的有界探测在该多层目录上得到 21,307 个 URL，其中 14,675 个型号、5,058 个零件候选；页面类型产出约为：型号列表页 14,234 个型号，型号页 2,675 个零件，分类页 2,377 个零件 + 441 个型号。数字只证明当日快照，不证明全站覆盖。
