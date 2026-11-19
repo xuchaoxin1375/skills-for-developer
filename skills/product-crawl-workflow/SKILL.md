@@ -117,8 +117,9 @@ description: >
 | transactional | 购物车、结算、账户、订单 | 收集链接但不抓；遵守 robots |
 | external | 其他域名 | 记录，不默认抓取 |
 
-- **sitemap 条目不等于商品**：可能混合分类、商品、政策和图片；用页面内容或结构化数据确认，不只看 `<loc>`。
+- **sitemap 条目不等于商品**：可能混合分类、商品、政策和图片；用页面内容或结构化数据确认，不只看 `<loc>`。同类路由（如 `web_page/<id>`）可能同时装商品、编辑页和政策页，不能按路径形态或条数判商品。
 - **sitemap 格式先验证**：可能是 index、urlset、`.xml.gz` 或命名子图；解析失败先查状态、`content-type` 和压缩，不要直接判“无 sitemap”。子图未取全时标“部分枚举”。
+- **内部编号不是公开 URL**：ERP／`mpn`／warehouse id 可能只用于购物车和库存；不要用它拼商品路径，公开身份用 canonical 或 microdata `url`。分类 `product_box` 常比混合 sitemap 更接近商品入口。
 - **多门店／多市场 sitemap**：index 常按门店或市场分片，商品 URL 带门店前缀；先确定目标门店，再取对应子图，不把第一个子图当全站。跨门店合并前先验证业务键：URL UUID、slug、catalogue ID 可能是门店级或分组级，优先用 UPC／EAN／GTIN／MPN；价格和可售状态绑定门店。
 - **没有 JSON-LD 仍可能是商品**：用标题、价格、购买区、重复卡片和父子关系综合判断。
 - **多入口交叉验证**：分别记录 XML sitemap、HTML 索引、分类／全量列表、分页、搜索的贡献和重叠；用并集扩大召回，不把单一入口当全量。
@@ -163,10 +164,11 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 | 优先级 | 来源 | 典型位置 | 注意 |
 | --- | --- | --- | --- |
 | 1 | JSON-LD | `script[type="application/ld+json"]` 的 Product／Offer | 可能只是摘要、只覆盖当前变体，或位于 `@graph`／多 Product 中；按 `@type`、URL 和商品归属选，不取第一个 |
-| 2 | 嵌入 JSON | `__NEXT_DATA__`、内联 state、`application/json` | 结构与字段名随框架变化，按实际响应核对 |
-| 3 | 公开商品接口 | 商品 JSON、目录 JSON | 只使用无需认证的公开响应；不猜管理员接口 |
-| 4 | DOM 选择器 | 主商品容器内的标题、价格、图片、正文 | 选择器锚定主商品，避免推荐位和导航误命中 |
-| 5 | 文本兜底 | 页面可见文本 | 记录来源和限制，不把摘要当完整正文 |
+| 2 | Product 微数据 | `[itemtype*="Product"]` 内的 `itemprop="name"／price／sku／availability` | 无 JSON-LD 时先查；描述可能夹 `<style>`／模板内容；与 DOM、分类盒交叉核对 |
+| 3 | 嵌入 JSON | `__NEXT_DATA__`、内联 state、`application/json` | 结构与字段名随框架变化，按实际响应核对 |
+| 4 | 公开商品接口 | 商品 JSON、目录 JSON | 只使用无需认证的公开响应；不猜管理员接口 |
+| 5 | DOM 选择器 | 主商品容器内的标题、价格、图片、正文 | 选择器锚定主商品，避免推荐位和导航误命中 |
+| 6 | 文本兜底 | 页面可见文本 | 记录来源和限制，不把摘要当完整正文 |
 
 逐字段核对：
 
@@ -179,7 +181,7 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 - **状态**：可售、缺货、停售、无价格、未知分开；停售可能仍有价格，不能因价格存在就当可售。JSON-LD 的 availability 只是证据之一，和可见购买控件／停售文案交叉核对；公开接口的 availability 还要确认作用域（门店／市场／默认店），不默认全站。变体商品的父级 JSON-LD availability 可能只覆盖默认／任一变体，不能替代变体级状态；Magento `jsonConfig.salable` 为空时也不能据此判缺货，变体库存需页面选择后的状态或授权接口；marketplace 的 `AggregateOffer` availability／itemCondition 是聚合或默认值，不能替代单个 offer 的成色与库存。`OnlineOnly`／`InStoreOnly` 是销售渠道，不是库存状态；`LimitedAvailability`、`PreOrder`、`BackOrder` 等按实际语义映射，未知值保留并继续查页面证据。BigCommerce 类主题的缺货商品源码可能仍有价格和加购表单，状态看 JSON-LD `availability`、内嵌商品 JSON 的 `instock` 与 `og:availability`，不按加购按钮单独判定。
 - **主图**：商品主图，不取 Logo、占位图、`none.jpg` 等占位资源、站点／门店默认图或推荐图；处理相对路径。文件名、alt 和渲染结果都要看；只有占位资源时标缺少主图，不把占位图当有效主图。
 - **正文／描述**：先找主商品描述容器和展开区，再核对 JSON-LD；JSON-LD 描述常常是生成摘要，也可能完全没有 `description`（如部分 BigCommerce 主题），正文只在 DOM；缺字段不等于原站未提供。清洗后只有空标签不算描述；区分完整、部分、摘要回退、原站未提供和提取失败。列表或型号页只有标题、没有正文时，不算完整正文。名称兜底只在展示层，不写进描述字段。
-- **选项与变体**：公开 JSON 已列出的变体直接读取；商品可售＝任一公开变体可售，基础价取公开最低变体价并保留区间／起价；缺 SKU 时用商品 ID／handle＋选项值作变体身份；不自行组合未列出的选项，不把每个变体当独立商品。平台字段名不同：Shopify `variants[]`、WooCommerce `data-product_variations`、Magento swatch 的 `jsonConfig`（`attributes`／`index`／`sku`／`optionPrices`／`images`）或 dropdown 的 `super_attribute`／`spConfig`；以实际响应为准。变体也可能是独立商品 URL（颜色／尺寸各一页），不要因单页没有 selects 就判无变体；PrestaShop 等独立颜色页可能各自自指 canonical、无 selects，这是一个型号的多个颜色，用 SKU／GTIN 做变体键，按型号＋颜色归并，不按 canonical 或标题去重；描述里的颜色词可能复制错误，以标题、SKU、GTIN 为准。应用生成的捆绑选项值可能是内部 ID，用户展示字段用页面可见标签。
+- **选项与变体**：公开 JSON 已列出的变体直接读取；商品可售＝任一公开变体可售，基础价取公开最低变体价并保留区间／起价；缺 SKU 时用商品 ID／handle＋选项值作变体身份；不自行组合未列出的选项，不把每个变体当独立商品。平台字段名不同：Shopify `variants[]`、WooCommerce `data-product_variations`、Magento swatch 的 `jsonConfig`（`attributes`／`index`／`sku`／`optionPrices`／`images`）或 dropdown 的 `super_attribute`／`spConfig`；以实际响应为准。变体也可能是独立商品 URL（颜色／尺寸各一页），不要因单页没有 selects 就判无变体；PrestaShop 等独立颜色页可能各自自指 canonical、无 selects，这是一个型号的多个颜色，用 SKU／GTIN 做变体键，按型号＋颜色归并，不按 canonical 或标题去重；描述里的颜色词可能复制错误，以标题、SKU、GTIN 为准。自定义站的同型号不同面料／颜色也可能是独立页面，`?fabric=` 一类查询参数是筛选，不是新商品；跨变体相同的模板描述按共享正文记录，不重复计数。应用生成的捆绑选项值可能是内部 ID，用户展示字段用页面可见标签。
 - **隐藏／内部商品**：公开 JSON 可能含不在店面展示的捆绑、占位或商家内部说明（如 “Not visible on storefront”）；交叉核对店面可见性、集合成员和正文标记，内部占位不进入商品集，正常商品的内部说明剥离或单独记录，不作为营销正文。
 - **分类、品牌、库存**：原站有明确依据才填；未提供与漏采分开。
 - **受限商品**：酒类、烟草、年龄限制或地区限制商品记录公开限制字段／文案，不把限制当缺货，不绕过年龄门或地区校验。
@@ -258,7 +260,7 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 | BigCommerce | 分类卡片、规范链接、sitemap、商品页 Product JSON-LD、`og:availability` | 价格可能在 `offers.price` 或 `offers.priceSpecification.price`；描述可能只在 DOM；缺货源码仍可能有价和加购表单；部分接口需要认证 |
 | Shopware／Salesforce Commerce Cloud | 商品列表、公开搜索／分类、分页 | 区域、会话和主题差异 |
 | 多卖家 marketplace（Reverb 等） | 商品页 `/p/...`、item `/item/...`、`AggregateOffer`、price guide | 商品／offer 混算；历史价当现价；推荐卡价格误当主价；运费按地区变化 |
-| 未知自建站 | 主商品 DOM、结构化标记、链接簇 | 不套其他平台的路径模板 |
+| 未知自建站 | 主商品 DOM、Product 微数据、分类 `product_box`、链接簇 | 不套其他平台的路径模板；`web_page`／`ware` 等混合路由和 sitemap 可能混编辑页；内部 mpn 不是公开 URL |
 
 ## 故障分流
 
