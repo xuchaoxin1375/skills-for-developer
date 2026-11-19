@@ -2,9 +2,9 @@
 
 用于支撑 `product-crawl-workflow` 的判断，不把厂商博客当受控基准。来源在 2026-11-19 读取，页面与产品能力会变化，使用前按目标站点复核。
 
-## 发现与覆盖
+## 发现路径与完整性
 
-- 全目录采集的难点是覆盖而不是解析：优先站点地图和 feed，其次分类，最后站内搜索；分页应持续到没有新商品，并按商品 ID 去重，不用固定页数。[Scrapfly](https://scrapfly.io/blog/posts/how-to-scrape-large-product-catalogs)
+- 全目录采集的难点首先是发现路径和商品身份，不是解析；覆盖是进阶审计项。优先站点地图和 feed，其次分类，最后站内搜索；分页应持续到没有新商品，并按商品 ID 去重，不用固定页数。[Scrapfly](https://scrapfly.io/blog/posts/how-to-scrape-large-product-catalogs)
 - 电商任务通常从分类或搜索页开始，经分页进入详情页；试点要检查第二页和最后一页，而不是只看首屏。[Web Scraper](https://webscraper.io/blog/best-web-scraping-tools-ecommerce)
 - 站点地图可能不完整或只覆盖部分区段；分类和搜索是补充入口，不能因为某一种入口缺失就判定全站不可采。[AIMultiple](https://aimultiple.com/ecommerce-scraper)
 
@@ -24,7 +24,7 @@
 
 采用：
 
-- 发现顺序、分页到无新增、按商品身份去重、记录分母。
+- 发现顺序、分页到无新增、按商品身份去重；有可靠分母时记录覆盖，结构清晰时不强制全站百分比。
 - 静态优先、公开 JSON 优先、浏览器按证据升级。
 - 结构化数据优先、记录字段来源、区分摘要与完整正文。
 - 样本覆盖首尾分页、变体、缺货和异常价格。
