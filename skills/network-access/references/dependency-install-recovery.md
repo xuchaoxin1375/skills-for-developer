@@ -26,6 +26,8 @@
 
 uv 不读取 `pip.conf` / `PIP_INDEX_URL`，不支持 `--user`，默认只装进虚拟环境；使用 uv 时按[依赖下载](dependency-downloads.md)配置它的索引与超时，同一环境不要用 pip 和 uv 交替升级同一个包。
 
+环境生命周期（全局 uv、项目 venv、缓存复用、PATH）见 [python-runtime-setup](../../python-runtime-setup/SKILL.md)。
+
 ## 先读错误，不先重跑
 
 安装失败可以按阶段归类，多数错误能直接落到其中一段。把完整错误、命令、解释器和包管理器版本一起留下，再决定动作；同一命令原样重跑通常只会重复等待。

@@ -18,6 +18,7 @@ description: >
 - 回答本机资源：系统版本与架构、CPU/GPU/内存/磁盘、运行时版本与路径、Python 解释器及可用引擎层、浏览器候选、代理入口、项目已有工具。
 - 安装或下载依赖、浏览器、运行时之前的对照；换机器、新环境、怀疑"环境判断不完整"时的第一步。
 - 不承担：代理选路与镜像决策（network-access）、浏览器操作与截图（browser-automation）、渲染与挑战求解（resilient-browser-fetch）、测试设计与运行（web-app-testing）。这些细节按组名转对应 skill。
+- Python 运行时与 uv 的安装、切换、全局化不在本 skill；见 [python-runtime-setup](../python-runtime-setup/SKILL.md)。
 
 ## 使用
 
