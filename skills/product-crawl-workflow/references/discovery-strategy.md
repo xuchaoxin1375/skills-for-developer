@@ -136,6 +136,7 @@
 | 挑战／路由 | sitemap 403、首页挑战、200 但 `text/html` 的 sitemap 路径、DNS 失败 | 区分访问限制、环境和“无 sitemap”；200 的 HTML 不是 sitemap，不绕过 |
 | 多层零件目录 | 无 XML sitemap；HTML `/site-map` 可发现数百个型号；分类列表页单页约 373 个型号、456 KB；型号页约 24 行零件；一次快照中初始 URL 规则把 1,681 个三段商品 URL 归为 `other`，抽样后确认是含 JSON-LD 的商品页 | HTML 索引和分类列表可弥补 XML sitemap 缺失；URL 规则必须用样本校验，高扇出页优先 |
 | 多卖家 marketplace | 搜索页 56 个 item 链接；商品页 `/p/...` 33 个 offers，`AggregateOffer` 399–1100 USD；item 页 seller Dr. Guitar Music／Liberty Guitars | 商品页与 item 页分层；推荐卡和 price guide 不混淆 |
+| Magento configurable | Magebit `argus-all-weather-tank.html` 5 变体（XS–XL/Gray，€22）；`breathe-easy-tank.html` 15 变体（€34）；`salable` 空 | swatch 用 `jsonConfig`；`salable` 空不判缺货 |
 
 多门店身份实测：两店 sitemap 的 16,419 与 14,782 个商品 UUID 交集为 0，slug 交集 8,964；同一洗衣液在两店的 UUID 和 catalogue ID 不同，但 `Cd` 解码后的条码相同。结论：URL UUID／catalogue ID 可能是门店级，跨店合并要用条码／UPC／GTIN／MPN，先用样本验证。
 

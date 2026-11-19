@@ -59,8 +59,9 @@
 - 公开 JSON 已列出的变体直接读取；不自行组合未列出的选项，也不把每个变体当独立商品。
 - 基础价取所有公开变体的最低价（是否含缺货变体按项目标准）；保留价格区间／起价标记，不把最高价或默认选中变体价当基础价。
 - 商品可售＝任一公开变体可售；变体级价格、availability、SKU 单独保留，一个变体缺货不等于整个商品停售。
-- 平台字段：Shopify `variants[]`（价格常为分、`available` 按变体）；WooCommerce `data-product_variations`（`display_price` 常为十进制、`is_in_stock` 按变体、`variation_id`／SKU）；Magento configurable 的 `jsonConfig`／`configurable` 需按实际响应核对。
+- 平台字段：Shopify `variants[]`（价格常为分、`available` 按变体）；WooCommerce `data-product_variations`（`display_price` 常为十进制、`is_in_stock` 按变体、`variation_id`／SKU）；Magento swatch 的 `jsonConfig`（`productId` 父商品、`attributes` 选项、`index` 变体→选项、`sku` 变体 SKU、`optionPrices` 变体价、`images` 变体图）或 dropdown 的 `super_attribute`／`spConfig`。
 - 父级 JSON-LD availability 可能只覆盖默认／任一变体，不能替代变体级 `is_in_stock`／`available`。
+- Magento `jsonConfig.salable` 可能为空（实测页面仍 In stock）；不能据此判缺货；变体库存需页面选择后的状态或授权接口。
 - 缺 SKU 时用商品 ID／handle＋选项值作变体身份；应用生成的捆绑选项值可能是内部 ID，用户展示字段用页面可见标签。
 - 基础主图用商品级主图；变体图、变体 SKU 属于进阶字段，不因默认变体不同而改变基础主图。
 - 公开 JSON 可能包含隐藏／内部捆绑或商家说明；交叉核对店面可见性，内部占位不进入商品集，正常商品剥离内部说明。
