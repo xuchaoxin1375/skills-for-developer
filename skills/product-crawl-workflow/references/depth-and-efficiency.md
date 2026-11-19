@@ -14,11 +14,12 @@
 | 系列／套装 | 套装或单品 | 套装 SKU、组成件 SKU | 系列 → 套装 → 组成件 |
 | 文档／规格库 | 文档 | 文档 ID、稳定路径 | 品牌 → 型号 → 文档 |
 | 多门店／多市场 | 按任务定：门店商品或品牌商品 | UPC／EAN／GTIN／MPN；否则品牌＋名称＋规格＋变体 | 品牌 → 门店 → 商品 → 变体 |
+| 多卖家 marketplace | 商品（model）或 offer（listing） | 商品页 ID／canonical；item ID | 商品 → offers |
 
 规则：
 
 - 多门店／多市场：URL UUID、slug、catalogue ID 可能是门店级或分组级；先用两店样本验证，不能假设全局唯一。
-- 多卖家 marketplace：先定义商品／offer 单位；记录卖家、成色、运费和报价时间，不把 buy-box 价当唯一价，也不把每个 offer 当独立商品。
+- marketplace：商品页是一个商品，item／listing 是 offer；先定义计数单位，不把每个 offer 当商品，也不把商品页当单个 offer。记录 seller、成色、运费和报价时间。
 - 型号页上的多行零件表通常是**入口**，不是单个商品；零件行有独立编号和报价时，按零件身份进入候选。
 - 同一零件出现在多个型号上下文时，按零件号合并；模型上下文作为关系记录，不增加商品数。
 - URL 只是定位。`canonical`、SKU、零件号、型号＋变体是身份证据；没有 canonical 时不能只靠 URL 规范化去重。
@@ -63,6 +64,16 @@
 - 缺 SKU 时用商品 ID／handle＋选项值作变体身份；应用生成的捆绑选项值可能是内部 ID，用户展示字段用页面可见标签。
 - 基础主图用商品级主图；变体图、变体 SKU 属于进阶字段，不因默认变体不同而改变基础主图。
 - 公开 JSON 可能包含隐藏／内部捆绑或商家说明；交叉核对店面可见性，内部占位不进入商品集，正常商品剥离内部说明。
+
+## 多卖家 marketplace
+
+- 商品页（如 `/p/...`）是一个商品；item／listing（如 `/item/...`）是 offer。商品页可聚合多个 offer，item canonical 常回指商品页。
+- 商品页的 `AggregateOffer` 给当前 offer 的 lowPrice／highPrice／offerCount；历史 price guide 是已售参考，不是当前价。
+- item 页取 seller、condition、price、shipping；搜索卡可能只有 price／condition／shipping，没有 seller。
+- 运费常按目的地变化，记录邮编／地区；不要把不同地区的运费直接比较。
+- 成色：JSON-LD 可能只给通用 `UsedCondition`，页面可见的 Very Good／Excellent／Good／B-Stock 更具体；优先记录可见成色并保留来源。
+- item 页可能混入推荐 listing；锚定主商品容器／canonical item URL／主 JSON-LD，不要把推荐卡价格当主价。
+- 聚合 `itemCondition` 可能是默认值（实测 NewCondition 与 Used listing 冲突）；不要用它替代 item 级成色。
 
 ## 先估规模
 
@@ -137,6 +148,7 @@
 - **主图**：识别 `none.jpg`、占位图、Logo、1×1 图片和推荐图；还要对比站点／门店的默认图 URL（如 franchise 级 `DefaultProductImageUrl`），占位资源不算有效主图。
 - **受限商品**：酒类、烟草、年龄限制或地区限制商品记录公开限制字段／文案，不把限制当缺货，不绕过年龄门或地区校验。
 - **正文**：先按标题或嵌入 JSON 的 section 拆块；适配车型、套装清单、配料、营养、过敏原和运费／退换政策不拼进描述。列表或型号页只有标题、没有正文时，不算完整正文；详情页为空时按“原站未提供”处理，不把模板摘要或空标签当正文。名称兜底只在展示层，不写回描述字段。
+- **marketplace**：商品页 `AggregateOffer` 的 availability／itemCondition 是聚合或默认值；单个 offer 的库存、成色、价格、运费以 item 页为准。
 - **部分交付**：详情页有独有字段但超出预算时，保留核心字段并标记未补字段；不能伪称完整。
 
 ## 增量与复跑

@@ -25,6 +25,7 @@
 - **sitemap 条目不等于商品**：sitemap 可能混合分类、商品、政策页和图片；用页面内容或结构化数据确认，不只看 `<loc>`。
 - **保留来源与父级**：每个候选记录 `source`、`depth`、链接文字和所在页面类型；后面才能判断哪条入口真正贡献了商品。
 - **不要过早去重成“商品”**：先按 URL 去重，再按业务身份（SKU、零件号、型号＋变体）归并；两者不是同一层。
+- **Marketplace**：搜索／列表结果是 offer 集合，item canonical 常指向商品页；用 canonical 分组，但商品与 offer 分开计数。
 
 ## 入口阶梯与贡献
 
@@ -134,8 +135,11 @@
 | 无 sitemap + Crawl-delay | sitemap 404；`Crawl-delay: 10`；首页 508 个链接；分类页商品与分类链接混合；商品页有价格和 Add to Cart、无 JSON-LD | 分类优先；URL 形态重叠，按内容判型；无 JSON-LD 仍可能是商品 |
 | 挑战／路由 | sitemap 403、首页挑战、200 但 `text/html` 的 sitemap 路径、DNS 失败 | 区分访问限制、环境和“无 sitemap”；200 的 HTML 不是 sitemap，不绕过 |
 | 多层零件目录 | 无 XML sitemap；HTML `/site-map` 可发现数百个型号；分类列表页单页约 373 个型号、456 KB；型号页约 24 行零件；一次快照中初始 URL 规则把 1,681 个三段商品 URL 归为 `other`，抽样后确认是含 JSON-LD 的商品页 | HTML 索引和分类列表可弥补 XML sitemap 缺失；URL 规则必须用样本校验，高扇出页优先 |
+| 多卖家 marketplace | 搜索页 56 个 item 链接；商品页 `/p/...` 33 个 offers，`AggregateOffer` 399–1100 USD；item 页 seller Dr. Guitar Music／Liberty Guitars | 商品页与 item 页分层；推荐卡和 price guide 不混淆 |
 
 多门店身份实测：两店 sitemap 的 16,419 与 14,782 个商品 UUID 交集为 0，slug 交集 8,964；同一洗衣液在两店的 UUID 和 catalogue ID 不同，但 `Cd` 解码后的条码相同。结论：URL UUID／catalogue ID 可能是门店级，跨店合并要用条码／UPC／GTIN／MPN，先用样本验证。
+
+Marketplace 实测：Reverb 商品页 `/p/fender-player-stratocaster-2018` 聚合 33 个 offer（low 399／high 1100 USD），32 张 listing 卡覆盖 B-Stock、Used–Excellent／Good／Very Good；两个 item 页分别由 Dr. Guitar Music（Watertown, NY，$399，运费 $129.44）和 Liberty Guitars（Covington, TN，$1111，运费 $75）出售，item canonical 回指商品页。商品页 price guide $381–$651（4,071 orders）是历史已售价，不是当前 offer 价。
 
 公开目录 API 实测：`POST /stores/758/products?skip=0&take=5` 返回 5 条，`Meta.Pagination.TotalNumberOfRecords=19,129`；`skip=100000` 返回空。sitemap 有 19,287 个商品 URL，差异 158 条；sitemap 与 API 是不同口径，不能直接判谁对谁错。
 
