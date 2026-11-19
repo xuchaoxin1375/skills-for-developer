@@ -142,6 +142,52 @@ def test_interpreter_candidates_skips_missing_prefixes(monkeypatch, tmp_path: Pa
     ]
 
 
+def _make_venv(prefix: Path) -> Path:
+    interpreter = (
+        prefix / "Scripts" / "python.exe"
+        if subject.os.name == "nt"
+        else prefix / "bin" / "python"
+    )
+    interpreter.parent.mkdir(parents=True)
+    interpreter.touch()
+    return interpreter
+
+
+def test_project_venv_prefixes_finds_bounded_nested_envs(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    wanted = root / "experiments" / "framework-compare" / "scrapling" / ".venv"
+    _make_venv(wanted)
+    empty = root / "experiments" / "framework-compare" / "crawlee" / ".venv"
+    empty.mkdir(parents=True)
+    ignored = root / "node_modules" / "pkg" / ".venv"
+    _make_venv(ignored)
+    too_deep = root / "a" / "b" / "c" / "d" / ".venv"
+    _make_venv(too_deep)
+
+    found = subject.project_venv_prefixes([root])
+
+    assert wanted in found
+    assert empty not in found, "没有解释器的空 .venv 不能算候选"
+    assert ignored not in found, "node_modules 下的 .venv 不扫"
+    assert too_deep not in found, "超过深度上限的 .venv 不扫"
+
+
+def test_interpreter_candidates_marks_project_venv_source(
+    monkeypatch, tmp_path: Path
+) -> None:
+    env = tmp_path / "project" / "experiments" / "tool" / ".venv"
+    interpreter = _make_venv(env)
+    monkeypatch.setattr(subject, "project_venv_prefixes", lambda _roots: [env])
+    monkeypatch.setattr(subject, "conda_env_prefixes", lambda: [])
+    monkeypatch.setattr(subject, "virtualenv_prefixes", lambda: [])
+    monkeypatch.setattr(subject, "launcher_pythons", lambda: [])
+    monkeypatch.setattr(subject.shutil, "which", lambda _name: None)
+
+    candidates = subject.interpreter_candidates([tmp_path / "project"])
+
+    assert {"path": str(interpreter.resolve()), "source": "project-venv"} in candidates
+
+
 def test_probe_interpreter_reports_layers_of_the_current_python() -> None:
     scripts = Path(subject.__file__).resolve().parent
 
@@ -163,7 +209,7 @@ def test_scan_environments_ranks_richer_environments_first(monkeypatch, tmp_path
     monkeypatch.setattr(
         subject,
         "interpreter_candidates",
-        lambda: [
+        lambda _roots=(): [
             {"path": str(tmp_path / "plain"), "source": "PATH"},
             {"path": str(tmp_path / "rich"), "source": "conda-envs"},
         ],

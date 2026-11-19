@@ -33,7 +33,7 @@ python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会�
 python <skill>/scripts/inventory.py --probe-network  # 源站可达性探测（会出网）
 ```
 
-选项、默认值与降级行为以 `--help` 为准，本文不复制清单。脚本只用标准库，任何 PATH 上的 Python 3.10+ 都能跑；不需要安装依赖。
+选项、默认值与降级行为以 `--help` 为准，本文不复制清单。脚本只用标准库，任何 PATH 上的 Python 3.10+ 都能跑；不需要安装依赖。`--project` 会把项目根传给 `check_environment.py`，用于发现 `experiments/*/.venv` 这类嵌套 uv 环境。
 
 ## 报告怎么读
 

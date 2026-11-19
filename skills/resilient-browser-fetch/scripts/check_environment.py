@@ -10,6 +10,7 @@ import platform
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,24 @@ from resilient_fetch import (
 
 MAX_INTERPRETER_CANDIDATES = 12
 PROBE_TIMEOUT_SEC = 30
+PROJECT_VENV_SCAN_DEPTH = 4
+PROJECT_VENV_SCAN_MAX_ENTRIES = 2000
+PROJECT_VENV_SKIP_NAMES = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        "dist",
+        "build",
+        "site-packages",
+    }
+)
 
 
 def add_check(
@@ -235,6 +254,59 @@ def conda_env_prefixes() -> list[Path]:
     return prefixes
 
 
+def project_venv_prefixes(
+    roots: Sequence[Path],
+    max_depth: int = PROJECT_VENV_SCAN_DEPTH,
+    max_entries: int = PROJECT_VENV_SCAN_MAX_ENTRIES,
+) -> list[Path]:
+    """Find nested ``.venv``/``venv`` prefixes under project roots, with bounded traversal."""
+
+    prefixes: list[Path] = []
+    seen: set[str] = set()
+    visited = 0
+    for root in roots:
+        try:
+            root = root.expanduser()
+        except OSError:
+            continue
+        if not root.is_dir():
+            continue
+        stack: list[tuple[Path, int]] = [(root, 0)]
+        while stack:
+            current, depth = stack.pop()
+            try:
+                entries = list(current.iterdir())
+            except OSError:
+                continue
+            for entry in entries:
+                visited += 1
+                if visited > max_entries:
+                    return prefixes
+                if not entry.is_dir():
+                    continue
+                name = entry.name
+                if name in PROJECT_VENV_SKIP_NAMES:
+                    continue
+                if name in {".venv", "venv"}:
+                    if depth + 1 > max_depth:
+                        continue
+                    if interpreter_in(entry) is None:
+                        continue
+                    try:
+                        key = str(entry.resolve())
+                    except OSError:
+                        continue
+                    if key not in seen:
+                        seen.add(key)
+                        prefixes.append(entry)
+                    continue
+                if entry.is_symlink():
+                    continue
+                if depth < max_depth:
+                    stack.append((entry, depth + 1))
+    return prefixes
+
+
 def virtualenv_prefixes() -> list[Path]:
     """List venv/virtualenv/uv-managed prefixes from common locations."""
 
@@ -291,7 +363,7 @@ def launcher_pythons() -> list[Path]:
     return found
 
 
-def interpreter_candidates() -> list[dict[str, str]]:
+def interpreter_candidates(project_roots: Sequence[Path] = ()) -> list[dict[str, str]]:
     """Collect interpreters that could own the dependency layers, without activating anything."""
 
     found: list[dict[str, str]] = []
@@ -322,6 +394,8 @@ def interpreter_candidates() -> list[dict[str, str]]:
         add(path, "py -0p")
     for prefix in conda_env_prefixes():
         add(interpreter_in(prefix), "conda-envs")
+    for prefix in project_venv_prefixes(project_roots):
+        add(interpreter_in(prefix), "project-venv")
     for prefix in virtualenv_prefixes():
         add(interpreter_in(prefix), "venv-dirs")
     return found[:MAX_INTERPRETER_CANDIDATES]
@@ -391,10 +465,14 @@ def engine_levels(engines: list[str]) -> list[int]:
     return sorted({ENGINES[name].level for name in engines if name in ENGINES})
 
 
-def scan_environments(required: tuple[str, ...], scripts_dir: Path) -> list[dict[str, Any]]:
+def scan_environments(
+    required: tuple[str, ...],
+    scripts_dir: Path,
+    project_roots: Sequence[Path] = (),
+) -> list[dict[str, Any]]:
     """Probe every candidate interpreter and rank it by the layers it can actually run."""
 
-    candidates = interpreter_candidates()
+    candidates = interpreter_candidates(project_roots)
     if not candidates:
         return []
     with ThreadPoolExecutor(max_workers=min(8, len(candidates))) as pool:
@@ -500,6 +578,13 @@ def main() -> int:
         action="store_true",
         help="扫描本机候选解释器(conda/venv/uv/PATH/py 启动器)，报告各自可运行的引擎层，并给出建议命令。",
     )
+    parser.add_argument(
+        "--project-root",
+        action="append",
+        type=Path,
+        default=[],
+        help="扫描该项目根目录下的嵌套 .venv/venv (可重复), 用于 experiments/*/.venv 等布局。",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -515,7 +600,11 @@ def main() -> int:
     )
 
     if args.list_envs:
-        environments = scan_environments(required_engines, Path(__file__).resolve().parent)
+        environments = scan_environments(
+            required_engines,
+            Path(__file__).resolve().parent,
+            tuple(args.project_root),
+        )
         satisfied = [entry for entry in environments if entry["ok"] and not entry["satisfies"]]
         if args.json:
             print(

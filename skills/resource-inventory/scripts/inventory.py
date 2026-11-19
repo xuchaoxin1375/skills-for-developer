@@ -255,7 +255,7 @@ def run_command(args: Sequence[str], timeout: float) -> tuple[int | None, str, s
         argv = ["cmd", "/c", *argv]
     env = {**os.environ, "PYTHONUTF8": "1"}
     try:
-        proc = subprocess.run(  # noqa: S603 - 参数为内部常量，非用户输入拼接
+        proc = subprocess.run(  # 参数为内部常量，非用户输入拼接
             argv,
             capture_output=True,
             timeout=timeout,
@@ -749,7 +749,9 @@ def section_runtimes(timeout: float) -> dict[str, Any]:
     }
 
 
-def section_python_envs(skills_root: Path | None, timeout: float) -> dict[str, Any]:
+def section_python_envs(
+    skills_root: Path | None, timeout: float, projects: Sequence[str] = ()
+) -> dict[str, Any]:
     """Python 解释器与可运行引擎层：委派 resilient-browser-fetch 的 check_environment.py。"""
     base = {"available": False, "owner": "resilient-browser-fetch"}
     if skills_root is None:
@@ -757,10 +759,10 @@ def section_python_envs(skills_root: Path | None, timeout: float) -> dict[str, A
     script = skills_root / "resilient-browser-fetch" / "scripts" / "check_environment.py"
     if not script.is_file():
         return {**base, "reason": f"缺少 {script}（sibling skill 可能未链接到同一目录）"}
-    code, stdout, stderr = run_command(
-        [sys.executable, "-X", "utf8", str(script), "--list-envs", "--json"],
-        max(timeout, SCAN_TIMEOUT),
-    )
+    command = [sys.executable, "-X", "utf8", str(script), "--list-envs", "--json"]
+    for project in projects:
+        command.extend(["--project-root", project])
+    code, stdout, stderr = run_command(command, max(timeout, SCAN_TIMEOUT))
     if code != 0 or not stdout.strip():
         return {**base, "reason": f"扫描失败（exit={code}）: {first_line(stderr)}"}
     try:
@@ -1025,7 +1027,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         logger.warning("未定位到 skill 目录；Python 环境、浏览器、代理与网络配置将标记为不可用")
     elif skills_root:
         logger.debug("skills root: %s", skills_root)
-    project_consumers = {"projects", "network", "python", "node", "git"}
+    project_consumers = {"projects", "network", "python-envs"}
     if args.project and not (selected & project_consumers):
         logger.warning("--project 已给出，但 --only 未包含使用项目配置的分组，忽略项目探测")
     registry = Path(
@@ -1045,7 +1047,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     if "runtimes" in selected:
         report["runtimes"] = section_runtimes(args.timeout)
     if "python-envs" in selected:
-        report["pythonEnvs"] = section_python_envs(skills_root, args.timeout)
+        report["pythonEnvs"] = section_python_envs(skills_root, args.timeout, args.project)
     if "browsers" in selected:
         report["browsers"] = section_browsers(skills_root)
     if "proxies" in selected:
@@ -1242,7 +1244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         report = build_report(args)
-    except Exception:  # noqa: BLE001 - 顶层兜底：失败要带堆栈退出，不静默
+    except Exception:  # 顶层兜底：失败要带堆栈退出，不静默
         logger.exception("资源体检失败")
         return 1
     if args.json:
