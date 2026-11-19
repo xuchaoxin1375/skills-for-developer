@@ -41,6 +41,7 @@ UI 里改的东西通常写回 profile 或运行时配置，不写回订阅；�
 
 节点在订阅里有、运行配置里没有时，按这个顺序查：
 
+- **先确认控制 API 真的读到了运行时**：报告"叶子节点 0 个"且控制 API 不可用时，多半是没读到内核（Unix socket 控制口、服务账户、TUN 等），不是节点真空。此时不要据"0 个"下"订阅失效/无可用节点"的结论；先让 API 可达（见下条"管道 / Unix socket"），或核对 profile 文件里 `proxies:` 的实际条数再判断。
 - **先比 provider 本地节点与订阅当前响应**：`--compare-subscriptions` 会主动 GET 一次，列出"本地缺失 / 线上已移除"。有差异通常说明本地缓存旧于订阅，而不是分组写错。
 - **再查过滤**：`filter`、`exclude-filter`、`use`、`include-all` 是否覆盖这个节点；名字能否过正则。
 - **再确认端点**：新版 `/proxies` 不含 provider 节点，只看它会误判整池。
@@ -96,8 +97,8 @@ Verge 的**本地 profile** 菜单没有"更新"（只有使用/编辑/删除）
 - **规则过薄**：只有 `MATCH` 兜底时，地区组只在特定进程名或规则集命中时生效；用户以为"切组没效果"通常就是这里。
 - **系统级接管**：TUN 和系统代理都关闭时，只有显式设置代理变量的进程受影响；新终端默认直连。
 - **secret 短**：只绑回环时风险有限，但本机任意进程都能读取节点与切换节点；报告只写长度，不回显值。
-- **管道 / Unix socket 不校验 secret**：`external-controller-pipe` 与 `external-controller-unix` 访问时不验证 secret，能读到 socket 的本机用户就能切节点；`allow-lan` 与 `external-controller: 0.0.0.0` 同时开才需要强 secret 与防火墙。
-- **`-ext-ctl` / `-secret` 会覆盖配置**：进程命令行优先于 YAML，报告要先按进程参数取控制口和密钥，再去读配置。
+- **管道 / Unix socket 不校验 secret**：`external-controller-pipe` 与 `external-controller-unix`（含进程参数 `-ext-ctl-unix` / `-ext-ctl-pipe`）访问时不验证 secret，能读到 socket 的本机用户就能切节点；`allow-lan` 与 `external-controller: 0.0.0.0` 同时开才需要强 secret 与防火墙。
+- **`-ext-ctl` / `-ext-ctl-unix` / `-secret` 会覆盖配置**：进程命令行优先于 YAML，报告要先按进程参数取控制口和密钥，再去读配置。macOS 上 Clash Verge Rev 默认用 `-ext-ctl-unix <socket 路径>`，配置里 `external-controller` 为空；此时只有走 Unix socket 才能读到运行时节点，脚本会自动解析进程参数里的 socket 路径，或用 `--controller unix:/path/to/socket` / `--controller /path/to/socket` 显式指定。
 
 ## 报告口径与脱敏
 

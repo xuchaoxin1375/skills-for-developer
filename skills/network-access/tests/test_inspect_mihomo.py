@@ -393,6 +393,69 @@ def test_parse_process_paths_reads_ext_ctl_and_secret() -> None:
     assert parsed["secret"] == "topsecret"
 
 
+def test_parse_process_paths_reads_ext_ctl_unix_with_spaces() -> None:
+    module = load_module()
+    cmdline = (
+        "/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo "
+        "-d /Users/cxxu/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev "
+        "-f /Users/cxxu/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev/clash-verge.yaml "
+        "-ext-ctl-unix /tmp/verge/verge-mihomo.sock"
+    )
+    parsed = module.parse_process_paths(cmdline, posix=True)
+    assert parsed["dirs"] == ["/Users/cxxu/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev"]
+    assert parsed["files"] == [
+        "/Users/cxxu/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev/clash-verge.yaml"
+    ]
+    assert parsed["controller"] == "unix:/tmp/verge/verge-mihomo.sock"
+
+
+def test_is_unix_socket_distinguishes_http_host_port_and_paths() -> None:
+    module = load_module()
+    assert module._is_unix_socket("unix:/tmp/verge/verge-mihomo.sock") is True
+    assert module._is_unix_socket("/tmp/verge/verge-mihomo.sock") is True
+    assert module._is_unix_socket("./rel.sock") is True
+    assert module._is_unix_socket("127.0.0.1:9090") is False
+    assert module._is_unix_socket("localhost:9090") is False
+    assert module._is_unix_socket("http://127.0.0.1:9090") is False
+    assert module._is_unix_socket("https://example:1") is False
+    assert module._is_unix_socket("") is False
+
+
+def test_api_get_unix_socket_sends_get_over_af_unix() -> None:
+    module = load_module()
+    captured: dict[str, str] = {}
+
+    class FakeConn:
+        def __init__(self, socket_path: str, timeout: float):
+            captured["socket_path"] = socket_path
+
+        def request(self, method, path, headers=None):
+            captured["method"] = method
+            captured["path"] = path
+
+        def getresponse(self):
+            class Resp:
+                def read(self_inner):
+                    return b'{"version":"v1.19.25"}'
+
+            return Resp()
+
+        def close(self):
+            captured["closed"] = True
+
+    original = module._UnixHTTPConnection
+    module._UnixHTTPConnection = FakeConn
+    try:
+        data = module.api_get("http://localhost", "", "/version", timeout=3,
+                              unix_socket="/tmp/verge/verge-mihomo.sock")
+    finally:
+        module._UnixHTTPConnection = original
+    assert data == {"version": "v1.19.25"}
+    assert captured["socket_path"] == "/tmp/verge/verge-mihomo.sock"
+    assert captured["path"] == "/version"
+    assert captured["closed"] is True
+
+
 def test_delay_group_targets_uses_leaf_groups_only() -> None:
     module = load_module()
     proxies = {
@@ -404,7 +467,7 @@ def test_delay_group_targets_uses_leaf_groups_only() -> None:
     }
     calls: list[str] = []
 
-    def fake(base, secret, path, timeout=8):
+    def fake(base, secret, path, timeout=8, unix_socket=None):
         calls.append(path)
         return {"SUB": 1} if "/group/TOP/" in path else ({"leaf": 123} if "/group/LEAF/" in path else {})
 
