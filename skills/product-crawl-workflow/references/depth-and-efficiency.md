@@ -48,6 +48,8 @@
 - 基础字段缺失、占位或冲突要留因，不用摘要、占位图或猜测补齐。
 - 价格要带计价单位：`each`、`per lb`、`per m` 等；按重量／长度计价时保留单位价，不能把单位价当包装价。多门店／多市场时，价格与可售状态绑定门店／市场。阶梯价／批发价取公开最低适用价并记录数量门槛；询价／报价单不进入正价商品集。
 - 商品 JSON 不带币种时，用同一店面／市场的全局配置（如 `Shopify.currency`）取 active currency，不凭域名或符号猜。
+- 多市场：同一商品按市场分别记录价格／币种；先定目标市场，不跨市场取最低价或仅按汇率换算；`?country=`／市场路径与 `Shopify.currency`／`og:price:currency` 交叉核对。
+- 价格单位先确认：Shopify `.js` 常为分，WooCommerce `display_price` 常为十进制；不把分当元。
 - 描述只有空标签或模板摘要时，按“原站未提供／摘要回退”记录，不算完整正文；名称兜底只在展示层。
 - 进阶字段先抽样证明增量价值，再决定是否全量；覆盖审计同样属于进阶项。
 
@@ -56,6 +58,8 @@
 - 公开 JSON 已列出的变体直接读取；不自行组合未列出的选项，也不把每个变体当独立商品。
 - 基础价取所有公开变体的最低价（是否含缺货变体按项目标准）；保留价格区间／起价标记，不把最高价或默认选中变体价当基础价。
 - 商品可售＝任一公开变体可售；变体级价格、availability、SKU 单独保留，一个变体缺货不等于整个商品停售。
+- 平台字段：Shopify `variants[]`（价格常为分、`available` 按变体）；WooCommerce `data-product_variations`（`display_price` 常为十进制、`is_in_stock` 按变体、`variation_id`／SKU）；Magento configurable 的 `jsonConfig`／`configurable` 需按实际响应核对。
+- 父级 JSON-LD availability 可能只覆盖默认／任一变体，不能替代变体级 `is_in_stock`／`available`。
 - 缺 SKU 时用商品 ID／handle＋选项值作变体身份；应用生成的捆绑选项值可能是内部 ID，用户展示字段用页面可见标签。
 - 基础主图用商品级主图；变体图、变体 SKU 属于进阶字段，不因默认变体不同而改变基础主图。
 - 公开 JSON 可能包含隐藏／内部捆绑或商家说明；交叉核对店面可见性，内部占位不进入商品集，正常商品剥离内部说明。
@@ -124,6 +128,7 @@
 - 读分页元数据（`skip`／`take`、`page`／`limit`、`total`）；空页或 `skip >= total` 停止；sitemap 数与 API total 差异要记录。
 - 列表对象已含基础字段时先列表层取数，详情只补描述／规格。
 - 公开 JSON 可能单独 429；退避或换出口，不判站点不可采；单品 JSON／HTML 可兜底。
+- JSON-LD 为 ProductGroup 或 `offers` 为空时，价格从 `og:price:amount`／`og:price:currency`、变体 JSON 或市场页补，不因 JSON-LD 无价判无价。
 - 抓到一次请求后重放同一组头和参数；只有 JSON 没有的字段才渲染。
 
 ## 状态与资产
