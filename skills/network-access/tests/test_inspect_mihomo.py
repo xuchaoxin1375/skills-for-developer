@@ -7,12 +7,14 @@ pytest 风格（与兄弟脚本一致）；也可直接运行
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import json
 import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,10 @@ proxy-providers:
   online:
     type: http
     url: https://example.invalid/sub?token=abc
+    interval: 43200
+    health-check:
+      enable: true
+      interval: 300
 proxy-groups:
 - name: PROXY
   type: select
@@ -55,6 +61,13 @@ proxy-groups:
   type: load-balance
   use:
   - missing
+rule-providers:
+  cn:
+    type: http
+    behavior: ipcidr
+    url: https://example.invalid/cn.yaml
+    path: ./ruleset/cn.yaml
+    interval: 86400
 rules:
 - MATCH,PROXY
 """
@@ -161,6 +174,15 @@ def fixture_api() -> dict:
                 "missing": {"vehicleType": "File", "proxies": []},
             }
         },
+        "rules_providers": {
+            "providers": {
+                "cn": {
+                    "vehicleType": "HTTP",
+                    "updatedAt": "2026-01-01T00:00:00Z",
+                    "ruleCount": 10,
+                }
+            }
+        },
         "rules": {
             "rules": [
                 {"type": "RuleSet", "payload": "cn", "proxy": "DIRECT"},
@@ -233,6 +255,14 @@ def test_build_model_reports_default_chain_and_unreachable_nodes() -> None:
     assert "剩余流量" in unreachable["detail"]
 
 
+def test_build_model_includes_rule_providers() -> None:
+    with workspace() as tmp:
+        model = build(tmp)
+    rule = next(p for p in model["providers"] if p["kind"] == "rule")
+    assert rule["name"] == "cn"
+    assert rule["count"] == 10
+
+
 def test_model_and_report_never_contain_secret_or_subscription_url() -> None:
     module = load_module()
     with workspace() as tmp:
@@ -303,6 +333,89 @@ def test_find_client_falls_back_to_directory_scan() -> None:
     assert ctx is not None
     assert ctx["discovery"] == "scan"
     assert ctx["runtime_config"].endswith("runtime.yaml")
+
+
+def test_parse_provider_defs_separates_provider_and_health_check_intervals() -> None:
+    module = load_module()
+    defs = module.parse_provider_defs(CONFIG)
+    proxy = defs[("proxy", "online")]
+    assert proxy["type"] == "http"
+    assert proxy["interval"] == 43200
+    assert proxy["healthCheckInterval"] == 300
+    rule = defs[("rule", "cn")]
+    assert rule["path"] == "./ruleset/cn.yaml"
+    assert rule["interval"] == 86400
+
+
+def test_resolve_provider_path_uses_explicit_path_or_url_md5() -> None:
+    module = load_module()
+    defs = module.parse_provider_defs(CONFIG)
+    home = Path("/home/user/.config/mihomo")
+    explicit = module.resolve_provider_path(defs[("rule", "cn")], str(home))
+    assert Path(explicit) == home / "ruleset" / "cn.yaml"
+    digest = hashlib.md5(b"https://example.invalid/sub?token=abc").hexdigest()
+    derived = module.resolve_provider_path(defs[("proxy", "online")], str(home))
+    assert Path(derived) == home / "proxies" / digest
+    assert module.resolve_provider_path({"type": "inline"}, str(home)) is None
+
+
+def test_build_providers_marks_stale_against_own_interval() -> None:
+    module = load_module()
+    now = datetime.now(timezone.utc)
+    defs = {("proxy", "p"): {"name": "p", "kind": "proxy", "type": "http",
+                             "interval": 43200, "url": "https://example.invalid/sub", "path": ""}}
+    api = {"p": {"vehicleType": "HTTP", "updatedAt": (now - timedelta(hours=30)).isoformat(),
+                 "proxies": [{"name": "a"}], "subscriptionInfo": {}}}
+    rows = module.build_providers(api, {}, defs, None)
+    assert rows[0]["stale"] is True
+    api["p"]["updatedAt"] = (now - timedelta(hours=6)).isoformat()
+    rows = module.build_providers(api, {}, defs, None)
+    assert rows[0]["stale"] is False
+
+
+def test_merge_nodes_includes_provider_only_nodes() -> None:
+    module = load_module()
+    merged = module.merge_nodes(
+        {"GROUP": {"type": "Selector", "all": ["node-a"]}},
+        {"prov": {"proxies": [{"name": "node-a", "type": "Vless"}]}},
+    )
+    assert merged["node-a"]["type"] == "Vless"
+    assert module.leaf_names(merged) == ["node-a"]
+
+
+def test_parse_process_paths_reads_ext_ctl_and_secret() -> None:
+    module = load_module()
+    parsed = module.parse_process_paths(
+        r"mihomo -d C:\data -ext-ctl 127.0.0.1:9090 -secret topsecret", posix=False
+    )
+    assert parsed["dirs"] == [r"C:\data"]
+    assert parsed["controller"] == "127.0.0.1:9090"
+    assert parsed["secret"] == "topsecret"
+
+
+def test_delay_group_targets_uses_leaf_groups_only() -> None:
+    module = load_module()
+    proxies = {
+        "TOP": {"type": "Selector", "all": ["SUB"]},
+        "SUB": {"type": "LoadBalance", "all": ["leaf"]},
+        "LEAF": {"type": "LoadBalance", "all": ["leaf"]},
+        "leaf": {"type": "Vless"},
+        "DIRECT": {"type": "Direct"},
+    }
+    calls: list[str] = []
+
+    def fake(base, secret, path, timeout=8):
+        calls.append(path)
+        return {"SUB": 1} if "/group/TOP/" in path else ({"leaf": 123} if "/group/LEAF/" in path else {})
+
+    original = module.api_get
+    module.api_get = fake
+    try:
+        result = module.delay_group_targets("http://x", "", ["leaf"], proxies, "http://test", 1000)
+    finally:
+        module.api_get = original
+    assert result == {"leaf": 123}
+    assert not any("/group/TOP/" in call for call in calls)
 
 
 def test_help_lists_core_options() -> None:

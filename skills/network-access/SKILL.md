@@ -46,7 +46,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py
 python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 ```
 
-默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。定位优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，多客户端或找不到时才查进程，`--process` 可强制先查。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
+默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。定位优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，多客户端或找不到时才查进程，`--process` 可强制先查。报告同时给出订阅与规则集的更新周期、缓存路径与新鲜度，不触发下载。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
 
 ## 选路默认
 

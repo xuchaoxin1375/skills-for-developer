@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures as cf
+import hashlib
 import json
 import os
 import re
@@ -53,7 +54,8 @@ DEFAULT_DELAY_TIMEOUT = 5000
 DEFAULT_DELAY_LIMIT = 120
 API_TIMEOUT = 8.0
 GROUP_TYPES = {"Selector", "URLTest", "Fallback", "LoadBalance", "Relay", "Compatible"}
-SPECIAL_PROXIES = {"DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL"}
+SPECIAL_PROXIES = {"DIRECT", "REJECT", "REJECT-DROP", "PASS", "PASS-RULE", "COMPATIBLE", "GLOBAL"}
+SPECIAL_TYPES = {"Direct", "Reject", "RejectDrop", "Pass", "PassRule", "Compatible", "Dns"}
 JUNK_NAME_RE = re.compile(r"官网|官方|剩余|到期|过期|套餐|重置|流量|试用|expire|traffic|official", re.I)
 PROCESS_HINT_RE = re.compile(r"mihomo|clash|verge|flclash|mihomo-party|hiddify|karing", re.I)
 ROUND_ROBIN_TYPES = {"round-robin"}
@@ -236,6 +238,109 @@ def parse_group_defs(text: str) -> list[dict]:
     return groups
 
 
+def parse_provider_defs(text: str) -> dict[tuple[str, str], dict]:
+    """解析 proxy-providers / rule-providers 的块状写法（type/url/path/interval）。
+
+    只取报告需要的字段；流式写法与锚点不展开，解析不到时按"未解析"处理。
+    """
+    defs: dict[tuple[str, str], dict] = {}
+    section = ""
+    kind = ""
+    provider_indent = -1
+    field_indent = -1
+    current: dict | None = None
+    in_health = False
+
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        stripped = raw.strip()
+
+        if indent == 0:
+            provider_indent = -1
+            field_indent = -1
+            current = None
+            match = re.match(r"^(proxy-providers|rule-providers)\s*:\s*$", stripped)
+            section = match.group(1) if match else ""
+            kind = "proxy" if section == "proxy-providers" else "rule"
+            continue
+        if not section:
+            continue
+        if provider_indent < 0:
+            provider_indent = indent
+
+        if indent == provider_indent:
+            current = None
+            in_health = False
+            field_indent = -1
+            match = re.match(r"""^("[^"]+"|'[^']+'|[^:#]+):\s*(.*)$""", stripped)
+            if not match:
+                continue
+            name = unquote(match.group(1))
+            if not name:
+                continue
+            current = {"name": name, "kind": kind, "type": "", "path": "", "url": "",
+                       "interval": None, "healthCheckInterval": None}
+            defs[(kind, name)] = current
+            continue
+
+        if current is None:
+            continue
+        if field_indent < 0:
+            field_indent = indent
+        if indent > field_indent:
+            if in_health and stripped.startswith("interval:"):
+                current["healthCheckInterval"] = parse_seconds(stripped.split(":", 1)[1])
+            continue
+        if indent < field_indent:
+            continue
+
+        key, _, value = stripped.partition(":")
+        key = key.strip().lower()
+        value = strip_comment(value)
+        if key == "health-check":
+            in_health = True
+            continue
+        in_health = False
+        if key == "type":
+            current["type"] = unquote(value).lower()
+        elif key == "path":
+            current["path"] = unquote(value)
+        elif key == "url":
+            current["url"] = unquote(value)
+        elif key == "interval":
+            current["interval"] = parse_seconds(value)
+    return defs
+
+
+def parse_seconds(value: str) -> int | None:
+    raw = unquote(strip_comment(value))
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def resolve_provider_path(entry: dict, home_dir: str | None) -> str | None:
+    """缓存文件：显式 path 优先；http 未写 path 时按 URL 的 MD5 落在 proxies/ 或 rules/。"""
+    if not entry or entry.get("type") == "inline":
+        return None
+    path = entry.get("path") or ""
+    if path:
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            if not home_dir:
+                return None
+            candidate = Path(home_dir) / candidate
+        return str(candidate)
+    if entry.get("type") == "http" and entry.get("url") and home_dir:
+        digest = hashlib.md5(entry["url"].encode("utf-8")).hexdigest()
+        bucket = "rules" if entry.get("kind") == "rule" else "proxies"
+        return str(Path(home_dir) / bucket / digest)
+    return None
+
+
 def iter_yaml(root: Path, max_depth: int = 3, limit: int = 80):
     skip = {"node_modules", ".git", "logs", "cache", "update_cache"}
     root = root.resolve()
@@ -267,7 +372,7 @@ def _clean_arg(value: str) -> str:
 
 
 def parse_process_paths(cmdline: str, posix: bool | None = None) -> dict:
-    """从内核进程命令行里取 -d/--directory 与 -f/--config。"""
+    """从内核进程命令行里取 -d/--directory、-f/--config、-ext-ctl 与 -secret。"""
     if posix is None:
         posix = os.name != "nt"
     try:
@@ -275,6 +380,7 @@ def parse_process_paths(cmdline: str, posix: bool | None = None) -> dict:
     except ValueError:
         args = (cmdline or "").split()
     dirs, files = [], []
+    result = {"dirs": dirs, "files": files, "controller": None, "secret": None}
     for i, arg in enumerate(args):
         low = arg.lower()
         if low in ("-d", "--directory", "-home") and i + 1 < len(args):
@@ -285,7 +391,11 @@ def parse_process_paths(cmdline: str, posix: bool | None = None) -> dict:
             files.append(_clean_arg(args[i + 1]))
         elif low.startswith("--config="):
             files.append(_clean_arg(arg.split("=", 1)[1]))
-    return {"dirs": dirs, "files": files}
+        elif low in ("-ext-ctl", "--ext-ctl") and i + 1 < len(args):
+            result["controller"] = _clean_arg(args[i + 1])
+        elif low == "-secret" and i + 1 < len(args):
+            result["secret"] = _clean_arg(args[i + 1])
+    return result
 
 
 def client_label(name: str) -> str:
@@ -362,7 +472,8 @@ def list_proxy_processes() -> list[dict]:
     return [row for row in rows if PROCESS_HINT_RE.search(row["name"]) or PROCESS_HINT_RE.search(row["cmdline"])]
 
 
-def _entry_from_file(path: Path, client: str, root: Path, source: str, process: dict | None = None) -> dict | None:
+def _entry_from_file(path: Path, client: str, root: Path, source: str, process: dict | None = None,
+                     home_dir: Path | None = None) -> dict | None:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -374,11 +485,14 @@ def _entry_from_file(path: Path, client: str, root: Path, source: str, process: 
     return {
         "client": client,
         "root": str(root),
+        "home_dir": str(home_dir or root),
         "runtime_config": str(path),
         "profiles_file": str(profiles) if profiles.is_file() else None,
         "candidates": [str(path)],
         "discovery": source,
         "process": {"name": process.get("name"), "pid": process.get("pid")} if process else None,
+        "controller_override": (process or {}).get("controller"),
+        "secret_override": (process or {}).get("secret"),
         "_text": text,
     }
 
@@ -397,12 +511,12 @@ def score_entry(entry: dict) -> tuple:
 
 
 def best_entry_in_dir(directory: Path, client: str, source: str, process: dict | None = None,
-                      max_depth: int = 1, limit: int = 20) -> dict | None:
+                      max_depth: int = 1, limit: int = 20, home_dir: Path | None = None) -> dict | None:
     entries = []
     if not directory.is_dir():
         return None
     for path in iter_yaml(directory, max_depth=max_depth, limit=limit):
-        entry = _entry_from_file(path, client, directory, source, process)
+        entry = _entry_from_file(path, client, directory, source, process, home_dir=home_dir)
         if entry:
             entries.append(entry)
     if not entries:
@@ -415,22 +529,26 @@ def process_entries(processes: list[dict]) -> list[dict]:
     entries: list[dict] = []
     for proc in processes or []:
         paths = parse_process_paths(proc.get("cmdline") or "")
+        context = {**proc, "controller": paths["controller"], "secret": paths["secret"]}
         client = client_label(proc.get("name") or "")
+        home = Path(paths["dirs"][0]) if paths["dirs"] else None
         found = False
         for file in paths["files"]:
             path = Path(file)
             if path.is_file():
-                entry = _entry_from_file(path, client, path.parent, "process", proc)
+                entry = _entry_from_file(path, client, path.parent, "process", context,
+                                         home_dir=home or path.parent)
                 if entry:
                     entries.append(entry)
                     found = True
         for directory in paths["dirs"]:
-            entry = best_entry_in_dir(Path(directory), client, "process", proc)
+            entry = best_entry_in_dir(Path(directory), client, "process", context, home_dir=Path(directory))
             if entry:
                 entries.append(entry)
                 found = True
         if not found and proc.get("exe"):
-            entry = best_entry_in_dir(Path(proc["exe"]).parent, client, "process", proc)
+            exe_dir = Path(proc["exe"]).parent
+            entry = best_entry_in_dir(exe_dir, client, "process", context, home_dir=exe_dir)
             if entry:
                 entries.append(entry)
     return dedupe_entries(entries)
@@ -475,7 +593,7 @@ def static_entries() -> list[dict]:
         root = expand(raw)
         if not root.is_dir():
             continue
-        entry = best_entry_in_dir(root, label, "scan", max_depth=3, limit=80)
+        entry = best_entry_in_dir(root, label, "scan", max_depth=3, limit=80, home_dir=root)
         if entry:
             entries.append(entry)
     return entries
@@ -495,11 +613,14 @@ def find_client(
         return {
             "client": "explicit",
             "root": str(explicit.parent),
+            "home_dir": str(explicit.parent),
             "runtime_config": str(explicit),
             "profiles_file": None,
             "candidates": [str(explicit)],
             "discovery": "explicit",
             "process": None,
+            "controller_override": None,
+            "secret_override": None,
             "_text": text,
         }
 
@@ -547,12 +668,70 @@ def delay_one(base: str, secret: str, name: str, test_url: str, timeout_ms: int)
         return name, None, f"{type(exc).__name__}: {exc}"
 
 
+def delay_group_targets(base: str, secret: str, targets: list[str], proxies: dict,
+                        test_url: str, timeout_ms: int, preferred: list[str] | None = None) -> dict:
+    """对不在 /proxies 里的 provider 节点，按其所属分组整组测速并取回成员结果。
+
+    先测显式指定的组，再按覆盖人数从大到小测，避免同一批节点被多个小组重复测速。
+    """
+    pending = set(targets)
+    results: dict[str, int] = {}
+    tested: set[str] = set()
+    ordered = [name for name in (preferred or []) if name in proxies and name != "GLOBAL"]
+    rest = [
+        name for name, p in proxies.items()
+        if p.get("type") in GROUP_TYPES and name not in SPECIAL_PROXIES
+        and name not in ordered and name != "GLOBAL"
+    ]
+    rest.sort(key=lambda name: -len(group_leaf_members(name, proxies)))
+    for name in ordered + rest:
+        if not pending:
+            break
+        members = proxies[name].get("all") or []
+        if any((proxies.get(m) or {}).get("type") in GROUP_TYPES for m in members):
+            continue  # 嵌套组的 delay 返回的是子组而不是叶子，跳过
+        leaves = {m for m in members if m not in SPECIAL_PROXIES}
+        if not ((leaves & pending) - tested):
+            continue
+        path = "/group/{}/delay?{}".format(
+            urlparse.quote(name, safe=""),
+            urlparse.urlencode({"url": test_url, "timeout": timeout_ms}),
+        )
+        try:
+            data = api_get(base, secret, path, timeout=timeout_ms / 1000 + 15)
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(data, dict) or not data:
+            continue  # 空响应不参与判定，换下一个组
+        if not (leaves & set(data)):
+            continue  # 返回的是子组或其它成员，不消费待测节点
+        tested |= leaves
+        for member in leaves & pending:
+            if isinstance(data.get(member), int):
+                results[member] = data[member]
+            pending.discard(member)
+    return results
+
+
 def leaf_names(proxies: dict) -> list[str]:
     return [
         n
         for n, p in proxies.items()
-        if p.get("type") not in GROUP_TYPES and n not in SPECIAL_PROXIES
+        if p.get("type") not in GROUP_TYPES
+        and p.get("type") not in SPECIAL_TYPES
+        and n not in SPECIAL_PROXIES
     ]
+
+
+def merge_nodes(proxies: dict, providers: dict) -> dict:
+    """合并节点来源：新版内核的 provider 节点可能只出现在 /providers/proxies。"""
+    merged = dict(proxies)
+    for provider in (providers or {}).values():
+        for node in provider.get("proxies") or []:
+            name = node.get("name")
+            if name and name not in merged:
+                merged[name] = node
+    return merged
 
 
 def group_leaf_members(name: str, proxies: dict, seen: set | None = None) -> list[str]:
@@ -571,23 +750,27 @@ def group_leaf_members(name: str, proxies: dict, seen: set | None = None) -> lis
     return out
 
 
-def human_age(ts) -> str:
+def parse_timestamp(ts) -> datetime | None:
     if not ts or str(ts).startswith("0001"):
-        return "未记录"
+        return None
     if isinstance(ts, str) and ts.strip().isdigit():
         ts = int(ts.strip())
     if isinstance(ts, (int, float)):
         try:
-            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
         except (OverflowError, OSError, ValueError):
-            return str(ts)
-    else:
-        try:
-            dt = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", str(ts).replace("Z", "+00:00")))
-        except ValueError:
-            return str(ts)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+            return None
+    try:
+        dt = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", str(ts).replace("Z", "+00:00")))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def human_age(ts) -> str:
+    dt = parse_timestamp(ts)
+    if dt is None:
+        return "未记录"
     secs = int((datetime.now(timezone.utc) - dt).total_seconds())
     if secs < 0:
         return f"{-secs}s 后（时钟偏差）"
@@ -596,6 +779,75 @@ def human_age(ts) -> str:
     if secs < 86400:
         return f"{secs // 3600} 小时前"
     return f"{secs // 86400} 天前"
+
+
+def human_interval(seconds) -> str:
+    if not seconds:
+        return "未设置"
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        return "未设置"
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds % size == 0:
+            return f"{seconds // size}{unit}"
+    return f"{seconds}s"
+
+
+def build_providers(proxy_api: dict, rule_api: dict, defs: dict, home_dir: str | None) -> list[dict]:
+    """合并 API 状态与配置里的 interval/path，算缓存位置与是否超过更新周期。"""
+    rows = []
+    now = datetime.now(timezone.utc)
+    for kind, source in (("proxy", proxy_api), ("rule", rule_api)):
+        for name, provider in (source or {}).items():
+            sub = provider.get("subscriptionInfo") or {}
+            used = (sub.get("Upload") or 0) + (sub.get("Download") or 0)
+            total = sub.get("Total") or 0
+            updated = parse_timestamp(provider.get("updatedAt"))
+            age_sec = int((now - updated).total_seconds()) if updated else None
+            entry = defs.get((kind, name)) or {}
+            interval = entry.get("interval")
+            vehicle = provider.get("vehicleType") or entry.get("type") or ""
+            cache_path = resolve_provider_path(entry, home_dir)
+            cache_exists = bool(cache_path) and Path(cache_path).is_file()
+            cache_age = human_age(Path(cache_path).stat().st_mtime) if cache_exists else None
+            stale = bool(
+                str(vehicle).upper() == "HTTP"
+                and interval
+                and age_sec is not None
+                and age_sec > interval * 1.5
+            )
+            note = ""
+            if str(vehicle).lower() == "compatible":
+                note = "内置兼容 provider，非订阅"
+            elif str(vehicle).lower() == "file":
+                note = "本地文件监听，不自动下载"
+            elif str(vehicle).upper() == "HTTP" and not interval:
+                note = "未设置 interval，只在启动时拉一次"
+            if stale:
+                note = f"{note}；超过更新周期" if note else "超过更新周期"
+            rows.append(
+                {
+                    "kind": kind,
+                    "name": name,
+                    "vehicle": vehicle,
+                    "count": provider.get("ruleCount") if kind == "rule" else len(provider.get("proxies") or []),
+                    "updatedAt": updated.strftime("%Y-%m-%d %H:%M") if updated else None,
+                    "age": human_age(provider.get("updatedAt")),
+                    "ageSeconds": age_sec,
+                    "interval": interval,
+                    "stale": stale,
+                    "cachePath": cache_path,
+                    "cacheExists": cache_exists,
+                    "cacheAge": cache_age,
+                    "note": note,
+                    "expire": sub.get("Expire"),
+                    "usedGB": round(used / 1024**3, 2),
+                    "totalGB": round(total / 1024**3, 2) if total else None,
+                }
+            )
+    rows.sort(key=lambda row: (row["kind"], row["name"]))
+    return rows
 
 
 def build_model(ctx: dict, api: dict, delay: dict | None) -> dict:
@@ -612,6 +864,8 @@ def build_model(ctx: dict, api: dict, delay: dict | None) -> dict:
     configs = api.get("configs") or {}
     proxies = (api.get("proxies") or {}).get("proxies") or {}
     providers = (api.get("providers") or {}).get("providers") or {}
+    rule_providers = (api.get("rules_providers") or {}).get("providers") or {}
+    proxies = merge_nodes(proxies, providers)
     rules = (api.get("rules") or {}).get("rules") or []
     conns = api.get("connections") or {}
 
@@ -664,23 +918,12 @@ def build_model(ctx: dict, api: dict, delay: dict | None) -> dict:
             }
         )
 
-    provs = []
-    for name, p in providers.items():
-        sub = p.get("subscriptionInfo") or {}
-        used = (sub.get("Upload") or 0) + (sub.get("Download") or 0)
-        total = sub.get("Total") or 0
-        provs.append(
-            {
-                "name": name,
-                "vehicle": p.get("vehicleType"),
-                "count": len(p.get("proxies") or []),
-                "updatedAt": p.get("updatedAt"),
-                "age": human_age(p.get("updatedAt")),
-                "expire": sub.get("Expire"),
-                "usedGB": round(used / 1024**3, 2),
-                "totalGB": round(total / 1024**3, 2) if total else None,
-            }
-        )
+    provs = build_providers(
+        providers,
+        rule_providers,
+        parse_provider_defs(text),
+        ctx.get("home_dir"),
+    )
 
     rule_types: dict[str, int] = {}
     for r in rules:
@@ -698,6 +941,7 @@ def build_model(ctx: dict, api: dict, delay: dict | None) -> dict:
         "client": {
             "name": ctx["client"],
             "root": ctx["root"],
+            "homeDir": ctx.get("home_dir"),
             "runtimeConfig": ctx["runtime_config"],
             "profilesFile": ctx.get("profiles_file"),
             "candidates": ctx.get("candidates") or [],
@@ -850,9 +1094,44 @@ def findings(model: dict, proxies: dict) -> list[dict]:
                 "其他分组只在对应规则命中时才生效。",
             )
 
-    weak_provs = [p["name"] for p in model["providers"] if p["vehicle"] == "File" and not p["count"]]
+    weak_provs = [
+        p["name"] for p in model["providers"]
+        if str(p.get("vehicle")).lower() == "file" and not p.get("count")
+    ]
     if weak_provs:
         add("warn", "空的 file provider", f"{', '.join(weak_provs)} 没有节点；引用它们的组会退化成空组。")
+
+    stale = [p["name"] for p in model["providers"] if p.get("stale")]
+    if stale:
+        add(
+            "warn",
+            "超过更新周期的 provider",
+            f"{', '.join(stale)} 的更新时间已超过自身 interval 的 1.5 倍；可能是订阅不可达或更新失败，"
+            "但重启后 updatedAt 会被重置为缓存 mtime，先对照缓存文件时间再下结论。",
+        )
+
+    missing_cache = [
+        p["name"] for p in model["providers"]
+        if str(p.get("vehicle")).upper() == "http" and p.get("cachePath") and not p.get("cacheExists")
+    ]
+    if missing_cache:
+        add(
+            "warn",
+            "provider 缓存文件缺失",
+            f"{', '.join(missing_cache)} 按配置推出的缓存路径不存在；首次拉取、换 URL 后未更新，"
+            "或 `path` 与实际写法不一致都可能造成，确认前不要当成已加载。",
+        )
+
+    no_interval = [
+        p["name"] for p in model["providers"]
+        if str(p.get("vehicle")).upper() == "http" and not p.get("interval")
+    ]
+    if no_interval:
+        add(
+            "info",
+            "provider 未设置更新周期",
+            f"{', '.join(no_interval)} 没有写 interval，按内核语义视为 0：只在启动时拉一次，之后不轮询。",
+        )
 
     if not any(r.get("type") == "Match" for r in model["rules"]["all"]):
         add("warn", "缺少兜底规则", "没有 MATCH/FINAL 规则时，未命中的流量行为取决于内核默认值。")
@@ -885,6 +1164,8 @@ def render(model: dict) -> str:
     add(f"- 生成时间：{model['generated']}")
     add(f"- 客户端：{model['client']['name']}（{model['client']['root']}）")
     add(f"- 运行时配置：`{model['client']['runtimeConfig']}`")
+    if model["client"].get("homeDir"):
+        add(f"- 工作目录（-d）：`{model['client']['homeDir']}`")
     discovery = model["client"].get("discovery")
     proc = model["client"].get("process") or {}
     if discovery == "process":
@@ -938,11 +1219,24 @@ def render(model: dict) -> str:
     add(f"叶子节点 {nodes['leafTotal']} 个：" + "、".join(f"{k} {v}" for k, v in sorted(nodes["byType"].items(), key=lambda kv: -kv[1])))
     add("")
     if model["providers"]:
-        add("| provider | 类型 | 节点 | 更新时间 | 用量 |")
-        add("| --- | --- | --- | --- | --- |")
+        add("## 订阅与规则集")
+        add("")
+        add("| 名称 | 种类 | 条目 | 更新 | 周期 | 缓存/文件 | 用量/判定 |")
+        add("| --- | --- | --- | --- | --- | --- | --- |")
         for p in model["providers"]:
-            usage = f"{p['usedGB']} GB" + (f" / {p['totalGB']} GB" if p["totalGB"] else "")
-            add(f"| `{p['name']}` | {p['vehicle']} | {p['count']} | {p['age']} | {usage} |")
+            kind = "节点" if p["kind"] == "proxy" else "规则"
+            cache = "缺失" if p.get("cachePath") and not p.get("cacheExists") else (
+                f"存在（{p['cacheAge']}）" if p.get("cacheExists") else "未解析"
+            )
+            tail = p.get("note") or "正常"
+            if p["kind"] == "proxy" and p.get("totalGB"):
+                tail = f"{p['usedGB']} GB / {p['totalGB']} GB；{tail}"
+            add(f"| `{p['name']}` | {kind} | {p['count']} | {p['age']} | "
+                f"{'—' if str(p['vehicle']).lower() == 'compatible' else human_interval(p.get('interval'))} | "
+                f"{cache} | {tail} |")
+        add("")
+        add("`updatedAt` 在内核内存里，重启后会等于缓存文件 mtime；\"多久没更新\"要结合缓存文件时间看。"
+            "未写 `path` 的 HTTP provider 缓存按 URL 的 MD5 落在 `<HomeDir>/proxies/`（规则集在 `rules/`）。")
         add("")
 
     add("## 分组与当前选中")
@@ -973,6 +1267,9 @@ def render(model: dict) -> str:
         add("")
         add(f"测试 URL：`{d['testUrl']}`，上限 {d['timeoutMs']}ms，目标 {d['targets']} 个。")
         add("")
+        if d.get("mode") in ("group", "mixed"):
+            add("provider 节点在新版内核里没有单节点测速接口，这部分结果来自整组测速。")
+            add("")
         ok = [x for x in d["results"] if isinstance(x.get("delay"), int) and x["delay"] > 0]
         bad = [x for x in d["results"] if x.get("delay") is None or x.get("error")]
         add(f"有响应 {len(ok)} 个，无响应 {len(bad)} 个。")
@@ -1036,8 +1333,16 @@ def main(argv: list[str] | None = None) -> int:
 
     text = ctx["_text"]
     cfg = parse_config_text(text)["keys"]
-    controller = args.controller or cfg.get("external-controller")
-    secret = args.secret if args.secret is not None else cfg.get("secret") or ""
+    override = (ctx.get("controller_override") or "").strip()
+    if override and not override.startswith(("http://", "https://")) and not re.match(r"^\[?[^\\/\s]+\]?:\d+$", override):
+        override = ""  # 管道/Unix socket 不能当 HTTP 控制口
+    controller = args.controller or override or cfg.get("external-controller")
+    if args.secret is not None:
+        secret = args.secret
+    elif ctx.get("secret_override") is not None:
+        secret = ctx["secret_override"]
+    else:
+        secret = cfg.get("secret") or ""
 
     api: dict = {}
     api_ok = False
@@ -1048,6 +1353,7 @@ def main(argv: list[str] | None = None) -> int:
             "configs": "/configs",
             "proxies": "/proxies",
             "providers": "/providers/proxies",
+            "rules_providers": "/providers/rules",
             "rules": "/rules",
             "connections": "/connections",
         }
@@ -1073,7 +1379,8 @@ def main(argv: list[str] | None = None) -> int:
 
     delay = None
     if args.delay and api_ok:
-        proxies = api["proxies"].get("proxies") or {}
+        raw_proxies = api["proxies"].get("proxies") or {}
+        proxies = merge_nodes(raw_proxies, (api.get("providers") or {}).get("providers") or {})
         if args.group:
             targets: list[str] = []
             for g in args.group:
@@ -1083,10 +1390,20 @@ def main(argv: list[str] | None = None) -> int:
         targets = list(dict.fromkeys(targets))[: max(1, args.delay_limit)]
         base = controller if controller.startswith(("http://", "https://")) else f"http://{controller}"
         results = []
+
+        # 新版内核的 provider 节点不在 /proxies 里，单节点测速会 404，只能整组测。
+        node_targets = [name for name in targets if name in raw_proxies]
+        group_targets = [name for name in targets if name not in raw_proxies]
+        mode = "node"
+        if node_targets and group_targets:
+            mode = "mixed"
+        elif group_targets:
+            mode = "group"
+
         with cf.ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
             futures = [
                 pool.submit(delay_one, base, secret, name, args.test_url, args.delay_timeout)
-                for name in targets
+                for name in node_targets
             ]
             for fut in cf.as_completed(futures):
                 name, delay_ms, error = fut.result()
@@ -1094,8 +1411,21 @@ def main(argv: list[str] | None = None) -> int:
                     results.append({"name": name, "delay": delay_ms})
                 else:
                     results.append({"name": name, "delay": None, "error": error or "no response"})
+
+        if group_targets:
+            group_results = delay_group_targets(
+                base, secret, group_targets, proxies, args.test_url, args.delay_timeout, preferred=args.group
+            )
+            for name in group_targets:
+                delay_ms = group_results.get(name)
+                if delay_ms is not None:
+                    results.append({"name": name, "delay": delay_ms})
+                else:
+                    results.append({"name": name, "delay": None, "error": "整组测速未返回该节点"})
+
         delay = {
             "ran": True,
+            "mode": mode,
             "testUrl": args.test_url,
             "timeoutMs": args.delay_timeout,
             "targets": len(targets),
@@ -1104,6 +1434,7 @@ def main(argv: list[str] | None = None) -> int:
 
     model = build_model(ctx, api, delay)
     model["apiOk"] = api_ok
+    model["config"]["controller"] = controller
     report = render(model)
 
     if args.report:

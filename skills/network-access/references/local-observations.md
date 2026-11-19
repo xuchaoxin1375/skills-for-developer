@@ -362,6 +362,10 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 规则只有 17 条：4 条 `RULE-SET -> DIRECT`，12 条 `IN-NAME crawler-* -> 地区组`，最后 `MATCH -> PROXY`。因此切 `ALL-SELECT` 或地区组对普通流量没有效果，这是"切了没反应"的直接原因。
 - 实测到的结构问题：`PROXY` 组混入 `DIRECT`/`REJECT`；`自建-LB` 与 `俄罗斯-LB` 因 `s4`/`s6` 两个空 `file` provider 退化成只剩 `COMPATIBLE` 的空组；订阅把"剩余流量/套餐到期/距离下次重置"做成 3 个可用的 Hysteria2 节点，虽被各组的 `exclude-filter` 挡住，仍在 provider 里参与健康检查，客户端 `junk-filter` 没清掉；名字含"2倍率"的 2 个真实节点被 `exclude-filter` 关键词一并挡掉。
 - 配置定位：`verge-mihomo.exe` 的命令行同时带 `-d <profile-dir>` 与 `-f <profile-dir>/clash-verge.yaml`，可直接定位运行时文件。本机目录扫描约 88 ms（7 个候选），进程枚举（PowerShell CIM）约 275 ms，所以脚本在 Windows 上单客户端先扫描，只有零个/多个客户端或 `--process` 时才查进程。进程信息的收益在便携安装、自定义 `-d` 和多客户端歧义，不在速度；以服务账户运行或 GUI 没拉起内核时进程不可见，仍要回退目录扫描。
+- 新版内核的 `/proxies` 不再包含 provider 节点：同日升到 v1.19.33 后，该端点只返回 22 条分组与内置项（含 `PASS-RULE`），39 个节点只在 `/providers/proxies` 里；v1.19.25 时两边都有。按单一来源读会把节点池误报成 1 个，必须合并两处。
+- provider 与规则集：`online-sub1` 的 `interval` 是 43200（12h），缓存落在 `<HomeDir>/proxies/<url 的 md5>`；4 个规则集 `interval` 86400，显式 `path: ./ruleset/*.yaml`。`s4`/`s6` 两个 file provider 的路径不存在，因此对应组退化成空组。`updatedAt` 在重启后会等于缓存 mtime，只看它会把"刚重启"误判成"刚更新"。
+- `-ext-ctl-pipe` 不校验 secret；本机 Verge 用命名管道给 GUI，同时保留 TCP 控制口，报告默认按 TCP 读，管道只在进程参数里出现时记录、不当 HTTP 入口。
+- 测速也受同一个端点变化影响：provider 节点 `/proxies/{name}/delay` 返回 404；对 `ALL-LB` 这类成员全是叶子的组调用 `/group/ALL-LB/delay` 约 5 秒可用，而对 `PROXY`（成员是子组）调用返回的是子组名。脚本因此先试单节点，失败后只挑成员全为叶子的组整组测，并记录本次用了哪种方式。
 - 结论：端口探测通过不等于配置健康；`round-robin` 对无登录公开页爬虫是刻意选择，报告只按场景提示，不判缺陷。
 
-未验证：逐节点真实出口（需 `PUT /proxies/{name}` 切节点，属写操作）、目标站的限流与风控、mihomo-party/FlClash 的目录差异、macOS 与 Linux。
+未验证：逐节点真实出口（需 `PUT /proxies/{name}` 切节点，属写操作）、目标站的限流与风控、mihomo-party/FlClash 的目录差异、macOS 与 Linux、v1.19.33 之前版本的 `/proxies` 行为是否稳定。
