@@ -70,7 +70,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 - **配置只影响本次任务**：代理按消费者环境传入，不在会话开头无条件设置全局代理；优先命令级参数或必要的进程变量，不改系统设置和全局 Git 配置。Windows 与 *nix 的配置和协议差异见[跨平台代理配置](references/network-access.md#跨平台代理配置)。
 - **代理不加速渲染**：渲染耗时在浏览器启动、等待与引擎阶梯，不在带宽；不要用全局代理"加速"渲染。代理按源选：普通网页直连优先，OpenAI 等已知直连不通的站点用代理。
 - **推送依赖的代理失败即改路或报告**：GitHub 推送走原站并通常依赖可用代理。实际生效的代理入口失败时，用一次经该入口的目标请求判断可用性（如 `git ls-remote`），失败立即换其他已登记或已核验入口；候选都不可用就报告失败与已试路线，不对同一 `git push` 反复重试。凭据、权限或非快进错误换代理无效，按错误类型处理。
-- **错误类型不能混用**：401／权限拒绝不能靠换代理修复；429 不轮换出口绕过。403／5xx 先按错误分流诊断，确认挑战页且确需渲染时才转 [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md)，不一见状态码就启动浏览器。
+- **错误类型不能混用**：401／权限拒绝不能靠换代理修复；429 不轮换出口绕过。403／5xx 先按错误分流诊断，确认挑战页且确需渲染时才转 [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md)，不一见状态码就启动浏览器。挑战页不等于 IP 封禁：先按该 skill 的检测层判断，不要在本 skill 内继续换出口或手写浏览器探针。
 - **先确认实际出口，再判断“IP 被拒”**：代理客户端的模式、全局模式的分组选择（如 `GLOBAL`）或分流规则可能把目标送到 `DIRECT`；端口可达只证明入口可用，不证明请求走了预期节点。目标返回 403/WAF 拒绝页时，先查客户端日志或连接记录里的规则、组、节点与实际链路，再用同一目标对比直连与代理。确认走了预期节点仍被拒，才考虑出口 IP/地区/信誉或协议指纹；不要把客户端设置成直连造成的拒绝归因于代理 IP。排查顺序见[错误分流](references/network-access.md#错误分流)。
 - **证据范围如实说明**：端口开放不证明代理协议或目标可用；代理可达不证明出口能过站点风控。一次失败不能断言全部候选不可用或源站故障，预算不够就报告尚未核验，不穷举补齐结论。
 - **镜像保留来源与权限边界**：按资源类型核验，保留官方 URL；不向公共加速站转发私有仓库、凭据或签名链接，不关闭证书校验。
@@ -80,6 +80,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 | 条件 | 入口 |
 | --- | --- |
 | 需指定代理、诊断超时／403／5xx、使用 GitHub 镜像或 Git | [网络诊断与回退](references/network-access.md)的相关章节 |
+| 已确认挑战页、需要渲染 DOM，或要判断单站能否抓取 | [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md)：按有头 → `chrome-late`／`cdp-attach` 的阶梯处理；不要在本 skill 内手写浏览器探针或反复换出口 |
 | 部署新机、换网络、确认镜像/源配置或装得慢 | `scripts/check_network_env.py` 的帮助；默认只读配置，`--probe` 做有界探测 |
 | 代理登记缺失或失效、需要发现候选 | [代理登记](references/proxy-registry.md)；已有脚本 `scripts/probe_local_proxies.py`，参数查其帮助，不另写扫描器 |
 | 需要看 mihomo/Clash 的 profile、节点池、分组选中与失效节点 | `scripts/inspect_mihomo.py`；判读与陷阱见[客户端体检](references/mihomo-inspection.md)，只读，`--delay` 才出网 |
