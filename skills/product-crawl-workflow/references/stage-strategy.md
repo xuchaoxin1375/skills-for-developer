@@ -27,6 +27,10 @@
 | partsfornissans.com | CF；Scrapling 75–88s／页、chrome-late 约 40s | JSON-LD 基础字段；描述按 section | 同站会话复用 3 页；只取需要页；不逐页重开浏览器 |
 | repairtoolparts.com | HTML `/site-map` 558 型号；分类高扇出 | 30 页 JSON-LD；11 个 `none.jpg`、4 个零价／无 Offer、9 个停售 | 静态解析；30 样本；状态／占位图单独记录 |
 | campsaver.com／roco.cc | 挑战页／403 | 未取得内容 | 分类后停止，不反复重试或换引擎 |
+| PrestaShop（familidoo.fr） | 首页 167KB／2.16s，6 个 `.html` 商品链接；商品页 232KB／1.38s | 0 JSON-LD；`39,00 € TTC`、En stock、`#description`、og:image | 静态、无浏览器；价格按 locale |
+| PrestaShop 颜色变体（familidoo.fr） | Noire／Bleue／Grise／Rouge 各自商品 URL；单页无 selects | 89,00 € TTC；En stock | 变体可能是独立商品，按商品名／属性归并 |
+| 自定义 object-path（scheufele-modellbau.de） | 首页 149KB／2.28s，36 个 ObjectPath 商品链接 | 直接 GET 商品 URL 返回首页，无商品标记 | 需要会话／JS；记录导航边界 |
+| 阻断站（speedshop24／modellparadies／derkum） | 超时／444／403 CF | 未取得内容 | 分类后停止，不反复重试 |
 
 ## 效率计算
 
@@ -39,10 +43,14 @@
 
 ## 策略改进
 
+- 首页 1 个请求可筛平台／访问／商品链接；平台标记和首页 JSON-LD 只作线索，商品页模板可能不同（tognar 首页无 Product JSON-LD、商品页有 2 个；PrestaShop 常无 JSON-LD）。
 - API／列表一次取多条，详情只补缺；先算每有效商品的请求数和字节数。
 - sitemap 数量不等于商品数；分类页或公开 API 可能是主入口，记录入口贡献。
 - 分页先读 total；空页或 `skip >= total` 停止；sitemap 与 API total 差异留档，不强行对齐。
 - 变体商品：单个零价变体不等于整品零价；取有价变体的最低正价，零价变体单独记录；全部变体零价／无价才按 quote-only 或无效处理。
+- 变体也可能是独立商品 URL（颜色／尺寸各一页）；单页没有 selects 不等于无变体，按商品名、属性、父子关系和业务键归并。
+- 价格按 locale 解析（`39,00 € TTC`、`206,90 €`）；优先 `product:price:amount`／`itemprop="price"`，否则锚定主价格容器，区分现价与划线价。
+- ObjectPath／JS 店面的商品链接可能返回首页；记录导航／会话边界，不据此判无商品，也不反复重试同一条链接。
 - 客户端和出口差异先比较一个变量；429 退避或换出口，403 先分挑战、地区／IP 与权限。
 - 挑战站会话复用、按需页面、有限尝试；不逐页重开浏览器，不反复重试同一条失败路线。
 - 有 `Crawl-delay` 时先算墙钟；预算不够就收窄范围或降低字段目标，不先提高并发。

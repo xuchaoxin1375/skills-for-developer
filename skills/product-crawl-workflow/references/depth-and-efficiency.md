@@ -51,6 +51,7 @@
 - 商品 JSON 不带币种时，用同一店面／市场的全局配置（如 `Shopify.currency`）取 active currency，不凭域名或符号猜。
 - 多市场：同一商品按市场分别记录价格／币种；先定目标市场，不跨市场取最低价或仅按汇率换算；`?country=`／市场路径与 `Shopify.currency`／`og:price:currency` 交叉核对。
 - 价格单位先确认：Shopify `.js` 常为分，WooCommerce `display_price` 常为十进制；不把分当元。
+- 价格格式随 locale：`39,00 € TTC`、`206,90 €`；优先 `product:price:amount`／`itemprop="price"`，否则锚定主价格容器，区分现价与划线价。
 - 描述只有空标签或模板摘要时，按“原站未提供／摘要回退”记录，不算完整正文；名称兜底只在展示层。
 - 进阶字段先抽样证明增量价值，再决定是否全量；覆盖审计同样属于进阶项。
 
