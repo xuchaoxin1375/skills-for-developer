@@ -14,6 +14,8 @@
 | 效率／停止 | 每有效商品请求数／字节、墙钟、并发 | 实测吞吐 | 到预算／访问边界 |
 | 交付 | 证据、部分、复跑 | 来源／日期／出口／停止原因 | 不把样本写成全站 |
 
+3–5 页模板探针只证明字段形状和容器差异，不替代 10–30 个分层样本验收；站点状态仍记“未测／模板证据”，不写成通过。
+
 ## 基准站复盘
 
 | 站点 | 分诊／发现 | 获取／提取 | 效率改进 |
@@ -23,12 +25,15 @@
 | shopthebulkstore.com | sitemap 2,528 条，但仅 2 个 `/catalog/product/view`；分类是主入口 | 商品页 217KB／3.6s；JSON-LD `OutOfStock`、$11.99／磅；无可见加购 | sitemap 数量不等于商品数；分类＋sitemap；静态解析；记录 per lb |
 | skatepro.es | sitemap 8,399 条、8,398 个商品形；`Crawl-delay: 10` | 商品页 168KB／1.75s；JSON-LD €19.95、InStock | 全量约 23.3h；列表／抽样优先，详情按需 |
 | tognar.com | 无 sitemap；首页 345KB／899 链接；分类混合 | 商品页 382KB；2 个重复 Product JSON-LD；$70、InStock；可见 $40／$80 干扰 | 分类优先；锚定 canonical／SKU；模板需多样本；不按首个可见价格 |
+| BigCommerce（bybebe／tacticalsurplususa） | sitemap：bybebe 6,212 条；tactical 25 个 products 子图、每页 10,000 条 | 商品页 618–679KB／5.6–26.8s（bybebe）、1.01MB／1.3–3.1s（tactical，代理）；Product JSON-LD 3/3；bybebe 价格在 `offers.priceSpecification.price`，tactical 在 `offers.price`；tactical 描述仅在 DOM | 静态解析；主价＋meta；缺货仍有价，状态看 JSON-LD／内嵌 `instock`／`og:availability`；bybebe 单页慢，设超时 |
+| 自定义微数据（fr.lennylamb.com） | robots `Crawl-delay: 1`；`products.xml` 902 条（895 `web_page`／7 `ware`，混编辑页）；分类页 24 个 `product_box` | 商品页 199–210KB；0 JSON-LD；Product 微数据：价格 176.48–197.88 EUR、InStock、SKU／MPN、约 2.4k 字模板描述；`ware/158` 66.85 EUR | 分类页发现优先；解析 microdata；`web_page`／`ware` 两模板；`mpn` 不是公开 URL |
+| Shopify 模型店（rcteam.com，FR／EUR） | sitemap 257 条含 products 子图；`products.json` 250 商品／304 变体／45 不可售 | 商品页约 1.0MB／0.54–1.2s；主题 Product JSON-LD；价格 3.50–1075.99 EUR；多变体 AggregateOffer 无 availability；全缺货主题 OutOfStock 与 app InStock 冲突；描述与 `span.description` 一致 | 列表用 `products.json`；变体库存看 variants／option disabled；忽略 app 富摘要块与 149€ 免邮文本 |
 | shop.fooddepot.com／afsupermarket.com | 裸 403；US 代理 200；SPA／API；sitemap 19,287 | 列表 API 100／页、total 19,129；描述在 `/details` | 192 个列表请求约 47MB 取基础字段；详情只补描述；sitemap／API 差异留档 |
 | partsfornissans.com | CF；Scrapling 75–88s／页、chrome-late 约 40s | JSON-LD 基础字段；描述按 section | 同站会话复用 3 页；只取需要页；不逐页重开浏览器 |
 | repairtoolparts.com | HTML `/site-map` 558 型号；分类高扇出 | 30 页 JSON-LD；11 个 `none.jpg`、4 个零价／无 Offer、9 个停售 | 静态解析；30 样本；状态／占位图单独记录 |
-| campsaver.com／roco.cc | 挑战页／403 | 未取得内容 | 分类后停止，不反复重试或换引擎 |
+| campsaver.com／roco.cc | 挑战页／403；campsaver 有头首次 200、随后 `PRESS & HOLD` | 默认无头栈未取得商品；有头会话需低速率复用 | 分类后停止；复核先有头／会话复用，默认 5 次目标请求／3 分钟，不重复跑 headless 矩阵 |
 | PrestaShop（familidoo.fr） | 首页 167KB／2.16s，6 个 `.html` 商品链接；商品页 232KB／1.38s | 0 JSON-LD；`39,00 € TTC`、En stock、`#description`、og:image | 静态、无浏览器；价格按 locale |
-| PrestaShop 颜色变体（familidoo.fr） | Noire／Bleue／Grise／Rouge 各自商品 URL；单页无 selects | 89,00 € TTC；En stock | 变体可能是独立商品，按商品名／属性归并 |
+| PrestaShop 颜色变体（familidoo.fr） | Noire／Bleue／Grise／Rouge 各自商品 URL；均自指 canonical、无 selects | 4 页均 89,00 €、En stock；SKU `H1E-*`、GTIN13 各异；描述仅颜色词不同（Grise 误写 Black） | 按型号＋颜色归并为 1 个商品／4 变体；SKU 级导出保留 4 行；颜色以标题／SKU／GTIN 为准 |
 | 自定义 object-path（scheufele-modellbau.de） | 首页 149KB／2.28s，36 个 ObjectPath 商品链接 | 直接 GET 商品 URL 返回首页，无商品标记 | 需要会话／JS；记录导航边界 |
 | 阻断站（speedshop24／modellparadies／derkum） | 超时／444／403 CF | 未取得内容 | 分类后停止，不反复重试 |
 
@@ -54,6 +59,9 @@
 - 客户端和出口差异先比较一个变量；429 退避或换出口，403 先分挑战、地区／IP 与权限。
 - 挑战站会话复用、按需页面、有限尝试；不逐页重开浏览器，不反复重试同一条失败路线。
 - 有 `Crawl-delay` 时先算墙钟；预算不够就收窄范围或降低字段目标，不先提高并发。
+- Shopify 可能重复 Product JSON-LD：主题块（带 `@id`／productID）与富摘要 app 块冲突时以主题块 + variants 为准；多变体 AggregateOffer 无 availability 时看 variants／option disabled。
+- 描述完整文本可用 `span.description` 或 JSON-LD；宽泛 `.rte` 可能只取到 intro。主价用 meta／JSON-LD／`price-list`，页面其他 € 文本（免邮门槛）不是商品价。
+- 3–5 页模板探针只证明模板，不能写成站点通过；站点状态按 10–30 样本验收或明确“未测／模板证据”。
 - 框架/运行时选型不改变分阶段原则；候选画像、适用边界与同条件对照底线见 [framework-selection.md](framework-selection.md)。
 - 校验用 10–30 个分层样本，覆盖入口、列表、详情、变体、缺货、描述缺失；失败和未测项保留。
 
@@ -64,5 +72,6 @@
 - [ ] 是否记录了候选数、入口贡献和分母；sitemap 数量没有被当成商品数？
 - [ ] 是否按每有效商品请求数／字节数和墙钟评估，而不是只看配置并发？
 - [ ] 变体、零价、缺货、占位图和描述缺失是否分别记录？
+- [ ] 是否把 3–5 页模板探针误写成站点通过或 10–30 样本验收？
 - [ ] 挑战、限流和 `Crawl-delay` 是否在预算内停止，并保留停止原因？
 - [ ] 框架选型是否按路径与约束判断，而不是按文档排名、单次演示或不同样本的结果？
