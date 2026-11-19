@@ -266,10 +266,49 @@ def test_missing_config_exits_2() -> None:
     assert "没有找到" in err
 
 
+def test_parse_process_paths_handles_d_and_f_flags() -> None:
+    module = load_module()
+    windows = r'"\\?\C:\Apps\verge-mihomo.exe" -d C:\Data\verge -f "C:\Data\verge\clash-verge.yaml" -ext-ctl-pipe \\.\pipe\verge'
+    parsed = module.parse_process_paths(windows, posix=False)
+    assert parsed["dirs"] == [r"C:\Data\verge"]
+    assert parsed["files"] == [r"C:\Data\verge\clash-verge.yaml"]
+
+    posix = "/usr/bin/mihomo -d /etc/mihomo --config=/etc/mihomo/config.yaml"
+    parsed = module.parse_process_paths(posix, posix=True)
+    assert parsed["dirs"] == ["/etc/mihomo"]
+    assert parsed["files"] == ["/etc/mihomo/config.yaml"]
+
+
+def test_find_client_uses_process_directory() -> None:
+    module = load_module()
+    module.CLIENT_ROOTS = ()
+    with workspace() as tmp:
+        (tmp / "runtime.yaml").write_text(CONFIG, encoding="utf-8")
+        processes = [
+            {"pid": 4242, "name": "verge-mihomo.exe", "exe": "", "cmdline": f'-d "{tmp}"'}
+        ]
+        ctx = module.find_client(None, processes=processes)
+    assert ctx is not None
+    assert ctx["discovery"] == "process"
+    assert ctx["process"] == {"name": "verge-mihomo.exe", "pid": 4242}
+    assert ctx["runtime_config"].endswith("runtime.yaml")
+
+
+def test_find_client_falls_back_to_directory_scan() -> None:
+    module = load_module()
+    with workspace() as tmp:
+        (tmp / "runtime.yaml").write_text(CONFIG, encoding="utf-8")
+        module.CLIENT_ROOTS = (("test", str(tmp)),)
+        ctx = module.find_client(None, processes=[], use_process=False)
+    assert ctx is not None
+    assert ctx["discovery"] == "scan"
+    assert ctx["runtime_config"].endswith("runtime.yaml")
+
+
 def test_help_lists_core_options() -> None:
     code, out, _ = run_script("--help")
     assert code == 0
-    for option in ("--config", "--controller", "--json", "--delay", "--report"):
+    for option in ("--config", "--controller", "--json", "--delay", "--report", "--process", "--no-process"):
         assert option in out
 
 

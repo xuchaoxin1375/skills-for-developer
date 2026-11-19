@@ -361,6 +361,7 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 池内 34 个节点，27 个有响应；7 个完全无响应集中在台湾家宽 1–4、日本 SAK-3/4 与京都原生，另 1 个香港节点卡在 5000ms。历史 `history` 有 9 个记录为 0/false，复测后仍是上述 7 个，历史值和现势要分开写。
 - 规则只有 17 条：4 条 `RULE-SET -> DIRECT`，12 条 `IN-NAME crawler-* -> 地区组`，最后 `MATCH -> PROXY`。因此切 `ALL-SELECT` 或地区组对普通流量没有效果，这是"切了没反应"的直接原因。
 - 实测到的结构问题：`PROXY` 组混入 `DIRECT`/`REJECT`；`自建-LB` 与 `俄罗斯-LB` 因 `s4`/`s6` 两个空 `file` provider 退化成只剩 `COMPATIBLE` 的空组；订阅把"剩余流量/套餐到期/距离下次重置"做成 3 个可用的 Hysteria2 节点，虽被各组的 `exclude-filter` 挡住，仍在 provider 里参与健康检查，客户端 `junk-filter` 没清掉；名字含"2倍率"的 2 个真实节点被 `exclude-filter` 关键词一并挡掉。
+- 配置定位：`verge-mihomo.exe` 的命令行同时带 `-d <profile-dir>` 与 `-f <profile-dir>/clash-verge.yaml`，可直接定位运行时文件。本机目录扫描约 88 ms（7 个候选），进程枚举（PowerShell CIM）约 275 ms，所以脚本在 Windows 上单客户端先扫描，只有零个/多个客户端或 `--process` 时才查进程。进程信息的收益在便携安装、自定义 `-d` 和多客户端歧义，不在速度；以服务账户运行或 GUI 没拉起内核时进程不可见，仍要回退目录扫描。
 - 结论：端口探测通过不等于配置健康；`round-robin` 对无登录公开页爬虫是刻意选择，报告只按场景提示，不判缺陷。
 
 未验证：逐节点真实出口（需 `PUT /proxies/{name}` 切节点，属写操作）、目标站的限流与风控、mihomo-party/FlClash 的目录差异、macOS 与 Linux。

@@ -2,8 +2,9 @@
 """检查本机 mihomo / Clash 系客户端的配置、节点与分组，输出概述报告（默认只读）。
 
 做什么
-    1. 发现本机客户端的运行时配置与 profile 列表（Clash Verge Rev、mihomo-party、
-       FlClash、裸核 -d 目录等），从配置里取 external-controller 与 secret。
+    1. 定位客户端：先按内核进程的 `-d`/`--directory` 与 `-f`/`--config`（Windows 查 CIM
+       命令行，Linux 读 /proc，macOS 用 ps），再退回候选目录扫描，最后才要 `--config`。
+       从运行时配置里取 external-controller 与 secret。
     2. 只读 GET Clash 兼容 API：/version、/configs、/proxies、/providers/proxies、
        /rules、/connections。
     3. 汇总为报告：可用配置、运行时状态、节点池、分组与当前选中、订阅状态、规则面、
@@ -19,6 +20,7 @@
 用法
     python -X utf8 scripts/inspect_mihomo.py
     python -X utf8 scripts/inspect_mihomo.py --json
+    python -X utf8 scripts/inspect_mihomo.py --process
     python -X utf8 scripts/inspect_mihomo.py --config <path> --controller <host>:<port>
     python -X utf8 scripts/inspect_mihomo.py --delay
     python -X utf8 scripts/inspect_mihomo.py --delay --group PROXY --test-url <url>
@@ -37,6 +39,8 @@ import concurrent.futures as cf
 import json
 import os
 import re
+import shlex
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,6 +55,7 @@ API_TIMEOUT = 8.0
 GROUP_TYPES = {"Selector", "URLTest", "Fallback", "LoadBalance", "Relay", "Compatible"}
 SPECIAL_PROXIES = {"DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL"}
 JUNK_NAME_RE = re.compile(r"官网|官方|剩余|到期|过期|套餐|重置|流量|试用|expire|traffic|official", re.I)
+PROCESS_HINT_RE = re.compile(r"mihomo|clash|verge|flclash|mihomo-party|hiddify|karing", re.I)
 ROUND_ROBIN_TYPES = {"round-robin"}
 
 # 客户端配置根目录：只作候选，不假设文件名；命中后按 external-controller 是否可解析挑选。
@@ -252,8 +257,237 @@ def iter_yaml(root: Path, max_depth: int = 3, limit: int = 80):
                     return
 
 
-def find_client(explicit: Path | None) -> dict | None:
-    """返回 {client, root, runtime_config, profiles_file, candidates}。"""
+def _clean_arg(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        value = value[1:-1]
+    if value.startswith("\\\\?\\"):
+        value = value[4:]
+    return value
+
+
+def parse_process_paths(cmdline: str, posix: bool | None = None) -> dict:
+    """从内核进程命令行里取 -d/--directory 与 -f/--config。"""
+    if posix is None:
+        posix = os.name != "nt"
+    try:
+        args = shlex.split(cmdline or "", posix=posix)
+    except ValueError:
+        args = (cmdline or "").split()
+    dirs, files = [], []
+    for i, arg in enumerate(args):
+        low = arg.lower()
+        if low in ("-d", "--directory", "-home") and i + 1 < len(args):
+            dirs.append(_clean_arg(args[i + 1]))
+        elif low.startswith("--directory="):
+            dirs.append(_clean_arg(arg.split("=", 1)[1]))
+        elif low in ("-f", "--config") and i + 1 < len(args):
+            files.append(_clean_arg(args[i + 1]))
+        elif low.startswith("--config="):
+            files.append(_clean_arg(arg.split("=", 1)[1]))
+    return {"dirs": dirs, "files": files}
+
+
+def client_label(name: str) -> str:
+    low = (name or "").lower()
+    if "verge" in low:
+        return "Clash Verge Rev"
+    if "party" in low:
+        return "mihomo-party"
+    if "flclash" in low:
+        return "FlClash"
+    return "mihomo"
+
+
+def list_proxy_processes() -> list[dict]:
+    """枚举代理内核进程（pid/name/exe/cmdline）。失败返回空表，不阻塞报告。"""
+    proc_root = Path("/proc")
+    if os.name != "nt" and proc_root.is_dir():
+        out = []
+        for entry in proc_root.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                name = (entry / "comm").read_text(errors="replace").strip()
+                raw = (entry / "cmdline").read_bytes()
+                args = [chunk.decode("utf-8", "replace") for chunk in raw.split(b"\0") if chunk]
+                exe = os.readlink(entry / "exe") if (entry / "exe").exists() else ""
+            except OSError:
+                continue
+            if PROCESS_HINT_RE.search(name) or PROCESS_HINT_RE.search(" ".join(args)):
+                out.append({"pid": int(entry.name), "name": name, "exe": exe, "cmdline": " ".join(args)})
+        return out
+
+    if os.name == "nt":
+        script = (
+            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
+            "Get-CimInstance Win32_Process -Filter \"Name LIKE '%mihomo%' OR Name LIKE '%clash%' "
+            "OR Name LIKE '%verge%' OR Name LIKE '%flclash%'\" | "
+            "Select-Object ProcessId,Name,ExecutablePath,CommandLine | ConvertTo-Json -Compress"
+        )
+        command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script]
+    else:
+        command = ["ps", "-axo", "pid=,comm=,args="]
+
+    try:
+        proc = subprocess.run(command, capture_output=True, timeout=12)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    raw = proc.stdout.decode("utf-8", errors="replace").strip()
+    if not raw:
+        return []
+
+    if os.name == "nt":
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        rows = data if isinstance(data, list) else [data]
+        return [
+            {
+                "pid": row.get("ProcessId"),
+                "name": row.get("Name") or "",
+                "exe": row.get("ExecutablePath") or "",
+                "cmdline": row.get("CommandLine") or "",
+            }
+            for row in rows
+            if PROCESS_HINT_RE.search(row.get("Name") or "")
+        ]
+
+    rows = []
+    for line in raw.splitlines():
+        parts = line.strip().split(None, 2)
+        if len(parts) == 3 and parts[0].isdigit():
+            rows.append({"pid": int(parts[0]), "name": parts[1], "exe": parts[1], "cmdline": parts[2]})
+    return [row for row in rows if PROCESS_HINT_RE.search(row["name"]) or PROCESS_HINT_RE.search(row["cmdline"])]
+
+
+def _entry_from_file(path: Path, client: str, root: Path, source: str, process: dict | None = None) -> dict | None:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    keys = parse_config_text(text)["keys"]
+    if "external-controller" not in keys and "mixed-port" not in keys:
+        return None
+    profiles = root / "profiles.yaml"
+    return {
+        "client": client,
+        "root": str(root),
+        "runtime_config": str(path),
+        "profiles_file": str(profiles) if profiles.is_file() else None,
+        "candidates": [str(path)],
+        "discovery": source,
+        "process": {"name": process.get("name"), "pid": process.get("pid")} if process else None,
+        "_text": text,
+    }
+
+
+def score_entry(entry: dict) -> tuple:
+    """运行时配置通常最完整也最新：优先带控制口和 groups/rules 的那份，再按时间。"""
+    body = entry["_text"]
+    keys = parse_config_text(body)["keys"]
+    rich = bool(re.search(r"^(proxy-groups|proxy-providers|rules)\s*:", body, re.M))
+    try:
+        stat = Path(entry["runtime_config"]).stat()
+        mtime, size = stat.st_mtime, stat.st_size
+    except OSError:
+        mtime, size = 0.0, 0
+    return (1 if keys.get("external-controller") else 0, 1 if rich else 0, mtime, size)
+
+
+def best_entry_in_dir(directory: Path, client: str, source: str, process: dict | None = None,
+                      max_depth: int = 1, limit: int = 20) -> dict | None:
+    entries = []
+    if not directory.is_dir():
+        return None
+    for path in iter_yaml(directory, max_depth=max_depth, limit=limit):
+        entry = _entry_from_file(path, client, directory, source, process)
+        if entry:
+            entries.append(entry)
+    if not entries:
+        return None
+    entries.sort(key=score_entry, reverse=True)
+    return entries[0]
+
+
+def process_entries(processes: list[dict]) -> list[dict]:
+    entries: list[dict] = []
+    for proc in processes or []:
+        paths = parse_process_paths(proc.get("cmdline") or "")
+        client = client_label(proc.get("name") or "")
+        found = False
+        for file in paths["files"]:
+            path = Path(file)
+            if path.is_file():
+                entry = _entry_from_file(path, client, path.parent, "process", proc)
+                if entry:
+                    entries.append(entry)
+                    found = True
+        for directory in paths["dirs"]:
+            entry = best_entry_in_dir(Path(directory), client, "process", proc)
+            if entry:
+                entries.append(entry)
+                found = True
+        if not found and proc.get("exe"):
+            entry = best_entry_in_dir(Path(proc["exe"]).parent, client, "process", proc)
+            if entry:
+                entries.append(entry)
+    return dedupe_entries(entries)
+
+
+def dedupe_entries(entries: list[dict]) -> list[dict]:
+    seen, unique = set(), []
+    for entry in entries:
+        key = os.path.normcase(os.path.abspath(entry["runtime_config"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(entry)
+    return unique
+
+
+def pick_entry(entries: list[dict]) -> dict | None:
+    """多个候选时先按分数排，再对带控制口的候选做一次短探测，能响应的优先。"""
+    unique = dedupe_entries(entries)
+    if not unique:
+        return None
+    unique.sort(key=score_entry, reverse=True)
+    if len(unique) == 1:
+        return unique[0]
+    for entry in unique[:4]:
+        keys = parse_config_text(entry["_text"])["keys"]
+        controller = keys.get("external-controller")
+        if not controller:
+            continue
+        base = controller if controller.startswith(("http://", "https://")) else f"http://{controller}"
+        try:
+            api_get(base, keys.get("secret") or "", "/version", timeout=1.5)
+            return entry
+        except Exception:  # noqa: BLE001
+            continue
+    return unique[0]
+
+
+def static_entries() -> list[dict]:
+    entries = []
+    for label, raw in CLIENT_ROOTS:
+        root = expand(raw)
+        if not root.is_dir():
+            continue
+        entry = best_entry_in_dir(root, label, "scan", max_depth=3, limit=80)
+        if entry:
+            entries.append(entry)
+    return entries
+
+
+def find_client(
+    explicit: Path | None,
+    processes: list[dict] | None = None,
+    prefer_process: bool = False,
+    use_process: bool = True,
+) -> dict | None:
+    """返回 {client, root, runtime_config, profiles_file, candidates, discovery, process}。"""
     if explicit:
         if not explicit.is_file():
             return None
@@ -264,52 +498,29 @@ def find_client(explicit: Path | None) -> dict | None:
             "runtime_config": str(explicit),
             "profiles_file": None,
             "candidates": [str(explicit)],
+            "discovery": "explicit",
+            "process": None,
             "_text": text,
         }
 
-    best = None
-    for label, raw in CLIENT_ROOTS:
-        root = expand(raw)
-        if not root.is_dir():
-            continue
-        candidates, texts = [], {}
-        for path in iter_yaml(root):
-            try:
-                text = path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            keys = parse_config_text(text)["keys"]
-            if "external-controller" in keys or "mixed-port" in keys:
-                candidates.append(path)
-                texts[str(path)] = text
-        if not candidates:
-            continue
-        # 运行时配置通常最完整也最新：优先带控制口和 groups/rules 的那份，再按时间。
-        def score(p: Path) -> tuple:
-            body = texts[str(p)]
-            keys = parse_config_text(body)["keys"]
-            rich = bool(re.search(r"^(proxy-groups|proxy-providers|rules)\s*:", body, re.M))
-            return (
-                1 if keys.get("external-controller") else 0,
-                1 if rich else 0,
-                p.stat().st_mtime,
-                p.stat().st_size,
-            )
+    if processes is not None:
+        prefer_process = True
+    scanned = static_entries()
 
-        candidates.sort(key=score, reverse=True)
-        picked = candidates[0]
-        profiles = root / "profiles.yaml"
-        entry = {
-            "client": label,
-            "root": str(root),
-            "runtime_config": str(picked),
-            "profiles_file": str(profiles) if profiles.is_file() else None,
-            "candidates": [str(p) for p in candidates[:10]],
-            "_text": texts[str(picked)],
-        }
-        best = entry
-        break
-    return best
+    if use_process and (prefer_process or os.name != "nt"):
+        procs = processes if processes is not None else list_proxy_processes()
+        picked = pick_entry(process_entries(procs) + scanned)
+        if picked:
+            return picked
+        return pick_entry(scanned)
+
+    # Windows 单客户端快路径：目录扫描约 0.1 秒，进程查询要起 PowerShell/CIM，约 0.3 秒。
+    if len(scanned) == 1:
+        return scanned[0]
+    if use_process and (not scanned or len(scanned) >= 2):
+        procs = processes if processes is not None else list_proxy_processes()
+        return pick_entry(process_entries(procs) + scanned)
+    return pick_entry(scanned)
 
 
 def api_get(base: str, secret: str, path: str, timeout: float = API_TIMEOUT):
@@ -490,6 +701,8 @@ def build_model(ctx: dict, api: dict, delay: dict | None) -> dict:
             "runtimeConfig": ctx["runtime_config"],
             "profilesFile": ctx.get("profiles_file"),
             "candidates": ctx.get("candidates") or [],
+            "discovery": ctx.get("discovery") or "scan",
+            "process": ctx.get("process"),
         },
         "config": {
             "controller": cfg["keys"].get("external-controller"),
@@ -672,6 +885,14 @@ def render(model: dict) -> str:
     add(f"- 生成时间：{model['generated']}")
     add(f"- 客户端：{model['client']['name']}（{model['client']['root']}）")
     add(f"- 运行时配置：`{model['client']['runtimeConfig']}`")
+    discovery = model["client"].get("discovery")
+    proc = model["client"].get("process") or {}
+    if discovery == "process":
+        add(f"- 发现方式：内核进程 `{proc.get('name')}`（pid {proc.get('pid')}）的 `-d`/`-f`")
+    elif discovery == "explicit":
+        add("- 发现方式：`--config` 显式指定")
+    else:
+        add("- 发现方式：候选目录扫描")
     if rt.get("error"):
         add(f"- 控制 API：不可用（{rt['error']}）")
     else:
@@ -790,6 +1011,8 @@ def main(argv: list[str] | None = None) -> int:
         epilog="示例：python -X utf8 scripts/inspect_mihomo.py --delay --group PROXY",
     )
     parser.add_argument("--config", help="显式指定运行时配置文件，跳过自动发现")
+    parser.add_argument("--process", action="store_true", help="先按内核进程的 -d/-f 定位，再退回目录扫描")
+    parser.add_argument("--no-process", action="store_true", help="不查进程信息，只用候选目录与 --config")
     parser.add_argument("--controller", help="覆盖 external-controller，如 <host>:<port>")
     parser.add_argument("--secret", help="覆盖 secret；默认从配置读取，不落盘不回显")
     parser.add_argument("--json", action="store_true", help="输出机器可读 JSON（stdout 只留 JSON）")
@@ -802,7 +1025,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=8, help="测速并发数")
     args = parser.parse_args(argv)
 
-    ctx = find_client(Path(args.config).expanduser().resolve() if args.config else None)
+    ctx = find_client(
+        Path(args.config).expanduser().resolve() if args.config else None,
+        prefer_process=args.process,
+        use_process=not args.no_process,
+    )
     if not ctx:
         print("没有找到 mihomo/Clash 系运行时配置；用 --config 指定，或用 probe_local_proxies.py 先找端口。", file=sys.stderr)
         return 2
