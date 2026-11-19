@@ -14,6 +14,14 @@
         "diagnosing-bugs": "skills/engineering/diagnosing-bugs",
         "tdd": "skills/engineering/tdd"
       }
+    },
+    {
+      "url": "https://github.com/D4Vinci/Scrapling.git",
+      "directory": "third-party/scrapling",
+      "revision": "3a4bb5b0a008233c85269a0a38a6d08edd4ce329",
+      "skills": {
+        "scrapling-official": "agent-skill/Scrapling-Skill"
+      }
     }
   ]
 }
