@@ -173,12 +173,12 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 - **价格**：当前主商品最低公开展示价，包含缺货有价变体；排除划线原价、分期、运费、附加服务差价和推荐商品。零价、无价不进入有效商品集；保留网址和原因，不把 `$0.00` 当价格。变体商品的单个零价变体不等于整品零价，取有价变体的最低正价；全部变体零价／无价才排除或标 quote-only。按件、按重量或按长度计价时保留计价单位与单位价（如 `each`、`per lb`），不把每磅价当包装价；多门店／多市场时价格绑定对应门店／市场。阶梯价／批发价取公开最低适用价并记录数量门槛；询价／报价单（quote-only）不进入正价商品集。
 - **币种**：与同一报价绑定；货币符号、域名或地区不能单独证明币种。多市场店同一商品可能不同价格／币种；先定市场，价格／币种绑定市场，不跨市场取最低价或仅按汇率换算；`?country=`／市场路径可能只改国家或币种，需与 `Shopify.currency`／`og:price:currency` 交叉核对。
 - **价格单位**：接口／平台可能用分或十进制（Shopify `.js` 常为分，WooCommerce `display_price`、Magento `optionPrices` 常为十进制）；记录前换算并核对，不把分当元。
-- **价格格式**：随 locale 变化（如 `39,00 € TTC`、`206,90 €`）；不要用 `$` 专用正则跨站复用。优先 `product:price:amount`／`itemprop="price"`，否则锚定主价格容器；区分现价与划线价。
+- **价格格式**：随 locale 变化（如 `39,00 € TTC`、`206,90 €`）；不要用 `$` 专用正则跨站复用。优先 `product:price:amount`／`itemprop="price"`，否则锚定主价格容器；区分现价与划线价。BigCommerce 的 Product JSON-LD 价格可能在 `offers.price`，也可能在 `offers.priceSpecification.price`；只读 `offers.price` 会漏价。
 - **marketplace 价格**：商品页价格是 offer 汇总（`AggregateOffer` 的 low／high／count），不是单个报价；历史 price guide 不是当前价，单个 offer 的 price／shipping 从 item 页取。
-- **状态**：可售、缺货、停售、无价格、未知分开；停售可能仍有价格，不能因价格存在就当可售。JSON-LD 的 availability 只是证据之一，和可见购买控件／停售文案交叉核对；公开接口的 availability 还要确认作用域（门店／市场／默认店），不默认全站。变体商品的父级 JSON-LD availability 可能只覆盖默认／任一变体，不能替代变体级状态；Magento `jsonConfig.salable` 为空时也不能据此判缺货，变体库存需页面选择后的状态或授权接口；marketplace 的 `AggregateOffer` availability／itemCondition 是聚合或默认值，不能替代单个 offer 的成色与库存。`OnlineOnly`／`InStoreOnly` 是销售渠道，不是库存状态；`LimitedAvailability`、`PreOrder`、`BackOrder` 等按实际语义映射，未知值保留并继续查页面证据。
+- **状态**：可售、缺货、停售、无价格、未知分开；停售可能仍有价格，不能因价格存在就当可售。JSON-LD 的 availability 只是证据之一，和可见购买控件／停售文案交叉核对；公开接口的 availability 还要确认作用域（门店／市场／默认店），不默认全站。变体商品的父级 JSON-LD availability 可能只覆盖默认／任一变体，不能替代变体级状态；Magento `jsonConfig.salable` 为空时也不能据此判缺货，变体库存需页面选择后的状态或授权接口；marketplace 的 `AggregateOffer` availability／itemCondition 是聚合或默认值，不能替代单个 offer 的成色与库存。`OnlineOnly`／`InStoreOnly` 是销售渠道，不是库存状态；`LimitedAvailability`、`PreOrder`、`BackOrder` 等按实际语义映射，未知值保留并继续查页面证据。BigCommerce 类主题的缺货商品源码可能仍有价格和加购表单，状态看 JSON-LD `availability`、内嵌商品 JSON 的 `instock` 与 `og:availability`，不按加购按钮单独判定。
 - **主图**：商品主图，不取 Logo、占位图、`none.jpg` 等占位资源、站点／门店默认图或推荐图；处理相对路径。文件名、alt 和渲染结果都要看；只有占位资源时标缺少主图，不把占位图当有效主图。
-- **正文／描述**：先找主商品描述容器和展开区，再核对 JSON-LD；JSON-LD 描述常常是生成摘要。清洗后只有空标签不算描述；区分完整、部分、摘要回退、原站未提供和提取失败。列表或型号页只有标题、没有正文时，不算完整正文。名称兜底只在展示层，不写进描述字段。
-- **选项与变体**：公开 JSON 已列出的变体直接读取；商品可售＝任一公开变体可售，基础价取公开最低变体价并保留区间／起价；缺 SKU 时用商品 ID／handle＋选项值作变体身份；不自行组合未列出的选项，不把每个变体当独立商品。平台字段名不同：Shopify `variants[]`、WooCommerce `data-product_variations`、Magento swatch 的 `jsonConfig`（`attributes`／`index`／`sku`／`optionPrices`／`images`）或 dropdown 的 `super_attribute`／`spConfig`；以实际响应为准。变体也可能是独立商品 URL（颜色／尺寸各一页），不要因单页没有 selects 就判无变体；用商品名、属性、父子关系和业务键归并。应用生成的捆绑选项值可能是内部 ID，用户展示字段用页面可见标签。
+- **正文／描述**：先找主商品描述容器和展开区，再核对 JSON-LD；JSON-LD 描述常常是生成摘要，也可能完全没有 `description`（如部分 BigCommerce 主题），正文只在 DOM；缺字段不等于原站未提供。清洗后只有空标签不算描述；区分完整、部分、摘要回退、原站未提供和提取失败。列表或型号页只有标题、没有正文时，不算完整正文。名称兜底只在展示层，不写进描述字段。
+- **选项与变体**：公开 JSON 已列出的变体直接读取；商品可售＝任一公开变体可售，基础价取公开最低变体价并保留区间／起价；缺 SKU 时用商品 ID／handle＋选项值作变体身份；不自行组合未列出的选项，不把每个变体当独立商品。平台字段名不同：Shopify `variants[]`、WooCommerce `data-product_variations`、Magento swatch 的 `jsonConfig`（`attributes`／`index`／`sku`／`optionPrices`／`images`）或 dropdown 的 `super_attribute`／`spConfig`；以实际响应为准。变体也可能是独立商品 URL（颜色／尺寸各一页），不要因单页没有 selects 就判无变体；PrestaShop 等独立颜色页可能各自自指 canonical、无 selects，这是一个型号的多个颜色，用 SKU／GTIN 做变体键，按型号＋颜色归并，不按 canonical 或标题去重；描述里的颜色词可能复制错误，以标题、SKU、GTIN 为准。应用生成的捆绑选项值可能是内部 ID，用户展示字段用页面可见标签。
 - **隐藏／内部商品**：公开 JSON 可能含不在店面展示的捆绑、占位或商家内部说明（如 “Not visible on storefront”）；交叉核对店面可见性、集合成员和正文标记，内部占位不进入商品集，正常商品的内部说明剥离或单独记录，不作为营销正文。
 - **分类、品牌、库存**：原站有明确依据才填；未提供与漏采分开。
 - **受限商品**：酒类、烟草、年龄限制或地区限制商品记录公开限制字段／文案，不把限制当缺货，不绕过年龄门或地区校验。
@@ -252,9 +252,9 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 | --- | --- | --- |
 | Shopify | sitemap、商品页、公开商品 JSON（`/products.json` 的 `page`／`limit`）、`Shopify.currency` | 多市场／多币种、价格单位（分）、公开接口限流、隐藏／捆绑商品、变体价在 `variants` |
 | WooCommerce | 分类、分页、Product 结构化数据、`data-product_variations` | 主题和插件改写页面与目录；变体价格常为十进制；父级 JSON-LD availability 可能不反映变体 |
-| PrestaShop | 分类／商品 `.html`、`product:price:amount`／`itemprop="price"`、`#description` | 常无 JSON-LD；价格按 locale；颜色变体可能是独立商品 URL |
+| PrestaShop | 分类／商品 `.html`、`product:price:amount`／`itemprop="price"`、`#description`、`meta itemprop="GTIN13"` | 常无 JSON-LD；价格按 locale；颜色变体可能是独立商品 URL，可能各自自指 canonical、无 selects；按型号＋颜色、SKU／GTIN 归并；描述颜色词可能有误 |
 | Magento／Adobe Commerce | 分类网格、规范链接、sitemap、swatch 的 `jsonConfig`、dropdown 的 `super_attribute`／`spConfig` | 前后端形状不同，不猜认证接口；`salable` 可能为空；价格常为十进制 |
-| BigCommerce | 分类卡片、规范链接、sitemap | 部分接口需要认证 |
+| BigCommerce | 分类卡片、规范链接、sitemap、商品页 Product JSON-LD、`og:availability` | 价格可能在 `offers.price` 或 `offers.priceSpecification.price`；描述可能只在 DOM；缺货源码仍可能有价和加购表单；部分接口需要认证 |
 | Shopware／Salesforce Commerce Cloud | 商品列表、公开搜索／分类、分页 | 区域、会话和主题差异 |
 | 多卖家 marketplace（Reverb 等） | 商品页 `/p/...`、item `/item/...`、`AggregateOffer`、price guide | 商品／offer 混算；历史价当现价；推荐卡价格误当主价；运费按地区变化 |
 | 未知自建站 | 主商品 DOM、结构化标记、链接簇 | 不套其他平台的路径模板 |
