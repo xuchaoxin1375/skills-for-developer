@@ -70,6 +70,27 @@
 
 停止依据是“没有新实体身份”“高扇出分支已覆盖”“达到预算／访问边界”，不是固定页数。没有可靠分母时只报阶段和剩余入口。
 
+## 指标口径
+
+发现指标要能解释“入口值不值得继续抓”，不能把 URL 数当商品数：
+
+| 指标 | 计算 | 用途 |
+| --- | --- | --- |
+| 入口产出率 | `unique_entity_urls / fetched_pages × 100` | 每 100 个请求新增多少实体候选 |
+| 实体占比 | `entity_candidates / discovered_urls` | 候选池里有多少可能是目标实体 |
+| 重复率 | `1 - unique_target_urls / target_url_occurrences` | 同一 URL 在一个或多个页面中重复出现多少 |
+| 入口重叠 | `|A ∩ B| / |A ∪ B|` | 两个入口是否互补；接近 0 表示必须并用 |
+| 部分枚举 | `children_fetched / children_total` | sitemap index 或分页是否只取了一部分 |
+| 样页有效率 | `valid_samples / sampled_pages` | 抽样页面是否真的可解析为目标实体 |
+
+`召回率`只有在分母来源、范围和观测时间都明确时才能写；否则写“阶段覆盖”或“入口并集”，不要用 URL 数编造百分比。
+
+一次入口重叠实测（同一多层目录，2026-11-19）：HTML `/site-map` 给出 558 个唯一型号 URL；三个高扇出分类页分别给出 855、456、387 个唯一型号，但每个分类页的型号链接都出现两次（重复率 50%）。两组入口的并集是 2,256 个型号，交集为 0。说明：
+
+- 多入口不是冗余；只抓一个入口会漏掉另一组。
+- 链接出现次数不等于唯一成员数；必须按 URL 去重后再计实体。
+- 只存唯一集合无法计算重复率；发现输出要保留链接出现或至少保留 `occurrences`。
+
 ## 客户端与 robots
 
 - **robots 按 UA 组匹配**：`Crawl-delay` 可能只属于某个特定 user-agent 组，文件里出现一行不代表对所有爬虫生效；按实际 UA 组判断，不确定时取更保守值。
@@ -102,8 +123,9 @@
 建议至少保留：
 
 - `urls.jsonl`：`url`、`class`、`source`、`depth`、`fetchable`、`first_seen`。
+- `links.jsonl` 或 `occurrences`：每条链接出现，含 `source_url`、`target_url`、`link_text`；只存唯一集合就无法计算重复率。
 - `pages.jsonl`：`url`、`status`、`bytes`、`elapsed_s`、`page_type`、`source`、`signals`。
-- `summary.json`：URL 类型计数、页面类型计数、状态码、入口贡献、重叠、停止原因。
+- `summary.json`：URL 类型计数、页面类型计数、状态码、入口贡献、重叠、重复率、部分枚举、停止原因。
 - 默认不保存整页正文；需要样本时只保留有界、脱敏的片段或字段。
 
 ## 自检

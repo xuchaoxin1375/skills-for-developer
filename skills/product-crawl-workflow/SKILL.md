@@ -101,7 +101,7 @@ description: >
 - **客户端差异先比较一个变量**：同一 URL 在 200／406／403 间变化时，区分 UA、headers、HTTP 客户端和访问控制；不把一次失败当站点不可采，也不靠伪装绕过。
 - **robots 按 UA 组匹配**：`Crawl-delay` 可能只属于特定 user-agent 组；按实际 UA 组和更保守值执行。
 
-发现预算按“每抓一页新增多少实体 URL”分配：首页／索引、分类／全量列表优先，详情页主要用于补字段。详细策略见 [references/discovery-strategy.md](references/discovery-strategy.md)。
+发现预算按“每抓一页新增多少实体 URL”分配：首页／索引、分类／全量列表优先，详情页主要用于补字段。记录入口产出率、实体占比、重复率、入口重叠和部分枚举；只存唯一 URL 集合无法计算重复率。详细策略见 [references/discovery-strategy.md](references/discovery-strategy.md)。
 
 ### 三、获取有效内容
 
