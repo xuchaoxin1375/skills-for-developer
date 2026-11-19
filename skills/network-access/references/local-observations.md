@@ -350,3 +350,17 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - **超时≠失败**：venv 内 `pip install mlx-audio-separator` 两次撞到 900 秒外部超时。第一次是 `install.user=true` 直接报错；第二次单索引下实际已装完，只靠 `pip list` 才发现。结论：超时后先查落盘与安装结果，再决定是否重跑，不原样重试。
 - **慢速要设吞吐阈值**：699 MB 的 Release 资产直连 26–35 KB/s，后台跑了 39 分钟（51 MB）才被人为发现，期间只有总超时、没有速度判据。换 `ghfast.top` 后 2–3 分钟完成并核对字节数。结论：大文件按吞吐设阈值（本次下限 200 KB/s、15 秒窗口），不以总超时兜底。
 - 同一时段自建脚本里 `stat -f%z` 因 coreutils 覆盖 BSD `stat` 失效，导致等待循环空转 20 分钟；改用 `wc -c < <file>` 后正常。脚本类等待条件要能被外部观测验证。
+
+## 2026-11-19 mihomo 客户端配置与分组体检（Windows）
+
+执行环境：国内 Windows；Clash Verge Rev（`verge-mihomo v1.19.25`，meta 内核），mixed `<port-A>`，控制口 `<ctl-port>`，`mode: rule`；系统代理、TUN、开机自启均关闭。检查用 `inspect_mihomo.py`（只读 GET）加一次组延迟测速，未切节点。
+
+三层结构都落到了：profile 目录里有运行时拼装产物 `clash-verge.yaml`、同端口的片段 `config.yaml`、`profiles.yaml`（3 个可切换 profile，另有多个约 91 B 的 merge/script/rules/proxies/groups 片段）。运行时产物才是内核实际加载的那份，文件名不能按客户端版本硬编码。
+
+- 默认链路是 `MATCH -> PROXY -> 美国-LB`（3 个节点，`load-balance` + `round-robin`）。出口回显 `US / PHX`，`/connections` 的 `chains` 与之一致；入口端口可用与链路命中是两件事。
+- 池内 34 个节点，27 个有响应；7 个完全无响应集中在台湾家宽 1–4、日本 SAK-3/4 与京都原生，另 1 个香港节点卡在 5000ms。历史 `history` 有 9 个记录为 0/false，复测后仍是上述 7 个，历史值和现势要分开写。
+- 规则只有 17 条：4 条 `RULE-SET -> DIRECT`，12 条 `IN-NAME crawler-* -> 地区组`，最后 `MATCH -> PROXY`。因此切 `ALL-SELECT` 或地区组对普通流量没有效果，这是"切了没反应"的直接原因。
+- 实测到的结构问题：`PROXY` 组混入 `DIRECT`/`REJECT`；`自建-LB` 与 `俄罗斯-LB` 因 `s4`/`s6` 两个空 `file` provider 退化成只剩 `COMPATIBLE` 的空组；订阅把"剩余流量/套餐到期/距离下次重置"做成 3 个可用的 Hysteria2 节点，虽被各组的 `exclude-filter` 挡住，仍在 provider 里参与健康检查，客户端 `junk-filter` 没清掉；名字含"2倍率"的 2 个真实节点被 `exclude-filter` 关键词一并挡掉。
+- 结论：端口探测通过不等于配置健康；`round-robin` 对无登录公开页爬虫是刻意选择，报告只按场景提示，不判缺陷。
+
+未验证：逐节点真实出口（需 `PUT /proxies/{name}` 切节点，属写操作）、目标站的限流与风控、mihomo-party/FlClash 的目录差异、macOS 与 Linux。

@@ -37,6 +37,17 @@ python -X utf8 <skill>/scripts/check_network_env.py --probe
 - 只检查当前解释器的 pip；其他 Python 环境用该环境的 `python -m pip config list` 单独核对。
 - GitHub 直连探测失败不代表仓库不可用；文件加速与 Git 传输候选按 `scripts/check_github_mirrors.py` 分别核验。
 
+### 代理客户端体检
+
+端口可用只说明入口能连，不等于配置健康。要看 profile、节点池、分组当前选中、默认出口链路与失效节点时：
+
+```bash
+python -X utf8 <skill>/scripts/inspect_mihomo.py
+python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
+```
+
+默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
+
 ## 选路默认
 
 | 场景 | 路线与切换条件 |
@@ -71,6 +82,7 @@ python -X utf8 <skill>/scripts/check_network_env.py --probe
 | 需指定代理、诊断超时／403／5xx、使用 GitHub 镜像或 Git | [网络诊断与回退](references/network-access.md)的相关章节 |
 | 部署新机、换网络、确认镜像/源配置或装得慢 | `scripts/check_network_env.py` 的帮助；默认只读配置，`--probe` 做有界探测 |
 | 代理登记缺失或失效、需要发现候选 | [代理登记](references/proxy-registry.md)；已有脚本 `scripts/probe_local_proxies.py`，参数查其帮助，不另写扫描器 |
+| 需要看 mihomo/Clash 的 profile、节点池、分组选中与失效节点 | `scripts/inspect_mihomo.py`；判读与陷阱见[客户端体检](references/mihomo-inspection.md)，只读，`--delay` 才出网 |
 | 需要核验文件加速候选 | `scripts/check_github_mirrors.py` 的帮助；镜像首页可用不代表目标资源可用 |
 | 大文件单连接慢、考虑 aria2c 多连接 | [多连接下载](references/network-access.md#多连接下载)的适用条件与参数；先确认 Range、单连接瓶颈与并发许可 |
 | 安装 Python／Node.js／conda 依赖 | [依赖下载](references/dependency-downloads.md)，区分索引、包文件与额外下载，按其中“镜像选型顺序”判定；PyPI/uv 候选可先跑 `scripts/bench_pypi_mirrors.py` |
@@ -90,5 +102,7 @@ python -X utf8 <skill>/scripts/check_network_env.py --probe
 - [ ] 大文件多连接是否只在单连接受限、支持 Range 且资源允许并发时启用，未用于小文件、私有资源或包管理器下载？
 - [ ] 部署新机或怀疑走错源时，是否先看 `check_network_env.py` 报告的配置来源，而不是直接换镜像？
 - [ ] 是否把配置报告当成可用性结论，或把 `--probe` 的一次成功当成所有包、平台与日期都可用？
+- [ ] 看节点与分组时，是否把端口可用、节点名或历史延迟当成了实际出口与链路结论？
+- [ ] 看到 `round-robin` 轮换时，是否按目标是否要求会话一致来评价，而不是一律判成缺陷？
 
-维护时运行仓库结构、链接与分发校验，桌面走查稳定直连、慢直连、已知代理站点、限流与大文件场景。改选路或体检脚本时跑 `python -X utf8 skills/network-access/tests/test_check_network_env.py`；真实探测只在需要时执行，并记录实际环境、客户端、日期与路线。真实验证仅报告实际环境、客户端、日期与路线，未执行的平台或性能对照不声称通过。
+维护时运行仓库结构、链接与分发校验，桌面走查稳定直连、慢直连、已知代理站点、限流与大文件场景。改选路或体检脚本时跑 `python -X utf8 skills/network-access/tests/test_check_network_env.py`；改客户端体检脚本时跑 `python -X utf8 skills/network-access/tests/test_inspect_mihomo.py`；真实探测只在需要时执行，并记录实际环境、客户端、日期与路线。真实验证仅报告实际环境、客户端、日期与路线，未执行的平台或性能对照不声称通过。
