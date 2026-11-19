@@ -28,6 +28,7 @@ description: >
 - **基础字段优先，进阶字段按需**：默认先保证身份与来源 URL、名称、价格与币种、可售状态、主图和描述存在性；完整正文／规格、兼容关系、变体、全量覆盖属于进阶项，任务未要求时不作为默认目标。
 - **覆盖率是进阶项**：结构清晰、入口和身份稳定时，以路径覆盖、样本代表性、字段完整性和停止条件为主；只有需要全站审计或有可靠分母时才计算覆盖率，不默认阻塞交付。
 - **证据决定工具**：静态 HTTP → 公开 JSON → 浏览器 → 有界挑战处理；一次只改一个变量，不用“换工具”掩盖字段或样本错误。
+- **分阶段默认**：分诊 1 个入口请求 → 发现 sitemap／公开 API／列表 → 获取含基础字段的最便宜来源 → 详情只补缺 → 10–30 个分层样本校验；效率按每有效商品请求数／字节数衡量。详见 [references/stage-strategy.md](references/stage-strategy.md)。
 - **结构化数据优先**：JSON-LD、嵌入 JSON、公开商品接口优先于 CSS 选择器，选择器优先于文本兜底；记录每个字段实际使用的来源。
 - **2xx 不等于有效内容**：商品身份、报价上下文、正文完整性和最终 URL 要分别核对，空壳页、软错误页和挑战页都可能是 200。
 - **预算与停止条件先行**：先定商品页上限、时间上限、并发和重试；请求数、网址数不等于商品数，没有可靠分母时不编造百分比。
@@ -168,7 +169,7 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 逐字段核对：
 
 - **名称**：唯一商品标题，清理站点名和无关分隔符；不把店铺口号当名称。
-- **价格**：当前主商品最低公开展示价，包含缺货有价变体；排除划线原价、分期、运费、附加服务差价和推荐商品。零价、无价不进入有效商品集；保留网址和原因，不把 `$0.00` 当价格。按件、按重量或按长度计价时保留计价单位与单位价（如 `each`、`per lb`），不把每磅价当包装价；多门店／多市场时价格绑定对应门店／市场。阶梯价／批发价取公开最低适用价并记录数量门槛；询价／报价单（quote-only）不进入正价商品集。
+- **价格**：当前主商品最低公开展示价，包含缺货有价变体；排除划线原价、分期、运费、附加服务差价和推荐商品。零价、无价不进入有效商品集；保留网址和原因，不把 `$0.00` 当价格。变体商品的单个零价变体不等于整品零价，取有价变体的最低正价；全部变体零价／无价才排除或标 quote-only。按件、按重量或按长度计价时保留计价单位与单位价（如 `each`、`per lb`），不把每磅价当包装价；多门店／多市场时价格绑定对应门店／市场。阶梯价／批发价取公开最低适用价并记录数量门槛；询价／报价单（quote-only）不进入正价商品集。
 - **币种**：与同一报价绑定；货币符号、域名或地区不能单独证明币种。多市场店同一商品可能不同价格／币种；先定市场，价格／币种绑定市场，不跨市场取最低价或仅按汇率换算；`?country=`／市场路径可能只改国家或币种，需与 `Shopify.currency`／`og:price:currency` 交叉核对。
 - **价格单位**：接口／平台可能用分或十进制（Shopify `.js` 常为分，WooCommerce `display_price`、Magento `optionPrices` 常为十进制）；记录前换算并核对，不把分当元。
 - **marketplace 价格**：商品页价格是 offer 汇总（`AggregateOffer` 的 low／high／count），不是单个报价；历史 price guide 不是当前价，单个 offer 的 price／shipping 从 item 页取。
@@ -328,4 +329,4 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 
 ## 参考
 
-网址发现、判型分离、入口产出率与客户端差异见 [references/discovery-strategy.md](references/discovery-strategy.md)；采集深度、层级取数和规模估算见 [references/depth-and-efficiency.md](references/depth-and-efficiency.md)；行业来源、关键结论和适用限制见 [references/industry-notes.md](references/industry-notes.md)。原则用于形成假设，目标站点的实际响应仍是最终证据。
+网址发现、判型分离、入口产出率与客户端差异见 [references/discovery-strategy.md](references/discovery-strategy.md)；采集深度、层级取数和规模估算见 [references/depth-and-efficiency.md](references/depth-and-efficiency.md)；分阶段策略、基准站复盘与效率计算见 [references/stage-strategy.md](references/stage-strategy.md)；行业来源、关键结论和适用限制见 [references/industry-notes.md](references/industry-notes.md)。原则用于形成假设，目标站点的实际响应仍是最终证据。
