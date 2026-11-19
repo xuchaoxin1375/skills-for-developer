@@ -87,7 +87,7 @@ if __name__ == "__main__":
 | **不要裸 `except` / `except: pass`** | 至少 `logger.exception(...)` 或限定异常类型后处理 |
 | **不要 `import *`** | 显式导入，保持命名空间清晰 |
 | **避免全局可变状态** | 通过函数参数传递配置 |
-| **虚拟环境** | 始终使用 venv / uv，不污染系统 Python |
+| **虚拟环境** | 始终使用 venv / uv，不污染系统 Python；全局 uv、项目 venv 与缓存的边界见 [python-runtime-setup](../../python-runtime-setup/SKILL.md) |
 | **依赖锁定** | `pyproject.toml` + lock 文件；单文件工具脚本可用 PEP 723 内联声明，`uv run script.py` 直接运行 |
 
 PEP 723 单文件依赖声明示例：

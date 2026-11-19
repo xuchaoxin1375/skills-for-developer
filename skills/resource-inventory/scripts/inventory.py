@@ -6,11 +6,14 @@
     python inventory.py --json           # 机器可读 JSON
     python inventory.py --project .      # 追加项目级资源探测（可重复）
     python inventory.py --only hardware  # 只看系统版本与硬件
+    python inventory.py --only network   # 只看源/镜像与代理配置
     python inventory.py --probe-proxy    # 追加代理活体探测（会出网）
+    python inventory.py --probe-network  # 追加源站可达性探测（会出网）
 
 平台、硬件与运行时由本脚本探测；Python 环境见 resilient-browser-fetch 的
 check_environment.py，浏览器见 browser-automation 的 browser_discovery.py，
-代理见 network-access 的 probe_local_proxies.py。领域规则不在这里重写。
+代理与源/镜像配置见 network-access 的 probe_local_proxies.py、
+check_network_env.py。领域规则不在这里重写。
 """
 
 from __future__ import annotations
@@ -169,7 +172,7 @@ def get_env(name: str) -> str | None:
 
 def parse_only(value: str) -> set[str]:
     """校验 --only 的分组名（逗号分隔）。"""
-    allowed = {"host", "hardware", "runtimes", "python-envs", "browsers", "proxies", "projects"}
+    allowed = {"host", "hardware", "runtimes", "python-envs", "browsers", "proxies", "network", "projects"}
     names = {part.strip() for part in value.split(",") if part.strip()}
     unknown = names - allowed
     if unknown:
@@ -197,7 +200,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=parse_only,
         default=None,
         metavar="LIST",
-        help="只跑指定分组，逗号分隔：host,hardware,runtimes,python-envs,browsers,proxies,projects（默认全部）",
+        help="只跑指定分组，逗号分隔：host,hardware,runtimes,python-envs,browsers,proxies,network,projects（默认全部）",
     )
     parser.add_argument(
         "--project",
@@ -224,6 +227,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="对代理入口做活体探测并出网（默认只读登记，不联网）",
     )
     parser.add_argument("--probe-budget", type=float, default=15.0, help="代理活体探测总预算秒数（默认 15）")
+    parser.add_argument(
+        "--probe-network",
+        action="store_true",
+        help="对源站做有界可达性探测（会出网；默认只读配置）",
+    )
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="单个本机命令超时秒数（默认 30）")
     parser.add_argument("--verbose", action="store_true", help="打印解析与降级细节到 stderr")
     return parser.parse_args(argv)
@@ -247,7 +255,7 @@ def run_command(args: Sequence[str], timeout: float) -> tuple[int | None, str, s
         argv = ["cmd", "/c", *argv]
     env = {**os.environ, "PYTHONUTF8": "1"}
     try:
-        proc = subprocess.run(  # noqa: S603 - 参数为内部常量，非用户输入拼接
+        proc = subprocess.run(  # 参数为内部常量，非用户输入拼接
             argv,
             capture_output=True,
             timeout=timeout,
@@ -741,7 +749,9 @@ def section_runtimes(timeout: float) -> dict[str, Any]:
     }
 
 
-def section_python_envs(skills_root: Path | None, timeout: float) -> dict[str, Any]:
+def section_python_envs(
+    skills_root: Path | None, timeout: float, projects: Sequence[str] = ()
+) -> dict[str, Any]:
     """Python 解释器与可运行引擎层：委派 resilient-browser-fetch 的 check_environment.py。"""
     base = {"available": False, "owner": "resilient-browser-fetch"}
     if skills_root is None:
@@ -749,10 +759,10 @@ def section_python_envs(skills_root: Path | None, timeout: float) -> dict[str, A
     script = skills_root / "resilient-browser-fetch" / "scripts" / "check_environment.py"
     if not script.is_file():
         return {**base, "reason": f"缺少 {script}（sibling skill 可能未链接到同一目录）"}
-    code, stdout, stderr = run_command(
-        [sys.executable, "-X", "utf8", str(script), "--list-envs", "--json"],
-        max(timeout, SCAN_TIMEOUT),
-    )
+    command = [sys.executable, "-X", "utf8", str(script), "--list-envs", "--json"]
+    for project in projects:
+        command.extend(["--project-root", project])
+    code, stdout, stderr = run_command(command, max(timeout, SCAN_TIMEOUT))
     if code != 0 or not stdout.strip():
         return {**base, "reason": f"扫描失败（exit={code}）: {first_line(stderr)}"}
     try:
@@ -891,6 +901,49 @@ def section_proxies(
     return report
 
 
+def section_network(
+    skills_root: Path | None,
+    projects: Sequence[str],
+    registry_path: Path,
+    probe: bool,
+) -> dict[str, Any]:
+    """源、镜像与代理配置：委派 network-access 的 check_network_env.py。"""
+    base = {"available": False, "owner": "network-access"}
+    if skills_root is None:
+        return {**base, "reason": "未定位到 skill 目录，用 --skills-root 指定"}
+    script = skills_root / "network-access" / "scripts" / "check_network_env.py"
+    if not script.is_file():
+        return {**base, "reason": f"缺少 {script}（sibling skill 可能未链接到同一目录）"}
+    groups = ["python", "node", "conda", "git", "artifacts"]
+    if projects:
+        groups.append("projects")
+    args = [
+        sys.executable,
+        "-X",
+        "utf8",
+        str(script),
+        "--json",
+        "--registry",
+        str(registry_path),
+        "--only",
+        ",".join(groups),
+    ]
+    for path in projects:
+        args.extend(["--project", path])
+    if probe:
+        args.append("--probe")
+    code, stdout, stderr = run_command(args, SCAN_TIMEOUT if not probe else 180.0)
+    if code != 0 or not stdout.strip():
+        return {**base, "reason": f"检查失败（exit={code}）: {first_line(stderr)}"}
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError as error:
+        return {**base, "reason": f"检查输出无法解析: {error}"}
+    if not isinstance(data, dict):
+        return {**base, "reason": "检查输出不是对象"}
+    return {**data, "available": True, "owner": "network-access", "source": str(script)}
+
+
 def probe_venv_packages(venv_python: Path, timeout: float) -> dict[str, bool] | None:
     """在项目虚拟环境里检查关键包是否已安装；只做 import 探测，不安装任何东西。"""
     program = (
@@ -959,14 +1012,24 @@ def section_project(raw_path: str) -> dict[str, Any]:
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     """组装报告；单组失败只标记该组，不中断其余探测。--only 决定跑哪些组。"""
-    selected = args.only or {"host", "hardware", "runtimes", "python-envs", "browsers", "proxies", "projects"}
+    selected = args.only or {
+        "host",
+        "hardware",
+        "runtimes",
+        "python-envs",
+        "browsers",
+        "proxies",
+        "network",
+        "projects",
+    }
     skills_root = find_skills_root(args.skills_root)
-    if skills_root is None and selected & {"python-envs", "browsers", "proxies"}:
-        logger.warning("未定位到 skill 目录；Python 环境、浏览器、代理活体探测将标记为不可用")
+    if skills_root is None and selected & {"python-envs", "browsers", "proxies", "network"}:
+        logger.warning("未定位到 skill 目录；Python 环境、浏览器、代理与网络配置将标记为不可用")
     elif skills_root:
         logger.debug("skills root: %s", skills_root)
-    if args.project and "projects" not in selected:
-        logger.warning("--project 已给出，但 --only 未包含 projects，忽略项目探测")
+    project_consumers = {"projects", "network", "python-envs"}
+    if args.project and not (selected & project_consumers):
+        logger.warning("--project 已给出，但 --only 未包含使用项目配置的分组，忽略项目探测")
     registry = Path(
         args.registry
         or (os.getenv("RESOURCE_INVENTORY_PROXY_REGISTRY") or "").strip()
@@ -984,11 +1047,13 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     if "runtimes" in selected:
         report["runtimes"] = section_runtimes(args.timeout)
     if "python-envs" in selected:
-        report["pythonEnvs"] = section_python_envs(skills_root, args.timeout)
+        report["pythonEnvs"] = section_python_envs(skills_root, args.timeout, args.project)
     if "browsers" in selected:
         report["browsers"] = section_browsers(skills_root)
     if "proxies" in selected:
         report["proxies"] = section_proxies(registry, skills_root, args.probe_proxy, args.probe_budget)
+    if "network" in selected:
+        report["network"] = section_network(skills_root, args.project, registry, args.probe_network)
     if "projects" in selected:
         report["projects"] = [section_project(path) for path in args.project]
     return report
@@ -1106,6 +1171,46 @@ def render_human(report: dict[str, Any]) -> str:
         else:
             lines.append(f"  活体探测失败: {probe.get('reason')}")
 
+    network = report.get("network")
+    if network:
+        lines.append(f"\n[网络与镜像] owner: {network.get('owner')}")
+        if not network.get("available"):
+            lines.append(f"  不可用: {network.get('reason')}")
+        else:
+            python = network.get("python") or {}
+            pip = python.get("pip") or {}
+            if pip:
+                lines.append(f"  pip: {pip.get('indexUrl') or '默认'}（source={pip.get('source') or '?'}）")
+            uv = python.get("uv") or {}
+            if uv:
+                lines.append(f"  uv: {'已安装' if uv.get('available') else '未检测到'}；{uv.get('note')}")
+            npm = (network.get("node") or {}).get("npm") or {}
+            if npm:
+                lines.append(f"  npm: registry={npm.get('registry')}（source={npm.get('source') or '?'}）")
+            conda = network.get("conda") or {}
+            if conda.get("available"):
+                lines.append(f"  conda channels: {', '.join(conda.get('channels') or []) or '未配置'}")
+            git = network.get("git") or {}
+            if git.get("available"):
+                lines.append(
+                    f"  git insteadOf: {len(git.get('insteadOf') or [])} 条"
+                    f"；代理: {len(git.get('proxies') or [])} 条"
+                )
+            artifacts = network.get("artifacts") or {}
+            artifact_env = artifacts.get("env") or {}
+            if artifact_env:
+                lines.append("  制品变量: " + "  ".join(f"{key}={value}" for key, value in artifact_env.items()))
+            for project in network.get("projects") or []:
+                if project.get("available"):
+                    lines.append(f"  项目: {project['root']}（锁文件 {len(project.get('lockfiles') or [])} 个）")
+            probe = network.get("probe") or {}
+            if probe.get("ran"):
+                results = probe.get("results") or []
+                ok = sum(1 for item in results if item.get("ok"))
+                lines.append(f"  探测: {len(results)} 项，成功 {ok}（route={probe.get('route')}）")
+            else:
+                lines.append(f"  探测: 未运行（{probe.get('reason')}）")
+
     for project in report.get("projects", []):
         if not project.get("available"):
             lines.append(f"\n[项目 {project['root']}] 不可用: {project['reason']}")
@@ -1139,7 +1244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         report = build_report(args)
-    except Exception:  # noqa: BLE001 - 顶层兜底：失败要带堆栈退出，不静默
+    except Exception:  # 顶层兜底：失败要带堆栈退出，不静默
         logger.exception("资源体检失败")
         return 1
     if args.json:

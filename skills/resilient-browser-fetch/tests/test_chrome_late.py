@@ -310,6 +310,28 @@ def test_challenge_page_is_a_pending_state_not_a_refusal() -> None:
     )
 
 
+def test_residual_challenge_script_on_content_page_is_not_challenge() -> None:
+    title = "2019-2024 Nissan Altima Air Filter 16546-6CB0A"
+    html = (
+        f"<html><head><title>{title}</title></head><body>"
+        "<h1>Air Filter</h1><p>"
+        + ("Genuine Nissan part with fitment and specifications. " * 20)
+        + "</p><script src='/cdn-cgi/challenge-platform/h/b/orchestrate/jsch/v1'></script>"
+        "</body></html>"
+    )
+    assert subject.classify_page_state(title, html) == subject.STATE_CONTENT
+
+
+def test_pending_title_still_wins_when_the_challenge_page_has_text() -> None:
+    title = "Just a moment..."
+    html = (
+        f"<html><head><title>{title}</title></head><body><p>"
+        + ("Checking your browser before accessing the site. " * 10)
+        + "</p><script src='/cdn-cgi/challenge-platform/x'></script></body></html>"
+    )
+    assert subject.classify_page_state(title, html) == subject.STATE_CHALLENGE
+
+
 def test_browser_network_error_page_is_not_content() -> None:
     html = (
         "<html><head><title>example.com</title></head>"

@@ -41,6 +41,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 ## 启动与执行底线
 
 - PowerShell 普通自动化优先已安装的 pwsh 7，在实际启动层跳过 profile；显式启动用 `-NoLogo -NoProfile`，无交互任务才加 `-NonInteractive`。复现 profile 集成时保留目标初始化，不统一强加跳过。
+- 脚本变量名避开自动变量（`$home`、`$host`、`$pid`、`$input`、`$args`、`$error`、`$profile` 等）：名称不区分大小写，`$home` 与 `$HOME` 冲突，赋值时报 `Cannot overwrite variable ...`，脚本仍会继续执行后面的语句。
 - 必需 cmdlet 操作用 `-ErrorAction Stop`；每个原生程序后立即检查 `$LASTEXITCODE`，失败则按契约退出，不让后一条成功命令掩盖失败。诊断与业务输出分流，不混入 `Format-*` 展示对象。
 - 直接调用优先 `& $exe @argumentList`，不用 `Invoke-Expression` 拼接执行。路径、空参数、JSON 与多层引号不确定时离线核对 argv，不用外部收费请求试错。
 - 多段命令、含中文或嵌套引号的复杂命令写成 `.ps1` 再用 `-File` 调用，不在 `-Command` 里拼引号链；行内只保留单条可读命令。

@@ -2,9 +2,9 @@
 name: resource-inventory
 description: >
   本机资源体检与复用：一次汇总系统版本与架构、CPU/GPU/内存/磁盘、运行时（Node/Python/pnpm/uv/conda/git/ripgrep/fd/scrapling/playwright 等）、
-  Python 解释器与可用引擎层、浏览器候选、代理登记与实际入口、项目已有的测试与包管理工具，让安装、选型或排障前先读报告，
-  避免重复装依赖、凭猜测探测和片面误判环境。
-  当任务需要知道本机有什么、准备装依赖或浏览器前先探测、怀疑环境判断不完整、换机器或新环境排查，
+  Python 解释器与可用引擎层、浏览器候选、代理登记与实际入口、源与镜像配置（pip/uv、npm/pnpm/yarn、conda、git、浏览器制品），
+  以及项目已有的测试与包管理工具，让安装、选型或排障前先读报告，避免重复装依赖、凭猜测探测和片面误判环境。
+  当任务需要知道本机有什么、准备装依赖或浏览器前先探测、怀疑环境判断不完整、换机器或新环境排查、部署前确认镜像/源配置，
   或要复用已有代理入口与测试套件时使用；代理选路转 network-access，浏览器操作转 browser-automation，
   渲染与挑战求解转 resilient-browser-fetch，测试设计转 web-app-testing。
 ---
@@ -18,6 +18,7 @@ description: >
 - 回答本机资源：系统版本与架构、CPU/GPU/内存/磁盘、运行时版本与路径、Python 解释器及可用引擎层、浏览器候选、代理入口、项目已有工具。
 - 安装或下载依赖、浏览器、运行时之前的对照；换机器、新环境、怀疑"环境判断不完整"时的第一步。
 - 不承担：代理选路与镜像决策（network-access）、浏览器操作与截图（browser-automation）、渲染与挑战求解（resilient-browser-fetch）、测试设计与运行（web-app-testing）。这些细节按组名转对应 skill。
+- Python 运行时与 uv 的安装、切换、全局化不在本 skill；见 [python-runtime-setup](../python-runtime-setup/SKILL.md)。
 
 ## 使用
 
@@ -27,10 +28,12 @@ python <skill>/scripts/inventory.py --json           # 机器可读，供 agent 
 python <skill>/scripts/inventory.py --project .      # 追加项目级工具（可重复）
 python <skill>/scripts/inventory.py --only hardware  # 只看系统版本与硬件
 python <skill>/scripts/inventory.py --only proxies   # 只跑指定分组，省掉无关探测
+python <skill>/scripts/inventory.py --only network   # 只看源/镜像配置
 python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会出网）
+python <skill>/scripts/inventory.py --probe-network  # 源站可达性探测（会出网）
 ```
 
-选项、默认值与降级行为以 `--help` 为准，本文不复制清单。脚本只用标准库，任何 PATH 上的 Python 3.10+ 都能跑；不需要安装依赖。
+选项、默认值与降级行为以 `--help` 为准，本文不复制清单。脚本只用标准库，任何 PATH 上的 Python 3.10+ 都能跑；不需要安装依赖。`--project` 会把项目根传给 `check_environment.py`，用于发现 `experiments/*/.venv` 这类嵌套 uv 环境。
 
 ## 报告怎么读
 
@@ -42,6 +45,7 @@ python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会�
 | Python 环境 | `层`、引擎、已装包 | 层 ≥ 2 才有挑战求解能力；`建议` 取首个层 ≥ 1 的解释器；PATH 上的 `python` 常只有层 1 |
 | 浏览器 | `可用/不可用`、来源 | `eligible:false` 多为 shim/wrapper；Playwright 缓存里的 chromium 同样是候选；`可用` 只代表文件格式可用，人类输出会标注未启动验证 |
 | 代理 | 环境变量、登记条目、`verified` 上次核验日期 | 环境变量会直接影响子进程抓取；登记 ≠ 可用；人类输出会提示当前可用性未验证，只有 `--probe-proxy` 给可用性与实际出口 |
+| 网络与镜像 | pip/uv、npm/pnpm/yarn/corepack、conda、git `insteadOf`、Playwright 制品、项目源配置与锁文件主机 | 看“实际生效值 + 来源”，不只看工具是否安装；配置 ≠ 目标包可用；只有 `--probe-network` 才出网，代理入口可用性仍看 `proxies` 组 |
 | 项目 | lockfile、scripts、测试框架、`installed` | lockfile 判定包管理器；`installed` 是已装证据（`node_modules/.bin`、项目虚拟环境包），有就不必重装；文件存在不等于能跑 |
 
 ## 约束
@@ -49,6 +53,8 @@ python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会�
 - 先读报告再装：同一会话复用一次结果，不逐页重复扫描；报告是否过期看 `generated`。
 - 负面证据和正面证据同等重要：包在但层缺、候选不可用、登记日期过旧，都要写进结论，而不是只报"有"。
 - 报告只回答"有什么"，不是安装授权。装什么、走哪个镜像或代理按 network-access；需要用户同意时不代装。
+- `network` 组只读配置；源站是否可达要加 `--probe-network`，一次探测只代表当次网络与目标。镜像是否覆盖目标包仍按目标版本实测。
+- 报告会脱敏 URL 凭据与 npm 认证字段，但仍可能含本机路径与主机名；对外分享前按需裁剪。
 - `available:false` 表示兄弟 skill 没链接到同一 harness 或脚本缺失，不等于本机没有该资源；按组名去真源仓库跑对应工具。
 - `installed` 只证明文件或包在不在，不证明可运行；真正要用时按归属 skill 做一次最小实跑。
 - 结论冲突时以实测为准；历史 `verified` 日期不能当作当前可用性。
@@ -63,6 +69,7 @@ python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会�
 | Python 环境与引擎层 | [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md) 的 `scripts/check_environment.py` |
 | 浏览器 | [browser-automation](../browser-automation/SKILL.md) 的 `scripts/browser_discovery.py` |
 | 代理 | [network-access](../network-access/SKILL.md) 的 `scripts/probe_local_proxies.py`、环境变量与 `~/.config/proxy-resources.json` |
+| 网络与镜像 | [network-access](../network-access/SKILL.md) 的 `scripts/check_network_env.py`（pip/uv、npm/pnpm/yarn、conda、git、制品与项目配置） |
 | 项目工具 | [web-app-testing](../web-app-testing/SKILL.md)（测试运行器与已装证据）、[swe-gov](../swe-gov/SKILL.md)（工程约定） |
 
 调整检测口径改归属脚本与 skill；不在这里复制规则或选项。
@@ -74,11 +81,14 @@ python <skill>/scripts/inventory.py --probe-proxy    # 代理活体探测（会�
 - 换机器、选型或装依赖前，是否先看了平台与硬件组（OS 版本、加速器、内存、磁盘）？
 - 是否读了 `available:false`、`eligible:false`、缺层等负面证据，而不只看"有"？
 - 是否把登记条目、历史核验日期当成了当前可用性？
+- 部署新机、换网络或怀疑走错源时，是否先看 `network` 组或直接跑 `check_network_env.py`？
+- 是否把配置来源、镜像登记或一次 `--probe-network` 成功当成了目标包与所有平台都可用？
 - 同一会话内，是否重复扫描了同一环境？
 
 ## 验证协议
 
 1. `python -X utf8 scripts/inventory.py --json` 退出码 0，各组齐全；缺兄弟 skill 时该组为 `available:false` 且带 `reason`。
 2. `python -X utf8 scripts/inventory.py --json --only hardware` 返回 `hardware` 组，`os.arch`、`cpu.logical`、`disks` 非空。
-3. `python -X utf8 tests/test_inventory.py`（或 `python -m pytest tests`）全部通过。
-4. 真实环境抽查一条：报告里的解释器或浏览器路径存在；代理结论与 `--probe-proxy` 结果一致。
+3. `python -X utf8 scripts/inventory.py --json --only network` 返回 `network` 组，含 `pip`/`npm`/`git`/`probe`；不加 `--probe-network` 时 `probe.ran` 为 `false`。
+4. `python -X utf8 tests/test_inventory.py`（或 `python -m pytest tests`）全部通过；改网络组时同时跑 `python -X utf8 ../network-access/tests/test_check_network_env.py`。
+5. 真实环境抽查一条：报告里的解释器或浏览器路径存在；代理结论与 `--probe-proxy` 结果一致；网络配置与 `network` 组来源一致。

@@ -4,7 +4,7 @@
 
 ### 已选入口
 
-来源为 [mattpocock/skills](https://github.com/mattpocock/skills)。版本与精选目录由 [路径配置](../config/upstream-skills.json)唯一维护，实体是被忽略的独立 Git clone，不是本仓库 submodule。
+来源为 [mattpocock/skills](https://github.com/mattpocock/skills) 与 [D4Vinci/Scrapling](https://github.com/D4Vinci/Scrapling)。版本与精选目录由 [路径配置](../config/upstream-skills.json)唯一维护，实体是被忽略的独立 Git clone，不是本仓库 submodule。Scrapling 只取 `agent-skill/Scrapling-Skill` 一个目录，固定到与库版本一致的 tag 提交，不链接该仓库的其余源码。
 
 | Skill | 上游调用类型 | 用途 |
 |---|---|---|
@@ -16,6 +16,7 @@
 | `code-review` | 方法 | 对固定起点到 HEAD 的提交差异做规范/规格分轴评审 |
 | `diagnosing-bugs` | 方法 | 用反馈回路、最小化和可证伪假设定位难 bug |
 | `tdd` | 方法 | 红—绿—重构的小步测试驱动开发 |
+| `scrapling-official` | 方法 | 构建期编写 Scrapling 采集代码：请求、浏览器、解析、Spider 与 CLI |
 
 `tdd` 已从原先的独立 CLI 安装迁入同一 clone，迁移前四个文件与选定上游版本逐字节一致，没有改写或升级内容。`to-spec`、`to-tickets`、`implement-spec` 等未纳入本组；依赖提示不等于获准安装整包、配置工单系统或启动外部操作。
 
@@ -44,9 +45,12 @@ npx skills add mattpocock/skills --skill grill-me -g -a opencode claude-code cod
 ```bash
 git clone -c core.autocrlf=false -c core.symlinks=false https://github.com/mattpocock/skills.git third-party/mattpocock-skills
 git -C third-party/mattpocock-skills checkout --detach <config中的revision>
+git clone --depth 1 --branch v0.5.1 -c core.autocrlf=false -c core.symlinks=false https://github.com/D4Vinci/Scrapling.git third-party/scrapling
 python -X utf8 scripts/link-upstream-skills.py
 python -X utf8 scripts/link-upstream-skills.py --verify-only
 ```
+
+`third-party/scrapling` 的 tag 必须与 `config/upstream-skills.json` 的 `revision` 指向同一提交；升级时先换 tag、核对 `agent-skill/Scrapling-Skill` 的 `version` 与库版本一致，再更新配置。
 
 默认只链 `agents`；OpenCode 用 `--harness opencode`，需要五套目录时用 `--harness all`。`--unlink` 未指定 harness 时默认清理五套目录。
 

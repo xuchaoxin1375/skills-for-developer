@@ -3,6 +3,7 @@ name: network-access
 description: >
   外链抓取、联网下载、Git 远端操作（clone/fetch/pull/push；推送走原站）或代理/镜像配置前的网络选路入口。
   普通网页直连可用且稳定时可省代理；国内 Google、OpenAI 或已知直连不稳的站点优先代理，GitHub 按资源类型选择已核验镜像／加速、代理或稳定直连；普通小页面直连约3–5秒仍无有效响应时考虑切代理。
+  部署新机、换网络或排查镜像/源配置时，先跑 scripts/check_network_env.py：默认只读配置，--probe 才做有界可达性探测。
   复用同站观测与本轮结果，按需读取代理登记；超时、403、5xx、429 按错误类型回退，不原样重发或绕过限流。
   包与浏览器下载、大文件多连接、安装失败分诊、镜像和跨平台配置按需读参考；纯本地操作不加载。HTML 提取、浏览器操作和 PowerShell 编码归各自 skill。
 ---
@@ -17,6 +18,35 @@ description: >
 2. **复用线索选路**：先用本轮同站、同客户端已确认的路线；需要历史线索时按域名检索[本机观测](references/local-observations.md)，只读命中片段，不通读整个记录。无先验时按下表选择，不默认双路测速。
 3. **直接取目标并核验**：获取正文或文件本身就是路线验证，检查退出码、状态、最终 URL 与内容；不要先探测再用同一路线重复下载。带连接与总耗时上限，成功即复用原文或快照。
 4. **按失败原因回退**：慢或传输失败才切换有依据的路线，权限错误检查授权，限流遵守冷却；需要排障时读[错误分流](references/network-access.md#错误分流)。同一 URL 同路线超时或传输错误后不原样重发。
+
+## 本机网络与镜像体检
+
+部署新机、换网络、确认 pip/npm/conda 实际走哪个源，或“装得慢、不确定有没有走镜像”时，先跑一次只读报告：
+
+```bash
+python -X utf8 <skill>/scripts/check_network_env.py
+python -X utf8 <skill>/scripts/check_network_env.py --json --project .
+python -X utf8 <skill>/scripts/check_network_env.py --probe
+```
+
+报告覆盖 Git `insteadOf` 与代理配置、pip/uv、npm/pnpm/yarn/corepack、conda、Playwright 制品变量、项目 `.npmrc`/uv 配置与锁文件下载主机。默认不联网；`--probe` 只对实际生效的 GitHub、npm registry、PyPI 索引各做一次有界请求，不重试。
+
+- 配置回答“本机设置成了什么”，不证明“目标包现在可用”；镜像与文件仍需按目标包和版本实测。
+- 代理登记只作线索；入口可用性用 `scripts/probe_local_proxies.py`，本脚本不扫描端口。
+- URL 中的账号口令与 npm 认证字段不会进入报告；锁文件固定主机不随换源自动改变。
+- 只检查当前解释器的 pip；其他 Python 环境用该环境的 `python -m pip config list` 单独核对。
+- GitHub 直连探测失败不代表仓库不可用；文件加速与 Git 传输候选按 `scripts/check_github_mirrors.py` 分别核验。
+
+### 代理客户端体检
+
+端口可用只说明入口能连，不等于配置健康。要看 profile、节点池、分组当前选中、默认出口链路与失效节点时：
+
+```bash
+python -X utf8 <skill>/scripts/inspect_mihomo.py
+python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
+```
+
+默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。定位优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，多客户端或找不到时才查进程，`--process` 可强制先查。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
 
 ## 选路默认
 
@@ -50,7 +80,9 @@ description: >
 | 条件 | 入口 |
 | --- | --- |
 | 需指定代理、诊断超时／403／5xx、使用 GitHub 镜像或 Git | [网络诊断与回退](references/network-access.md)的相关章节 |
+| 部署新机、换网络、确认镜像/源配置或装得慢 | `scripts/check_network_env.py` 的帮助；默认只读配置，`--probe` 做有界探测 |
 | 代理登记缺失或失效、需要发现候选 | [代理登记](references/proxy-registry.md)；已有脚本 `scripts/probe_local_proxies.py`，参数查其帮助，不另写扫描器 |
+| 需要看 mihomo/Clash 的 profile、节点池、分组选中与失效节点 | `scripts/inspect_mihomo.py`；判读与陷阱见[客户端体检](references/mihomo-inspection.md)，只读，`--delay` 才出网 |
 | 需要核验文件加速候选 | `scripts/check_github_mirrors.py` 的帮助；镜像首页可用不代表目标资源可用 |
 | 大文件单连接慢、考虑 aria2c 多连接 | [多连接下载](references/network-access.md#多连接下载)的适用条件与参数；先确认 Range、单连接瓶颈与并发许可 |
 | 安装 Python／Node.js／conda 依赖 | [依赖下载](references/dependency-downloads.md)，区分索引、包文件与额外下载，按其中“镜像选型顺序”判定；PyPI/uv 候选可先跑 `scripts/bench_pypi_mirrors.py` |
@@ -68,5 +100,9 @@ description: >
 - [ ] GitHub 公开资源是否先走已核验加速；直连约 3 秒无首响是否立即改路，且没有原样重发同一 URL？
 - [ ] 推送等依赖代理的操作是否先核验入口，失败后改路或报告，没有反复重试同一路线？
 - [ ] 大文件多连接是否只在单连接受限、支持 Range 且资源允许并发时启用，未用于小文件、私有资源或包管理器下载？
+- [ ] 部署新机或怀疑走错源时，是否先看 `check_network_env.py` 报告的配置来源，而不是直接换镜像？
+- [ ] 是否把配置报告当成可用性结论，或把 `--probe` 的一次成功当成所有包、平台与日期都可用？
+- [ ] 看节点与分组时，是否把端口可用、节点名或历史延迟当成了实际出口与链路结论？
+- [ ] 看到 `round-robin` 轮换时，是否按目标是否要求会话一致来评价，而不是一律判成缺陷？
 
-维护时运行仓库结构、链接与分发校验，桌面走查稳定直连、慢直连、已知代理站点、限流与大文件场景。真实验证仅报告实际环境、客户端、日期与路线，未执行的平台或性能对照不声称通过。
+维护时运行仓库结构、链接与分发校验，桌面走查稳定直连、慢直连、已知代理站点、限流与大文件场景。改选路或体检脚本时跑 `python -X utf8 skills/network-access/tests/test_check_network_env.py`；改客户端体检脚本时跑 `python -X utf8 skills/network-access/tests/test_inspect_mihomo.py`；真实探测只在需要时执行，并记录实际环境、客户端、日期与路线。真实验证仅报告实际环境、客户端、日期与路线，未执行的平台或性能对照不声称通过。

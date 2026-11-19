@@ -8,7 +8,7 @@
         { "kind": "runtime", "name": "python" },
         { "kind": "runtime", "name": "python3" }
       ],
-      "hint": "代理探测脚本需要 Python；手工选路不依赖它"
+      "hint": "网络与镜像体检、代理探测脚本需要 Python；手工选路不依赖它"
     },
     {
       "id": "aria2c",
