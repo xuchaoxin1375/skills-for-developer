@@ -22,7 +22,7 @@
 
 ## 镜像选型顺序
 
-索引页快不代表装得快。先用 `scripts/bench_pypi_mirrors.py` 实测 PyPI/uv 候选（pip 与 uv 共用 Simple 索引），其余生态用 `chsrc measure`，再按下面的顺序裁定，不靠首页状态或一次元数据查询下结论：
+索引页快不代表装得快。换源或排障前先跑 `scripts/check_network_env.py` 看当前生效的索引/registry 与来源；它只说明配置，不证明目标包可用。再用 `scripts/bench_pypi_mirrors.py` 实测 PyPI/uv 候选（pip 与 uv 共用 Simple 索引），其余生态用 `chsrc measure`，按下面的顺序裁定，不靠首页状态或一次元数据查询下结论：
 
 - 分层各选一条主路线：包索引、独立制品（Release、模型、浏览器）、私有源，三层互不替代。
 - 测速口径：同一目标包的固定版本，索引与包文件各计一次，取 2～3 次的中位数；只测索引页会漏掉文件 CDN 段。

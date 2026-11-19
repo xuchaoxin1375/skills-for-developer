@@ -28,6 +28,7 @@
 - **制品版本由已安装的 Playwright 包锁定**（例：包 1.64.0 要求 `chromium-1248` 与 `chromium_headless_shell-1248`，缺这个目录就直接启动失败），镜像只需覆盖这个 revision，不要求它有最新版本。滞后判据是 `--dry-run` 解析出的制品清单，不是镜像首页或"有没有最新版"。要换浏览器版本就换包版本（包与制品成对），或用 `--channel` / 可执行文件路径驱动已装浏览器。
 - 本机核验过的制品基址可登记在 `~/.config/proxy-resources.json` 的 `artifact_mirrors`（格式与边界见 [代理登记](proxy-registry.md#可选制品镜像条目artifact_mirrors)）；登记只是线索，每次仍要 `--dry-run` 与包锁定的 revision 逐项对齐。
 - 按 [代理登记](proxy-registry.md) 读取本机资源，不猜端口。走官方 CDN 时 Playwright 下载子进程使用 `HTTPS_PROXY`；HTTPS 目标也可通过 `http://` 代理入口访问，不把 SOCKS 端口冒充 HTTP 端口。
+- 需要一次看清当前制品变量与登记镜像时，跑 `python -X utf8 <skill>/scripts/check_network_env.py --only artifacts`；它只读配置，不替代 `--dry-run` 的 revision 核验。
 - 先检查已有 `PLAYWRIGHT_DOWNLOAD_HOST` 及 `PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST` / `PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST` / `PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST`。浏览器专用变量优先于通用变量；过期镜像覆盖不清除时，换了路线仍可能访问旧镜像。
 - 默认只走一条路线：用镜像时不要同时设 `HTTPS_PROXY`（否则大流量照样过代理，既慢又耗额度），走代理时不要再填镜像地址。切回官方源需在任务进程内撤销镜像覆盖并保存原值。明确需要代理访问内部制品库时可以组合配置。
 - 所有变量只影响当前终端及后续子进程。用专用终端，或保存旧值并在任务后恢复；不写全局代理、`setx` 或项目内的本机端口。检查 `NO_PROXY` 是否让下载域名绕过代理。

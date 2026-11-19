@@ -49,6 +49,25 @@ print(json.dumps({
 sys.exit(0)
 """
 
+NETWORK_STUB = """
+import json
+import sys
+
+probe = "--probe" in sys.argv
+print(json.dumps({
+    "tool": "check_network_env",
+    "mode": "probe" if probe else "offline",
+    "python": {"pip": {"available": True, "indexUrl": "https://stub/simple", "source": "stub"}},
+    "node": {"npm": {"available": True, "registry": "https://stub/npm", "source": "stub"}},
+    "conda": {"available": False},
+    "git": {"available": True, "insteadOf": [], "proxies": []},
+    "artifacts": {"env": {}, "artifactMirrors": []},
+    "projects": [],
+    "probe": {"ran": probe, "results": [{"target": "stub", "ok": True}] if probe else [], "reason": None},
+}, ensure_ascii=False))
+sys.exit(0)
+"""
+
 
 def child_env() -> dict[str, str]:
     """子进程环境：沿用当前环境并强制 UTF-8 输出。"""
@@ -99,6 +118,8 @@ def make_skills_root(base: Path, *, with_siblings: bool = True) -> Path:
     probe = root / "network-access" / "scripts" / "probe_local_proxies.py"
     probe.parent.mkdir(parents=True, exist_ok=True)
     probe.write_text(PROBE_STUB, encoding="utf-8")
+    network = root / "network-access" / "scripts" / "check_network_env.py"
+    network.write_text(NETWORK_STUB, encoding="utf-8")
     return root
 
 
@@ -156,7 +177,16 @@ def test_report_json_structure() -> None:
         code, report, stderr = run_inventory("--json", "--skills-root", str(skills_root))
         assert code == 0, stderr
         assert report is not None
-        for section in ("host", "hardware", "runtimes", "pythonEnvs", "browsers", "proxies", "projects"):
+        for section in (
+            "host",
+            "hardware",
+            "runtimes",
+            "pythonEnvs",
+            "browsers",
+            "proxies",
+            "network",
+            "projects",
+        ):
             assert section in report
         assert report["skillsRoot"] == str(skills_root.resolve())
 
@@ -272,6 +302,30 @@ def test_browsers_delegation() -> None:
         assert section["owner"] == "browser-automation"
 
 
+def test_network_delegation() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        skills_root = make_skills_root(Path(tmp))
+        code, report, stderr = run_inventory("--json", "--skills-root", str(skills_root))
+        assert code == 0, stderr
+        section = report["network"]
+        assert section["available"] is True
+        assert section["owner"] == "network-access"
+        assert section["python"]["pip"]["indexUrl"] == "https://stub/simple"
+        assert section["source"].endswith("check_network_env.py")
+
+
+def test_probe_network_delegation() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        skills_root = make_skills_root(Path(tmp))
+        code, report, stderr = run_inventory(
+            "--json", "--skills-root", str(skills_root), "--probe-network"
+        )
+        assert code == 0, stderr
+        probe = report["network"]["probe"]
+        assert probe["ran"] is True
+        assert probe["results"][0]["target"] == "stub"
+
+
 def test_missing_siblings_degrade() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         skills_root = make_skills_root(Path(tmp), with_siblings=False)
@@ -280,6 +334,7 @@ def test_missing_siblings_degrade() -> None:
         assert report["pythonEnvs"]["available"] is False
         assert report["browsers"]["available"] is False
         assert report["proxies"]["probe"]["ran"] is False
+        assert report["network"]["available"] is False
         assert "reason" in report["pythonEnvs"]
 
 
@@ -301,6 +356,7 @@ def test_unlocatable_skills_root_degrades() -> None:
         assert report["skillsRoot"] is None
         assert report["pythonEnvs"]["available"] is False
         assert report["browsers"]["available"] is False
+        assert report["network"]["available"] is False
         assert report["runtimes"]["available"] is True
 
 
@@ -459,7 +515,7 @@ def test_human_output_lists_sections() -> None:
         )
         stdout = proc.stdout.decode("utf-8", errors="replace")
         assert proc.returncode == 0
-        for heading in ("[运行时]", "[Python 环境与引擎层]", "[浏览器]", "[代理]"):
+        for heading in ("[运行时]", "[Python 环境与引擎层]", "[浏览器]", "[代理]", "[网络与镜像]"):
             assert heading in stdout
         assert "上次核验" in stdout
         assert "上次核验日期不代表当前可用" in stdout
@@ -510,7 +566,7 @@ def test_only_filter() -> None:
         code, report, stderr = run_inventory("--json", "--skills-root", str(skills_root), "--only", "proxies")
         assert code == 0, stderr
         assert "proxies" in report
-        for absent in ("host", "hardware", "runtimes", "pythonEnvs", "browsers", "projects"):
+        for absent in ("host", "hardware", "runtimes", "pythonEnvs", "browsers", "network", "projects"):
             assert absent not in report
 
 
