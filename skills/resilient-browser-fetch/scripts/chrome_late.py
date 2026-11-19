@@ -74,6 +74,11 @@ SOFT_ERROR_MAX_TEXT_CHARS = 400
 SHELL_MIN_HTML_BYTES = 5_000
 SHELL_MAX_TEXT_CHARS = 400
 
+# 正常页面可能残留 WAF 的挑战脚本(例如 Cloudflare 的 challenge-platform)。
+# 只有标题像真实页面且可见正文达到这个长度时, 才用内容覆盖挑战标记;
+# 真挑战页通常没有标题、标题仍是 URL, 或只有很短的可见提示。
+CHALLENGE_CONTENT_MIN_TEXT_CHARS = 200
+
 # 挑战页的共同特征。多数 WAF 挑战页没有 <title>, 但也有站点会写 "Just a moment...";
 # 命中任一特征只说明"站点还没放行", 不等于"被拒绝"。
 CHALLENGE_MARKERS = (
@@ -345,10 +350,19 @@ def classify_page_state(title: str, html: str) -> str:
     lowered_title = (title or "").strip().lower()
     if any(hint in lowered_title for hint in BLOCKED_TITLE_HINTS):
         return STATE_BLOCKED
+    # 标题仍在挑战态时, 后面的正文即使很长也不能当成已放行。
+    if any(hint in lowered_title for hint in PENDING_TITLE_HINTS):
+        return STATE_CHALLENGE
     sample = (html or "")[:300_000].lower()
     if any(marker in sample for marker in CHALLENGE_MARKERS):
-        return STATE_CHALLENGE
-    if any(hint in lowered_title for hint in PENDING_TITLE_HINTS):
+        # 正常内容页可能带着 WAF 脚本残留; 标题和可见正文同时像真实页面时,
+        # 以内容为准, 避免把已放行的商品页误报成挑战未完成。
+        if (
+            (title or "").strip()
+            and not looks_like_url_text(title)
+            and visible_text_length(html) >= CHALLENGE_CONTENT_MIN_TEXT_CHARS
+        ):
+            return STATE_CONTENT
         return STATE_CHALLENGE
     if not sample.strip():
         return STATE_EMPTY
