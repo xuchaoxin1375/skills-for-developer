@@ -158,7 +158,7 @@ indent_style = tab
 
 ### 敏感信息规则（具体化）
 
-1. 应仅提交 `.env.example`，值一律使用占位符（如 `YOUR_API_KEY_HERE`）；生产密钥应通过 CI Secrets 注入。
+1. 应仅提交 `.env.example`，值一律使用低熵占位符（如 `YOUR_API_KEY_HERE`、`<YOUR_TOKEN>`、`REPLACE_WITH_...`）；不要用带真实格式前缀的高熵串，带固定前缀的密钥（如 `AGE-SECRET-KEY-1...`、完整 PEM 私钥）要截断或加尖括号，避免被密钥扫描器误报。生产密钥应通过 CI Secrets 注入。
 2. **历史清除 ≠ 安全**。已泄露秘密先控制暴露并吊销/轮换，必要历史清理在授权下计划，核对协作者影响；无轮换权限时明确缺口，不假称清理后安全。
 3. 二进制/数据文件先从项目与任务确认用途：fixture 使用合成/脱敏数据并说明来源，静态资源按正常产品需求管理；只有命中忽略规则才需显式放行。预编译工具记录可信来源、版本和完整性验证；大文件/发布产物按平台限制与项目政策选择 LFS、Release 或制品库，不设统一 1 MB/10 MB 阈值。
 4. 可疑客户数据或来源不明文件先核对授权与内容，未确认前不主动暂存；公网 IP/域名出现只是线索，不能替代定性。
@@ -199,7 +199,7 @@ git ls-files -c -i --exclude-standard                     # 已追踪却应忽�
 委托创建 GitHub/Gitee 等远程仓库时，先在本地发现可用凭据，再决定是否向用户索要。仓库名、公开性和许可证是用户决策，不自行推定。
 
 - **按常见变量名与宿主凭据库探测**：依次检查 `GITHUB_TOKEN`、`GH_TOKEN`、`GITEE_TOKEN`、`GITEE_ACCESS_TOKEN`、`GITLAB_TOKEN` 等，同时检查 `gh auth status`、Windows `cmdkey /list` 的 `git:https://<host>` 条目、SSH 密钥与现有仓库 remote(用于推断账号)。只报告“已设置/已取到”和验证结果，不回显值；非交互检查设置 `GIT_TERMINAL_PROMPT=0`。
-- **`git credential fill` 失败不等于没有凭据**：全局 `credential.helper` 可能写成 `manager` 而二进制不在 PATH，fill 退出非零，但普通 `git push` 仍能取到同一份凭据。按 `git config --show-origin --get-all credential.helper` 找到实际 helper 路径，直接执行 `git-credential-manager get`(输入 protocol/host)读取；取到的值只在内存中使用，不落盘、不回显。
+- **`git credential fill` 失败不等于没有凭据**：全局 `credential.helper` 可能写成 `manager` 而二进制不在 PATH，fill 退出非零，但普通 `git push` 仍能取到同一份凭据。按 `git config --show-origin --get-all credential.helper` 找到实际 helper 路径，直接执行 `git-credential-manager get`：stdin 依次给 `protocol=https`、`host=<host>` 和空行；Windows GCM 先设 `GCM_INTERACTIVE=Never`。只解析 `username` 与 `password` 是否存在，不回显整段输出，取到的值只在内存中使用，不落盘。
 - **用只读请求验证**：GitHub 用 `GET /user`，Gitee 用 `GET /api/v5/user`，Gitee token 放在 `Authorization: token ...`。记录 HTTP 状态；401/403 表示无效或权限不足，不能因为变量名像就继续。
 - **区分 API 凭据与 Git 凭据**：credential manager 保存的密码可能只对 `git push` 有效，不能用于 API；API token 也可能缺少建库或写仓库权限。分别验证，不互相替代。凭据库里的 classic token 先 `GET /user` 并读 `X-OAuth-Scopes`，含 `repo` 才能建库。
 - **写权限用 dry-run 证明**：公开仓库的 `git ls-remote` 不需要凭据，不能证明推送权限；用 `git push --dry-run <url> HEAD:refs/heads/<probe>` 验证，不会留下分支。SSH 只证明推送通道、不能建库：`ssh -G <host>` 检查是否被 `Host *` 的 `Port`/`User` 改坏，GitHub 可回退 `ssh -T -p 443 git@ssh.github.com`，`Permission denied (publickey)` 说明密钥未登记。
