@@ -95,7 +95,7 @@ parse_harnesses() {
     all) has_all=1 ;;
     opencode | codex | claude | agents | dsh) ;;
     *)
-      echo "未知 harness: $item（可选: opencode, codex, claude, agents, dsh, all）" >&2
+      echo "未知 harness: ${item}（可选: opencode, codex, claude, agents, dsh, all）" >&2
       exit 2
       ;;
     esac
@@ -228,9 +228,9 @@ for d in "$SKILLS_DIR"/*/; do
   [[ -f "$d/SKILL.md" ]] && continue
   name="$(basename "$d")"
   if [[ -n "$UNINIT_SUBMODULES" ]] && printf '%s\n' "$UNINIT_SUBMODULES" | grep -Fxq "skills/$name"; then
-    echo "跳过 $name：git submodule 未初始化（运行 git submodule update --init --depth 1，或 scripts/deploy.sh 自动处理）" >&2
+    echo "跳过 ${name}：git submodule 未初始化（运行 git submodule update --init --depth 1，或 scripts/deploy.sh 自动处理）" >&2
   else
-    echo "跳过 $name：缺少 SKILL.md" >&2
+    echo "跳过 ${name}：缺少 SKILL.md" >&2
   fi
 done
 
@@ -322,7 +322,7 @@ if [[ $PLAN -eq 0 ]]; then
   for idx in "${!TARGETS[@]}"; do
     target="${TARGETS[$idx]}"
     tag="${TARGET_HARNESSES[$idx]}"
-    say "== $target（$tag） =="
+    say "== ${target}（${tag}） =="
     if [[ ! -d "$target" ]]; then
       if [[ $VERIFY_ONLY -eq 1 ]]; then
         echo "  缺失目录（VerifyOnly，不创建）: $target" >&2
@@ -961,7 +961,7 @@ if [[ $VERIFY_ONLY -eq 0 && $UNLINK -eq 0 ]]; then
         return 0
       fi
     done
-    echo "建议安装 $label（推荐，缺失不阻断）：$hint"
+    echo "建议安装 ${label}（推荐，缺失不阻断）：$hint"
   }
   check_basic_tool git 'sudo apt install git（macOS: brew install git）' git
   check_basic_tool 'ripgrep（rg）' 'sudo apt install ripgrep（macOS: brew install ripgrep）' rg
