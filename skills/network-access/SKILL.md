@@ -103,6 +103,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 - [ ] 部署新机或怀疑走错源时，是否先看 `check_network_env.py` 报告的配置来源，而不是直接换镜像？
 - [ ] 是否把配置报告当成可用性结论，或把 `--probe` 的一次成功当成所有包、平台与日期都可用？
 - [ ] 看节点与分组时，是否把端口可用、节点名或历史延迟当成了实际出口与链路结论？
+- [ ] 报告"节点池 0 个"且控制 API 不可用时，是否先让 API 可达（Unix socket 控制口用 `--controller unix:/path`）再下结论，而不是据"0 个"判成订阅失效？
 - [ ] 看到 `round-robin` 轮换时，是否按目标是否要求会话一致来评价，而不是一律判成缺陷？
 
 维护时运行仓库结构、链接与分发校验，桌面走查稳定直连、慢直连、已知代理站点、限流与大文件场景。改选路或体检脚本时跑 `python -X utf8 skills/network-access/tests/test_check_network_env.py`；改客户端体检脚本时跑 `python -X utf8 skills/network-access/tests/test_inspect_mihomo.py`；真实探测只在需要时执行，并记录实际环境、客户端、日期与路线。真实验证仅报告实际环境、客户端、日期与路线，未执行的平台或性能对照不声称通过。

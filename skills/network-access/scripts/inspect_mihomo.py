@@ -37,10 +37,11 @@ from __future__ import annotations
 import argparse
 import concurrent.futures as cf
 import hashlib
+import http.client
 import json
 import os
 import re
-import shlex
+import socket
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -372,29 +373,55 @@ def _clean_arg(value: str) -> str:
 
 
 def parse_process_paths(cmdline: str, posix: bool | None = None) -> dict:
-    """从内核进程命令行里取 -d/--directory、-f/--config、-ext-ctl 与 -secret。"""
-    if posix is None:
-        posix = os.name != "nt"
-    try:
-        args = shlex.split(cmdline or "", posix=posix)
-    except ValueError:
-        args = (cmdline or "").split()
+    """从内核进程命令行里取 -d/--directory、-f/--config、-ext-ctl 与 -secret。
+
+    先用正则按“值到下一个 -flag 为止”提取，保证含空格的路径（如 macOS
+    `Application Support`）不被截断；再补齐 `=` 形式与引号包裹的值。
+    """
+    raw = cmdline or ""
     dirs, files = [], []
     result = {"dirs": dirs, "files": files, "controller": None, "secret": None}
-    for i, arg in enumerate(args):
-        low = arg.lower()
-        if low in ("-d", "--directory", "-home") and i + 1 < len(args):
-            dirs.append(_clean_arg(args[i + 1]))
-        elif low.startswith("--directory="):
-            dirs.append(_clean_arg(arg.split("=", 1)[1]))
-        elif low in ("-f", "--config") and i + 1 < len(args):
-            files.append(_clean_arg(args[i + 1]))
-        elif low.startswith("--config="):
-            files.append(_clean_arg(arg.split("=", 1)[1]))
-        elif low in ("-ext-ctl", "--ext-ctl") and i + 1 < len(args):
-            result["controller"] = _clean_arg(args[i + 1])
-        elif low == "-secret" and i + 1 < len(args):
-            result["secret"] = _clean_arg(args[i + 1])
+
+    # 正则：匹配 `-flag value`，value 延伸到下一个 ` -` 标志或行尾，保留内部空格。
+    flag_re = re.compile(r"(?:^|\s)(-d|--directory|-home|-f|--config|-ext-ctl|--ext-ctl|-ext-ctl-unix|--ext-ctl-unix|-secret)\s+(.+?)(?=\s-[A-Za-z]|\s--[A-Za-z]|$)")
+    for match in flag_re.finditer(raw):
+        flag = match.group(1).lower()
+        value = _clean_arg(match.group(2).strip())
+        if not value:
+            continue
+        if flag in ("-d", "--directory", "-home"):
+            dirs.append(value)
+        elif flag in ("-f", "--config"):
+            files.append(value)
+        elif flag in ("-ext-ctl", "--ext-ctl"):
+            result["controller"] = value
+        elif flag in ("-ext-ctl-unix", "--ext-ctl-unix"):
+            result["controller"] = "unix:" + value
+        elif flag == "-secret":
+            result["secret"] = value
+
+    # 补齐 `--flag=value` 形式（正则上面只覆盖空格分隔形式）。
+    if posix is None:
+        posix = os.name != "nt"
+    for arg in re.split(r"\s+", raw):
+        if "=" not in arg or not arg.startswith("-"):
+            continue
+        key, _, val = arg.partition("=")
+        low = key.lower()
+        val = _clean_arg(val)
+        if not val:
+            continue
+        if low in ("--directory", "-home") and val not in dirs:
+            dirs.append(val)
+        elif low in ("--config",) and val not in files:
+            files.append(val)
+        elif low in ("--ext-ctl",) and not result["controller"]:
+            result["controller"] = val
+        elif low in ("--ext-ctl-unix",) and not result["controller"]:
+            result["controller"] = "unix:" + val
+        elif low == "--secret" and not result["secret"]:
+            result["secret"] = val
+
     return result
 
 
@@ -644,32 +671,82 @@ def find_client(
     return pick_entry(scanned)
 
 
-def api_get(base: str, secret: str, path: str, timeout: float = API_TIMEOUT):
-    req = urlreq.Request(base + path, headers={"User-Agent": UA, "Accept": "application/json"})
+def _is_unix_socket(controller: str) -> bool:
+    """控制口是 Unix socket 路径（不是 host:port 的 HTTP 控制口）。"""
+    if not controller:
+        return False
+    if controller.startswith(("http://", "https://")):
+        return False
+    if controller.startswith("unix:"):
+        return True
+    # 绝对路径或以 ./ 开头的相对路径，且不是 host:port（含冒号端口）
+    if controller.startswith(("/", "./", "../")):
+        return True
+    # 含 / 且无端口冒号，通常是 socket 路径
+    if "/" in controller and not re.match(r"^\[?[^\s/]+\]?:\d+$", controller):
+        return True
+    return False
+
+
+def _unix_socket_path(controller: str) -> str:
+    if controller.startswith("unix:"):
+        return controller[len("unix:"):]
+    return controller
+
+
+class _UnixHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection 走 AF_UNIX，跳过 TCP_NODELAY 等 TCP 专属设置。"""
+
+    def __init__(self, socket_path: str, timeout: float):
+        super().__init__("localhost", timeout=timeout)
+        self._socket_path = socket_path
+
+    def connect(self):  # noqa: D401
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(self.timeout)
+        s.connect(self._socket_path)
+        self.sock = s
+
+
+def api_get(base: str, secret: str, path: str, timeout: float = API_TIMEOUT,
+            unix_socket: str | None = None):
+    headers = {"User-Agent": UA, "Accept": "application/json"}
     if secret:
-        req.add_header("Authorization", f"Bearer {secret}")
-    opener = urlreq.build_opener(urlreq.ProxyHandler({}))
-    with opener.open(req, timeout=timeout) as resp:
-        raw = resp.read()
-        if raw[:1] in (b"{", b"["):
-            return json.loads(raw)
-        return raw.decode("utf-8", "replace")
+        headers["Authorization"] = f"Bearer {secret}"
+    if unix_socket:
+        conn = _UnixHTTPConnection(unix_socket, timeout)
+        try:
+            conn.request("GET", path, headers=headers)
+            resp = conn.getresponse()
+            raw = resp.read()
+        finally:
+            conn.close()
+    else:
+        req = urlreq.Request(base + path, headers=headers)
+        opener = urlreq.build_opener(urlreq.ProxyHandler({}))
+        with opener.open(req, timeout=timeout) as resp:
+            raw = resp.read()
+    if raw[:1] in (b"{", b"["):
+        return json.loads(raw)
+    return raw.decode("utf-8", "replace")
 
 
-def delay_one(base: str, secret: str, name: str, test_url: str, timeout_ms: int):
+def delay_one(base: str, secret: str, name: str, test_url: str, timeout_ms: int,
+              unix_socket: str | None = None):
     path = "/proxies/{}/delay?{}".format(
         urlparse.quote(name, safe=""),
         urlparse.urlencode({"url": test_url, "timeout": timeout_ms}),
     )
     try:
-        data = api_get(base, secret, path, timeout=timeout_ms / 1000 + 3)
+        data = api_get(base, secret, path, timeout=timeout_ms / 1000 + 3, unix_socket=unix_socket)
         return name, data.get("delay"), None
     except Exception as exc:  # noqa: BLE001
         return name, None, f"{type(exc).__name__}: {exc}"
 
 
 def delay_group_targets(base: str, secret: str, targets: list[str], proxies: dict,
-                        test_url: str, timeout_ms: int, preferred: list[str] | None = None) -> dict:
+                        test_url: str, timeout_ms: int, preferred: list[str] | None = None,
+                        unix_socket: str | None = None) -> dict:
     """对不在 /proxies 里的 provider 节点，按其所属分组整组测速并取回成员结果。
 
     先测显式指定的组，再按覆盖人数从大到小测，避免同一批节点被多个小组重复测速。
@@ -698,7 +775,7 @@ def delay_group_targets(base: str, secret: str, targets: list[str], proxies: dic
             urlparse.urlencode({"url": test_url, "timeout": timeout_ms}),
         )
         try:
-            data = api_get(base, secret, path, timeout=timeout_ms / 1000 + 15)
+            data = api_get(base, secret, path, timeout=timeout_ms / 1000 + 15, unix_socket=unix_socket)
         except Exception:  # noqa: BLE001
             continue
         if not isinstance(data, dict) or not data:
@@ -1318,6 +1395,11 @@ def render(model: dict) -> str:
 
     add("## 节点池")
     add("")
+    if rt.get("error"):
+        add(f"> ⚠️ 控制 API 不可用（{rt['error']}），以下节点数来自静态配置解析，**不代表内核运行时的真实节点池**；"
+            "真实节点、分组与选中项需控制 API 可用后才能确认。若内核用 Unix socket / 命名管道控制口"
+            "（如 `-ext-ctl-unix`），用 `--controller unix:/path/to/socket` 或 `--controller /path/to/socket` 重试。")
+        add("")
     add(f"叶子节点 {nodes['leafTotal']} 个：" + "、".join(f"{k} {v}" for k, v in sorted(nodes["byType"].items(), key=lambda kv: -kv[1])))
     add("")
     if model["providers"]:
@@ -1461,8 +1543,10 @@ def main(argv: list[str] | None = None) -> int:
     text = ctx["_text"]
     cfg = parse_config_text(text)["keys"]
     override = (ctx.get("controller_override") or "").strip()
-    if override and not override.startswith(("http://", "https://")) and not re.match(r"^\[?[^\\/\s]+\]?:\d+$", override):
-        override = ""  # 管道/Unix socket 不能当 HTTP 控制口
+    if override and not override.startswith(("http://", "https://", "unix:")) \
+            and not re.match(r"^\[?[^\\/\s]+\]?:\d+$", override) \
+            and not _is_unix_socket(override):
+        override = ""  # 无法识别的控制口（既非 HTTP、host:port，也非 Unix socket 路径）
     controller = args.controller or override or cfg.get("external-controller")
     if args.secret is not None:
         secret = args.secret
@@ -1474,6 +1558,7 @@ def main(argv: list[str] | None = None) -> int:
     api: dict = {}
     api_ok = False
     if controller:
+        unix_socket = _unix_socket_path(controller) if _is_unix_socket(controller) else None
         base = controller if controller.startswith(("http://", "https://")) else f"http://{controller}"
         endpoints = {
             "version": "/version",
@@ -1486,7 +1571,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         errors = []
         try:
-            api["version"] = api_get(base, secret, "/version", timeout=3)
+            api["version"] = api_get(base, secret, "/version", timeout=3, unix_socket=unix_socket)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"version: {type(exc).__name__}")
             api["error"] = "控制 API 不可用（" + "; ".join(errors) + "）"
@@ -1495,13 +1580,14 @@ def main(argv: list[str] | None = None) -> int:
                 if key == "version":
                     continue
                 try:
-                    api[key] = api_get(base, secret, path)
+                    api[key] = api_get(base, secret, path, unix_socket=unix_socket)
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"{key}: {type(exc).__name__}")
             api_ok = "proxies" in api
             if not api_ok:
                 api["error"] = "控制 API 不完整（" + "; ".join(errors) + "）"
     else:
+        unix_socket = None
         api["error"] = "配置里没有 external-controller"
 
     subscriptions = None
@@ -1545,7 +1631,7 @@ def main(argv: list[str] | None = None) -> int:
 
         with cf.ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
             futures = [
-                pool.submit(delay_one, base, secret, name, args.test_url, args.delay_timeout)
+                pool.submit(delay_one, base, secret, name, args.test_url, args.delay_timeout, unix_socket)
                 for name in node_targets
             ]
             for fut in cf.as_completed(futures):
@@ -1557,7 +1643,8 @@ def main(argv: list[str] | None = None) -> int:
 
         if group_targets:
             group_results = delay_group_targets(
-                base, secret, group_targets, proxies, args.test_url, args.delay_timeout, preferred=args.group
+                base, secret, group_targets, proxies, args.test_url, args.delay_timeout, preferred=args.group,
+                unix_socket=unix_socket
             )
             for name in group_targets:
                 delay_ms = group_results.get(name)
