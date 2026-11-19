@@ -18,8 +18,14 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 分离不是越重越好，也不是越短越好：源、机器、用途不同，最合适的档位就不同。动手前先回答三个问题，再选套餐。
 
-- **源带宽**：跑 `python scripts/check_audio_quality.py song.mp3` 看 `ceiling` 与 `verdict`，约十秒（需要 numpy，缺了脚本会提示安装）。这一步同时是预检的一部分。
-- **机器**：按 [本机资源体检](../resource-inventory/SKILL.md) 的 `hardware` 组跑一次，看 OS 版本、Apple Silicon/CUDA、内存与磁盘；不要凭印象。
+**先判断首次还是回访**：同一输出根已有同模型成品、上次流程跑通、且距上次模型核对未超过半年时，走回访路径——沿用上次的模型、解释器、输出格式与命名，只核对源带宽与磁盘，不重复模型选型、硬件体检和 `--help`/权重配置探测。首次、换机或超过半年才完整走下面的三问。复用项一次列清即可；分离器不在 PATH 时，先看 `~/.venvs/*/bin/` 与 `~/.conda/envs/*/bin/` 里的同名可执行文件，不逐个探测缓存与解释器版本：
+
+```bash
+ls -d <输出根>/* <venv>/bin/<separator> 2>/dev/null
+```
+
+- **源带宽**：用**跑分离器的同一个解释器**执行 `check_audio_quality.py song.mp3`，看 `ceiling` 与 `verdict`，约十秒。venv/conda 环境通常已带 numpy；系统 python 缺 numpy 时换解释器，不要为它多装一套依赖。
+- **机器**：首次或换机时按 [本机资源体检](../resource-inventory/SKILL.md) 的 `hardware` 组跑一次，看 OS 版本、Apple Silicon/CUDA、内存与磁盘；回访且未换机时只确认磁盘剩余与权重文件在。
 - **用途**：只是试听、自用，还是要交付成品或批量处理。
 
 | 套餐 | 适用 | 做法 | 耗时 | 产物 |
@@ -32,7 +38,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 三个横切选项与套餐独立：**输出格式**（只听 320k MP3 / 存档 FLAC）、**stem 数**（2 轨 / 4 轨 / 6 轨）、**裁剪模式**（`cut` 改时间轴 / `mute` 保对轨）。
 
-**默认只保留 2 轨**：人声 + 综合伴奏。优先用模型的 2 轨模式；只有 4/6 轨输出时，先合成综合伴奏并校验，再清理中间 stem。需要分轨混音、采样或单独修复时才保留全部。
+**默认只保留 2 轨**：人声 + 综合伴奏。优先用模型的 2 轨模式；只有 4/6 轨输出时，先合成综合伴奏并校验，再清理中间 stem。需要分轨混音、采样或单独修复时才保留全部。请求只说“分离人声/提取人声”时也按这个默认产出，不因措辞再确认伴奏范围；用户明确只要人声时才删伴奏。
 
 选型不是一次性的：模型换代快（同一数据集上 vocals SDR 一年能涨 1 dB 以上），距上次确认超过半年、或要批量交付时，按 [模型选型核对](references/model-selection.md) 查一次当前权重。
 
@@ -45,6 +51,8 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 - **范围**：只处理用户点名的段落，还是全轨扫同类段落？
 - **输出**：新文件还是覆盖，命名与版本。
 
+默认的空白段精剪按「最短路径」第 5 步的 dry-run 段表自检即可，不必再等用户确认。下面这些情况才需要先出候选表：主观听感、伴唱/衬腔、用户点名的时间点。
+
 主观听感（“这段听着不好”）先出候选段表：源时间、当前成品时间、类型、建议；确认后再编码。术语也要先对齐：用户说“和声”时，确认是“伴唱/人声衬腔层”还是“和声音程/叠唱”，中文口语常混用；不要按字面直接剪。
 
 识别方法、候选表与 cut map 见 [人声精剪](references/vocal-edit.md)。
@@ -55,12 +63,12 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
 前置：ffmpeg（编解码与裁剪）、Python 3.10–3.13、demucs（带 torch）。三平台安装与网络细节见 [环境与依赖](references/environment.md)。
 
-1. **预检**：`ffmpeg -version` 有输出且带 `libmp3lame`；`python3 -V` 在 3.10–3.13 之间。3.14 装不上 torch，换成 3.11/3.12 的解释器或 conda 环境。
+1. **预检**：`ffmpeg -version` 有输出且带 `libmp3lame`；`python3 -V` 在 3.10–3.13 之间。3.14 装不上 torch，换成 3.11/3.12 的解释器或 conda 环境。已有跑通的分离环境就直接用它的解释器，不先用系统 python 试。
 
-   源带宽若还没按「先对齐」量过，现在补上：
+   源带宽若还没按「先对齐」量过，现在补上（用同一个解释器）：
 
    ```bash
-   python scripts/check_audio_quality.py song.mp3
+   <venv>/bin/python scripts/check_audio_quality.py song.mp3
    ```
 
    判决为窄带就留在 B：13–16 kHz 就截止的源，上 `htdemucs_ft`/RoFormer 也补不回高频。满带宽且要交付，转 C 档。判决表、假无损与灰区处理见 [源品质核验](references/quality-check.md)。
@@ -96,7 +104,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
 
    产物在 `out/htdemucs/song/{vocals,no_vocals}.mp3`：`no_vocals` 是伴奏，`vocals` 是人声。
 
-5. **需要连续人声时裁剪空白段**（先 `--dry-run` 看段表，确认再执行）：
+5. **默认精剪人声：去掉空白段**（先 `--dry-run` 看段表，确认再执行）。交付默认保留未裁剪的人声与伴奏，精剪作为额外成品；要拿人声与伴奏对轨时，改用 `--mode mute` 或只交付未裁剪版。
 
    ```bash
    python scripts/trim_silence.py out/htdemucs/song/vocals.mp3 --dry-run
@@ -104,7 +112,7 @@ description: 从歌曲或音频里分离人声与伴奏（提取 BGM、去人声
           --output vocals-trim.mp3 --mode cut
    ```
 
-   `--mode mute` 保留原时间轴只把空段音量归零，用于还要和伴奏对轨的场景；`cut` 会移除空段，时间轴随之改变。
+   `--mode mute` 保留原时间轴只把空段音量归零，用于还要和伴奏对轨的场景；`cut` 会移除空段，时间轴随之改变。输出沿用同目录既有命名；没有既有风格时用 `<曲名>-人声-精剪.<ext>`。
 
    dry-run 段表里，1–3 秒、电平低于 -45 dB 的碎段多半是分离泄漏或气口，可加 `--min-keep 2` 去掉。但别为了去碎段整体调高 `--threshold-db`：-30 上下会把正常乐句间的换气一起判成空白，5 段会涨到 9 段，整句被切碎。源换过（例如从 128k 换成无损）要重看段表：前奏可能多出十几秒电平很低的泄漏段，那是高频乐器串进人声轨，不是人声。
 
@@ -131,7 +139,7 @@ ffmpeg -i song.mp3 -af "pan=stereo|c0=c0-c1|c1=c1-c0" preview.wav
 - **不想换工具链**：把 B 路径的 `-n htdemucs` 换成 `-n htdemucs_ft`，只多约 0.3 dB 却要 4 倍耗时，只在赶时间且不愿装第二套环境时选。
 - **人声发薄、发尖**：换 Mel-Band RoFormer 或其 fullness 调优权重，音色更平滑、SDR 略低，对照见 [模型选型核对](references/model-selection.md#mel-band-与-bs-roformer-怎么选)。
 
-16GB 内存上整包 RoFormer 容易换页，长文件加 `--chunk_duration 300`；先拿 30 秒片段与 B 档同一段对照，再决定是否批量。产物默认 FLAC，分发时再转一次 320k MP3。
+16GB 内存上整包 RoFormer 容易换页，长文件加 `--chunk_duration 300`；先拿 30 秒片段与 B 档同一段对照，再决定是否批量。产物默认 FLAC，分发时再转一次 320k MP3。6 轨输出先按 [模型选型核对](references/model-selection.md#mlx-实操路径2-轨实测) 折成 2 轨，再走「最短路径」第 5 步默认精剪人声；精剪版与未裁剪版都保留。
 
 ## 关键判断
 
@@ -175,12 +183,13 @@ MLX 要 macOS 26.2+ 才能用上 M5 的 GPU Neural Accelerators；旧系统仍�
 
 ## 自检
 
-- [ ] 已按「先对齐」的三问定下套餐（A/B/C），机器条件来自 `hardware` 组实测，而不是凭印象
+- [ ] 已按「先对齐」的三问定下套餐（A/B/C）；首次或换机时机器条件来自 `hardware` 组实测，回访沿用上次实测
 - [ ] 分离命令真实跑完，退出码为 0，产物文件存在
 - [ ] 多轨输出已折成 2 轨（vocals + 综合伴奏）并校验，中间 stem 已清理；需要分轨时才保留全部
 - [ ] 分离前量过源的有效带宽（`check_audio_quality.py` 有 `ceiling` 与 `verdict` 两行），套餐与带宽匹配
-- [ ] 选 C 档时按 [模型选型核对](references/model-selection.md) 看过当前权重；结论里写明模型版本、评测数据集、检索日期，以及哪些是本机实测
+- [ ] 首次或距上次模型核对超过半年时，按 [模型选型核对](references/model-selection.md) 看过当前权重；结论里写明模型版本、评测数据集、检索日期，以及哪些是本机实测
 - [ ] Apple Silicon 上未固定 `-d cpu`；追求速度时按“Apple Silicon 加速”选 MPS 或 MLX，并记录实际后端
+- [ ] 默认交付了精剪人声（或说明了不精剪/改用 mute 的原因），未裁剪原轨与伴奏已保留
 - [ ] 裁剪前跑过 `--dry-run`，段表与预期空白段一致（前奏/间奏/尾奏是否都命中）
 - [ ] 裁剪结果时长等于剩余段总长，误差在 0.1s 内
 - [ ] 拼接处有淡变，无明显爆音；阈值剪过头时回退 `--threshold-db` / `--pad`
