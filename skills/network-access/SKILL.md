@@ -63,7 +63,13 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py
 python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 ```
 
-默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。定位优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，扫描只覆盖已知客户端目录，零个候选或 `--process` 时才查进程，`--process` 可强制先查。**默认报告只覆盖一个实例**；发现多个代理相关进程时会在 stderr 提示。多实例先用 `--list-instances` 枚举每个实例的 PID、`-d`/`-f`、mixed-port、external-controller、listeners 与策略，再逐个用 `--config`/`--controller` 检查，不把单实例报告当整机结论。`--list-instances` 只覆盖 Clash 兼容控制 API；v2ray/xray、sing-box 等先用 `probe_local_proxies.py` 看入口，配置体检暂无等价能力。报告同时给出订阅与规则集的更新周期、缓存路径与新鲜度，不触发下载；节点数和订阅对不上时用 `--compare-subscriptions` 对比当前响应（会计入订阅流量）。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
+默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。
+
+- **定位**：优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，只覆盖已知客户端目录，零个候选或传 `--process` 时才查进程，`--process` 可强制先查。
+- **多实例**：默认报告只覆盖一个实例，发现多个代理相关进程时会在 stderr 提示；先用 `--list-instances` 枚举 PID、`-d`/`-f`、mixed-port、external-controller、listeners 与策略，再逐个用 `--config`/`--controller` 检查。
+- **覆盖范围**：`--list-instances` 只覆盖 Clash 兼容控制 API；v2ray/xray、sing-box 等先用 `probe_local_proxies.py` 看入口，配置体检暂无等价能力。
+- **订阅与规则集**：报告给出更新周期、缓存路径与新鲜度，不触发下载；节点数和订阅对不上时用 `--compare-subscriptions` 对比当前响应（会计入订阅流量）。
+- **边界**：判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)；启动/停止与 `--verify` 健康门禁由实例管理脚本负责（如 learnProxy 的 `mihomo_instance.py`）；入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
 
 ## 选路默认
 
