@@ -21,9 +21,9 @@
 | 站点 | 分诊／发现 | 获取／提取 | 效率改进 |
 | --- | --- | --- | --- |
 | sixmoondesigns.com | Shopify；sitemap 568 条／104 商品；`/products.json` 返回 112 商品 | API 1.2MB；52 个多变体、28 个价格区间；198／623 个变体不可售；3 个缺主图、7 个空正文 | 1 请求约 112 商品；商品页 0.84–1.3MB／页，API 明显更省 |
-| javaestate.com | Shopify；sitemap 707；`/products.json` 250／页 | API 918,943 B／250 ≈ 3.7KB／商品；27 个多变体、21 个价格区间；373／859 个变体无 SKU | 707 商品约 3 页、约 2.7MB；直连 429、代理 200，按页退避 |
+| javaestate.com | Shopify；sitemap 707；`/products.json` 250／页 | API 918,943 B／250 ≈ 3.7KB／商品；27 个多变体、21 个价格区间；373／859 个变体无 SKU | 707 商品约 3 页、约 2.7MB；直连 429、代理 200，按页退避；D01 S1 试点 30／30，34 请求／116s，独立复跑差异 0 |
 | shopthebulkstore.com | sitemap 2,528 条，但仅 2 个 `/catalog/product/view`；分类是主入口 | 商品页 217KB／3.6s；JSON-LD `OutOfStock`、$11.99／磅；无可见加购 | sitemap 数量不等于商品数；分类＋sitemap；静态解析；记录 per lb |
-| skatepro.es | sitemap 8,399 条、8,398 个商品形；`Crawl-delay: 10` | 商品页 168KB／1.75s；JSON-LD €19.95、InStock | 全量约 23.3h；列表／抽样优先，详情按需 |
+| skatepro.es | sitemap 8,399 条、8,398 个商品形；`Crawl-delay: 10` | 商品页 168KB／1.75s；JSON-LD €19.95、InStock | 全量约 23.3h；列表／抽样优先，详情按需；D01 S2 试点 30／30，34 请求／378s（10s 间隔） |
 | tognar.com | 无 sitemap；首页 345KB／899 链接；分类混合 | 商品页 382KB；2 个重复 Product JSON-LD；$70、InStock；可见 $40／$80 干扰 | 分类优先；锚定 canonical／SKU；模板需多样本；不按首个可见价格 |
 | BigCommerce（bybebe／tacticalsurplususa） | sitemap：bybebe 6,212 条；tactical 25 个 products 子图、每页 10,000 条 | 商品页 618–679KB／5.6–26.8s（bybebe）、1.01MB／1.3–3.1s（tactical，代理）；Product JSON-LD 3/3；bybebe 价格在 `offers.priceSpecification.price`，tactical 在 `offers.price`；tactical 描述仅在 DOM | 静态解析；主价＋meta；缺货仍有价，状态看 JSON-LD／内嵌 `instock`／`og:availability`；bybebe 单页慢，设超时 |
 | 自定义微数据（fr.lennylamb.com） | robots `Crawl-delay: 1`；`products.xml` 902 条（895 `web_page`／7 `ware`，混编辑页）；分类页 24 个 `product_box` | 商品页 199–210KB；0 JSON-LD；Product 微数据：价格 176.48–197.88 EUR、InStock、SKU／MPN、约 2.4k 字模板描述；`ware/158` 66.85 EUR | 分类页发现优先；解析 microdata；`web_page`／`ware` 两模板；`mpn` 不是公开 URL |
