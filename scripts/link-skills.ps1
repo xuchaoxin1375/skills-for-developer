@@ -397,16 +397,21 @@ function Get-RecommendedSkills {
   return $out
 }
 
-function Get-SkillCommandName([string]$Skill) {
-  # 有 CLI 入口的 skill 在此登记命令名；无命令入口返回空
-  switch ($Skill) { 'htmlmini' { return 'htmlmini' } 'opencode-session-data' { return 'session-search' } }
-  return ''
-}
-
-function Get-SkillCommandEntry([string]$Skill) {
-  # 命令包装的入口脚本绝对路径；无则返回空
-  switch ($Skill) { 'htmlmini' { return (Join-Path $skillsDir 'htmlmini\src\cli.js') } 'opencode-session-data' { return (Join-Path $skillsDir 'opencode-session-data\scripts\session-search.js') } }
-  return ''
+function Get-SkillCommands([string]$Skill) {
+  # 有 CLI 入口的 skill 在此登记命令；每个条目包含 Name 与 Entry。
+  # 一个 skill 可以登记多个命令，安装/移除/校验都会逐个处理。
+  switch ($Skill) {
+    'htmlmini' {
+      return @([pscustomobject]@{ Name = 'htmlmini'; Entry = (Join-Path $skillsDir 'htmlmini\src\cli.js') })
+    }
+    'opencode-session-data' {
+      return @(
+        [pscustomobject]@{ Name = 'session-search'; Entry = (Join-Path $skillsDir 'opencode-session-data\scripts\session-search.js') },
+        [pscustomobject]@{ Name = 'session-prune'; Entry = (Join-Path $skillsDir 'opencode-session-data\scripts\session-prune.js') }
+      )
+    }
+  }
+  return @()
 }
 
 function Install-RecommendedSkillDeps([string]$Skill) {
@@ -463,47 +468,54 @@ function Ensure-BinInUserPath([string]$BinDir) {
 function Install-SkillCommand([string]$Skill) {
   # 默认把 CLI 装成 <binDir>\<cmd>.cmd 包装（幂等）；入口路径含非 ASCII 时跳过
   #（cmd 对 shim 编码敏感，报出来比写坏 shim 好）
-  $cmd = Get-SkillCommandName $Skill
-  $entry = Get-SkillCommandEntry $Skill
-  if ([string]::IsNullOrWhiteSpace($cmd) -or [string]::IsNullOrWhiteSpace($entry)) { return }
-  if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) {
-    Write-Warning "  [$Skill] 入口不存在，跳过命令安装: $entry"
-    return
-  }
-  if ($entry -match '[^\x00-\x7F]') {
-    Write-Warning "  [$Skill] 入口路径含非 ASCII，跳过命令安装: $entry"
-    return
-  }
+  $commands = @(Get-SkillCommands $Skill)
+  if ($commands.Count -eq 0) { return }
   $binDir = Get-CommandBinDir
   New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-  $shim = Join-Path $binDir "$cmd.cmd"
-  $body = "@node `"$entry`" %*"
-  $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
-    ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
-  if ($isOurs) {
-    Write-Host "  [$Skill] 命令已就绪: $shim"
-  } elseif ($PSCmdlet.ShouldProcess($shim, "安装 $cmd 命令")) {
-    Set-Content -LiteralPath $shim -Value $body -Encoding ASCII
-    Write-Host "  [$Skill] 命令已安装: $shim"
+
+  foreach ($command in $commands) {
+    $cmd = $command.Name
+    $entry = $command.Entry
+    if ([string]::IsNullOrWhiteSpace($cmd) -or [string]::IsNullOrWhiteSpace($entry)) { continue }
+    if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) {
+      Write-Warning "  [$Skill] 入口不存在，跳过命令安装: $entry"
+      continue
+    }
+    if ($entry -match '[^\x00-\x7F]') {
+      Write-Warning "  [$Skill] 入口路径含非 ASCII，跳过命令安装: $entry"
+      continue
+    }
+    $shim = Join-Path $binDir "$cmd.cmd"
+    $body = "@node `"$entry`" %*"
+    $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
+      ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
+    if ($isOurs) {
+      Write-Host "  [$Skill] 命令已就绪: $shim"
+    } elseif ($PSCmdlet.ShouldProcess($shim, "安装 $cmd 命令")) {
+      Set-Content -LiteralPath $shim -Value $body -Encoding ASCII
+      Write-Host "  [$Skill] 命令已安装: $shim"
+    }
   }
   Ensure-BinInUserPath $binDir
 }
 
 function Remove-SkillCommand([string]$Skill) {
   # 只删本仓库安装的包装（内容含真源入口路径），不动他人命令
-  $cmd = Get-SkillCommandName $Skill
-  $entry = Get-SkillCommandEntry $Skill
-  if ([string]::IsNullOrWhiteSpace($cmd)) { return }
-  $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
-  $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
-    ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
-  if ($isOurs) {
-    if ($PSCmdlet.ShouldProcess($shim, "移除 $cmd 命令")) {
-      Remove-Item -LiteralPath $shim -Force
-      Write-Host "  [$Skill] 命令已移除: $shim"
+  foreach ($command in @(Get-SkillCommands $Skill)) {
+    $cmd = $command.Name
+    $entry = $command.Entry
+    if ([string]::IsNullOrWhiteSpace($cmd)) { continue }
+    $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
+    $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
+      ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
+    if ($isOurs) {
+      if ($PSCmdlet.ShouldProcess($shim, "移除 $cmd 命令")) {
+        Remove-Item -LiteralPath $shim -Force
+        Write-Host "  [$Skill] 命令已移除: $shim"
+      }
+    } else {
+      Write-Host "  [$Skill] 命令不存在或非本仓库安装，不动: $shim"
     }
-  } else {
-    Write-Host "  [$Skill] 命令不存在或非本仓库安装，不动: $shim"
   }
 }
 
@@ -572,9 +584,10 @@ function Get-PlanRecState([string]$Skill) {
   $needDeps = (Test-Path (Join-Path $dir 'package.json') -PathType Leaf) -and `
     -not (Test-Path (Join-Path $dir 'node_modules') -PathType Container)
   $needCmd = $false
-  $cmd = Get-SkillCommandName $Skill
-  $entry = Get-SkillCommandEntry $Skill
-  if (-not [string]::IsNullOrWhiteSpace($cmd) -and -not [string]::IsNullOrWhiteSpace($entry)) {
+  foreach ($command in @(Get-SkillCommands $Skill)) {
+    $cmd = $command.Name
+    $entry = $command.Entry
+    if ([string]::IsNullOrWhiteSpace($cmd) -or [string]::IsNullOrWhiteSpace($entry)) { continue }
     $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
     $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
       ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
@@ -857,9 +870,10 @@ if ($VerifyOnly) {
         Write-Warning "推荐 skill [$s] 依赖未安装（缺 node_modules，用 -ApplyRecommendedSkills 部署）"
         $failures++
       }
-      $cmd = Get-SkillCommandName $s
-      $entry = Get-SkillCommandEntry $s
-      if (-not [string]::IsNullOrWhiteSpace($cmd)) {
+      foreach ($command in @(Get-SkillCommands $s)) {
+        $cmd = $command.Name
+        $entry = $command.Entry
+        if ([string]::IsNullOrWhiteSpace($cmd)) { continue }
         $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
         $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
           ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))

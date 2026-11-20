@@ -1,0 +1,17 @@
+{
+  "name": "opencode-session-search",
+  "version": "2026.11.20.0904",
+  "private": true,
+  "type": "module",
+  "description": "OpenCode TUI 插件：跨项目检索历史会话（标题与正文），选中后直接跳转，不调用模型",
+  "exports": {
+    ".": "./index.ts",
+    "./tui": "./tui.ts"
+  },
+  "main": "./index.ts",
+  "scripts": {
+    "test": "node --test test/plugin.test.ts",
+    "stamp": "node scripts/stamp-version.mjs"
+  },
+  "license": "MIT"
+}

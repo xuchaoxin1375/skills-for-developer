@@ -16,10 +16,12 @@ OpenCode 的会话集中存在一个本地数据库里，与当前工作目录�
 
 | 需求 | 入口 |
 | --- | --- |
-| 在全部项目里搜标题与正文 | `session-search <查询词>` |
+| 在 TUI 里跨项目检索标题与正文 | `/session-search`（TUI 插件，选中直接跳转） |
+| 在 TUI 里按标题/项目浏览 | `Ctrl+O` 或 `/open`（内置，不含正文） |
+| 在全部项目里搜标题与正文（终端） | `session-search <查询词>` |
 | 列出最近会话（全部目录） | `session-search` |
+| 清理超过 N 天未更新的会话 | `session-prune --older-than 7d`（先预览，`--apply` 执行） |
 | 不装工具，只查标题 | `opencode api get "/api/session?search=<词>"` |
-| 在浏览器里浏览全部历史 | `opencode pair` 给出的 WebUI 链接 |
 | 精确 SQL、批量导出、字段核对 | 只读打开 `opencode.db` |
 
 ## 数据位置与结构
@@ -35,7 +37,7 @@ OpenCode 的会话集中存在一个本地数据库里，与当前工作目录�
 
 `session-search` 是本 skill 的配套 **CLI**(Command-Line Interface, 命令行界面)，用 Node.js 的 `node:sqlite` 直接读库，不需要 OpenCode 服务在线。
 
-- 安装：由 `scripts/link-skills.ps1` / `link-skills.sh` 从 `skills/opencode-session-data/` 注册；Windows 装到 `%USERPROFILE%\.local\bin\session-search.cmd`，Linux 装到 `~/.local/bin/session-search`。
+- 安装：由 `scripts/link-skills.ps1` / `link-skills.sh` 从 `skills/opencode-session-data/` 注册；Windows 装到 `%USERPROFILE%\.local\bin\session-search.cmd` 与 `session-prune.cmd`，Linux 装到 `~/.local/bin/`。
 - 要求：Node.js 22.13 及以上（`node:sqlite`；22.5–22.12 仍需 `--experimental-sqlite`）。
 - 命令不可用时，直接运行 `node <skill-dir>/scripts/session-search.js`，参数相同。
 
@@ -54,24 +56,34 @@ $ session-search --project ai-ecom --json       # 项目匹配，输出 JSON
 - `--json` 时 stdout 只有 JSON，字段含 `titleMatches`、`contentMatches`、`totalMatches`、`snippet`、`legacy`。
 - 退出码：`0` 正常（无匹配也是 0），`2` 参数或读取错误。
 
-### 在 OpenCode 里直接调用
+### session-prune（按时间清理）
 
-全局命令文件放在 `%USERPROFILE%\.config\opencode\commands\session-search.md`（Linux `~/.config/opencode/commands/`），内容如下：
+`session-prune` 按最后更新时间 `time_updated` 找超过指定时长的根会话；默认只预览，加 `--apply` 才执行。
 
-```md
----
-description: 跨全部项目检索 OpenCode 历史会话（标题与正文）
----
-!`session-search $ARGUMENTS`
-
-根据上面的检索结果回答：哪些会话最相关（会话 ID、更新时间、目录），以及继续或导出该会话的命令。
-结果为空时说明没有匹配，建议换关键词，或直接运行 `session-search` 浏览最近会话。
+```shell
+$ session-prune                                      # 预览超过 7 天未更新的会话
+$ session-prune --older-than 30d                     # 预览超过 30 天
+$ session-prune --older-than 7d --apply              # 执行删除
+$ session-prune --older-than 7d --apply --archive    # 改为归档
+$ session-prune --apply --export ./session-backup    # 先导出再删除
 ```
 
-- 输入 `/session-search carapace --dir scripts` 时先执行检索，把结果插入提示词再交给 agent 总结。
-- `$ARGUMENTS` 原样进入 shell，查询词含引号、分号等字符时按当前 shell 规则处理；不确定就改用命令行直接查。
-- 命令文件不随链接脚本分发；新机器按上面的内容重建即可。
-- 命令会把检索结果（可能含敏感片段）作为上下文发给模型；只想本地查看时直接用命令行工具。
+- `--older-than` 接受 `h`/`d`/`w`；`--dir`、`--project`、`--include-archived`、`--limit` 与 `session-search` 语义一致。
+- 只处理根会话；家族里只要有一个仍在运行或最近更新，就跳过整个家族。
+- 删除会连带子会话；归档只隐藏、不释放空间；`--export` 会导出根会话及其子会话（服务端 `sanitize`）。
+- dry-run 只读数据库；`--apply` 需要本机后台服务（`service.json`）。
+- 删除后数据库文件不会自动缩小；需要时停服务、备份后 `VACUUM`。
+
+## 在 OpenCode 里直接调用
+
+`/session-search` 由 TUI 插件 `plugins/opencode-session-search` 提供：打开关键词输入框，检索标题与正文，结果列表里选中后直接跳转到会话，**不提交提示词、不调用模型**。
+
+- 安装：`scripts/link-plugins.ps1 -Include opencode-session-search`（Linux 用 `link-plugins.sh --include`），安装后重启 TUI。
+- 关键词留空时列出最近会话；多个词用空格分隔，按 AND 匹配；列表里还能继续输入过滤。
+- 正文检索复用本 skill 的 `session-search --json`；CLI 不可用时退化为服务端标题检索。
+- 内置的 `Ctrl+O` / `/open` 是“会话 + 项目”合并菜单，适合按标题或项目浏览，不搜正文。
+- TUI 插件装载失败是静默的：查 `~/.local/share/opencode/log/opencode.log` 里的 `loading plugin` / `failed to load plugin`。
+- 插件会把选中的会话 ID 交给 TUI 路由，仍由 TUI 自己加载内容；检索结果不会被发送给模型。
 
 ## 服务端 API
 
@@ -101,6 +113,7 @@ $ curl -u opencode:<password> "http://127.0.0.1:<port>/api/session?limit=20&orde
 
 ## WebUI 与内置命令
 
+- `Ctrl+O` 或 `/open` 打开“会话 + 项目”合并搜索菜单，覆盖全部项目、不调用模型；`/sessions`（`<leader>l`）只列当前项目。
 - `opencode pair` 打印一次性链接（5 分钟内有效），在浏览器打开 WebUI；它的会话列表来自同一个服务端接口，通常比 TUI 的当前项目列表完整，适合浏览和人工翻找。
 - `opencode session export <sessionID>` 导出单个会话为 JSON，`opencode session import` 导入；跨机迁移会话用这两个命令。
 - 把会话换到当前目录继续：先 `POST /api/session/<id>/move` 改 `directory`，或在会话所属目录运行 `opencode -s <sessionID>`。
@@ -141,4 +154,5 @@ $ node --check <skill-dir>/scripts/session-search.js
 ```
 
 - 空结果应输出“未找到匹配的会话”且退出码为 0；错误库路径退出码为 2。
+- TUI 插件：`/session-search` 应打开输入框与结果列表，选中后跳转，且不产生新的用户消息或模型调用；插件自测用 `node --test plugins/opencode-session-search/test/plugin.test.ts`。
 - 所有查询都是只读打开，不写业务表；不要用本流程做写库操作，需要备份时先复制 `opencode.db`。

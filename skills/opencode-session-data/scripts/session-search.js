@@ -12,31 +12,21 @@
  */
 'use strict';
 
-const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 const { parseArgs } = require('node:util');
 
 const VERSION = '2026.11.20.0843';
 const DEFAULT_LIMIT = 20;
 const DEFAULT_RADIUS = 40;
 const EXIT_ERROR = 2;
-// node:sqlite 仍带实验特性警告；先拦住它，避免污染命令输出。
-const originalEmitWarning = process.emitWarning;
-process.emitWarning = function emitWarning(warning, ...args) {
-  const type = typeof warning === 'object' ? warning.name : args[0];
-  const message = typeof warning === 'object' ? String(warning.message || '') : String(warning);
-  if (String(type).includes('ExperimentalWarning') && /SQLite/i.test(message)) return;
-  return originalEmitWarning.call(process, warning, ...args);
-};
 
-let DatabaseSync;
+let helpers;
 try {
-  ({ DatabaseSync } = require('node:sqlite'));
-} catch {
-  fail('需要 Node.js 22.13 及以上版本（node:sqlite）。当前版本：' + process.version);
+  helpers = require('./session-db.js');
+} catch (error) {
+  fail(error.message);
 }
+const { resolveDbPath, openDatabase, hasTable, formatTime } = helpers;
 
 const OPTIONS = {
   help: { type: 'boolean', short: 'h' },
@@ -110,7 +100,12 @@ function main(argv) {
   if (!options) return;
 
   const dbPath = resolveDbPath(values.db);
-  const db = openDatabase(dbPath);
+  let db;
+  try {
+    db = openDatabase(dbPath);
+  } catch (error) {
+    fail(error.message);
+  }
 
   try {
     const sessions = loadSessions(db, options.includeLegacy);
@@ -175,62 +170,6 @@ function parseInteger(raw, fallback, flag, min) {
     return null;
   }
   return value;
-}
-
-function resolveDbPath(explicit) {
-  if (explicit) return path.resolve(expandHome(explicit));
-  if (process.env.OPENCODE_DB) {
-    const fromEnv = process.env.OPENCODE_DB;
-    if (path.isAbsolute(fromEnv)) return fromEnv;
-    // OpenCode 把相对 OPENCODE_DB 解析到数据目录下。
-    return path.join(os.homedir(), '.local', 'share', 'opencode', fromEnv);
-  }
-
-  const fallback = path.join(os.homedir(), '.local', 'share', 'opencode', 'opencode.db');
-  if (fs.existsSync(fallback)) return fallback;
-
-  // 非默认渠道（beta/dev）库路径可能不同；让 OpenCode 自己报告，失败时回退默认路径。
-  const reported = queryOpencodeDbPath();
-  return reported || fallback;
-}
-
-function expandHome(target) {
-  if (target === '~' || target.startsWith('~/') || target.startsWith('~\\')) {
-    return path.join(os.homedir(), target.slice(1));
-  }
-  return target;
-}
-
-function queryOpencodeDbPath() {
-  try {
-    const options = { encoding: 'utf8', timeout: 5000, windowsHide: true };
-    const result = process.platform === 'win32'
-      ? spawnSync(process.env.ComSpec || 'cmd.exe',
-        ['/d', '/s', '/c', 'opencode debug paths db'], options)
-      : spawnSync('opencode', ['debug', 'paths', 'db'], options);
-    if (result.status !== 0 || !result.stdout) return '';
-    const line = result.stdout.trim().split(/\r?\n/).pop().trim();
-    return line && fs.existsSync(line) ? line : '';
-  } catch {
-    return '';
-  }
-}
-
-function openDatabase(dbPath) {
-  if (!fs.existsSync(dbPath)) {
-    fail(`找不到 OpenCode 数据库: ${dbPath}\n` +
-      '用 --db 或环境变量 OPENCODE_DB 指向其他位置；数据库通常随 OpenCode 服务创建。');
-  }
-  try {
-    return new DatabaseSync(dbPath, { readOnly: true });
-  } catch (error) {
-    fail(`无法只读打开数据库: ${dbPath}\n${error.message}`);
-  }
-}
-
-function hasTable(db, name) {
-  return Boolean(db.prepare(
-    "select 1 from sqlite_master where type = 'table' and name = ?").get(name));
 }
 
 function loadSessions(db, includeLegacy) {
@@ -463,14 +402,6 @@ function printResults(results, options) {
   if (options.terms.length) {
     process.stderr.write(`共 ${results.length} 个会话。\n`);
   }
-}
-
-function formatTime(milliseconds) {
-  const date = new Date(milliseconds);
-  if (Number.isNaN(date.getTime())) return '未知时间';
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
-    `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function fail(message, usage = false) {

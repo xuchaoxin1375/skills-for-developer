@@ -58,6 +58,8 @@ OpenCode V2 对**本地目录插件**的实际装载行为（2.1.1 实测，文�
 | 覆盖范围 | 钩子由宿主按 location 路由：同一服务里不同会话可能有的被覆盖、有的没有。插件无法判断当前会话是否被覆盖，只能按下面的验证清单实测 |
 
 因此本仓库的插件包结构固定为：`index.ts`（入口）+ `package.json` + 可选 `test/` + `README.md`。
+TUI 插件在 `index.ts` 旁增加 `tui.ts`，并在 `package.json` 的 `exports` 里声明 `"./tui": "./tui.ts"`；
+本地目录发现同样认这个布局。TUI 部分只对终端客户端生效，装载失败同样静默，改完必须重启 TUI 并核对日志。
 测试用 `node --test`（Node 24 自带类型擦除，无需构建步骤），不引入运行时依赖。
 **Node 24 下 `node --test <目录>` 会失败**（目录参数被当入口模块解析，报 `MODULE_NOT_FOUND`），
 只能不带参数跑或直接指定测试文件。
@@ -72,6 +74,7 @@ OpenCode V2 对**本地目录插件**的实际装载行为（2.1.1 实测，文�
 1. **服务端日志有 `loading plugin`**，且同一 id 没有 `failed to load plugin`。
    日志位置：`~/.local/share/opencode/log/opencode.log`（Windows 为
    `%USERPROFILE%\.local\share\opencode\log\opencode.log`）。
+   TUI 插件在客户端进程装载，改完需重启 TUI；日志里同样应能看到对应插件，界面无提示。
 2. **插件自带测试通过**（`node --test`），确认入口文件能被加载、核心逻辑没写错。
 3. **一次真实调用核对行为**：命令里不要自己写插件会注入的内容，用能自证的标记验证
    （输出中文、诊断文件里的 `injected` 行）。
@@ -82,7 +85,7 @@ OpenCode V2 对**本地目录插件**的实际装载行为（2.1.1 实测，文�
 
 ## 新增与修改
 
-1. 在 `plugins/<name>/` 写真源（入口 `index.ts`；`package.json` 只放元信息）。
+1. 在 `plugins/<name>/` 写真源（入口 `index.ts`；TUI 能力另加 `tui.ts` 与 `exports["./tui"]`；`package.json` 只放元信息）。
 2. 更新仓库 `README.md` 的「插件目录」检索表。
 3. 本机分发：跑 `scripts/link-plugins.ps1`（或 `.sh`）建链接。
 4. 验证：插件自带测试通过 + 服务端日志出现 `loading plugin` + 一次真实调用核对行为。

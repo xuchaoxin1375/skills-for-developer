@@ -428,19 +428,14 @@ recommended_skills() {
   done <"$f"
 }
 
-skill_command_name() {
-  # 有 CLI 入口的 skill 在此登记命令名；无命令入口输出空
+skill_commands() {
+  # 有 CLI 入口的 skill 在此登记命令；每行 name|entry，可登记多个。
   case "$1" in
-  htmlmini) echo "htmlmini" ;;
-  opencode-session-data) echo "session-search" ;;
-  esac
-}
-
-skill_command_entry() {
-  # 命令包装的入口脚本绝对路径；无则输出空
-  case "$1" in
-  htmlmini) echo "$SKILLS_DIR/htmlmini/src/cli.js" ;;
-  opencode-session-data) echo "$SKILLS_DIR/opencode-session-data/scripts/session-search.js" ;;
+  htmlmini) printf '%s|%s\n' "htmlmini" "$SKILLS_DIR/htmlmini/src/cli.js" ;;
+  opencode-session-data)
+    printf '%s|%s\n' "session-search" "$SKILLS_DIR/opencode-session-data/scripts/session-search.js"
+    printf '%s|%s\n' "session-prune" "$SKILLS_DIR/opencode-session-data/scripts/session-prune.js"
+    ;;
   esac
 }
 
@@ -467,39 +462,51 @@ deploy_skill_deps() {
 
 install_skill_command() {
   # $1=skill：默认把 CLI 装成 ~/.local/bin/<cmd> 包装脚本（幂等）
-  local skill="$1" cmd entry bindir link
-  cmd="$(skill_command_name "$skill")"
-  entry="$(skill_command_entry "$skill")"
-  [[ -z "$cmd" || -z "$entry" ]] && return 0
-  if [[ ! -f "$entry" ]]; then
-    echo "  [$skill] 入口不存在，跳过命令安装: $entry" >&2
-    return 1
-  fi
+  local skill="$1" line cmd entry bindir link
+  local -a commands=()
+  mapfile -t commands < <(skill_commands "$skill")
+  [[ ${#commands[@]} -eq 0 ]] && return 0
   bindir="$HOME/.local/bin"
   mkdir -p "$bindir"
-  link="$bindir/$cmd"
-  if [[ -f "$link" ]] && grep -qF "$entry" "$link" 2>/dev/null; then
-    say "  [$skill] 命令已就绪: $link"
-    return 0
-  fi
-  printf '#!/bin/sh\nexec node "%s" "$@"\n' "$entry" >"$link"
-  chmod +x "$link"
-  echo "  [$skill] 命令已安装: $link"
+
+  for line in "${commands[@]}"; do
+    [[ -z "$line" ]] && continue
+    cmd="${line%%|*}"
+    entry="${line#*|}"
+    [[ -z "$cmd" || -z "$entry" ]] && continue
+    if [[ ! -f "$entry" ]]; then
+      echo "  [$skill] 入口不存在，跳过命令安装: $entry" >&2
+      continue
+    fi
+    link="$bindir/$cmd"
+    if [[ -f "$link" ]] && grep -qF "$entry" "$link" 2>/dev/null; then
+      say "  [$skill] 命令已就绪: $link"
+      continue
+    fi
+    printf '#!/bin/sh\nexec node "%s" "$@"\n' "$entry" >"$link"
+    chmod +x "$link"
+    echo "  [$skill] 命令已安装: $link"
+  done
 }
 
 remove_skill_command() {
   # $1=skill：只删本仓库安装的包装（内容含真源入口路径），不动他人命令
-  local skill="$1" cmd entry link
-  cmd="$(skill_command_name "$skill")"
-  entry="$(skill_command_entry "$skill")"
-  [[ -z "$cmd" ]] && return 0
-  link="$HOME/.local/bin/$cmd"
-  if [[ -f "$link" ]] && grep -qF "$entry" "$link" 2>/dev/null; then
-    rm -f "$link"
-    echo "  [$skill] 命令已移除: $link"
-  else
-    echo "  [$skill] 命令不存在或非本仓库安装，不动: $link"
-  fi
+  local skill="$1" line cmd entry link
+  local -a commands=()
+  mapfile -t commands < <(skill_commands "$skill")
+  for line in "${commands[@]}"; do
+    [[ -z "$line" ]] && continue
+    cmd="${line%%|*}"
+    entry="${line#*|}"
+    [[ -z "$cmd" ]] && continue
+    link="$HOME/.local/bin/$cmd"
+    if [[ -f "$link" ]] && grep -qF "$entry" "$link" 2>/dev/null; then
+      rm -f "$link"
+      echo "  [$skill] 命令已移除: $link"
+    else
+      echo "  [$skill] 命令不存在或非本仓库安装，不动: $link"
+    fi
+  done
 }
 
 deploy_recommended_skills() {
@@ -684,16 +691,18 @@ verify_recommended_skills() {
   # --verify-only 时检查推荐 skill 的依赖与命令状态
   [[ $VERIFY_ONLY -eq 1 ]] || return 0
   [[ $SKIP_REC_SKILLS -eq 1 ]] && return 0
-  local s cmd entry link
+  local s line cmd entry link
   while IFS= read -r s; do
     [[ -z "$s" ]] && continue
     if [[ -f "$SKILLS_DIR/$s/package.json" && ! -d "$SKILLS_DIR/$s/node_modules" ]]; then
       echo "推荐 skill [$s] 依赖未安装（缺 node_modules，用 --apply-recommended-skills 部署）" >&2
       failures=$((failures + 1))
     fi
-    cmd="$(skill_command_name "$s")"
-    entry="$(skill_command_entry "$s")"
-    if [[ -n "$cmd" ]]; then
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      cmd="${line%%|*}"
+      entry="${line#*|}"
+      [[ -z "$cmd" ]] && continue
       link="$HOME/.local/bin/$cmd"
       if [[ -f "$link" ]] && grep -qF "$entry" "$link" 2>/dev/null &&
         command -v "$cmd" >/dev/null 2>&1; then
@@ -702,7 +711,7 @@ verify_recommended_skills() {
         echo "推荐 skill [$s] 命令缺失（期望 $link 可用，重跑链接脚本安装）" >&2
         failures=$((failures + 1))
       fi
-    fi
+    done < <(skill_commands "$s")
   done < <(recommended_skills)
 }
 
@@ -794,20 +803,23 @@ plan_cli_state() {
 
 plan_rec_line() {
   # 输出 skill|need_deps|need_cmd；只读状态，不安装。
-  local skill="$1" dir="$SKILLS_DIR/$1" cmd entry link
+  local skill="$1" dir="$SKILLS_DIR/$1" line cmd entry link
   local need_deps=0 need_cmd=0
   if [[ -f "$dir/package.json" && ! -d "$dir/node_modules" ]]; then
     need_deps=1
   fi
-  cmd="$(skill_command_name "$skill")"
-  entry="$(skill_command_entry "$skill")"
-  if [[ -n "$cmd" && -n "$entry" ]]; then
-    link="$HOME/.local/bin/$cmd"
-    if [[ ! -f "$link" ]] || ! grep -qF "$entry" "$link" 2>/dev/null ||
-      ! command -v "$cmd" >/dev/null 2>&1; then
-      need_cmd=1
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    cmd="${line%%|*}"
+    entry="${line#*|}"
+    if [[ -n "$cmd" && -n "$entry" ]]; then
+      link="$HOME/.local/bin/$cmd"
+      if [[ ! -f "$link" ]] || ! grep -qF "$entry" "$link" 2>/dev/null ||
+        ! command -v "$cmd" >/dev/null 2>&1; then
+        need_cmd=1
+      fi
     fi
-  fi
+  done < <(skill_commands "$skill")
   printf '%s|%s|%s\n' "$skill" "$need_deps" "$need_cmd"
 }
 
