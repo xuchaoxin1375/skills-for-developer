@@ -295,7 +295,10 @@ def evaluate(
             "存储层没有代理变量，但 live 进程有：" + "、".join(sorted(live)) + "（重启后会丢失，请补写存储层）"
         )
     if not stored and not live:
-        notes.append("未配置服务端代理，当前走直连")
+        if live_env is None:
+            notes.append("存储层未配置服务端代理；live 进程环境未能读取，实际是否直连未核验")
+        else:
+            notes.append("未配置服务端代理，当前走直连")
     return problems, notes
 
 

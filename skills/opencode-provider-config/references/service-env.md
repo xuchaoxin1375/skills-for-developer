@@ -24,9 +24,40 @@ python3 -X utf8 scripts/opencode_proxy.py unset [--all] [--no-restart]
 
 代理是进程级的，JSON 配置无法按 provider 配代理（源码的 `options.fetch` 是函数，写不进配置文件）。同一供应商有多个入口域名、部分直连部分被阻断时，用服务端全局代理 + `NO_PROXY` 分流：直连可达的域名加进 `NO_PROXY`，其余域名自动走代理。例：域名 A 直连、域名 B 被阻断，则 `NO_PROXY` 加 A，两套 provider 配置共用同一服务端代理即可自动分流，启动时无需设置任何环境变量。
 
+## 运行模式与代理作用域
+
+代理是进程级的：谁发起模型请求，就用谁的 env。OpenCode 默认拓扑是共享后台服务，CLI 只是客户端；`--standalone` 与 `serve` 是私有/前台服务，`--server` 是接到指定服务。各模式的 env 来源不同，不能用一个的结论推断另一个。
+
+| 运行方式 | 谁发起模型请求 | 代理 env 来源 | 一次性覆盖方法 |
+| --- | --- | --- | --- |
+| 默认共享后台服务 | 后台服务进程 | 启动时继承的 shell env + `service set env` 持久化值 | 改 `service set env` 并重启；影响所有会话 |
+| `opencode --standalone` / `opencode run --standalone` | 本次私有服务进程 | 当前命令/shell 的 env | 在启动命令里设/清 env；不读服务端 env |
+| `opencode serve` | 该前台服务进程 | 启动 `serve` 那条命令的 env | 同上；适合固定端口的私有服务 |
+| `opencode --server <URL>` | 目标服务进程 | 目标服务的 env | 改目标服务的启动 env 并重启；CLI 侧 env 无效 |
+
+一次性不走代理：在子 shell 里清掉代理变量再跑 `--standalone`，或用 `env -u`（POSIX）。不要把 `service set env` 里的代理删掉来做一次性直连——那会影响所有会话。
+
+```powershell
+pwsh -NoProfile -Command 'Remove-Item Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:ALL_PROXY -ErrorAction SilentlyContinue; opencode run --standalone -m <providerID>/<modelID> "OK"'
+```
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+  opencode run --standalone -m <providerID>/<modelID> "OK"
+```
+
+一次性走代理：把变量写进启动 `--standalone`/`serve` 的那条命令；CLI 侧设了代理时，`NO_PROXY` 必须含回环，否则 CLI 到本地服务的连接也会走代理。
+
+```powershell
+pwsh -NoProfile -Command '$env:HTTP_PROXY="http://127.0.0.1:<port>"; $env:HTTPS_PROXY="http://127.0.0.1:<port>"; $env:NO_PROXY="localhost,127.0.0.1,::1"; opencode run --standalone -m <providerID>/<modelID> "OK"'
+```
+
+私有服务 + `--server` 适合多个会话共用一个非默认出口：先按指定 env 启动 `opencode serve --hostname 127.0.0.1 --port <port>`，再用 `opencode run --server http://127.0.0.1:<port> …` 接入；出网由 `serve` 的 env 决定。`opencode service set disabled true` 可让 CLI 默认走私有服务而不是共享服务（`service unset disabled` 恢复），配对依赖共享服务。
+
+`opencode api get /api/info` 只证明 CLI 能连到服务，不证明出网走了代理；要确认出口，跑一次真实请求或查回显。
+
 ## 代理的其余前提
 
-- **前台进程不吃服务端 env**：`--standalone` 与 `serve` 读自身进程环境，代理要写进启动那条命令；`service set env` 只对托管的后台服务生效。
 - **代理认证**：账号密码写进代理 URL 并对 `@`、`:`、`/` 等百分号编码（如 `http://user:p%40ssword@127.0.0.1:<port>`）；网关回 `407 Proxy Authentication Required` 即属此情形。
 - **TLS 解密**：代理或杀软做 HTTPS 扫描时报 `SELF_SIGNED_CERT_IN_CHAIN`、`CERT_NOT_YET_VALID`、`CERT_SIGNATURE_FAILURE`，先把 `opencode.ai`、`*.opencode.ai` 与 provider 域名排除扫描，其次导出其 CA 为 PEM 设 `NODE_EXTRA_CA_CERTS`，随服务持久化后重启生效。
 - **撤销**：`opencode service unset env HTTPS_PROXY`（`HTTP_PROXY` 同理）。删除同样只改存储层，旧快照要等下一次服务重启才消失。

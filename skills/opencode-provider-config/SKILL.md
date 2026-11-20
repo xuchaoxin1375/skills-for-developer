@@ -1,6 +1,6 @@
 ---
 name: opencode-provider-config
-description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）或官方 API key 型端点（如 Google AI Studio）接入 OpenCode V2，或补全、审查已有模型参数：获取模型列表、核实输入输出模态与工具能力、思考等级与 variants、上下文及输出上限，写 providers 配置、选择协议、设置服务环境（含 `HTTP_PROXY`/`NO_PROXY` 服务端代理持久化与「设了代理却不生效」排查）与按授权验证。用于接入供应商与模型、配置 provider、切换 Responses/Messages、调整已有或内置模型的 capabilities/limit/reasoning、查 /v1/models 或 models.dev，或让 OpenCode 走代理、检查/设置/移除代理（`scripts/opencode_proxy.py`）、排查服务端 env 不生效；不要求重新接入或提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
+description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网关）或官方 API key 型端点（如 Google AI Studio）接入 OpenCode V2，或补全、审查已有模型参数：核实输入输出模态、工具、思考等级与 variants、上下文/输出上限，写 providers 配置、切换 Responses/Messages。用于接入供应商与模型、配置 provider、查 /v1/models 或 models.dev，或让 OpenCode 走代理、检查/设置/移除代理（`scripts/opencode_proxy.py`）、按运行模式做一次性代理覆盖（`--standalone`/`serve`/`--server`）、排查服务端 env 不生效；不要求重新接入或提供新密钥。通用 OpenCode 使用归 opencode，Codex 模型配置归 codex-model-config。
 ---
 
 # OpenCode 供应商接入与模型参数流程
@@ -216,6 +216,46 @@ opencode service start   # set env 本身也会重启服务
 
 改过模型参数时追加一步：`opencode api get /api/model` 取服务解析后的目录，只筛目标模型，核对本次变更的能力、上限、variants、settings 与 package，具体判据见[参数验收](references/model-parameters.md#验收与交付)。`opencode models` 只列 ID，不能证明参数正确；目录校验也不能证明网关实际接受这些参数。
 
+## 代理作用域与一次性覆盖
+
+OpenCode 没有配置文件级的代理字段，出网代理只认**进程环境变量**（`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`）。同一个变量对该进程内所有 provider 生效，不能按 provider 配置；要按域名分流，用 `NO_PROXY`（见 [references/service-env.md](references/service-env.md#按域名分流代理)）。默认是否走代理取决于服务进程启动时的 env：没有代理变量就直连，有就走代理；系统代理设置不会自动变成这些变量，不要以“系统代理已开”推断 opencode 已走代理。
+
+| 运行方式 | 谁发起模型请求 | 代理 env 来源 | 适用场景 |
+| --- | --- | --- | --- |
+| 默认（共享后台服务） | 后台服务进程 | 服务启动时继承的 shell env，叠加 `service set env` 持久化值 | 日常使用；持久化改动对设备上所有会话生效 |
+| `opencode --standalone` / `opencode run --standalone` | 本次新建的私有服务进程 | 当前命令/shell 的 env | 一次性验证、临时换路线；不读 `service set env`，不打扰共享服务 |
+| `opencode serve` | 该前台服务进程 | 启动 `serve` 那条命令的 env | 自建常驻私有服务 |
+| `opencode --server <URL>` | 目标服务进程 | 目标服务的 env | 接入已按指定 env 启动的服务；CLI 侧 env 不决定出网 |
+
+- **必须**：`--standalone` 与 `serve` 读自身进程环境，`service set env` 只对托管的后台服务生效；反过来，服务端 env 也不会进入 `--standalone` 进程。临时验证要什么路线，就在启动那条命令里设对应 env。
+- **必须**：`--server` 只改 CLI 连接的目标，出网仍由目标服务的 env 决定；要换出口就重启那个服务并改它的 env，改 CLI 的 env 无效。
+- **必须**：CLI 与服务之间走本机回环；CLI 侧设了代理变量时，`NO_PROXY` 必须含 `localhost,127.0.0.1,::1`，否则本地连接也被送进代理。
+- `opencode service set disabled true` 可让 CLI 命令默认使用私有服务而不是共享服务（`service unset disabled` 恢复）；配对依赖共享服务，禁用期间不可用。
+- 排查私有服务时加 `--print-logs`（服务日志需要 `--standalone`），日志里能看到实际使用的 `run=` 与请求。
+
+**一次性不走代理**（目标域名直连可达，或要绕开当前服务端代理）：
+
+```powershell
+pwsh -NoProfile -Command 'Remove-Item Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:ALL_PROXY -ErrorAction SilentlyContinue; opencode run --standalone -m <provider>/<model> "OK"'
+```
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+  opencode run --standalone -m <provider>/<model> "OK"
+```
+
+也可以不清变量，只把目标域名加进该进程的 `NO_PROXY`；`NO_PROXY` 必须逗号分隔并保留回环。
+
+**一次性走代理**（共享服务是直连，或要换一条出口）：
+
+```powershell
+pwsh -NoProfile -Command '$env:HTTP_PROXY="http://127.0.0.1:<port>"; $env:HTTPS_PROXY="http://127.0.0.1:<port>"; $env:NO_PROXY="localhost,127.0.0.1,::1"; opencode run --standalone -m <provider>/<model> "OK"'
+```
+
+多个会话共用一个私有出口时，用 `serve` + `--server` 固定服务端 env：`HTTPS_PROXY=… NO_PROXY=… opencode serve --hostname 127.0.0.1 --port <port>`，再 `opencode run --server http://127.0.0.1:<port> …`。PowerShell 下改用 `$env:` 赋值后再启动 `serve`。
+
+设置成功不等于走了代理：`opencode api get /api/info` 只证明 CLI 能连到服务；要确认出口，跑一次真实请求，或用回显服务核对该进程的实际出口。
+
 ## OpenCode 官方套餐（opencode / opencode-go）
 
 - 官方免费与 Go 订阅是现成 provider：凭据由 `/connect`（TUI）或 `opencode auth login` 保存到**服务端 SQLite**（路径用 `opencode debug paths db` 查；`~/.local/share/opencode/auth.json` 只在 V2 迁移时导入一次，之后改它无效），管理用 `opencode auth list/export/switch/logout`。模型引用 `opencode/<id>`、`opencode-go/<id>`；opencode.ai 不放行 `NO_PROXY` 即自动走服务端代理。
@@ -253,6 +293,8 @@ Google AI Studio 的 key 走内置 `google` provider，不需要在 `opencode.js
 - [ ] 本地直连不通时代理已持久化到服务端，不是只在当前 shell export。
 - [ ] 代理变量名拼写已核对（`HTTP(S)_PROXY`/`ALL_PROXY`/`NO_PROXY`），没有 `HPPTS_PROXY` 一类笔误；`opencode_proxy.py status` 通过或已说明未核验原因。
 - [ ] `NO_PROXY` 为逗号分隔、含回环；多入口分流时直连域名已加入，代理端口来自实测或用户告知。
+- [ ] 一次性/私有进程的代理来自其自身 env（`--standalone`/`serve`/`--server` 的目标服务），未用 `service set env` 推断；临时不走代理的进程已在子 shell 里清掉代理变量，未改动共享服务。
+- [ ] `--server` 已确认目标服务的 env，未用 CLI 侧 env 判断出口；设了代理的 CLI/服务，`NO_PROXY` 含回环。
 - [ ] 改服务级 env 前已 `get env` 抄下既有值，代理变量只增合并不覆盖。
 - [ ] `env` 变量名与 `providerID` 未占用既有名称；同名不同值已换名。
 - [ ] 同域名多把 key 时已各自拉 `/v1/models` 比对分组，模型组不同时新增 provider 用独立 `env` 名，未覆盖既有 key。

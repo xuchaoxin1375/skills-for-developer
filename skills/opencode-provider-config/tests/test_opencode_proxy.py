@@ -116,6 +116,13 @@ def test_evaluate_notes_direct_connection():
     assert any("走直连" in item for item in notes)
 
 
+def test_evaluate_notes_unknown_live_is_not_claimed_direct():
+    problems, notes = proxy.evaluate({}, None, "Windows 无受支持方式读取其他进程的环境变量")
+    assert problems == []
+    assert any("未核验" in item for item in notes)
+    assert not any("当前走直连" in item for item in notes)
+
+
 def test_load_service_parses_string_form():
     path = temp_service("{'HTTPS_PROXY': 'http://127.0.0.1:10808'}")
     data, env, fmt = proxy.load_service(path)
