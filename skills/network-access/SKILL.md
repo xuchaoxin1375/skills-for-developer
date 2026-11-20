@@ -22,10 +22,11 @@ description: >
 
 ## 本机网络与镜像体检
 
-部署新机、换网络、确认 pip/npm/conda 实际走哪个源，或“装得慢、不确定有没有走镜像”时，先跑一次只读报告：
+部署新机、换网络、确认 pip/npm/conda 实际走哪个源，或“装得慢、不确定有没有走镜像”时，先跑一次只读报告（`<skill>` 指本 skill 目录，按实际路径替换）：
 
 ```bash
 python -X utf8 <skill>/scripts/check_network_env.py
+python -X utf8 <skill>/scripts/check_network_env.py --only route   # 只看代理与登记
 python -X utf8 <skill>/scripts/check_network_env.py --json --project .
 python -X utf8 <skill>/scripts/check_network_env.py --probe
 ```
@@ -33,7 +34,7 @@ python -X utf8 <skill>/scripts/check_network_env.py --probe
 报告覆盖环境变量与**系统代理**（Windows Internet Settings、macOS `scutil --proxy`、Linux `gsettings`（GNOME））、Git `insteadOf`、pip/uv、npm/pnpm/yarn/corepack、conda、Playwright 制品变量、项目 `.npmrc`/uv 配置与锁文件下载主机。默认不联网；`--probe` 只对实际生效的 GitHub、npm registry、PyPI 索引各做一次有界请求，不重试。
 
 - 配置回答“本机设置成了什么”，不证明“目标包现在可用”；镜像与文件仍需按目标包和版本实测。
-- **系统代理不等于终端代理**：系统代理只影响遵循系统设置的应用；终端和多数 CLI 只看环境变量，TUN 才接管未设变量的流量。报告会同时给出两者，任一为空都不代表另一层没开。
+- **系统代理不等于终端代理**：系统代理只影响遵循系统设置的应用；curl/Git/npm 通常只看环境变量，Python urllib（pip/requests 的基础）在 Windows/macOS 还会读系统设置。不要用一个工具的结果推断另一个；报告会分列环境变量与系统代理，任一为空都不代表另一层没开。
 - **Windows 有两套系统代理**：Internet Settings 供 WinINET/浏览器，WinHTTP 供部分服务；脚本读前者，服务走 WinHTTP 时用 `netsh winhttp show proxy` 另查。
 - `--json` 里 `route.env` 是环境变量，`route.system` 是系统代理；以后者看 `enabled` 判断是否开启，`configuredServer` 只表示注册表里曾配置过。
 - 代理登记只作线索；入口可用性用 `scripts/probe_local_proxies.py`，多实例看 `--json` 的 `instances[]`（按 PID 归组），本脚本不扫描端口。
@@ -51,6 +52,36 @@ python -X utf8 <skill>/scripts/check_network_env.py --probe
 4. **客户端层（默认只读）**：`inspect_mihomo.py --list-instances` 先枚举实例，再按 `--config`/`--controller` 查 profile、节点池与分组；`--delay` 才测速。
 5. **出口层**：经目标入口请求一次回显服务，确认出口与直连不同；`egressMatchesDirect: true` 说明该入口可能没真正生效。
 
+日常最小：第 1 步看系统代理/环境变量，第 3 步确认入口；多实例再加第 4 步；只有出口异常才做第 5 步。
+
+```powershell
+# 只让当前终端临时走代理；不要用 setx 写全局
+$env:HTTP_PROXY = "http://127.0.0.1:<port>"
+$env:HTTPS_PROXY = "http://127.0.0.1:<port>"
+
+# 看 Python/pip 层实际读取的代理（Windows/macOS 会合并系统设置与环境变量）
+python -X utf8 -c "import urllib.request; print(urllib.request.getproxies())"
+
+# 看 curl 层实际路线；Windows 用 curl.exe，Linux/macOS 用 curl
+curl.exe -v --max-time 10 https://www.cloudflare.com/cdn-cgi/trace
+
+# 看 Git 对目标 URL 生效的代理；没有输出通常是未配置
+git config --get-urlmatch http.proxy https://github.com
+```
+
+`getproxies()` 只说明 Python 层的映射；要证明 pip 实际请求走代理，用 `python -m pip index versions <包> -v` 看连接日志（会出网）。Git 用 `GIT_TRACE=1 git ls-remote <url>` 看实际请求。
+
+报告里的“代理与登记”段大致如下（端口与登记项随机器变化）：
+
+```text
+[代理与登记]
+  环境变量: 未设置 HTTP(S)_PROXY/ALL_PROXY/NO_PROXY
+  系统代理: 关闭（已配置 127.0.0.1:<port>，但未启用）
+  登记: ~/.config/proxy-resources.json（default <name>，条目 <n>）
+```
+
+`--probe` 只代表本脚本（Python urllib）的路线，不代表 curl/Git/npm/pip；每层用上面的命令各自核验。
+
 常见误判：只看环境变量一行，系统代理开启时仍会以为没有代理；反过来只设环境变量时，新终端和 GUI 应用仍直连。报告会分列环境变量与系统代理，结论要写明是哪一层在生效。`--probe` 在 Windows/macOS 可能继承系统代理；Linux 的 gsettings 不会自动进入本脚本探测，需要时用 `--proxy` 指定。
 
 ### 代理客户端体检
@@ -60,14 +91,15 @@ python -X utf8 <skill>/scripts/check_network_env.py --probe
 ```bash
 python -X utf8 <skill>/scripts/inspect_mihomo.py --list-instances
 python -X utf8 <skill>/scripts/inspect_mihomo.py
-python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
+# 多实例时对每个实例分别执行；--config/--controller 取自同一条 --list-instances 行
+python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY --config <runtime> --controller <host:port>
 ```
 
 默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。
 
 - **定位**：优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，只覆盖已知客户端目录，零个候选或传 `--process` 时才查进程，`--process` 可强制先查。
 - **多实例**：默认报告只覆盖一个实例，发现多个代理相关进程时会在 stderr 提示；先用 `--list-instances` 枚举 PID、`-d`/`-f`、mixed-port、external-controller、listeners 与策略，再逐个用 `--config`/`--controller` 检查。
-- **覆盖范围**：`--list-instances` 只覆盖 Clash 兼容控制 API；v2ray/xray、sing-box 等先用 `probe_local_proxies.py` 看入口，配置体检暂无等价能力。
+- **覆盖范围**：`--list-instances` 只覆盖 mihomo/Clash 系客户端；v2ray/xray、sing-box 等先用 `probe_local_proxies.py` 看入口，配置体检暂无等价能力。
 - **订阅与规则集**：报告给出更新周期、缓存路径与新鲜度，不触发下载；节点数和订阅对不上时用 `--compare-subscriptions` 对比当前响应（会计入订阅流量）。
 - **边界**：判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)；启动/停止与 `--verify` 健康门禁由实例管理脚本负责（如 learnProxy 的 `mihomo_instance.py`）；入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
 

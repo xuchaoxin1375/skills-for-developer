@@ -32,7 +32,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --list-instances
 python -X utf8 <skill>/scripts/inspect_mihomo.py --list-instances --json
 ```
 
-`--list-instances` 只读本地文件与进程，不查 API；输出每个实例的 PID、客户端、`-d`、运行时配置、mixed-port、controller、listeners 与配置里出现的 `strategy`。PID 为 `-` 表示只扫到配置、没有定位到进程；`--json` 的 `instances[]` 保留同样字段。完整检查再对每个实例执行：
+`--list-instances` 只读本地文件与进程，不查 API；输出每个实例的 PID、客户端、`-d`、运行时配置、mixed-port、controller、listeners 与配置里出现的 `strategy`。PID 为 `-` 表示只扫到配置、没有定位到进程；`--json` 的 `instances[]` 保留同样字段。完整检查再对每个实例执行（`--config` 与 `--controller` 取自同一行；控制口 secret 不匹配报 401 时加 `--secret`）：
 
 ```bash
 python -X utf8 <skill>/scripts/inspect_mihomo.py --config <runtime> --controller <host:port>
@@ -41,11 +41,14 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --config <runtime> --controller
 示例（PID、端口与实例名随机器变化）：
 
 ```text
-| PID   | 客户端            | mixed | controller        | listeners                         | 策略               |
-| ----- | ----------------- | ----- | ----------------- | --------------------------------- | ------------------ |
-| <pid> | Clash Verge Rev   | <mixed> | 127.0.0.1:<controller> | -                            | -                  |
-| <pid> | mihomo (standalone) | <mixed> | 127.0.0.1:<controller> | crawler-all:<port> … 共 12 个   | consistent-hashing |
+| PID   | 客户端              | 工作目录 (-d) | mixed   | controller            | listeners                       | 策略               | 配置 (-f)   |
+| ----- | ------------------- | ------------- | ------- | --------------------- | ------------------------------- | ------------------ | ----------- |
+| <pid> | Clash Verge Rev     | `<home>`      | <mixed> | 127.0.0.1:<controller> | -                               | -                  | `<runtime>` |
+| <pid> | mihomo (standalone) | `<home>`      | <mixed> | 127.0.0.1:<controller> | crawler-all:<port> … 共 12 个   | consistent-hashing | `<runtime>` |
 ```
+
+- `listeners` 只显示前 3 个，完整列表看 `--json` 的 `instances[].listeners` 或直接读配置。
+- `策略` 是配置里出现的 `strategy` 值，不是控制 API 当前选中的分组或链路；当前选中以完整报告的 `/proxies` `now` 为准。
 
 - 没有实例管理脚本时，按进程命令行里的 `-d`/`-f` 枚举；Windows 用 `Get-CimInstance Win32_Process`，Linux 读 `/proc`，macOS 用 `ps`。
 
@@ -100,6 +103,17 @@ ps -eo pid,comm,args | grep -Ei 'mihomo|clash' | grep -v grep
 - **历史不等于当下**：`history` 里的 0 或 `alive: false` 是上次结果，报告要注明"需复测"，不能直接写成"节点已死"。
 - **provider 新旧**：对比 `updatedAt` 与配置里的 `interval`；订阅过期看 `subscriptionInfo.Expire`，用量看 `Upload + Download`。空 `file` provider 会让引用它的分组退化成空组。
 - **节点可能只在一个端点里**：新版内核的 provider 节点只出现在 `/providers/proxies`，`/proxies` 只给分组与内置项；旧版两边都有。读节点池要合并两个来源，否则会把整池节点报成只剩分组。
+
+## 健康判定（只读）
+
+一次只读体检至少回答四件事：
+
+- 控制 API 可达，`/version` 正常；
+- `/providers/proxies` 中实际使用的 provider 非空，节点数 > 0；
+- 默认链路不是 `DIRECT`/`REJECT`，主选择组不是空组；
+- 未加 `--delay` 时，延迟与 `alive` 只写“未复测”，不写“节点已死”。
+
+需要“实例进程是否在跑、控制 API 是否健康”的门禁时，用实例管理脚本的 `--verify`（如 learnProxy 的 `mihomo_instance.py`）；本 skill 不启动或停止进程。
 
 ## 订阅、规则集与缓存
 
