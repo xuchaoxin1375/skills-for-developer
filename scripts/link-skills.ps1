@@ -399,13 +399,13 @@ function Get-RecommendedSkills {
 
 function Get-SkillCommandName([string]$Skill) {
   # 有 CLI 入口的 skill 在此登记命令名；无命令入口返回空
-  switch ($Skill) { 'htmlmini' { return 'htmlmini' } }
+  switch ($Skill) { 'htmlmini' { return 'htmlmini' } 'opencode-session-data' { return 'session-search' } }
   return ''
 }
 
 function Get-SkillCommandEntry([string]$Skill) {
   # 命令包装的入口脚本绝对路径；无则返回空
-  switch ($Skill) { 'htmlmini' { return (Join-Path $skillsDir 'htmlmini\src\cli.js') } }
+  switch ($Skill) { 'htmlmini' { return (Join-Path $skillsDir 'htmlmini\src\cli.js') } 'opencode-session-data' { return (Join-Path $skillsDir 'opencode-session-data\scripts\session-search.js') } }
   return ''
 }
 

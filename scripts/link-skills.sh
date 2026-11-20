@@ -432,6 +432,7 @@ skill_command_name() {
   # 有 CLI 入口的 skill 在此登记命令名；无命令入口输出空
   case "$1" in
   htmlmini) echo "htmlmini" ;;
+  opencode-session-data) echo "session-search" ;;
   esac
 }
 
@@ -439,6 +440,7 @@ skill_command_entry() {
   # 命令包装的入口脚本绝对路径；无则输出空
   case "$1" in
   htmlmini) echo "$SKILLS_DIR/htmlmini/src/cli.js" ;;
+  opencode-session-data) echo "$SKILLS_DIR/opencode-session-data/scripts/session-search.js" ;;
   esac
 }
 

@@ -11,3 +11,4 @@
 # 每行一个 skill 名，`#` 开头为注释。新增需依赖的 skill 时把名字加进来，
 # 并在链接脚本的命令安装分支补对应入口；校验脚本会检查名单与真源是否一致。
 htmlmini
+opencode-session-data
