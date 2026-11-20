@@ -31,7 +31,8 @@
 | shop.fooddepot.com／afsupermarket.com | 裸 403；US 代理 200；SPA／API；sitemap 19,287 | 列表 API 100／页、total 19,129；描述在 `/details` | 192 个列表请求约 47MB 取基础字段；详情只补描述；sitemap／API 差异留档 |
 | partsfornissans.com | CF；Scrapling 75–88s／页、chrome-late 约 40s | JSON-LD 基础字段；描述按 section | 同站会话复用 3 页；只取需要页；不逐页重开浏览器 |
 | repairtoolparts.com | HTML `/site-map` 558 型号；分类高扇出 | 30 页 JSON-LD；11 个 `none.jpg`、4 个零价／无 Offer、9 个停售 | 静态解析；30 样本；状态／占位图单独记录 |
-| campsaver.com／roco.cc | 挑战页／403；campsaver 有头首次 200、随后 `PRESS & HOLD` | 默认无头栈未取得商品；有头会话需低速率复用 | 分类后停止；复核先有头／会话复用，默认 5 次目标请求／3 分钟，不重复跑 headless 矩阵 |
+| campsaver.com | 挑战页；有头晚接入可放行；`PRESS & HOLD` | 商品页 741KB；Product JSON-LD 1–8 个 offer、USD 24.89–549.95、30 个描述完整、22 个有 differential 选项、6 个 BackOrder；30／30 商品页 `content` | 有头 `chrome-late`；32 次目标请求；pilot 批 3／10／10／7，推荐 3–5；真实标题 + Product JSON-LD 即读，不等图片／networkidle；不重复 headless |
+| roco.cc | 挑战页／403 | 未取得内容 | 分类后停止，不反复重试或换引擎 |
 | PrestaShop（familidoo.fr） | 首页 167KB／2.16s，6 个 `.html` 商品链接；商品页 232KB／1.38s | 0 JSON-LD；`39,00 € TTC`、En stock、`#description`、og:image | 静态、无浏览器；价格按 locale |
 | PrestaShop 颜色变体（familidoo.fr） | Noire／Bleue／Grise／Rouge 各自商品 URL；均自指 canonical、无 selects | 4 页均 89,00 €、En stock；SKU `H1E-*`、GTIN13 各异；描述仅颜色词不同（Grise 误写 Black） | 按型号＋颜色归并为 1 个商品／4 变体；SKU 级导出保留 4 行；颜色以标题／SKU／GTIN 为准 |
 | 自定义 object-path（scheufele-modellbau.de） | 首页 149KB／2.28s，36 个 ObjectPath 商品链接 | 直接 GET 商品 URL 返回首页，无商品标记 | 需要会话／JS；记录导航边界 |
