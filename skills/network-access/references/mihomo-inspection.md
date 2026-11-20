@@ -7,6 +7,7 @@
 - 需要核对 profile 与订阅状态、节点与分组、当前链路、失效节点时读本页。
 - 只读：脚本只用 GET 与本地延迟探测，不发 `PUT /proxies/{name}`、不 `PATCH /configs`、不写登记文件。
 - 多实例按进程分别检查；默认单实例报告不代表整机。`--list-instances` 只枚举本地实例信息，不查 API。
+- 多实例的生成与启动（模板、端口 band、实例管理）不在本页；可参考公开的 [learnProxy](https://github.com/xuchaoxin1375/learnProxy)。本页只检查已存在的实例，不依赖它。
 - 不做逐节点真实出口核验：那需要切换节点（写操作，会改变当前代理行为），单次任务要另行取得授权并约定切回策略。
 - 只覆盖 Clash 兼容控制 API（mihomo、Clash Verge Rev、mihomo-party、FlClash 等）；sing-box、xray 的本地接口不同，不套用本流程。
 
