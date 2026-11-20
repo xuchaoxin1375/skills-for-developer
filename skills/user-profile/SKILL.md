@@ -23,7 +23,7 @@ description: >
 - **配置代办**：用户明确授权后，可代查官方文档、给出配置步骤，或代注册免费账号/创建 API key；不代付、不绕过验证码或服务条款、不复制本机凭据到其他设备或仓库，保存前确认位置与权限。细节按 `harness-web-check`。
 - **回复语言**：默认中文回复；用户改用其他语言、引用原文或明确要求外语时跟随。代码、命令、路径与专有名词保持原样，不翻译。
 - **Windows shell**：优先 PowerShell，其次 git-bash，cmd.exe 仅作最后回退；带逻辑的 Windows 片段用 PowerShell，启动与执行细节按 `shell-pitfalls`。
-- **Git 远程访问**：默认优先 HTTPS URL（`https://...`）；SSH 仍是候选，在 HTTPS 不通、受限或用户明确要求时可用，不把 SSH 视为禁用。切换前说明所选通道与原因。
+- **Git 远程访问**：默认优先 HTTPS URL（`https://...`）；SSH 仍是候选，在 HTTPS 不通、受限或用户明确要求时可用，不把 SSH 视为禁用。GitHub 加速镜像（如 `gh-proxy.com`）只读，仅用于 clone/fetch 与文件下载；推送与凭据走原站，不为镜像配置 `credential` 或 `pushurl`。切换前说明所选通道与原因。
 - **远程仓库与凭据**：受托创建 GitHub/Gitee 仓库时，先检查常见环境变量（`GITHUB_TOKEN`、`GH_TOKEN`、`GITEE_TOKEN`、`GITEE_ACCESS_TOKEN` 等）、`gh` 登录态和 credential manager，并用只读 API 验证是否可用；变量存在不等于有效，不回显 token。细节按 `repo-gov` 的“远程仓库创建与凭据发现”。
 - **路径**：优先使用 `/`；Windows 特殊路径和目标工具兼容性例外见 [路径分隔符](../shell-pitfalls/references/files-and-invocation.md#路径分隔符优先用-)。
 - **自建工具版本**：脚本/小工具采用本地日期时间 `YYYY.MM.DD.HHmm`，不手搓语义化版本；唯一真源在 `package.json` 的 `version`，其余位置运行时读取，并提供重打入口(如 `pnpm stamp`)。四段号仅用于本地 link/安装，不发布到只接受三段 semver 的 npm registry。
