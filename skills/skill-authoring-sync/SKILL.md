@@ -94,7 +94,7 @@ skills-for-developer/
    `skill_command_entry`，ps1 的 `Get-SkillCommandName` /
    `Get-SkillCommandEntry`）；部署时会自动推荐安装依赖、默认装成命令。
    部署结束时链接脚本还会检测推荐工具 git、ripgrep、fd、Playwright、Scrapling 是否可用，缺失只提示安装命令（推荐项，不阻断）。
-5. **验证同步**：链接脚本全量 `-VerifyOnly` 通过；skill 在 harness 可见/可加载。
+5. **验证同步**：链接脚本全量 `-VerifyOnly` 通过；skill 在 harness 可见/可加载；按[命中后可用性复核](references/usability-review.md)用一条真实任务走通入口、命令与完成标准。
 6. **跨机器**：`git push` 推实体；其他机器 `pull` 后跑一遍自己平台的链接脚本。
    **不要把链接本体提交到 git**。
 
@@ -104,6 +104,7 @@ skills-for-developer/
 跨机器用 `git push/pull` 同步。改后同步更新 `README.md` 检索表（如语义变化）。
 触发描述改动按 [触发评测](references/trigger-eval.md) 跑最小对照，并同步 description 与 README 行。
 
+- 推荐：正文改动影响命令、默认行为或完成标准时，按[命中后可用性复核](references/usability-review.md)做一次自审；中大型改动再用独立子代理跑第二轮。触发命中仍以 `trigger-eval.md` 为准。
 - 推荐：触发不准（该加载没加载、或误加载）时，按[触发描述维护](../../docs/skill-authoring-workflow.md#触发描述维护推荐)做一次改前/改后最小对照，再同时改 `description` 与检索表；不靠改正文规则代偿触发。
 - 必须：用户提及 skill 变更/改动时，先定位真源再查改动：在真源内用 `git status --short`、`git log --oneline -N`、`git diff` 核对实体改动，不得以 harness 侧目录时间判定。例：查近期改动先跑状态与差异，再按名加载对应正文。
 - 必须：`skills/user-profile/` 只在用户明确要求改它时才动。规则归属按全局 `AGENTS.md` 的“会话入口与规则归属”：跨任务协作与授权留在全局，个人高频默认在 `user-profile`，领域机制在对应自定义 skill；引用替代副本，不将无法分类的长期偏好一概堆进任一入口。第三方 skill 由调用方编排，不改其正文承载本仓库规则。
@@ -242,7 +243,7 @@ ZCode 全局 `AGENTS.md` 不保存副本：`~/.zcode` 存在时，部署脚本�
    Linux：`./scripts/link-skills.sh --verify-only` 全量通过。
 2. 仓库侧：`python scripts/check-skills.py --no-harness --strict` 与 `python scripts/check-links.py` 通过。
 3. 新 skill 在 harness 中可见/可加载（出现在可用 skill 列表即算通过；dsh 差异见 `references/dsh-skills.md`）。
-4. 抽查正文：描述的触发条件在对应请求下能命中加载，含 skill 变更/查变更触发。
+4. 抽查正文：描述的触发条件在对应请求下能命中加载，含 skill 变更/查变更触发；命中后按[命中后可用性复核](references/usability-review.md)检查可执行性与人类可读性。
 5. `git status` 确认无链接本体被误暂存；涉及跨机器同步时，按「跨机器同步与对齐判定」核对远端，不以 `git status -sb` 代替。
 6. 查变更请求已在真源用 `git status`/`log`/`diff` 核对，未用 harness 时间判定。
 7. 涉及第三方名单时，`python -X utf8 scripts/third-party-skills.py verify` 通过；

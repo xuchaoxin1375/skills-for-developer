@@ -61,7 +61,7 @@ description: >
 3. 有条件且需要时做隔离的真实代理执行或新旧对照；没有做则如实说明。独立评估按环境授权执行，不由本 skill 自动创建子代理。
 4. 改动后核对最终文件与证据版本；真源分发走治理流程，过程产物不放 `skills/`，提交与推送不从“创建 skill”推定授权。
 
-场景与评估方式见 [验证场景](references/validation-cases.md)。不要求每次提炼都跑昂贵基准，也不能把桌面推演写成模型能力提升率。
+场景与评估方式见 [验证场景](references/validation-cases.md)。命中后的可执行性与人类可读性按 [命中后可用性复核](../skill-authoring-sync/references/usability-review.md) 检查；触发是否命中按 [触发评测](../skill-authoring-sync/references/trigger-eval.md)。不要求每次提炼都跑昂贵基准，也不能把桌面推演写成模型能力提升率。
 
 交付聚焦目标能力、实际变更、已执行验证与限制。用户要求比较时，在回复或指定报告中说明来源优点和关键取舍，不默认附入skill。仅分析时给建议，不套“已实施”；执行时给可定位文件与证据，不用“应该可用”代替结果。
 
