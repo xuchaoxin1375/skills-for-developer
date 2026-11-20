@@ -174,7 +174,7 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 逐字段核对：
 
 - **名称**：唯一商品标题，清理站点名和无关分隔符；不把店铺口号当名称。
-- **价格**：当前主商品最低公开展示价，包含缺货有价变体；排除划线原价、分期、运费、附加服务差价和推荐商品。零价、无价不进入有效商品集；保留网址和原因，不把 `$0.00` 当价格。变体商品的单个零价变体不等于整品零价，取有价变体的最低正价；全部变体零价／无价才排除或标 quote-only。按件、按重量或按长度计价时保留计价单位与单位价（如 `each`、`per lb`），不把每磅价当包装价；多门店／多市场时价格绑定对应门店／市场。阶梯价／批发价取公开最低适用价并记录数量门槛；询价／报价单（quote-only）不进入正价商品集。
+- **价格**：当前主商品最低公开展示价，包含缺货有价变体；排除划线原价、分期、运费、附加服务差价和推荐商品。零价、无价不进入有效商品集；保留网址和原因，不把 `$0.00` 当价格。变体商品的单个零价变体不等于整品零价，取有价变体的最低正价；全部变体零价／无价才排除或标 quote-only。按件、按重量或按长度计价时保留计价单位与单位价（如 `each`、`per lb`）；单位文案可能带尺寸或包装（如 `per 12oz. bag`），按可见原文保留，不把包装价归并成 `per lb`，也不乘包装重量。多门店／多市场时价格绑定对应门店／市场。阶梯价／批发价取公开最低适用价并记录数量门槛；询价／报价单（quote-only）不进入正价商品集。
 - **币种**：与同一报价绑定；货币符号、域名或地区不能单独证明币种。多市场店同一商品可能不同价格／币种；先定市场，价格／币种绑定市场，不跨市场取最低价或仅按汇率换算；`?country=`／市场路径可能只改国家或币种，需与 `Shopify.currency`／`og:price:currency` 交叉核对。
 - **价格单位**：接口／平台可能用分或十进制（Shopify `.js` 常为分，WooCommerce `display_price`、Magento `optionPrices` 常为十进制）；记录前换算并核对，不把分当元。
 - **价格格式**：随 locale 变化（如 `39,00 € TTC`、`206,90 €`）；不要用 `$` 专用正则跨站复用。优先 `product:price:amount`／`itemprop="price"`，否则锚定主价格容器；区分现价与划线价。BigCommerce 的 Product JSON-LD 价格可能在 `offers.price`，也可能在 `offers.priceSpecification.price`；只读 `offers.price` 会漏价。Shopify `products.json` 的价格可能随出口／市场参数本地化，先固定市场（如 `?country=US`），再用商品页同报价的 `priceCurrency`／`price` 抽检。
@@ -257,7 +257,7 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 | Shopify | sitemap、商品页、公开商品 JSON（`/products.json` 的 `page`／`limit`）、`Shopify.currency` | 多市场／多币种、价格单位（分）、公开接口限流、隐藏／捆绑商品、变体价在 `variants`；公开 JSON 价格可能随出口／`?country=` 本地化，先固定市场并用商品页币种抽检；可能重复 Product JSON-LD（主题块 vs 富摘要 app 块），AggregateOffer 可能无 availability；完整描述看 `span.description`／JSON-LD，宽泛 `.rte` 可能只取 intro |
 | WooCommerce | 分类、分页、Product 结构化数据、`data-product_variations` | 主题和插件改写页面与目录；变体价格常为十进制；父级 JSON-LD availability 可能不反映变体 |
 | PrestaShop | 分类／商品 `.html`、`product:price:amount`／`itemprop="price"`、`#description`、`meta itemprop="GTIN13"` | 常无 JSON-LD；价格按 locale；颜色变体可能是独立商品 URL，可能各自自指 canonical、无 selects；按型号＋颜色、SKU／GTIN 归并；描述颜色词可能有误 |
-| Magento／Adobe Commerce | 分类网格、规范链接、sitemap、swatch 的 `jsonConfig`、dropdown 的 `super_attribute`／`spConfig` | 前后端形状不同，不猜认证接口；`salable` 可能为空；价格常为十进制 |
+| Magento／Adobe Commerce | 分类网格、规范链接、sitemap、swatch 的 `jsonConfig`、dropdown 的 `super_attribute`／`spConfig` | 前后端形状不同，不猜认证接口；`salable` 可能为空；价格常为十进制；商品页描述常拆成 `.product.attribute.overview`（营销）与 `.product.attribute.description`（单位／短说明），按 DOM 顺序合并，短块被更长块包含时去重 |
 | BigCommerce | 分类卡片、规范链接、sitemap、商品页 Product JSON-LD、`og:availability` | 价格可能在 `offers.price` 或 `offers.priceSpecification.price`；描述可能只在 DOM；缺货源码仍可能有价和加购表单；部分接口需要认证 |
 | Shopware／Salesforce Commerce Cloud | 商品列表、公开搜索／分类、分页 | 区域、会话和主题差异 |
 | 多卖家 marketplace（Reverb 等） | 商品页 `/p/...`、item `/item/...`、`AggregateOffer`、price guide | 商品／offer 混算；历史价当现价；推荐卡价格误当主价；运费按地区变化 |
