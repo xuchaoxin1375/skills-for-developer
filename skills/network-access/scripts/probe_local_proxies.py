@@ -6,12 +6,15 @@
     2. 取这些进程**实际监听的端口**（不是猜常见端口表），逐个做一次有界探测：
        先 TCP 探活，再按协议试一次（登记声明的协议优先，另一个随后），取回目标并读出口回显。
     3. 另外把登记文件 ~/.config/proxy-resources.json 里的端口与 --port 指定的端口一并探。
+    4. 候选保留 PID 与进程名；--json 的 instances[] 按 PID 归组，便于区分多实例。
     谁先出结果谁先打，不等整轮。
 
 不做什么
     - 不猜端口、不扫端口段：候选只来自「进程名匹配到的监听端口」＋「登记」＋「--port」。
     - 不断言"没有代理"：进程与端口两张表有共同盲区——代理跑在 WSL/虚拟机/容器里时，
       宿主看不到该进程也看不到监听条目；TUN/透明路由同样不进表。**超时太久一律记 unknown。**
+    - 不把排序第一当任务默认：多实例/多地区入口要按 PID 归组与任务策略选择；
+      出口与直连相同的入口只作线索，不作为默认出口。
 
 用法
     python -X utf8 scripts/probe_local_proxies.py                    # 默认 5 秒预算
@@ -19,7 +22,8 @@
     python -X utf8 scripts/probe_local_proxies.py --only-match xray  # 只用自定义正则，忽略内置家族表
     python -X utf8 scripts/probe_local_proxies.py --port 7890        # 补一个宿主看不到进程的端口
     python -X utf8 scripts/probe_local_proxies.py --budget 20 --timeout 6   # 要排干净时放宽
-    python -X utf8 scripts/probe_local_proxies.py --copy             # 给出可直接粘贴的代理环境变量行
+    python -X utf8 scripts/probe_local_proxies.py --copy             # 首选入口的代理环境变量行
+    python -X utf8 scripts/probe_local_proxies.py --copy-all         # 所有可用入口都给出环境变量行
     python -X utf8 scripts/probe_local_proxies.py --watch 30         # 常驻重扫，只报可用端口的增删
     python -X utf8 scripts/probe_local_proxies.py --json             # 机器可读；进度走 stderr
 
@@ -320,6 +324,7 @@ def verdict_of(entry, protocols):
 
 
 def load_registry():
+    """读登记里的扁平入口与实例 mixed 入口；instances 只取 mixed，不展开 listeners。"""
     try:
         data = json.loads(REGISTRY.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -329,26 +334,53 @@ def load_registry():
         u = urlsplit(str(e.get("url", "")))
         if u.hostname and u.port:
             out.append({"host": u.hostname, "port": u.port, "scheme": u.scheme, "name": e.get("name", "?")})
+    for inst in data.get("instances") or []:
+        if not isinstance(inst, dict):
+            continue
+        u = urlsplit(str(inst.get("mixed", "")))
+        if u.hostname and u.port:
+            name = f"{inst.get('name', '?')}:mixed"
+            out.append({"host": u.hostname, "port": u.port, "scheme": u.scheme, "name": name})
     return out
 
 
+def normalize_loopback(host):
+    """通配监听地址归一成可连接地址；保留 ::1，避免只监听 IPv6 的入口被误判。"""
+    if host in ("0.0.0.0", "::", "[::]"):
+        return "127.0.0.1"
+    if host in ("::1", "[::1]"):
+        return "::1"
+    return host
+
+
 def build_candidates(args, registry, procs_hits, listening):
-    """候选 = 命中进程实际监听的端口 ∪ 登记条目 ∪ --port。不猜端口、不扫端口段。"""
+    """候选 = 命中进程实际监听的端口 ∪ 登记条目 ∪ --port。不猜端口、不扫端口段。
+
+    每个候选保留 PID 与进程名：同一进程的 mixed-port、listeners、控制器都在同一张
+    监听表里，只给进程名无法区分多个实例。
+    """
     cand = {}
 
-    def add(host, port, source, scheme=None):
-        host = "127.0.0.1" if host in LOOPBACK_HOSTS else host
-        it = cand.setdefault((host, port), {"host": host, "port": port, "sources": [], "scheme": None})
+    def add(host, port, source, scheme=None, pid=None, process=None):
+        host = normalize_loopback(host)
+        it = cand.setdefault(
+            (host, port),
+            {"host": host, "port": port, "sources": [], "scheme": None, "pids": [], "processes": []},
+        )
         if source and source not in it["sources"]:
             it["sources"].append(source)
         if scheme in ("http", "socks5") and not it["scheme"]:
             it["scheme"] = scheme
+        if pid and pid not in it["pids"]:
+            it["pids"].append(pid)
+        if process and process not in it["processes"]:
+            it["processes"].append(process)
 
     # 1) 进程名匹配到的进程 → 它自己监听的端口
     proc_names = {pid: name for _, pid, name in procs_hits}
     for host, port, pid in listening:
         if pid and pid in proc_names:
-            add(host, port, f"proc:{proc_names[pid]}")
+            add(host, port, f"proc:{proc_names[pid]}", pid=pid, process=proc_names[pid])
     # 2) 登记条目（宿主看不到进程时，登记是唯一的入口线索）
     for e in registry:
         add(e["host"], e["port"], f"registry:{e['name']}", e["scheme"])
@@ -362,9 +394,44 @@ def build_candidates(args, registry, procs_hits, listening):
     return [cand[k] for k in sorted(cand, key=lambda k: (rank(cand[k]), k[1]))]
 
 
+def build_instances(candidates):
+    """按 PID 归组：同一实例的 mixed-port、listeners 与控制器会落在同一组。
+
+    登记条目与 --port 没有 PID，不强行归属；报告里保留为无名入口。
+    """
+    groups = {}
+    for c in candidates:
+        for pid in c.get("pids") or []:
+            item = groups.setdefault(pid, {"pid": pid, "processes": [], "ports": [], "usablePorts": []})
+            for name in c.get("processes") or []:
+                if name not in item["processes"]:
+                    item["processes"].append(name)
+            if c["port"] not in item["ports"]:
+                item["ports"].append(c["port"])
+            if c["verdict"].startswith("usable") and c["port"] not in item["usablePorts"]:
+                item["usablePorts"].append(c["port"])
+    def pid_key(pid):
+        text = str(pid)
+        return (0, int(text)) if text.isdigit() else (1, text)
+
+    result = [groups[pid] for pid in sorted(groups, key=pid_key)]
+    for item in result:
+        item["ports"].sort()
+        item["usablePorts"].sort()
+    return result
+
+
 def probe_candidate(item, protocols, args, deadline):
     """一个候选：TCP 探活 → 逐协议试，任一成功即停（预算允许时补另一协议以标注 mixed）。"""
-    entry = {"host": item["host"], "port": item["port"], "sources": item["sources"], "protocols": {}, "verdict": ""}
+    entry = {
+        "host": item["host"],
+        "port": item["port"],
+        "sources": item["sources"],
+        "pids": item.get("pids") or [],
+        "processes": item.get("processes") or [],
+        "protocols": {},
+        "verdict": "",
+    }
     host, port = item["host"], item["port"]
     if left(deadline) <= 0.05:
         entry["tcpOpen"] = None
@@ -399,7 +466,7 @@ def fmt_result(proto, res):
 
 def fmt_candidate(entry):
     detail = " | ".join(fmt_result(p, r) for p, r in entry["protocols"].items())
-    return f"probe: {entry['host']}:{entry['port']:<7} {detail}  -> {entry['verdict']}"
+    return f"probe: {host_for_url(entry['host'])}:{entry['port']:<7} {detail}  -> {entry['verdict']}"
 
 
 def probe_direct(url, timeout, deadline):
@@ -492,10 +559,12 @@ def scan_once(args, protocols, deadline, stream, extra=()):
     # 结构化可用清单：让读 --json 的 agent 不必自己从 candidates 里过滤排序
     report["usable"] = [
         {"host": c["host"], "port": c["port"], "url": url_of(c), "protocols": ok_protocols(c),
-         "egress": egress_of(c), "sources": c["sources"], "verdict": c["verdict"],
+         "egress": egress_of(c), "sources": c["sources"], "pids": c.get("pids") or [],
+         "processes": c.get("processes") or [], "verdict": c["verdict"],
          "egressMatchesDirect": bool(c.get("egressMatchesDirect"))}
         for c in sorted_usable(report)
     ]
+    report["instances"] = build_instances(report["candidates"])
     report["blindSpots"] = [
         "进程表与端口表的共同盲区：代理跑在 WSL/虚拟机/容器里时宿主看不到该进程与其监听端口，TUN/透明路由也不进表——这类入口只能靠 --port 或登记补",
         "内置家族名表只覆盖常见客户端（mihomo/clash/verge、xray/v2ray、sing-box、ss/trojan/hysteria、surge/warp 等）；小众客户端用 --match 加正则，想收窄用 --only-match",
@@ -513,9 +582,15 @@ def ok_protocols(entry):
     return [p for p in ("http", "socks5") if entry["protocols"].get(p, {}).get("ok")]
 
 
+def host_for_url(host):
+    """URL 里的 IPv6 字面量要加方括号；IPv4/主机名原样。"""
+    return f"[{host}]" if ":" in host and not host.startswith("[") else host
+
+
 def url_of(entry):
     """可用入口的 URL：优先 http（HTTP(S)_PROXY 能直接用），只有 socks5 通才给 socks5://。"""
-    return f"http://{entry['host']}:{entry['port']}" if "http" in ok_protocols(entry) else f"socks5://{entry['host']}:{entry['port']}"
+    scheme = "http" if "http" in ok_protocols(entry) else "socks5"
+    return f"{scheme}://{host_for_url(entry['host'])}:{entry['port']}"
 
 
 def best_seconds(entry):
@@ -527,16 +602,21 @@ def egress_of(entry):
 
 
 def sorted_usable(report):
-    """可用入口排序：可用协议多的在前（mixed 先于单协议），同档按最快一次探测耗时。"""
-    return sorted(usable_of(report), key=lambda c: (-len(ok_protocols(c)), best_seconds(c)))
+    """可用入口排序：非直连出口优先，协议多的在前（mixed 先于单协议），同档按最快一次探测耗时。"""
+    return sorted(
+        usable_of(report),
+        key=lambda c: (bool(c.get("egressMatchesDirect")), -len(ok_protocols(c)), best_seconds(c)),
+    )
 
 
 def source_text(entry):
-    """候选来源的人话：进程名 / 登记名 / --port。"""
+    """候选来源的人话：进程名(pid) / 登记名 / --port。"""
     parts = []
     for src in entry["sources"]:
         if src.startswith("proc:"):
-            parts.append(f"进程 {src[5:]}")
+            pids = entry.get("pids") or []
+            suffix = f"(pid={','.join(map(str, pids))})" if pids else ""
+            parts.append(f"进程 {src[5:]}{suffix}")
         elif src.startswith("registry:"):
             parts.append(f"登记 {src[9:]}")
         elif src == "cli":
@@ -553,15 +633,25 @@ def recap(report, args):
     say(f"probe: 用时 {s['elapsedSeconds']}s / 预算 {args.budget}s")
     say(f"summary: usable={s['usable']} not-a-proxy={s['notAProxy']} unknown={s['unknown']} not-listening={s['notListening']}")
 
+    instances = report.get("instances") or []
+    if len(instances) > 1:
+        say(f"probe: 命中 {len(instances)} 个代理进程，按 PID 分组（可用端口 / 监听端口数）：")
+        for inst in instances:
+            names = ", ".join(inst.get("processes") or []) or "?"
+            usable_ports = ", ".join(map(str, inst.get("usablePorts") or [])) or "-"
+            say(f"  pid {inst['pid']} {names}: {usable_ports} / {len(inst.get('ports') or [])} 个")
+
     usable = sorted_usable(report)
     if usable:
-        say(f"probe: 可用入口 {len(usable)} 个（协议多的在前，同档按耗时）：")
+        say(f"probe: 可用入口 {len(usable)} 个（非直连出口优先，协议多的在前，同档按耗时）：")
         for i, c in enumerate(usable, 1):
             egress = egress_of(c) or "-"
             tag = "  [出口与直连相同，可能没真正生效]" if c.get("egressMatchesDirect") else ""
-            lead = "   ← 首选" if i == 1 else ""
+            lead = "   ← 首选" if i == 1 and len(usable) == 1 else ("   ← 排序第一" if i == 1 else "")
             say(f"  {i}. {url_of(c):<26} {c['verdict']:<15} 出口 {egress:<18} 来自 {source_text(c)}{tag}{lead}")
-        say("probe: 要把它贴进环境变量：加 --copy（只输出，不改你的配置）")
+        if len(usable) > 1:
+            say("probe: 排序只按协议数与耗时；多实例/多地区入口请按实例与任务选择，不把排序第一当默认。")
+        say("probe: 要把它贴进环境变量：默认首选加 --copy，全部入口加 --copy-all（只输出，不改你的配置）")
     else:
         say("probe: 本轮没有可用入口——先看下面的不可判定项与盲区，加大 --budget/--timeout 再试，别就此判「本机没有代理」。")
 
@@ -585,15 +675,21 @@ def recap(report, args):
 
 
 
-def copy_lines(report, shell):
-    """可直接粘贴的代理环境变量行；只输出，不写任何配置。默认只给第一个可用入口。"""
+def copy_lines(report, shell, all_entries=False):
+    """可直接粘贴的代理环境变量行；只输出，不写任何配置。
+
+    默认只给排序后的第一个可用入口；all_entries=True 时逐个给出，便于多实例场景。
+    """
     lines = []
-    for c in usable_of(report):
-        proto = next((p for p, r in c["protocols"].items() if r["ok"] and p == "http"), None)
-        url = f"http://{c['host']}:{c['port']}" if proto else f"socks5://{c['host']}:{c['port']}"
-        egress = next((r["egress"].get("ip") for r in c["protocols"].values() if r["ok"] and r["egress"].get("ip")), "-")
-        lines.append(f"# {c['host']}:{c['port']}  {c['verdict']}  egress={egress}")
-        if proto is None:
+    targets = sorted_usable(report)
+    if not all_entries:
+        targets = targets[:1]
+    for c in targets:
+        proto = "http" in ok_protocols(c)
+        url = url_of(c)
+        egress = egress_of(c) or "-"
+        lines.append(f"# {host_for_url(c['host'])}:{c['port']}  {c['verdict']}  egress={egress}")
+        if not proto:
             lines.append("#   注意：只有 socks5 通，HTTP(S)_PROXY 一般要求 http 代理入口")
         if shell == "pwsh":
             lines += [f"$env:HTTP_PROXY = '{url}'", f"$env:HTTPS_PROXY = '{url}'"]
@@ -635,7 +731,8 @@ def main(argv=None):
     ap.add_argument("--protocols", default="http,socks5", help="探测协议，默认 http,socks5")
     ap.add_argument("--workers", type=int, default=16, help="并发探测数，默认 16")
     ap.add_argument("--url", default=DEFAULT_URL, help=f"探测目标，默认 {DEFAULT_URL}（读 ip= 出口回显）")
-    ap.add_argument("--copy", action="store_true", help="额外打印可直接粘贴的代理环境变量行（只输出，不写配置）")
+    ap.add_argument("--copy", action="store_true", help="额外打印首选入口的代理环境变量行（只输出，不写配置）")
+    ap.add_argument("--copy-all", action="store_true", help="输出所有可用入口的环境变量行（隐含 --copy）；默认只给排序后的首选")
     ap.add_argument("--shell", choices=("auto", "pwsh", "cmd", "bash"), default="auto", help="--copy 的目标 shell，默认按平台（Windows 给 pwsh+cmd，其它给 bash）")
     ap.add_argument("--watch", type=float, default=0, metavar="SEC", help="常驻重扫：每 SEC 秒扫一轮，只在可用集合变化时点名（Ctrl+C 退出）")
     ap.add_argument("--json", action="store_true", help="输出机器可读 JSON（进度打印到 stderr；配合 --watch 时每轮一行 NDJSON）")
@@ -678,16 +775,16 @@ def main(argv=None):
     s = report["summary"]
     recap(report, args)
 
-    if args.copy and s["usable"]:
+    if (args.copy or args.copy_all) and s["usable"]:
         shells = ("pwsh", "cmd") if os.name == "nt" else ("bash",)
         if args.shell != "auto":
             shells = (args.shell,)
         say("probe: 可直接粘贴的代理设置（只输出，不改你的配置）")
         for sh in shells:
             say(f"probe: --- {sh} ---")
-            for line in copy_lines(report, sh):
+            for line in copy_lines(report, sh, all_entries=args.copy_all):
                 say(line)
-    elif args.copy:
+    elif args.copy or args.copy_all:
         say("probe: 没有可用入口，--copy 无内容可给")
 
     if args.json:

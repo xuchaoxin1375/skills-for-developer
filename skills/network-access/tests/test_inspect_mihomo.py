@@ -227,6 +227,81 @@ def test_parse_group_defs_keeps_strategy_filter_and_use() -> None:
     assert groups["PROXY"]["use"] == []
 
 
+def test_parse_listener_defs_reads_name_port_and_proxy() -> None:
+    module = load_module()
+    text = """\
+mixed-port: 17897
+external-controller: 127.0.0.1:19097
+listeners:
+  - name: crawler-all
+    type: mixed
+    port: 17200
+    proxy: ALL-LB
+  - name: crawler-us
+    type: mixed
+    port: 17211
+proxy-groups:
+- name: ALL-LB
+  type: load-balance
+  strategy: consistent-hashing
+"""
+    listeners = module.parse_listener_defs(text)
+    assert listeners[0] == {"name": "crawler-all", "type": "mixed", "port": 17200, "proxy": "ALL-LB"}
+    assert listeners[1]["port"] == 17211
+
+
+def test_summarize_instance_separates_entry_controller_and_listeners() -> None:
+    module = load_module()
+    text = """\
+mixed-port: 17897
+external-controller: 127.0.0.1:19097
+secret: topsecret
+listeners:
+  - name: crawler-all
+    type: mixed
+    port: 17200
+proxy-groups:
+- name: ALL-LB
+  type: load-balance
+  strategy: consistent-hashing
+"""
+    entry = {
+        "client": "mihomo (standalone)",
+        "home_dir": "<home>",
+        "runtime_config": "<config>",
+        "profiles_file": None,
+        "process": {"pid": 123, "name": "verge-mihomo.exe"},
+        "discovery": "process",
+        "_text": text,
+    }
+    summary = module.summarize_instance(entry)
+    assert summary["pid"] == 123
+    assert summary["mixedPort"] == "17897"
+    assert summary["controller"] == "127.0.0.1:19097"
+    assert summary["listeners"][0]["port"] == 17200
+    assert summary["strategies"] == ["consistent-hashing"]
+    assert "topsecret" not in json.dumps(summary, ensure_ascii=False)
+
+
+def test_client_label_separates_gui_and_standalone_mihomo() -> None:
+    module = load_module()
+    assert module.client_label("clash-verge.exe") == "Clash Verge Rev"
+    assert module.client_label("verge-mihomo.exe", "<home>/.config/clash-verge-rev") == "Clash Verge Rev"
+    assert module.client_label("verge-mihomo.exe", "<home>/mihomo-sticky/ch") == "mihomo (standalone)"
+    assert module.client_label("mihomo-party.exe") == "mihomo-party"
+
+
+def test_is_mihomo_core_ignores_gui_shells() -> None:
+    module = load_module()
+    assert module.is_mihomo_core("verge-mihomo.exe") is True
+    assert module.is_mihomo_core("mihomo.exe") is True
+    assert module.is_mihomo_core("clash.exe") is True
+    assert module.is_mihomo_core("clash-verge.exe") is False
+    assert module.is_mihomo_core("mihomo-party.exe") is False
+    assert module.is_mihomo_core("flclash.exe") is False
+
+
+
 def test_human_age_handles_epoch_strings_and_missing_values() -> None:
     module = load_module()
     assert module.human_age("0001-01-01T00:00:00Z") == "未记录"
@@ -517,7 +592,7 @@ def test_help_lists_core_options() -> None:
     code, out, _ = run_script("--help")
     assert code == 0
     for option in ("--config", "--controller", "--json", "--delay", "--report", "--process", "--no-process",
-                   "--compare-subscriptions", "--subscription-proxy"):
+                   "--list-instances", "--compare-subscriptions", "--subscription-proxy"):
         assert option in out
 
 

@@ -371,3 +371,15 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 结论：端口探测通过不等于配置健康；`round-robin` 对无登录公开页爬虫是刻意选择，报告只按场景提示，不判缺陷。
 
 未验证：逐节点真实出口（需 `PUT /proxies/{name}` 切节点，属写操作）、目标站的限流与风控、mihomo-party/FlClash 的目录差异、macOS 与 Linux、v1.19.33 之前版本的 `/proxies` 行为是否稳定。
+
+## 2026-11-20 mihomo 多实例枚举（Windows）
+
+执行环境：国内 Windows；同一台机器 3 个 `verge-mihomo` 内核进程：GUI 实例（mixed `<gui-port>` / controller `<gui-ctl>`）、`robin` 实例（mixed `<robin-port>` / controller `<robin-ctl>` / listeners `<robin-band>`）、`ch` 实例（mixed `<ch-port>` / controller `<ch-ctl>` / listeners `<ch-band>`）。只读检查，未切节点，未跑 `--delay`。
+
+- 默认 `inspect_mihomo.py` 走 Windows 单根目录快路径，只报告 GUI 实例；两个自定义 `-d` 的实例不在候选目录里，扫描结果看起来"只有一个客户端"。
+- `--process` 会枚举进程，但 `pick_entry` 仍只选一个（本次为 `ch`），不会输出另外两个；需要在 stderr 提示之外显式用 `--list-instances`。
+- `--list-instances` 能一次列出 3 个实例的 PID、`-d`/`-f`、mixed、controller、listeners 与策略；完整检查仍需对每个实例单独 `--config`/`--controller`。
+- `probe_local_proxies.py` 能探到 30+ 个入口端口；`instances[]` 按 PID 归组后能区分 GUI/`robin`/`ch`，`usable[]` 中 `egressMatchesDirect: true` 的入口排在最后。
+- 结论：多实例下"端口可用"不等于"实例可用"；先枚举实例，再按实例检查。默认单实例报告不能代表整机。
+
+未验证：其他客户端/平台的多实例行为；逐节点真实出口；各实例策略组的实际轮换效果。

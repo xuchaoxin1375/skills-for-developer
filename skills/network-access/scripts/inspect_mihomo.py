@@ -10,15 +10,21 @@
     3. 汇总为报告：可用配置、运行时状态、节点池、分组与当前选中、订阅状态、规则面、
        以及按场景给出的提示（含空组、混入 DIRECT、信息节点、策略选择）。
     4. --delay 追加一次有界延迟测速（默认逐叶子节点，真实出网）。
+    5. --list-instances 只枚举本机实例（PID、-d/-f、mixed、controller、listeners、策略），
+       不查 API；多实例再逐个用 --config/--controller 检查。
 
 不做什么
     - 不发 PUT/PATCH：不切节点、不改模式、不写代理登记文件。
     - 不凭节点名判断地区或真实出口：需要逐节点出口必须切节点，属写操作，另需授权。
     - 不把 load-balance 的 round-robin 当成缺陷：轮换出口对无登录公开页爬虫是有效策略，
       对带会话的站点才是风险，报告按场景提示。
+    - 不把单实例报告当整机：默认只检查一个实例；发现多个代理相关进程时只提示，
+      完整清单用 --list-instances。
 
 用法
     python -X utf8 scripts/inspect_mihomo.py
+    python -X utf8 scripts/inspect_mihomo.py --list-instances
+    python -X utf8 scripts/inspect_mihomo.py --list-instances --json
     python -X utf8 scripts/inspect_mihomo.py --json
     python -X utf8 scripts/inspect_mihomo.py --process
     python -X utf8 scripts/inspect_mihomo.py --config <path> --controller <host>:<port>
@@ -239,6 +245,48 @@ def parse_group_defs(text: str) -> list[dict]:
     return groups
 
 
+def parse_listener_defs(text: str) -> list[dict]:
+    """从运行时配置读 listeners 的 name/port/type/proxy；只取报告字段，不展开锚点。
+
+    listeners 是同一实例的额外入站端口（常见于按国家/worker 分流），
+    与 mixed-port、external-controller 是不同用途；报告要把它们分开。
+    """
+    listeners, item = [], None
+    in_section = False
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if not line or line.lstrip().startswith("#"):
+            continue
+        if re.match(r"^listeners\s*:\s*$", line):
+            in_section = True
+            continue
+        if in_section and re.match(r"^[A-Za-z][\w-]*\s*:", line):
+            break
+        if not in_section:
+            continue
+        nm = re.match(r"^\s*-\s+name\s*:\s*(.+)$", line)
+        if nm:
+            if item:
+                listeners.append(item)
+            item = {"name": unquote(strip_comment(nm.group(1)))}
+            continue
+        if item is None:
+            continue
+        m = re.match(r"^\s+(port|type|proxy|listen)\s*:\s*(.*)$", line)
+        if m:
+            key, value = m.group(1), unquote(strip_comment(m.group(2)))
+            if key == "port":
+                try:
+                    item["port"] = int(value)
+                except ValueError:
+                    item["port"] = value
+            else:
+                item[key] = value
+    if item:
+        listeners.append(item)
+    return listeners
+
+
 def parse_provider_defs(text: str) -> dict[tuple[str, str], dict]:
     """解析 proxy-providers / rule-providers 的块状写法（type/url/path/interval）。
 
@@ -425,14 +473,33 @@ def parse_process_paths(cmdline: str, posix: bool | None = None) -> dict:
     return result
 
 
-def client_label(name: str) -> str:
+def is_mihomo_core(name: str) -> bool:
+    """进程名是否像 mihomo/Clash 内核，而不是 GUI 外壳。
+
+    多实例提示只数内核；把 GUI 进程算进去会让正常的“GUI + 一个内核”误报成多实例。
+    """
     low = (name or "").lower()
-    if "verge" in low:
-        return "Clash Verge Rev"
+    if any(hint in low for hint in ("clash-verge", "mihomo-party", "flclash")):
+        return False
+    return bool(re.search(r"mihomo|clash", low))
+
+
+def client_label(name: str, home_dir: Path | str | None = None) -> str:
+    """进程/目录对应的客户端名。
+
+    `verge-mihomo.exe` 同时被 GUI 与独立实例使用，不能只看进程名：
+    只有进程名或 `-d` 落在 Clash Verge 的目录下才标成 GUI，其余标为独立 mihomo。
+    """
+    low = (name or "").lower()
+    home = str(home_dir or "").lower()
     if "party" in low:
         return "mihomo-party"
     if "flclash" in low:
         return "FlClash"
+    if "verge" in low or "clash-verge" in low:
+        if "clash-verge" in low or "clash-verge" in home:
+            return "Clash Verge Rev"
+        return "mihomo (standalone)"
     return "mihomo"
 
 
@@ -557,8 +624,8 @@ def process_entries(processes: list[dict]) -> list[dict]:
     for proc in processes or []:
         paths = parse_process_paths(proc.get("cmdline") or "")
         context = {**proc, "controller": paths["controller"], "secret": paths["secret"]}
-        client = client_label(proc.get("name") or "")
         home = Path(paths["dirs"][0]) if paths["dirs"] else None
+        client = client_label(proc.get("name") or "", home)
         found = False
         for file in paths["files"]:
             path = Path(file)
@@ -626,6 +693,26 @@ def static_entries() -> list[dict]:
     return entries
 
 
+def entry_from_explicit(path: Path) -> dict | None:
+    """把 --config 指定的运行时文件包装成统一 entry，供单实例与实例清单复用。"""
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return {
+        "client": "explicit",
+        "root": str(path.parent),
+        "home_dir": str(path.parent),
+        "runtime_config": str(path),
+        "profiles_file": None,
+        "candidates": [str(path)],
+        "discovery": "explicit",
+        "process": None,
+        "controller_override": None,
+        "secret_override": None,
+        "_text": text,
+    }
+
+
 def find_client(
     explicit: Path | None,
     processes: list[dict] | None = None,
@@ -634,22 +721,7 @@ def find_client(
 ) -> dict | None:
     """返回 {client, root, runtime_config, profiles_file, candidates, discovery, process}。"""
     if explicit:
-        if not explicit.is_file():
-            return None
-        text = explicit.read_text(encoding="utf-8", errors="replace")
-        return {
-            "client": "explicit",
-            "root": str(explicit.parent),
-            "home_dir": str(explicit.parent),
-            "runtime_config": str(explicit),
-            "profiles_file": None,
-            "candidates": [str(explicit)],
-            "discovery": "explicit",
-            "process": None,
-            "controller_override": None,
-            "secret_override": None,
-            "_text": text,
-        }
+        return entry_from_explicit(explicit)
 
     if processes is not None:
         prefer_process = True
@@ -669,6 +741,107 @@ def find_client(
         procs = processes if processes is not None else list_proxy_processes()
         return pick_entry(process_entries(procs) + scanned)
     return pick_entry(scanned)
+
+
+def proxy_process_count() -> int:
+    """轻量计数代理内核进程，只用于提示"是否可能有多个实例"。
+
+    Windows 用 tasklist（比 CIM 便宜），其他平台直接枚举进程。
+    计数失败返回 0，不阻塞单实例报告。
+    """
+    if os.name != "nt":
+        return sum(1 for item in list_proxy_processes() if is_mihomo_core(item.get("name") or ""))
+    try:
+        proc = subprocess.run(
+            ["tasklist", "/fo", "csv", "/nh"],
+            capture_output=True,
+            timeout=8,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    count = 0
+    for line in proc.stdout.decode("utf-8", errors="replace").splitlines():
+        name = line.split(",", 1)[0].strip().strip('"')
+        if name and is_mihomo_core(name):
+            count += 1
+    return count
+
+
+def summarize_instance(entry: dict) -> dict:
+    """把一个 entry 压成实例清单的一行；不查 API、不输出 secret。"""
+    text = entry.get("_text") or ""
+    keys = parse_config_text(text)["keys"]
+    listeners = parse_listener_defs(text)
+    strategies: list[str] = []
+    # 策略可能写在 proxy-groups 的锚点里，parse_group_defs 不展开锚点；
+    # 实例清单只做概览，按文件里出现的 strategy 值去重列出。
+    for match in re.finditer(r"^\s*strategy\s*:\s*(\S+)", text, re.M):
+        strategy = unquote(strip_comment(match.group(1)))
+        if strategy and strategy not in strategies:
+            strategies.append(strategy)
+    proc = entry.get("process") or {}
+    return {
+        "client": entry.get("client"),
+        "pid": proc.get("pid"),
+        "process": proc.get("name"),
+        "home": entry.get("home_dir") or entry.get("root"),
+        "runtimeConfig": entry.get("runtime_config"),
+        "profilesFile": entry.get("profiles_file"),
+        "controller": entry.get("controller_override") or keys.get("external-controller") or "",
+        "mixedPort": keys.get("mixed-port") or "",
+        "listeners": listeners,
+        "strategies": strategies,
+        "discovery": entry.get("discovery"),
+    }
+
+
+def discover_instances(explicit: Path | None = None, processes: list[dict] | None = None) -> list[dict]:
+    """枚举本机所有可发现的实例：显式配置 + 进程 -d/-f + 客户端目录扫描。"""
+    entries: list[dict] = []
+    if explicit:
+        entry = entry_from_explicit(explicit)
+        if entry:
+            entries.append(entry)
+    procs = processes if processes is not None else list_proxy_processes()
+    entries.extend(process_entries(procs))
+    entries.extend(static_entries())
+    return dedupe_entries(entries)
+
+
+def list_instances(explicit: Path | None, as_json: bool) -> int:
+    """只读列出实例清单；完整检查仍按实例分别 --config/--controller。"""
+    entries = discover_instances(explicit)
+    if not entries:
+        print("没有发现 mihomo/Clash 实例；用 --config 指定运行时配置。", file=sys.stderr)
+        return 2
+    summaries = [summarize_instance(entry) for entry in entries]
+    summaries.sort(key=lambda item: (item["pid"] is None, item["pid"] or 0, item["runtimeConfig"] or ""))
+
+    if as_json:
+        print(json.dumps({"count": len(summaries), "instances": summaries}, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"mihomo 实例 {len(summaries)} 个：")
+    print("")
+    print("| PID | 客户端 | 工作目录 (-d) | mixed | controller | listeners | 策略 | 配置 (-f) |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- |")
+    for item in summaries:
+        listeners = item["listeners"]
+        if listeners:
+            shown = ", ".join(f"{one.get('name')}:{one.get('port')}" for one in listeners[:3])
+            if len(listeners) > 3:
+                shown += f" … 共 {len(listeners)} 个"
+        else:
+            shown = "-"
+        print(
+            f"| {item['pid'] or '-'} | {item['client'] or '-'} | `{item['home'] or '-'}` | "
+            f"{item['mixedPort'] or '-'} | {item['controller'] or '-'} | {shown} | "
+            f"{', '.join(item['strategies']) or '-'} | `{item['runtimeConfig']}` |"
+        )
+    print("")
+    print("逐个检查：`--config <runtime> --controller <host:port>`；控制口不可达时用 `--process` 或 `--no-process` 重试。")
+    return 0
 
 
 def _is_unix_socket(controller: str) -> bool:
@@ -1515,6 +1688,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", help="显式指定运行时配置文件，跳过自动发现")
     parser.add_argument("--process", action="store_true", help="先按内核进程的 -d/-f 定位，再退回目录扫描")
     parser.add_argument("--no-process", action="store_true", help="不查进程信息，只用候选目录与 --config")
+    parser.add_argument("--list-instances", action="store_true",
+                        help="只列出本机 mihomo/Clash 实例（PID、-d/-f、mixed/controller、listeners、策略），不查 API")
     parser.add_argument("--controller", help="覆盖 external-controller，如 <host>:<port>")
     parser.add_argument("--secret", help="覆盖 secret；默认从配置读取，不落盘不回显")
     parser.add_argument("--json", action="store_true", help="输出机器可读 JSON（stdout 只留 JSON）")
@@ -1531,6 +1706,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=8, help="测速并发数")
     args = parser.parse_args(argv)
 
+    if args.list_instances:
+        explicit = Path(args.config).expanduser().resolve() if args.config else None
+        return list_instances(explicit, args.json)
+
     ctx = find_client(
         Path(args.config).expanduser().resolve() if args.config else None,
         prefer_process=args.process,
@@ -1539,6 +1718,16 @@ def main(argv: list[str] | None = None) -> int:
     if not ctx:
         print("没有找到 mihomo/Clash 系运行时配置；用 --config 指定，或用 probe_local_proxies.py 先找端口。", file=sys.stderr)
         return 2
+    if not args.config and not args.no_process:
+        count = proxy_process_count()
+        if count > 1:
+            proc = ctx.get("process") or {}
+            pid_note = f"（pid {proc.get('pid')}）" if proc.get("pid") else ""
+            print(
+                f"inspect: 发现 {count} 个代理相关进程，本次只检查 {ctx.get('runtime_config')}{pid_note}；"
+                "用 --list-instances 查看全部，或 --config/--controller 指定实例。",
+                file=sys.stderr,
+            )
 
     text = ctx["_text"]
     cfg = parse_config_text(text)["keys"]

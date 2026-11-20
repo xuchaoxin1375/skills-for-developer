@@ -844,12 +844,31 @@ def read_proxy_registry(registry: Path) -> dict[str, Any]:
                 "notes": item.get("notes"),
             }
         )
+    raw_instances = data.get("instances", [])
+    instances: list[dict[str, Any]] = []
+    if isinstance(raw_instances, list):
+        for item in raw_instances:
+            if not isinstance(item, dict):
+                continue
+            mixed = item.get("mixed")
+            instances.append(
+                {
+                    "name": item.get("name"),
+                    "mixed": mask_url(mixed) if isinstance(mixed, str) and mixed else None,
+                    "controller": item.get("controller"),
+                    "strategy": item.get("strategy"),
+                    "listeners": item.get("listeners") if isinstance(item.get("listeners"), dict) else None,
+                    "verified": item.get("verified"),
+                    "notes": item.get("notes"),
+                }
+            )
     return {
         "available": True,
         "path": str(registry),
         "updated": data.get("updated"),
         "default": data.get("default"),
         "entries": entries,
+        "instances": instances,
     }
 
 
@@ -1159,7 +1178,14 @@ def render_human(report: dict[str, Any]) -> str:
             lines.append(f"  登记: {registry['path']}（updated {registry.get('updated')}，默认 {registry.get('default')}）")
             for entry in registry["entries"]:
                 lines.append(f"  {entry['name']}  {entry['url']}  上次核验 {entry['verified'] or '未知'}")
-            if registry["entries"]:
+            if registry.get("instances"):
+                lines.append(f"  实例: {len(registry['instances'])} 个")
+                for inst in registry["instances"]:
+                    lines.append(
+                        f"    {inst['name']}  {inst['mixed'] or '-'}  controller={inst['controller'] or '-'}  "
+                        f"策略={inst['strategy'] or '-'}  上次核验 {inst['verified'] or '未知'}"
+                    )
+            if registry["entries"] or registry.get("instances"):
                 lines.append("  说明: 上次核验日期不代表当前可用；需要当前结论请加 --probe-proxy")
         else:
             lines.append(f"  登记不可用: {registry['reason']}")

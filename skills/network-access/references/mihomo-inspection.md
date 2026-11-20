@@ -6,6 +6,7 @@
 
 - 需要核对 profile 与订阅状态、节点与分组、当前链路、失效节点时读本页。
 - 只读：脚本只用 GET 与本地延迟探测，不发 `PUT /proxies/{name}`、不 `PATCH /configs`、不写登记文件。
+- 多实例按进程分别检查；默认单实例报告不代表整机。`--list-instances` 只枚举本地实例信息，不查 API。
 - 不做逐节点真实出口核验：那需要切换节点（写操作，会改变当前代理行为），单次任务要另行取得授权并约定切回策略。
 - 只覆盖 Clash 兼容控制 API（mihomo、Clash Verge Rev、mihomo-party、FlClash 等）；sing-box、xray 的本地接口不同，不套用本流程。
 
@@ -17,9 +18,41 @@
 | 运行时配置 | 客户端拼装后真正交给内核的那份 | 同目录下的 `clash-verge.yaml` 或 `config.yaml`，由客户端生成 |
 | 控制 API | 内核当前认知（节点、分组选中、规则、连接） | `external-controller` 指向的回环端口 |
 
-UI 里改的东西通常写回 profile 或运行时配置，不写回订阅；三者不一致时以控制 API 的当前状态为准，以运行时配置解释"为什么"。
+UI 里改的东西通常写回 profile 或运行时配置，不写回订阅；三者不一致时以控制 API 的当前状态为准，以运行时配置解释"为什么"。这三层是**单实例内部**的层级；多实例还要先加一层实例清单（PID、`-d`、`-f`、controller），否则 A 的 profile 与 B 的 API 会混在一起。
 
-定位顺序：先看内核进程的 `-d`/`--directory` 与 `-f`/`--config`（Windows 查 CIM 命令行，Linux 读 `/proc`，macOS 用 `ps`），再退回候选目录扫描，最后才用 `--config`。Windows 单客户端默认先扫描（约 0.1 秒），出现多个客户端、一个都没找到，或传 `--process` 时才查进程（约 0.3 秒）；Linux 的 `/proc` 读取很便宜，直接进程优先。进程可能看不见：以服务账户运行、TUN 模式、跑在 WSL/容器里，或 GUI 没拉起内核时，只能靠目录扫描或 `--config`。报告会写明"发现方式"。找不到配置时用 `--config` 显式指定，不要按文件名猜——不同客户端版本的文件名会变。
+定位顺序：先看内核进程的 `-d`/`--directory` 与 `-f`/`--config`（Windows 查 CIM 命令行，Linux 读 `/proc`，macOS 用 `ps`），再退回候选目录扫描，最后才用 `--config`。Windows 单客户端默认先扫描（约 0.1 秒），扫描只覆盖已知客户端目录；自定义 `-d` 的多实例可能只看到一个，脚本会在 stderr 提示。零个候选或传 `--process` 时才查进程（约 0.3 秒）；要枚举全部实例用 `--list-instances`。Linux 的 `/proc` 读取很便宜，直接进程优先。进程可能看不见：以服务账户运行、TUN 模式、跑在 WSL/容器里，或 GUI 没拉起内核时，只能靠目录扫描或 `--config`。报告会写明"发现方式"。找不到配置时用 `--config` 显式指定，不要按文件名猜——不同客户端版本的文件名会变。**默认报告只覆盖一个实例；多实例先用 `--list-instances` 枚举。**
+
+## 多实例：先枚举，再逐个检查
+
+多实例的判据是**独立进程**，不是 GUI 里有多少 profile：每个实例有自己的 `-d`、`-f`、mixed-port、external-controller 与 listeners 端口段，可以同时运行。切换 GUI profile 不等于启动新实例。
+
+```bash
+python -X utf8 <skill>/scripts/inspect_mihomo.py --list-instances
+python -X utf8 <skill>/scripts/inspect_mihomo.py --list-instances --json
+```
+
+`--list-instances` 只读本地文件与进程，不查 API；输出每个实例的 PID、客户端、`-d`、运行时配置、mixed-port、controller、listeners 与配置里出现的 `strategy`。完整检查再对每个实例执行：
+
+```bash
+python -X utf8 <skill>/scripts/inspect_mihomo.py --config <runtime> --controller <host:port>
+```
+
+- 没有实例管理脚本时，按进程命令行里的 `-d`/`-f` 枚举；Windows 用 `Get-CimInstance Win32_Process`，Linux 读 `/proc`，macOS 用 `ps`。
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name LIKE '%mihomo%' OR Name LIKE '%clash%'" |
+  Select-Object ProcessId,Name,CommandLine
+```
+
+```bash
+ps -eo pid,comm,args | grep -Ei 'mihomo|clash' | grep -v grep
+```
+
+- 实例管理脚本的 `list`/`status` 通常只列自己 PID 文件管理的实例，GUI 实例不在内；两者要合并。
+- `--list-instances` 里 PID 为 `-` 的是目录扫描到的配置，不证明对应进程正在运行；PID 有值才说明能从进程 `-d`/`-f` 定位到。
+- `listeners` 是同一实例的额外入站端口，不是独立实例；`171xx`、`172xx` 这类端口段只是本机约定，读到 `name`/`port`/`proxy` 再判断用途，不按端口号猜国家。
+- 默认 `inspect_mihomo.py` 只报告一个实例；发现多个代理相关进程时会在 stderr 提示，不会自动汇总全部实例。
+- `round-robin` 实例按连接轮换出口；需要同一 worker 固定出口时用 `consistent-hashing`、`sticky-sessions` 或 `select`，不要把固定出口当成所有实例的默认。
 
 ## 只读 API 与认证
 
@@ -102,11 +135,13 @@ Verge 的**本地 profile** 菜单没有"更新"（只有使用/编辑/删除）
 
 ## 报告口径与脱敏
 
-报告包含：可用配置、运行时状态、节点池、订阅与规则集、分组与当前选中、默认出口链路、规则面、延迟（可选）、提示与风险、盲区。
+报告包含：可用配置、运行时状态、节点池、订阅与规则集、分组与当前选中、默认出口链路、规则面、延迟（可选）、提示与风险、盲区。多实例时每个实例一份报告，或明确写出本次只报告哪个实例；单实例报告不能代替整机实例清单。
 
 固定脱敏项：`secret` 只在报告里写"是否设置 + 长度"；订阅 URL 只保留主机名；节点 `server`、`uuid`、`password` 不进入任何输出。报告仍会含本机路径与节点名，外发前按需裁剪。
 
 ## 工作流
+
+多实例先跑 `--list-instances` 选定实例；下面的步骤都针对已选定的一个实例。
 
 1. 先不加 `--delay` 跑一次，确认配置发现正确、API 可达、默认链路与分组符合预期。
 2. 读"提示与风险"：空组、混入直连、轮换策略、不可达节点、默认链路。
@@ -123,4 +158,5 @@ Verge 的**本地 profile** 菜单没有"更新"（只有使用/编辑/删除）
 - 客户端专有的 profile 增强链（merge/script）不逐条求值；只按运行时产物判断。
 - 触发订阅或规则集更新、修改 provider、切换节点都是写操作，不在只读检查内。
 - `--compare-subscriptions` 会真实请求订阅地址，计入订阅流量与请求次数；响应不是 Clash 配置时只能报"未解析"。
+- 默认报告只覆盖一个实例；`--list-instances` 只枚举本地信息，不查 API，多实例的节点池与分组仍需逐个检查。
 - 跨平台：Windows 的 `%APPDATA%` 路径与 macOS/Linux 不同，脚本按候选目录枚举，找不到时以 `--config` 为准。

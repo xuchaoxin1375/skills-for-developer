@@ -44,7 +44,7 @@ python <skill>/scripts/inventory.py --probe-network  # 源站可达性探测（�
 | 运行时 | 名称、版本、路径 | 缺失的才需要安装；版本以工具自身输出为准，不按印象判断 |
 | Python 环境 | `层`、引擎、已装包 | 层 ≥ 2 才有挑战求解能力；`建议` 取首个层 ≥ 1 的解释器；PATH 上的 `python` 常只有层 1 |
 | 浏览器 | `可用/不可用`、来源 | `eligible:false` 多为 shim/wrapper；Playwright 缓存里的 chromium 同样是候选；`可用` 只代表文件格式可用，人类输出会标注未启动验证 |
-| 代理 | 环境变量、登记条目、`verified` 上次核验日期 | 环境变量会直接影响子进程抓取；登记 ≠ 可用；人类输出会提示当前可用性未验证，只有 `--probe-proxy` 给可用性与实际出口 |
+| 代理 | 环境变量、登记条目、`instances` 实例分组、`verified` 上次核验日期 | 环境变量会直接影响子进程抓取；登记 ≠ 可用；`instances` 只作分组，探测清单是 `proxies[]` 加 `instances[].mixed`；人类输出会提示当前可用性未验证，只有 `--probe-proxy` 给可用性与实际出口 |
 | 网络与镜像 | pip/uv、npm/pnpm/yarn/corepack、conda、git `insteadOf`、Playwright 制品、项目源配置与锁文件主机 | 看“实际生效值 + 来源”，不只看工具是否安装；配置 ≠ 目标包可用；只有 `--probe-network` 才出网，代理入口可用性仍看 `proxies` 组 |
 | 项目 | lockfile、scripts、测试框架、`installed` | lockfile 判定包管理器；`installed` 是已装证据（`node_modules/.bin`、项目虚拟环境包），有就不必重装；文件存在不等于能跑 |
 

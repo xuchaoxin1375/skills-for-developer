@@ -32,7 +32,7 @@ python -X utf8 <skill>/scripts/check_network_env.py --probe
 报告覆盖 Git `insteadOf` 与代理配置、pip/uv、npm/pnpm/yarn/corepack、conda、Playwright 制品变量、项目 `.npmrc`/uv 配置与锁文件下载主机。默认不联网；`--probe` 只对实际生效的 GitHub、npm registry、PyPI 索引各做一次有界请求，不重试。
 
 - 配置回答“本机设置成了什么”，不证明“目标包现在可用”；镜像与文件仍需按目标包和版本实测。
-- 代理登记只作线索；入口可用性用 `scripts/probe_local_proxies.py`，本脚本不扫描端口。
+- 代理登记只作线索；入口可用性用 `scripts/probe_local_proxies.py`，多实例看 `--json` 的 `instances[]`（按 PID 归组），本脚本不扫描端口。
 - URL 中的账号口令与 npm 认证字段不会进入报告；锁文件固定主机不随换源自动改变。
 - 只检查当前解释器的 pip；其他 Python 环境用该环境的 `python -m pip config list` 单独核对。
 - GitHub 直连探测失败不代表仓库不可用；文件加速与 Git 传输候选按 `scripts/check_github_mirrors.py` 分别核验。
@@ -42,11 +42,12 @@ python -X utf8 <skill>/scripts/check_network_env.py --probe
 端口可用只说明入口能连，不等于配置健康。要看 profile、节点池、分组当前选中、默认出口链路与失效节点时：
 
 ```bash
+python -X utf8 <skill>/scripts/inspect_mihomo.py --list-instances
 python -X utf8 <skill>/scripts/inspect_mihomo.py
 python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 ```
 
-默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。定位优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，多客户端或找不到时才查进程，`--process` 可强制先查。报告同时给出订阅与规则集的更新周期、缓存路径与新鲜度，不触发下载；节点数和订阅对不上时用 `--compare-subscriptions` 对比当前响应（会计入订阅流量）。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
+默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。定位优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，扫描只覆盖已知客户端目录，零个候选或 `--process` 时才查进程，`--process` 可强制先查。**默认报告只覆盖一个实例**；发现多个代理相关进程时会在 stderr 提示。多实例先用 `--list-instances` 枚举每个实例的 PID、`-d`/`-f`、mixed-port、external-controller、listeners 与策略，再逐个用 `--config`/`--controller` 检查，不把单实例报告当整机结论。报告同时给出订阅与规则集的更新周期、缓存路径与新鲜度，不触发下载；节点数和订阅对不上时用 `--compare-subscriptions` 对比当前响应（会计入订阅流量）。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
 
 ## 选路默认
 
@@ -72,7 +73,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 - **推送依赖的代理失败即改路或报告**：GitHub 推送走原站并通常依赖可用代理。实际生效的代理入口失败时，用一次经该入口的目标请求判断可用性（如 `git ls-remote`），失败立即换其他已登记或已核验入口；候选都不可用就报告失败与已试路线，不对同一 `git push` 反复重试。凭据、权限或非快进错误换代理无效，按错误类型处理。
 - **错误类型不能混用**：401／权限拒绝不能靠换代理修复；429 不轮换出口绕过。403／5xx 先按错误分流诊断，确认挑战页且确需渲染时才转 [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md)，不一见状态码就启动浏览器。挑战页不等于 IP 封禁：先按该 skill 的检测层判断，不要在本 skill 内继续换出口或手写浏览器探针。
 - **先确认实际出口，再判断“IP 被拒”**：代理客户端的模式、全局模式的分组选择（如 `GLOBAL`）或分流规则可能把目标送到 `DIRECT`；端口可达只证明入口可用，不证明请求走了预期节点。目标返回 403/WAF 拒绝页时，先查客户端日志或连接记录里的规则、组、节点与实际链路，再用同一目标对比直连与代理。确认走了预期节点仍被拒，才考虑出口 IP/地区/信誉或协议指纹；不要把客户端设置成直连造成的拒绝归因于代理 IP。排查顺序见[错误分流](references/network-access.md#错误分流)。
-- **负载均衡默认后台服务多实例**：轮询、目标粘性、会话粘性等不同策略默认由后台命令服务（如 `mihomo_instance.py`）分别管理独立实例，不靠切换 GUI profile；同一 worker 在同一站点仍固定到一个出口。每个实例独立 `-d`/`-f`、管理端口和入口 band，可同时运行；同一实例内再用 `listeners` 按国家/worker 分流。不要用 `round-robin` 让同一会话每请求换 IP。TUN 只在一个实例开。
+- **按策略隔离时用独立实例**：轮询、目标粘性、会话粘性等策略需要隔离时，用本机的实例管理脚本（示例名 `mihomo_instance.py`，未随本 skill 分发）或等价的后台进程管理方式分别启动实例，不靠切换 GUI profile。固定出口只在 `consistent-hashing`、`sticky-sessions` 或 `select` 下成立；`round-robin` 实例本来就会按连接轮换，不能承诺同一 worker 始终一个出口。每个实例独立 `-d`/`-f`、mixed-port、external-controller 和 listeners 端口段，可同时运行；同一实例内再用 `listeners` 按国家/worker 分流。不要用 `round-robin` 让同一会话每请求换 IP。TUN 只在一个实例开。
 - **证据范围如实说明**：端口开放不证明代理协议或目标可用；代理可达不证明出口能过站点风控。一次失败不能断言全部候选不可用或源站故障，预算不够就报告尚未核验，不穷举补齐结论。
 - **镜像保留来源与权限边界**：按资源类型核验，保留官方 URL；不向公共加速站转发私有仓库、凭据或签名链接，不关闭证书校验。GitHub 加速前缀（如 `gh-proxy.com`）是只读通道：只用于 clone/fetch 与文件下载，不向镜像推送，也不为镜像域名配置 Git 凭据（`credential.<url>`）或推送地址；推送与凭据只对原站使用。
 
@@ -84,7 +85,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 | 已确认挑战页、需要渲染 DOM，或要判断单站能否抓取 | [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md)：按有头 → `chrome-late`／`cdp-attach` 的阶梯处理；不要在本 skill 内手写浏览器探针或反复换出口 |
 | 部署新机、换网络、确认镜像/源配置或装得慢 | `scripts/check_network_env.py` 的帮助；默认只读配置，`--probe` 做有界探测 |
 | 代理登记缺失或失效、需要发现候选 | [代理登记](references/proxy-registry.md)；已有脚本 `scripts/probe_local_proxies.py`，参数查其帮助，不另写扫描器 |
-| 需要看 mihomo/Clash 的 profile、节点池、分组选中与失效节点 | `scripts/inspect_mihomo.py`；判读与陷阱见[客户端体检](references/mihomo-inspection.md)，只读，`--delay` 才出网 |
+| 需要看 mihomo/Clash 的 profile、节点池、分组选中与失效节点 | `scripts/inspect_mihomo.py`；多实例先用 `--list-instances` 枚举，再逐个 `--config`/`--controller` 检查；判读与陷阱见[客户端体检](references/mihomo-inspection.md)，只读，`--delay` 才出网 |
 | 需要核验文件加速候选 | `scripts/check_github_mirrors.py` 的帮助；镜像首页可用不代表目标资源可用 |
 | 大文件单连接慢、考虑 aria2c 多连接 | [多连接下载](references/network-access.md#多连接下载)的适用条件与参数；先确认 Range、单连接瓶颈与并发许可 |
 | 安装 Python／Node.js／conda 依赖 | [依赖下载](references/dependency-downloads.md)，区分索引、包文件与额外下载，按其中“镜像选型顺序”判定；PyPI/uv 候选可先跑 `scripts/bench_pypi_mirrors.py` |
@@ -107,5 +108,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 - [ ] 看节点与分组时，是否把端口可用、节点名或历史延迟当成了实际出口与链路结论？
 - [ ] 报告"节点池 0 个"且控制 API 不可用时，是否先让 API 可达（Unix socket 控制口用 `--controller unix:/path`）再下结论，而不是据"0 个"判成订阅失效？
 - [ ] 看到 `round-robin` 轮换时，是否按目标是否要求会话一致来评价，而不是一律判成缺陷？
+- [ ] 多实例时是否先用 `--list-instances` 枚举，再按实例分别检查，未把单实例报告当成整机结论？
+- [ ] 是否把 `probe_local_proxies.py` 的"排序第一"当成任务默认出口，或把 `egressMatchesDirect: true` 的入口当成正常代理？
 
-维护时运行仓库结构、链接与分发校验，桌面走查稳定直连、慢直连、已知代理站点、限流与大文件场景。改选路或体检脚本时跑 `python -X utf8 skills/network-access/tests/test_check_network_env.py`；改客户端体检脚本时跑 `python -X utf8 skills/network-access/tests/test_inspect_mihomo.py`；真实探测只在需要时执行，并记录实际环境、客户端、日期与路线。真实验证仅报告实际环境、客户端、日期与路线，未执行的平台或性能对照不声称通过。
+维护时运行仓库结构、链接与分发校验，桌面走查稳定直连、慢直连、已知代理站点、限流与大文件场景。改选路或体检脚本时跑 `python -X utf8 skills/network-access/tests/test_check_network_env.py`；改客户端体检脚本时跑 `python -X utf8 skills/network-access/tests/test_inspect_mihomo.py`；改入口探测脚本时跑 `python -X utf8 skills/network-access/tests/test_probe_local_proxies.py`；真实探测只在需要时执行，并记录实际环境、客户端、日期与路线。真实验证仅报告实际环境、客户端、日期与路线，未执行的平台或性能对照不声称通过。

@@ -474,6 +474,39 @@ def test_registry_url_is_masked_and_malformed_degrades() -> None:
         assert "proxies" in section["reason"]
 
 
+def test_registry_instances_are_read_and_masked() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        registry = Path(tmp) / "proxy-resources.json"
+        registry.write_text(
+            json.dumps(
+                {
+                    "updated": "2026-01-01",
+                    "default": "robin",
+                    "instances": [
+                        {
+                            "name": "robin",
+                            "mixed": "http://user:secret@127.0.0.1:17797",
+                            "controller": "127.0.0.1:18997",
+                            "strategy": "round-robin",
+                            "listeners": {"all": 17100},
+                            "verified": "2026-01-01",
+                            "notes": "stub",
+                        }
+                    ],
+                    "proxies": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        code, report, stderr = run_inventory("--json", "--only", "proxies", "--registry", str(registry))
+        assert code == 0, stderr
+        section = report["proxies"]["registry"]
+        assert section["instances"][0]["name"] == "robin"
+        assert section["instances"][0]["mixed"] == "http://***@127.0.0.1:17797"
+        assert section["instances"][0]["strategy"] == "round-robin"
+        assert section["instances"][0]["listeners"] == {"all": 17100}
+
+
 def test_human_output_lists_sections() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         skills_root = make_skills_root(Path(tmp))
