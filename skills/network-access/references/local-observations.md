@@ -379,7 +379,7 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 默认 `inspect_mihomo.py` 走 Windows 单根目录快路径，只报告 GUI 实例；两个自定义 `-d` 的实例不在候选目录里，扫描结果看起来"只有一个客户端"。
 - `--process` 会枚举进程，但 `pick_entry` 仍只选一个（本次为 `ch`），不会输出另外两个；需要在 stderr 提示之外显式用 `--list-instances`。
 - `--list-instances` 能一次列出 3 个实例的 PID、`-d`/`-f`、mixed、controller、listeners 与策略；完整检查仍需对每个实例单独 `--config`/`--controller`。
-- `probe_local_proxies.py` 能探到 30+ 个入口端口；`instances[]` 按 PID 归组后能区分 GUI/`robin`/`ch`，`usable[]` 中 `egressMatchesDirect: true` 的入口排在最后。
+- `probe_local_proxies.py` 能探到 30+ 个监听端口；`instances[]` 按 PID 归组后能区分 GUI/`robin`/`ch`，`usable[]` 中 `egressMatchesDirect: true` 的入口排在最后。
 - 结论：多实例下"端口可用"不等于"实例可用"；先枚举实例，再按实例检查。默认单实例报告不能代表整机。
 
 未验证：其他客户端/平台的多实例行为；逐节点真实出口；各实例策略组的实际轮换效果。

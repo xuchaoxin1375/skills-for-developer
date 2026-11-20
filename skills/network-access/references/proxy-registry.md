@@ -56,6 +56,7 @@ ps -eo pid,comm,args | grep -Ei 'mihomo|clash|sing-box|xray|v2ray|ss-local|shado
 - 命中进程却一个端口都没挂上时提示用 `--port`——宿主看不到该进程的端口（权限、WSL/容器）不能靠猜补。
 - 对每个候选各做一次 `http` 与 `socks5` 有界探测，并先取一条**直连对照**比对出口；`--json` 输出供 agent 读。
 - 候选与 `usable[]` 保留 `pids`、`processes`；`--json` 的 `instances[]` 按 PID 归组，列出每个实例的监听端口与可用端口。同一实例的 mixed-port、listeners、控制口不会混成多个实例。
+- `instances[].ports` 是该进程所有监听端口（mixed、listeners、控制口等），`usablePorts` 才是通过探测的入口；端口数不等于入口数。
 - `--copy` 只打印**排序后的首选入口**的代理环境变量行；`--copy-all` 才逐个输出所有可用入口（Windows 给 pwsh+cmd，其它给 bash；`--shell` 可指定）。只输出不写配置——改环境变量是用户的事，脚本不代劳。
 - `--watch SEC` 常驻重扫，每轮一行：首轮 / 无变化 / 变化（点名新增与失效的端口）；`--json` 时每轮一行 NDJSON。
 - 默认总预算 5 秒（`--budget`）、单次探测上限 2.5 秒（`--timeout`），候选同批并发。多实例常有 30+ 个监听端口，默认预算下会出现较多“不可判定”；需要排干净时加 `--budget 20 --timeout 6`。结论只分三态——可用 / 不是代理入口（对方按协议语义回了话，如 CONNECT 4xx、socks 问候被拒）/ 不可判定（超时、预算到点）。
