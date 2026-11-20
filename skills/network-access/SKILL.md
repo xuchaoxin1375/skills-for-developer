@@ -2,6 +2,7 @@
 name: network-access
 description: >
   外链抓取、联网下载、Git 远端操作（clone/fetch/pull/push；推送走原站）或代理/镜像配置前的网络选路入口。
+  本机代理客户端与系统代理体检（mihomo/Clash 的 profile、节点池、分组、订阅用量、多实例）也走本 skill。
   普通网页直连可用且稳定时可省代理；国内 Google、OpenAI 或已知直连不稳的站点优先代理，GitHub 按资源类型选择已核验镜像／加速、代理或稳定直连；普通小页面直连约3–5秒仍无有效响应时考虑切代理。
   部署新机、换网络或排查镜像/源配置时，先跑 scripts/check_network_env.py：默认只读配置，--probe 才做有界可达性探测。
   复用同站观测与本轮结果，按需读取代理登记；超时、403、5xx、429 按错误类型回退，不原样重发或绕过限流。
@@ -29,13 +30,28 @@ python -X utf8 <skill>/scripts/check_network_env.py --json --project .
 python -X utf8 <skill>/scripts/check_network_env.py --probe
 ```
 
-报告覆盖 Git `insteadOf` 与代理配置、pip/uv、npm/pnpm/yarn/corepack、conda、Playwright 制品变量、项目 `.npmrc`/uv 配置与锁文件下载主机。默认不联网；`--probe` 只对实际生效的 GitHub、npm registry、PyPI 索引各做一次有界请求，不重试。
+报告覆盖环境变量与**系统代理**（Windows Internet Settings、macOS `scutil --proxy`、Linux `gsettings`（GNOME））、Git `insteadOf`、pip/uv、npm/pnpm/yarn/corepack、conda、Playwright 制品变量、项目 `.npmrc`/uv 配置与锁文件下载主机。默认不联网；`--probe` 只对实际生效的 GitHub、npm registry、PyPI 索引各做一次有界请求，不重试。
 
 - 配置回答“本机设置成了什么”，不证明“目标包现在可用”；镜像与文件仍需按目标包和版本实测。
+- **系统代理不等于终端代理**：系统代理只影响遵循系统设置的应用；终端和多数 CLI 只看环境变量，TUN 才接管未设变量的流量。报告会同时给出两者，任一为空都不代表另一层没开。
+- **Windows 有两套系统代理**：Internet Settings 供 WinINET/浏览器，WinHTTP 供部分服务；脚本读前者，服务走 WinHTTP 时用 `netsh winhttp show proxy` 另查。
+- `--json` 里 `route.env` 是环境变量，`route.system` 是系统代理；以后者看 `enabled` 判断是否开启，`configuredServer` 只表示注册表里曾配置过。
 - 代理登记只作线索；入口可用性用 `scripts/probe_local_proxies.py`，多实例看 `--json` 的 `instances[]`（按 PID 归组），本脚本不扫描端口。
 - URL 中的账号口令与 npm 认证字段不会进入报告；锁文件固定主机不随换源自动改变。
 - 只检查当前解释器的 pip；其他 Python 环境用该环境的 `python -m pip config list` 单独核对。
 - GitHub 直连探测失败不代表仓库不可用；文件加速与 Git 传输候选按 `scripts/check_github_mirrors.py` 分别核验。
+
+### 本机代理环境体检顺序
+
+按“配置 → 接管 → 入口 → 客户端 → 出口”分层，不要用一层的结果代替另一层：
+
+1. **配置层（只读、不出网）**：`check_network_env.py` 看环境变量、系统代理与登记。
+2. **接管层**：确认是系统代理、环境变量还是 TUN 在接管；mihomo 的 TUN 开关看 `inspect_mihomo.py` 报告，其它客户端看是否出现 `tun`/`utun`/`Mihomo` 虚拟网卡或默认路由被接管。系统代理开启不影响未遵循它的终端，只设环境变量也不影响新开的 GUI 应用。
+3. **入口层（会出网）**：`probe_local_proxies.py` 按进程与登记枚举候选，逐个做 HTTP/SOCKS5 探测并比对直连出口。
+4. **客户端层（默认只读）**：`inspect_mihomo.py --list-instances` 先枚举实例，再按 `--config`/`--controller` 查 profile、节点池与分组；`--delay` 才测速。
+5. **出口层**：经目标入口请求一次回显服务，确认出口与直连不同；`egressMatchesDirect: true` 说明该入口可能没真正生效。
+
+常见误判：只看环境变量一行，系统代理开启时仍会以为没有代理；反过来只设环境变量时，新终端和 GUI 应用仍直连。报告会分列环境变量与系统代理，结论要写明是哪一层在生效。`--probe` 在 Windows/macOS 可能继承系统代理；Linux 的 gsettings 不会自动进入本脚本探测，需要时用 `--proxy` 指定。
 
 ### 代理客户端体检
 
@@ -47,7 +63,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py
 python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 ```
 
-默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。定位优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，扫描只覆盖已知客户端目录，零个候选或 `--process` 时才查进程，`--process` 可强制先查。**默认报告只覆盖一个实例**；发现多个代理相关进程时会在 stderr 提示。多实例先用 `--list-instances` 枚举每个实例的 PID、`-d`/`-f`、mixed-port、external-controller、listeners 与策略，再逐个用 `--config`/`--controller` 检查，不把单实例报告当整机结论。报告同时给出订阅与规则集的更新周期、缓存路径与新鲜度，不触发下载；节点数和订阅对不上时用 `--compare-subscriptions` 对比当前响应（会计入订阅流量）。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
+默认只读，不发 `PUT`/`PATCH`、不切节点；`--delay` 才出网。定位优先用内核进程的 `-d`/`-f`，再退回候选目录；Windows 单客户端先扫描，扫描只覆盖已知客户端目录，零个候选或 `--process` 时才查进程，`--process` 可强制先查。**默认报告只覆盖一个实例**；发现多个代理相关进程时会在 stderr 提示。多实例先用 `--list-instances` 枚举每个实例的 PID、`-d`/`-f`、mixed-port、external-controller、listeners 与策略，再逐个用 `--config`/`--controller` 检查，不把单实例报告当整机结论。`--list-instances` 只覆盖 Clash 兼容控制 API；v2ray/xray、sing-box 等先用 `probe_local_proxies.py` 看入口，配置体检暂无等价能力。报告同时给出订阅与规则集的更新周期、缓存路径与新鲜度，不触发下载；节点数和订阅对不上时用 `--compare-subscriptions` 对比当前响应（会计入订阅流量）。判读口径、轮换策略与常见陷阱见[客户端体检](references/mihomo-inspection.md)。入口探测仍用 `probe_local_proxies.py`，两者不互相替代。
 
 ## 选路默认
 
@@ -83,7 +99,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 | --- | --- |
 | 需指定代理、诊断超时／403／5xx、使用 GitHub 镜像或 Git | [网络诊断与回退](references/network-access.md)的相关章节 |
 | 已确认挑战页、需要渲染 DOM，或要判断单站能否抓取 | [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md)：按有头 → `chrome-late`／`cdp-attach` 的阶梯处理；不要在本 skill 内手写浏览器探针或反复换出口 |
-| 部署新机、换网络、确认镜像/源配置或装得慢 | `scripts/check_network_env.py` 的帮助；默认只读配置，`--probe` 做有界探测 |
+| 部署新机、换网络、确认镜像/源配置、系统代理或装得慢 | `scripts/check_network_env.py` 的帮助；默认只读配置，`--probe` 做有界探测 |
 | 代理登记缺失或失效、需要发现候选 | [代理登记](references/proxy-registry.md)；已有脚本 `scripts/probe_local_proxies.py`，参数查其帮助，不另写扫描器 |
 | 需要看 mihomo/Clash 的 profile、节点池、分组选中与失效节点 | `scripts/inspect_mihomo.py`；多实例先用 `--list-instances` 枚举，再逐个 `--config`/`--controller` 检查；判读与陷阱见[客户端体检](references/mihomo-inspection.md)，只读，`--delay` 才出网 |
 | 需要核验文件加速候选 | `scripts/check_github_mirrors.py` 的帮助；镜像首页可用不代表目标资源可用 |
@@ -98,6 +114,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY
 - [ ] 是否按站点稳定性选路，普通稳定网页未强制代理，已知不稳站点未重复直连试错？
 - [ ] 是否仅在需要时读取代理登记，历史观测按域名检索，正文取回即验证且没有重抓？
 - [ ] 是否区分显式代理、默认环境和透明路由，未把省参数叫作真直连？
+- [ ] 是否把“系统代理开启”“环境变量已设”“TUN 接管”分开确认，没有用其中一层代替另一层？
 - [ ] 目标返回 403/WAF 拒绝页时，是否先核对客户端实际命中的规则、组与节点，确认请求没有落到 `DIRECT`，再判断出口 IP 被拒？
 - [ ] 回退是否有总耗时与次数边界，限流未被绕过，权限／挑战／源站故障未混淆？
 - [ ] GitHub 公开资源是否先走已核验加速；直连约 3 秒无首响是否立即改路，且没有原样重发同一 URL？

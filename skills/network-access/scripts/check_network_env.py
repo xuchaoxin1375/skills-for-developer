@@ -8,7 +8,7 @@
     python check_network_env.py --project .      # 追加项目级源配置与锁文件来源
     python check_network_env.py --only python,node
 
-默认只读环境变量、工具配置与登记文件；--probe 才对 GitHub、npm registry、
+默认只读环境变量、系统代理、工具配置与登记文件；--probe 才对 GitHub、npm registry、
 PyPI 索引各做一次有界请求。代理入口本身的可达性用 probe_local_proxies.py，
 浏览器制品的 revision 覆盖用 playwright install --dry-run 核验。
 """
@@ -195,6 +195,11 @@ def mask_url(value: str) -> str:
 def mask_value(value: str) -> str:
     """对 URL 做凭据脱敏；普通文本原样返回。"""
     return mask_url(value) if "://" in value else value
+
+
+def mask_proxy_server(value: str) -> str:
+    """脱敏 ProxyServer 这类 `scheme=user:pass@host:port` 文本。"""
+    return re.sub(r"[^=/@\s;]+(?=@)", "***", value)
 
 
 def parse_json_output(text: str) -> Any:
@@ -758,16 +763,246 @@ def read_registry(path: Path) -> dict[str, Any]:
     }
 
 
+SYSTEM_PROXY_TIMEOUT = 3.0
+
+
+def truthy(value: Any) -> bool:
+    """把注册表/DWORD/scutil 的 0/1、true/false 统一成布尔值。"""
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_proxy_server(value: str) -> dict[str, str]:
+    """解析 Windows ProxyServer：host:port 或 http=...;https=...;socks=...。"""
+    parsed: dict[str, str] = {}
+    for part in (value or "").split(";"):
+        item = part.strip()
+        if not item:
+            continue
+        if "=" in item:
+            scheme, address = item.split("=", 1)
+            scheme = scheme.strip().lower()
+            address = address.strip()
+            if not address:
+                continue
+            if scheme.startswith("socks"):
+                parsed["socks"] = address
+            elif scheme in ("http", "https"):
+                parsed[scheme] = address
+            continue
+        parsed.setdefault("http", item)
+        parsed.setdefault("https", item)
+    return parsed
+
+
+def endpoint_url(scheme: str, address: str) -> str:
+    """补全 scheme 并脱敏；输入已是 URL 时只脱敏。"""
+    if "://" in address:
+        return mask_url(address)
+    prefix = "socks5" if scheme == "socks" else scheme
+    return mask_url(f"{prefix}://{address}")
+
+
+def windows_system_proxy() -> dict[str, Any]:
+    """只读 HKCU Internet Settings，取得系统代理、PAC 与绕过列表。"""
+    try:
+        import winreg
+    except ImportError:
+        return {
+            "available": False,
+            "source": "windows-registry",
+            "reason": "当前解释器没有 winreg",
+        }
+    key_path = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            def read(name: str) -> Any:
+                try:
+                    return winreg.QueryValueEx(key, name)[0]
+                except OSError:
+                    return None
+
+            enable = read("ProxyEnable")
+            server = read("ProxyServer") or ""
+            override = read("ProxyOverride") or ""
+            pac = read("AutoConfigURL") or ""
+            auto_detect = read("AutoDetect")
+    except OSError as error:
+        return {
+            "available": False,
+            "source": "windows-registry",
+            "reason": f"读取 Internet Settings 失败: {error}",
+        }
+
+    parsed = parse_proxy_server(str(server))
+    auto = truthy(auto_detect)
+    enabled = truthy(enable)
+    info: dict[str, Any] = {
+        "available": True,
+        "source": "HKCU Internet Settings",
+        "enabled": enabled or bool(pac) or auto,
+        "autoDetect": auto,
+    }
+    if enabled:
+        for scheme in ("http", "https", "socks"):
+            address = parsed.get(scheme)
+            if address:
+                info[scheme] = endpoint_url(scheme, address)
+    elif server:
+        info["configuredServer"] = mask_proxy_server(str(server))
+    if pac:
+        info["pac"] = mask_value(str(pac))
+    if override:
+        info["bypass"] = str(override)
+    return info
+
+
+def parse_scutil_proxy(text: str) -> dict[str, Any]:
+    """解析 macOS `scutil --proxy` 的字典输出。"""
+    values: dict[str, str] = {}
+    bypass: list[str] = []
+    in_exceptions = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("ExceptionsList"):
+            in_exceptions = True
+            continue
+        if in_exceptions:
+            if line.startswith("}"):
+                in_exceptions = False
+                continue
+            match = re.match(r"^\d+\s*:\s*(.+)$", line)
+            if match:
+                bypass.append(match.group(1).strip())
+                continue
+        match = re.match(r"^([A-Za-z][A-Za-z0-9]*)\s*:\s*(.+)$", line)
+        if match:
+            values[match.group(1)] = match.group(2).strip()
+
+    def address(prefix: str) -> str | None:
+        if not truthy(values.get(f"{prefix}Enable")):
+            return None
+        host = values.get(f"{prefix}Proxy")
+        port = values.get(f"{prefix}Port")
+        if not host:
+            return None
+        if port and ":" not in host:
+            host = f"{host}:{port}"
+        return host
+
+    info: dict[str, Any] = {
+        "available": True,
+        "source": "scutil --proxy",
+        "enabled": False,
+    }
+    for scheme in ("http", "https", "socks"):
+        found = address(scheme.upper())
+        if found:
+            info[scheme] = endpoint_url(scheme, found)
+    pac = (
+        values.get("ProxyAutoConfigURLString")
+        if truthy(values.get("ProxyAutoConfigEnable"))
+        else None
+    )
+    auto = truthy(values.get("ProxyAutoDiscoveryEnable"))
+    if pac:
+        info["pac"] = mask_value(pac)
+    if auto:
+        info["autoDetect"] = True
+    if bypass:
+        info["bypass"] = ", ".join(bypass)
+    info["enabled"] = bool(info.get("http") or info.get("https") or info.get("socks") or pac or auto)
+    return info
+
+
+def macos_system_proxy() -> dict[str, Any]:
+    """调用只读的 `scutil --proxy`；失败时返回原因而不是抛异常。"""
+    code, stdout, stderr = run_command(["scutil", "--proxy"], SYSTEM_PROXY_TIMEOUT)
+    if code != 0:
+        return {
+            "available": False,
+            "source": "scutil --proxy",
+            "reason": stderr.strip() or f"scutil 退出码 {code}",
+        }
+    return parse_scutil_proxy(stdout)
+
+
+def linux_system_proxy() -> dict[str, Any]:
+    """读取 GNOME/`gsettings` 的系统代理；非 GNOME 桌面明确报未知。"""
+    if not shutil.which("gsettings"):
+        return {
+            "available": False,
+            "source": "gsettings",
+            "reason": "未找到 gsettings（非 GNOME 桌面或未安装）",
+        }
+
+    def get(schema: str, key: str) -> str:
+        code, stdout, stderr = run_command(
+            ["gsettings", "get", schema, key], SYSTEM_PROXY_TIMEOUT
+        )
+        if code != 0:
+            logger.debug("gsettings %s %s 失败: %s", schema, key, stderr.strip())
+            return ""
+        return stdout.strip().strip("'\"")
+
+    mode = get("org.gnome.system.proxy", "mode")
+    if not mode:
+        return {
+            "available": False,
+            "source": "gsettings",
+            "reason": "读取 org.gnome.system.proxy 失败",
+        }
+    info: dict[str, Any] = {
+        "available": True,
+        "source": "gsettings",
+        "enabled": mode in ("manual", "auto"),
+        "mode": mode,
+    }
+    if mode == "manual":
+        for scheme, schema in (
+            ("http", "org.gnome.system.proxy.http"),
+            ("https", "org.gnome.system.proxy.https"),
+            ("socks", "org.gnome.system.proxy.socks"),
+        ):
+            host = get(schema, "host")
+            port = get(schema, "port")
+            if host:
+                info[scheme] = endpoint_url(scheme, f"{host}:{port}" if port else host)
+    elif mode == "auto":
+        pac = get("org.gnome.system.proxy", "autoconfig-url")
+        if pac:
+            info["pac"] = mask_value(pac)
+    bypass = get("org.gnome.system.proxy", "ignore-hosts")
+    if bypass:
+        info["bypass"] = bypass
+    return info
+
+
+def system_proxy_info() -> dict[str, Any]:
+    """按平台读取系统代理设置；只读，失败返回 available=False。"""
+    if os.name == "nt":
+        return windows_system_proxy()
+    if sys.platform == "darwin":
+        return macos_system_proxy()
+    return linux_system_proxy()
+
+
 def section_route(registry_path: Path) -> dict[str, Any]:
-    """代理环境变量与登记摘要；入口可用性仍在 probe_local_proxies.py。"""
+    """代理环境变量、系统代理与登记摘要；入口可用性仍在 probe_local_proxies.py。"""
     registry = read_registry(registry_path)
     if registry.get("available"):
         registry["artifactCount"] = len(registry.get("artifactMirrors") or [])
         registry.pop("artifactMirrors", None)
     return {
         "env": env_values(PROXY_VARS),
+        "system": system_proxy_info(),
         "registry": registry,
-        "note": "登记是线索，不是当前可用性；源站可达性用本脚本 --probe，代理入口用 probe_local_proxies.py。",
+        "note": (
+            "系统代理只说明系统设置，不证明终端或当前进程会使用它；"
+            "登记是线索，不是当前可用性。源站可达性用本脚本 --probe，"
+            "代理入口用 probe_local_proxies.py。"
+        ),
     }
 
 
@@ -1085,7 +1320,17 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         report["projects"] = [project_info(item) for item in args.project]
 
     proxy_env = [name for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY") if get_env(name)]
-    route_label = "direct" if args.direct else ("proxy" if args.proxy else ("env" if proxy_env else "default"))
+    system = (report.get("route") or {}).get("system") or {}
+    system_route = (
+        bool(system.get("enabled"))
+        and any(system.get(key) for key in ("http", "https", "socks"))
+        and (os.name == "nt" or sys.platform == "darwin")
+    )
+    route_label = "direct" if args.direct else (
+        "proxy" if args.proxy else (
+            "env" if proxy_env else ("system" if system_route else "default")
+        )
+    )
     if args.probe:
         specs = build_probe_specs(report)
         report["probe"] = run_probes(
@@ -1136,6 +1381,41 @@ def render_human(report: dict[str, Any]) -> str:
             lines.append("  " + "  ".join(f"{key}={value}" for key, value in env.items()))
         else:
             lines.append("  环境变量: 未设置 HTTP(S)_PROXY/ALL_PROXY/NO_PROXY")
+        system = route.get("system") or {}
+        if system.get("available"):
+            if system.get("enabled"):
+                parts = []
+                for key in ("http", "https", "socks"):
+                    if system.get(key):
+                        parts.append(f"{key}={system[key]}")
+                if system.get("pac"):
+                    parts.append(f"pac={system['pac']}")
+                if system.get("autoDetect"):
+                    parts.append("auto-detect=on")
+                lines.append("  系统代理: " + ("  ".join(parts) or "已开启（未解析到地址）"))
+                if system.get("bypass"):
+                    lines.append(f"    绕过: {system['bypass']}")
+            else:
+                detail = ""
+                if system.get("configuredServer"):
+                    detail = f"（已配置 {system['configuredServer']}，但未启用）"
+                lines.append(f"  系统代理: 关闭{detail}")
+        else:
+            lines.append(f"  系统代理: 未知（{system.get('reason') or '未检测'}）")
+        proxy_env = {
+            key: value
+            for key, value in env.items()
+            if key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+        }
+        if system.get("available") and system.get("enabled") and not proxy_env:
+            lines.append(
+                "  说明: 系统代理已开但环境变量未设；终端与多数 CLI 不会自动跟随，"
+                "需显式设 HTTP(S)_PROXY 或使用 TUN。"
+            )
+        elif system.get("available") and not system.get("enabled") and proxy_env:
+            lines.append(
+                "  说明: 只有环境变量生效；新终端和 GUI 应用未设变量时仍直连。"
+            )
         registry = route.get("registry") or {}
         if registry.get("available"):
             lines.append(
@@ -1278,7 +1558,7 @@ def parse_only(value: str) -> set[str]:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """解析命令行参数（含 --help 与基本校验）。"""
     parser = argparse.ArgumentParser(
-        description="盘点本机开发环境的源、镜像与代理配置；默认只读，--probe 才做有界探测。",
+        description="盘点本机开发环境的源、镜像、系统代理与环境变量；默认只读，--probe 才做有界探测。",
         epilog=(
             "示例:\n"
             "  python check_network_env.py\n"

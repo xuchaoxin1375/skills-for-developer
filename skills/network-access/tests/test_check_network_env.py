@@ -12,8 +12,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import types
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 HERE = Path(__file__).resolve()
 SCRIPT = HERE.parent.parent / "scripts" / "check_network_env.py"
@@ -49,6 +51,13 @@ def test_mask_url_hides_credentials() -> None:
     module = load_module()
     assert module.mask_url("https://user:token@mirror.example/simple") == "https://***@mirror.example/simple"
     assert module.mask_url("https://mirror.example/simple") == "https://mirror.example/simple"
+
+
+def test_mask_proxy_server_hides_credentials() -> None:
+    module = load_module()
+    assert module.mask_proxy_server(
+        "http=user:secret@proxy.example:8080;https=proxy.example:8080"
+    ) == "http=***@proxy.example:8080;https=proxy.example:8080"
 
 
 def test_parse_pip_config_list_and_prefix_priority() -> None:
@@ -279,7 +288,180 @@ def test_route_proxy_env_is_masked() -> None:
         assert code == 0, stderr
         report = json.loads(stdout)
         assert report["route"]["env"]["HTTPS_PROXY"] == "http://***@proxy.example:8080"
+        assert "system" in report["route"]
         assert "secret" not in stdout
+
+
+def test_parse_proxy_server_variants() -> None:
+    module = load_module()
+    assert module.parse_proxy_server("127.0.0.1:7897") == {
+        "http": "127.0.0.1:7897",
+        "https": "127.0.0.1:7897",
+    }
+    assert module.parse_proxy_server(
+        "http=127.0.0.1:7897;https=127.0.0.1:7898;socks=127.0.0.1:7899"
+    ) == {
+        "http": "127.0.0.1:7897",
+        "https": "127.0.0.1:7898",
+        "socks": "127.0.0.1:7899",
+    }
+    assert module.endpoint_url("http", "127.0.0.1:7897") == "http://127.0.0.1:7897"
+    assert module.endpoint_url("socks", "127.0.0.1:7899") == "socks5://127.0.0.1:7899"
+
+
+def test_parse_scutil_proxy() -> None:
+    module = load_module()
+    info = module.parse_scutil_proxy(
+        "<dictionary> {\n"
+        "  ExceptionsList : <array> {\n"
+        "    0 : *.local\n"
+        "    1 : 169.254/16\n"
+        "  }\n"
+        "  HTTPEnable : 1\n"
+        "  HTTPPort : 7897\n"
+        "  HTTPProxy : 127.0.0.1\n"
+        "  HTTPSEnable : 0\n"
+        "  SOCKSEnable : 1\n"
+        "  SOCKSPort : 7898\n"
+        "  SOCKSProxy : 127.0.0.1\n"
+        "  ProxyAutoConfigEnable : 0\n"
+        "  ProxyAutoDiscoveryEnable : 0\n"
+        "}\n"
+    )
+    assert info["available"] is True
+    assert info["enabled"] is True
+    assert info["http"] == "http://127.0.0.1:7897"
+    assert info["socks"] == "socks5://127.0.0.1:7898"
+    assert "https" not in info
+    assert info["bypass"] == "*.local, 169.254/16"
+
+
+def test_windows_system_proxy_reads_registry() -> None:
+    module = load_module()
+    values = {
+        "ProxyEnable": 1,
+        "ProxyServer": (
+            "http=127.0.0.1:7897;https=127.0.0.1:7897;socks=127.0.0.1:7898"
+        ),
+        "ProxyOverride": "localhost;127.*",
+        "AutoConfigURL": "",
+        "AutoDetect": 0,
+    }
+
+    class FakeKey:
+        def __enter__(self) -> "FakeKey":
+            return self
+
+        def __exit__(self, *exc: object) -> bool:
+            return False
+
+    def query(key: object, name: str) -> tuple[Any, int]:
+        if name in values:
+            return values[name], 1
+        raise OSError(name)
+
+    fake_winreg = types.SimpleNamespace(
+        HKEY_CURRENT_USER=object(),
+        OpenKey=lambda root, path: FakeKey(),
+        QueryValueEx=query,
+    )
+    with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
+        info = module.windows_system_proxy()
+    assert info["available"] is True
+    assert info["enabled"] is True
+    assert info["http"] == "http://127.0.0.1:7897"
+    assert info["socks"] == "socks5://127.0.0.1:7898"
+    assert info["bypass"] == "localhost;127.*"
+
+
+def test_windows_system_proxy_detects_pac() -> None:
+    module = load_module()
+    values = {
+        "ProxyEnable": 0,
+        "AutoConfigURL": "http://pac.example/proxy.pac",
+        "AutoDetect": 1,
+    }
+
+    class FakeKey:
+        def __enter__(self) -> "FakeKey":
+            return self
+
+        def __exit__(self, *exc: object) -> bool:
+            return False
+
+    def query(key: object, name: str) -> tuple[Any, int]:
+        if name in values:
+            return values[name], 1
+        raise OSError(name)
+
+    fake_winreg = types.SimpleNamespace(
+        HKEY_CURRENT_USER=object(),
+        OpenKey=lambda root, path: FakeKey(),
+        QueryValueEx=query,
+    )
+    with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
+        info = module.windows_system_proxy()
+    assert info["enabled"] is True
+    assert info["pac"] == "http://pac.example/proxy.pac"
+    assert info["autoDetect"] is True
+
+
+def test_linux_system_proxy_reads_gsettings() -> None:
+    module = load_module()
+    responses = {
+        ("org.gnome.system.proxy", "mode"): "'manual'",
+        ("org.gnome.system.proxy.http", "host"): "'127.0.0.1'",
+        ("org.gnome.system.proxy.http", "port"): "7897",
+        ("org.gnome.system.proxy.https", "host"): "'127.0.0.1'",
+        ("org.gnome.system.proxy.https", "port"): "7898",
+        ("org.gnome.system.proxy.socks", "host"): "''",
+        ("org.gnome.system.proxy.socks", "port"): "0",
+        ("org.gnome.system.proxy", "ignore-hosts"): "['localhost', '127.0.0.0/8']",
+    }
+
+    def fake_run(args: list[str], timeout: float, extra_env: dict[str, str] | None = None):
+        return 0, responses.get((args[2], args[3]), ""), ""
+
+    with mock.patch.object(module.shutil, "which", return_value="/usr/bin/gsettings"):
+        with mock.patch.object(module, "run_command", side_effect=fake_run):
+            info = module.linux_system_proxy()
+    assert info["available"] is True
+    assert info["enabled"] is True
+    assert info["mode"] == "manual"
+    assert info["http"] == "http://127.0.0.1:7897"
+    assert info["https"] == "https://127.0.0.1:7898"
+    assert "socks" not in info
+    assert info["bypass"] == "['localhost', '127.0.0.0/8']"
+
+
+def test_render_route_distinguishes_system_proxy_from_env() -> None:
+    module = load_module()
+    report = {
+        "generated": "2026-01-01T00:00:00+08:00",
+        "mode": "offline",
+        "route": {
+            "env": {"NO_PROXY": "127.0.0.1,localhost"},
+            "system": {
+                "available": True,
+                "enabled": False,
+                "configuredServer": "127.0.0.1:7897",
+            },
+            "registry": {"available": False, "reason": "stub"},
+        },
+        "probe": {"ran": False, "reason": "stub"},
+    }
+    text = module.render_human(report)
+    assert "系统代理: 关闭（已配置 127.0.0.1:7897，但未启用）" in text
+    assert "只有环境变量生效" not in text
+
+    report["route"]["system"] = {
+        "available": True,
+        "enabled": True,
+        "http": "http://127.0.0.1:7897",
+    }
+    text = module.render_human(report)
+    assert "系统代理: http=http://127.0.0.1:7897" in text
+    assert "系统代理已开但环境变量未设" in text
 
 
 def test_invalid_only_exits_nonzero() -> None:

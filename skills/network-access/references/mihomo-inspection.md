@@ -32,10 +32,19 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --list-instances
 python -X utf8 <skill>/scripts/inspect_mihomo.py --list-instances --json
 ```
 
-`--list-instances` 只读本地文件与进程，不查 API；输出每个实例的 PID、客户端、`-d`、运行时配置、mixed-port、controller、listeners 与配置里出现的 `strategy`。完整检查再对每个实例执行：
+`--list-instances` 只读本地文件与进程，不查 API；输出每个实例的 PID、客户端、`-d`、运行时配置、mixed-port、controller、listeners 与配置里出现的 `strategy`。PID 为 `-` 表示只扫到配置、没有定位到进程；`--json` 的 `instances[]` 保留同样字段。完整检查再对每个实例执行：
 
 ```bash
 python -X utf8 <skill>/scripts/inspect_mihomo.py --config <runtime> --controller <host:port>
+```
+
+示例（PID、端口与实例名随机器变化）：
+
+```text
+| PID   | 客户端            | mixed | controller        | listeners                         | 策略               |
+| ----- | ----------------- | ----- | ----------------- | --------------------------------- | ------------------ |
+| <pid> | Clash Verge Rev   | <mixed> | 127.0.0.1:<controller> | -                            | -                  |
+| <pid> | mihomo (standalone) | <mixed> | 127.0.0.1:<controller> | crawler-all:<port> … 共 12 个   | consistent-hashing |
 ```
 
 - 没有实例管理脚本时，按进程命令行里的 `-d`/`-f` 枚举；Windows 用 `Get-CimInstance Win32_Process`，Linux 读 `/proc`，macOS 用 `ps`。
@@ -129,7 +138,8 @@ Verge 的**本地 profile** 菜单没有"更新"（只有使用/编辑/删除）
 - **订阅信息节点**：把"剩余流量""到期时间"做成同名节点。`exclude-filter` 只作用于分组展开，客户端层的 `junk-filter` 是另一道；两道都没覆盖时，这些节点仍会参与 provider 健康检查。
 - **关键词误伤**：`exclude-filter` 里的"倍率""试用"等词会把真实节点一并挡掉，表现为 provider 条数多于分组内可见节点数。
 - **规则过薄**：只有 `MATCH` 兜底时，地区组只在特定进程名或规则集命中时生效；用户以为"切组没效果"通常就是这里。
-- **系统级接管**：TUN 和系统代理都关闭时，只有显式设置代理变量的进程受影响；新终端默认直连。
+- **控制口不是代理入口**：`9090`/`9097` 只供 API 使用；把它填进 `HTTP_PROXY` 会得到 404/405 或连接异常。代理入口是 mixed-port 或 listeners。
+- **系统级接管**：TUN 和系统代理都关闭时，只有显式设置代理变量的进程受影响；新终端默认直连。检查顺序与系统代理读取见 [SKILL.md](../SKILL.md#本机代理环境体检顺序)。
 - **secret 短**：只绑回环时风险有限，但本机任意进程都能读取节点与切换节点；报告只写长度，不回显值。
 - **管道 / Unix socket 不校验 secret**：`external-controller-pipe` 与 `external-controller-unix`（含进程参数 `-ext-ctl-unix` / `-ext-ctl-pipe`）访问时不验证 secret，能读到 socket 的本机用户就能切节点；`allow-lan` 与 `external-controller: 0.0.0.0` 同时开才需要强 secret 与防火墙。
 - **`-ext-ctl` / `-ext-ctl-unix` / `-secret` 会覆盖配置**：进程命令行优先于 YAML，报告要先按进程参数取控制口和密钥，再去读配置。macOS 上 Clash Verge Rev 默认用 `-ext-ctl-unix <socket 路径>`，配置里 `external-controller` 为空；此时只有走 Unix socket 才能读到运行时节点，脚本会自动解析进程参数里的 socket 路径，或用 `--controller unix:/path/to/socket` / `--controller /path/to/socket` 显式指定。

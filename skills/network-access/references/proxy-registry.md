@@ -22,11 +22,13 @@
 
 | 候选家族 | 进程名线索（模糊匹配） | 常见端口线索 |
 | --- | --- | --- |
-| mihomo / Clash 系 | `mihomo`、`clash`、`clash-verge`、`mihomo-party`、`flclash` | 7890/7891（经典 http/socks）、7897（部分图形版默认）、9090（控制 API） |
-| v2ray / xray 系（`*ray`） | `xray`、`v2ray`、`v2rayN`、`v2rayA`、`nekoray` | 10808/10809（图形端常见 socks/http）、1080 |
-| sing-box 系 | `sing-box`、`nekobox`、`hiddify`、`karing` | 配置示例常见 2080，实际以 inbounds 为准 |
+| mihomo / Clash 系 | `mihomo`、`clash`、`clash-verge`、`mihomo-party`、`flclash` | 7890/7891（经典 http/socks）、7897 mixed + 9097 controller（Clash Verge Rev 常见）、9090（其它客户端控制 API） |
+| v2ray / xray 系（`*ray`） | `xray`、`v2ray`、`v2rayN`、`v2rayA`、`nekoray` | 10808 SOCKS / 10809 HTTP（v2rayN 常见，顺序以 inbounds 为准）、1080 |
+| sing-box 系 | `sing-box`、`nekobox`、`hiddify`、`karing` | 部分示例用 2080；hiddify/karing 等以实际 inbounds 为准 |
 | 其它隧道 | `ss-local`、`shadowsocks`、`trojan`、`hysteria`、`tuic`、`naive` | 各自配置端口（常见 1080） |
 | GUI / 系统级封装（核心不明或只做 TUN） | `surge`、`quantumult`、`stash`、`loon`、`netch`、`proxifier`、`surfboard` | 由各自设置决定，部分只做 TUN、不提供本地端口 |
+
+端口顺序不是协议契约：同一客户端不同版本会换默认值；控制口（如 9090/9097）不是代理入口。
 
 ```powershell
 Get-NetTCPConnection -State Listen | Where-Object LocalAddress -match '^(127\.0\.0\.1|::1|0\.0\.0\.0|::)$' |
@@ -57,7 +59,7 @@ ps -eo pid,comm,args | grep -Ei 'mihomo|clash|sing-box|xray|v2ray|ss-local|shado
 - 对每个候选各做一次 `http` 与 `socks5` 有界探测，并先取一条**直连对照**比对出口；`--json` 输出供 agent 读。
 - 候选与 `usable[]` 保留 `pids`、`processes`；`--json` 的 `instances[]` 按 PID 归组，列出每个实例的监听端口与可用端口。同一实例的 mixed-port、listeners、控制口不会混成多个实例。
 - `instances[].ports` 是该进程所有监听端口（mixed、listeners、控制口等），`usablePorts` 才是通过探测的入口；端口数不等于入口数。
-- `--copy` 只打印**排序后的首选入口**的代理环境变量行；`--copy-all` 才逐个输出所有可用入口（Windows 给 pwsh+cmd，其它给 bash；`--shell` 可指定）。只输出不写配置——改环境变量是用户的事，脚本不代劳。
+- `--copy` 只打印**排序后的首选入口**的代理环境变量行（Windows 给 pwsh+cmd，其它给 bash；`--shell` 可指定），且只含 `HTTP_PROXY`/`HTTPS_PROXY`（bash 另给小写），不含 `ALL_PROXY`；`--copy-all` 才逐个输出所有可用入口。只输出不写配置——改环境变量是用户的事，脚本不代劳。
 - `--watch SEC` 常驻重扫，每轮一行：首轮 / 无变化 / 变化（点名新增与失效的端口）；`--json` 时每轮一行 NDJSON。
 - 默认总预算 5 秒（`--budget`）、单次探测上限 2.5 秒（`--timeout`），候选同批并发。多实例常有 30+ 个监听端口，默认预算下会出现较多“不可判定”；需要排干净时加 `--budget 20 --timeout 6`。结论只分三态——可用 / 不是代理入口（对方按协议语义回了话，如 CONNECT 4xx、socks 问候被拒）/ 不可判定（超时、预算到点）。
 - 收尾按结论**分堆点名**：可用入口逐个给 URL（http 优先，只有 socks5 通才给 `socks5://`）、出口 IP、来源（进程名(pid) / 登记名 / `--port`）与排序（非直连出口优先，协议多的在前，同档按耗时）。多入口时首个标“排序第一”，不是任务默认；`egressMatchesDirect: true` 的入口排在最后并标注“可能没真正生效”。随后点名不可判定、不是代理入口、未监听的分别是哪几个。**只有本轮没有可用入口时才展开盲区**，不输出“没有代理”。
