@@ -162,11 +162,12 @@ skills-for-developer/
 用户说“同步”“同步仓库”“同步 skills”时，范围不止 git 提交；逐项核对，缺项要说明未做的原因。
 
 - **偏好回写**：全局 `AGENTS.md` 的最新偏好按「同步 harness 配置偏好」比对，可跨机的差异合入真源；OpenCode `cli.json` 不再默认检查，只在用户明确要求“同步配置”时比对。
+- **镜像配置检查**：每次同步默认运行 `python -X utf8 skills/network-access/scripts/check_network_env.py`（只读、不联网），国内网络环境下重点核对 pip/uv、npm/pnpm/yarn、conda、git 与浏览器制品是否已切到可用镜像。发现未配置、仍指向官方源或明显不匹配时，在同步报告中列出并询问是否调整，不自动改本机全局配置；无异常时注明已检查。需要可达性结论时先询问，再加 `--probe`；脚本缺失时记为未执行，不阻断同步。
 - **skill 实体与索引**：本机新建或改过的 skill 已落真源，README 检索表与 `description` 语义一致；第三方名单的 `ref` 是否该更新。
 - **提交与远端对齐**：按仓库风格提交，再按「跨机器同步与对齐判定」核对每个远端。
 - **链接与检查**：`-VerifyOnly`、`check-skills.py`、`check-links.py` 通过；harness 侧无实体副本漂移。ZCode 全局 `AGENTS.md` 为 best-effort symlink，创建失败只提示、不阻断。
 
-先核对实体与偏好差异，再提交与推送，最后报告各项事实（含未做项）。
+先核对实体、偏好与镜像配置，再提交与推送，最后报告各项事实（含未做项）。
 
 ### 跨机器同步与对齐判定
 
