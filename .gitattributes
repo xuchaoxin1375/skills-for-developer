@@ -1,6 +1,7 @@
-# 跨平台换行保护：仓库统一存 LF，检出默认 LF；shell 脚本在 Linux 上必须 LF，带 CR 会直接报错
-# cmd/bat 必须 CRLF，否则 cmd.exe 解析失败
-# 注意：一旦设置 text 属性，core.autocrlf 即被覆盖，以此处 eol 为准；改 autocrlf 消不掉 warning
+# 跨平台换行保护：默认文本统一存 LF、检出 LF；.sh/.bash 必须 LF，带 CR 会直接报错
+# .bat/.cmd 必须 CRLF，否则 cmd.exe 解析失败
+# 注意：text/eol 属性优先于 core.autocrlf；改 autocrlf 只是本机行为，不能替代仓库规则。
+# 工作区仍有 CRLF 时 git add 会提示“next time Git touches it”，归一化后需重新检出才会消失。
 
 # * 匹配所有文件。text=auto 让Git 自动区分文本(text)/二进制，文本文件入库时统一转 LF，二进制不动。
 # eol=lf：检出时工作区一律写 LF，不跟 Windows 的 native=CRLF 走。
@@ -12,7 +13,7 @@
 *.js text eol=lf
 *.mjs text eol=lf
 
-# powershell兼容两种换行风格.但跨平台条件在,使用lf更好.
-*.ps1 text eol=lf 
+# PowerShell 5.1 与 pwsh 都能读 LF，不强制 CRLF。
+*.ps1 text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf

@@ -401,7 +401,7 @@ AI 同质化（有观察依据）：紫渐变+Inter+圆角卡片+柔和阴影+�
 | `P-07` | 系统缩放/最小字号 | 字号间距用 rem，125%/150% 验收 |
 | `P-08` | 高 DPI 1px | `0.5px` 或 `scaleY(0.5)` 技法 |
 | `P-09` | 第三方国内不可达 | 字体图标自托管，设超时回退（Google Fonts/unpkg/Gravatar） |
-| `P-10` | 换行编码 | `.gitattributes * text=auto eol=lf`（bat/ps1 保留 crlf，二进制 binary），UTF-8 无 BOM，editorconfig |
+| `P-10` | 换行编码 | `.gitattributes * text=auto eol=lf`（`.sh`/`.bash` 强制 LF；`.bat`/`.cmd` 强制 CRLF，cmd.exe 解析；`.ps1` 不强制；二进制 binary），UTF-8 无 BOM，editorconfig |
 | `P-11` | 打印缺失 | `@media print`：藏导航浮层、强制浅色、`break-inside:avoid` |
 | `P-12` | 触鼠混合 | 以 `(hover:hover)` 判悬停能力，非 `pointer:coarse`；功能不依赖单一输入 |
 

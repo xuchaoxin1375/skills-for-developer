@@ -126,9 +126,9 @@ CI 拉取依赖按 runner 的实际地区与出口诊断，遵循 `network-acces
 
 | 文件 | 作用 | 关键内容 |
 | --- | --- | --- |
-| `.gitattributes` | 统一换行与二进制标记 | `* text=auto eol=lf`，`*.png binary`，`*.ps1 text eol=crlf` |
+| `.gitattributes` | 统一换行与二进制标记 | `* text=auto eol=lf`，`*.sh text eol=lf`，`*.bat/*.cmd text eol=crlf`（cmd.exe 解析），`*.png binary`；`.ps1` 不强制 CRLF |
 | `.editorconfig` | 统一缩进与字符集 | `charset = utf-8`、`insert_final_newline = true` |
-| `.gitignore` | 排除产物与密钥 | 构建产物、`.env`、日志、系统文件 `.DS_Store` |
+| `.gitignore` | 排除产物与密钥 | 按 `repo-gov` 的基座与语言块追加，至少覆盖 `.env`、依赖、构建产物、日志、系统文件；保留 `.env.example` 与锁文件 |
 | `LICENSE` | 明确授权 | 按分发意图与 `repo-gov` 确定；私有项目不默认开源许可证 |
 | `CONTRIBUTING.md` | 说明如何参与 | 本地起跑命令、提交规范 |
 

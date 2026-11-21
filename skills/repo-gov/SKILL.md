@@ -61,38 +61,54 @@ README 的内容、结构、快速开始与排障按 [project-docs 的 README �
 - 忽略实际使用的秘密、运行产物和个人配置；以下是候选基座，按项目核对，合法共享配置/fixture 不无差别排除：
 
 ```gitignore
+# 本地配置与秘密
 .env
 .env.*
 !.env.example
 .envrc
 *.pem
 *.p12
+*.pfx
 *.key
+*.jks
+*.keystore
 credentials.json
 serviceAccountKey.json
+
+# 日志与临时文件
 *.log
+*.log.*
 *.tmp
+*.tmp.*
+*.swp
+*~
+
+# 操作系统与编辑器
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/settings.json
 .vscode/launch.json
 ```
 
-- 运行期数据库及其 WAL/SHM 通常是本机状态或生成物，默认不入库：按项目实际产物追加 `*.db`、`*.db-wal`、`*.db-shm`、`*.sqlite`、`*.sqlite3`。小型、合成或脱敏、测试确实需要的 fixture 数据库可以保留，但要在路径或 README 中写明用途、生成方式和例外规则（如 `!tests/fixtures/*.db`）；不要因为扩展名一律忽略合法 fixture，也不要把任务账本、浏览器缓存或用户数据当成 fixture。
-- 再按所选主语言追加对应块（Node 追加 `node_modules/`、`dist/`；Python 追加 `__pycache__/`、`*.py[cod]`、`.venv/`；Go 追加 `bin/`（用 `go mod vendor` 则保留 `vendor/`）；Rust 追加 `target/`；Java 追加 `*.class`、`target/`）。单语言仓库不得堆砌全语言模板。
+- 基座只放跨项目通用的秘密、日志、系统和编辑器条目；语言与框架产物按下面的语言块追加，不把全语言模板粘进单语言仓库。锁文件（`package-lock.json`、`pnpm-lock.yaml`、`uv.lock` 等）、迁移、测试 fixture、`.env.example` 和业务数据默认保留；不要用 `*.lock` 之类宽泛规则误伤。
+- 运行期数据库及其 WAL/SHM/journal 通常是本机状态或生成物，默认不入库：按项目实际产物追加 `*.db`、`*.db-wal`、`*.db-shm`、`*.db-journal`、`*.sqlite`、`*.sqlite-journal`、`*.sqlite-wal`、`*.sqlite-shm`、`*.sqlite3`、`*.sqlite3-journal`、`*.sqlite3-wal`、`*.sqlite3-shm`。小型、合成或脱敏、测试确实需要的 fixture 数据库可以保留，但要在路径或 README 中写明用途、生成方式和例外规则（如 `!tests/fixtures/*.db`）；不要因为扩展名一律忽略合法 fixture，也不要把任务账本、浏览器缓存或用户数据当成 fixture。
+- 浏览器自动化、采集和本地服务还会生成 profile、下载、trace、报告等本机状态；按实际目录追加（如 `browser-profile/`、`playwright-report/`、`test-results/`），不要把业务数据目录一并忽略，是否属于可再生成产物按用途判断。
+- 再按所选主语言追加对应块（Node 追加 `node_modules/`、`dist/`、`coverage/`、`*.tsbuildinfo`；Python 追加 `__pycache__/`、`*.py[cod]`、`.venv/`、`.pytest_cache/`、`.mypy_cache/`、`.ruff_cache/`、`.coverage*`、`htmlcov/`、`*.egg-info/`、`dist/`；Go 追加 `bin/`（用 `go mod vendor` 则保留 `vendor/`）；Rust 追加 `target/`；Java 追加 `*.class`、`target/`）。单语言仓库不得堆砌全语言模板。
 - 构建产物与缓存（Node 侧常见 `.next/`、`.nuxt/`、`.svelte-kit/`、`.turbo/`、`.vite/`、`coverage/`、`*.tsbuildinfo`，与 `dist/` 同性质）按“隐私与安全红线”默认不入库，并须在 `.gitignore` 明文表达；隐式排除（从未 `git add` 过、规则里没有对应条目）不可审计，后来者会把它当成已有政策。
+- 模式按 `.gitignore` 所在目录解析，`/` 锚定该目录、`**` 跨目录，后面的规则覆盖前面的（`!` 放行）；项目产物与秘密写在仓库 `.gitignore`，不依赖个人全局忽略。
 - 已追踪的忽略命中先核对是否是合法 fixture 或业务资源，确需移出版本控制时仅点名对应文件（本地内容保留）：
 
 ```bash
 git rm --cached -- <file>
 ```
 
-- 验证：`git ls-files -c -i --exclude-standard` 检查已追踪命中；`git status --porcelain --ignored` 抽查。命中需定性，不能无差别解除全仓追踪。
+- 验证：`git check-ignore -v <path>` 看命中的规则与来源；`git ls-files -c -i --exclude-standard` 检查已追踪命中；`git status --porcelain --ignored` 抽查。命中需定性，不能无差别解除全仓追踪；忽略规则只影响未跟踪文件，不清理历史。
 
 ### .gitattributes：模板与一次归一化
 
-- **必须**：仓库根目录下应放置以下基座（Shell 强制 LF、`*.bat/*.cmd` 例外 CRLF、二进制禁转换）：
+- **必须**：仓库根目录下应放置以下基座（跨平台文本统一 LF；`.bat`/`.cmd` 例外，必须 CRLF 才能被 cmd.exe 正确解析；二进制禁转换）：
 
 ```gitattributes
 * text=auto eol=lf
@@ -105,14 +121,32 @@ git rm --cached -- <file>
 *.zip binary
 ```
 
-- **推荐**：大多数文本文件两种行尾都能运行，不必逐个声明或检查；只对 Shell、Makefile、批处理等严格类型按运行要求固定行尾，避免把行尾归一化扩大成全仓改写。
-- 先用属性与差异确认是否确需归一化；执行时与业务改动分开审阅，保持用户改动。下列暂存命令只在该范围已确认且没有无关工作时使用；提交另遵循有效授权：
+- **严格类型按运行要求固定**：`.sh`/`.bash` 必须 LF（CRLF 会让 shebang 变成 `bash\r`，heredoc 与 `then`/`fi` 也会带 `\r`）；`.bat`/`.cmd` 必须 CRLF（cmd.exe 解析）；`.ps1` 不强制 CRLF，PowerShell 5.1 与 pwsh 都能读 LF。大多数其他文本两种行尾都能运行，不必逐个声明或检查，避免把行尾归一化扩大成全仓改写。
+- 先用属性与差异确认是否确需归一化；执行时与业务改动分开审阅，保持用户改动。确认范围后用 `git add --renormalize .` 暂存，提交另遵循有效授权。
+- 判别：忽略行尾后差异消失是行尾变化线索；先确认属性/运行要求，不因此自动做全仓操作。UTF-8、BOM、脚本执行权限和中文路径按实际工具验证；PowerShell 5.1 编码差异按 `shell-pitfalls`。
+
+#### CRLF/LF 警告：判读与修复
+
+`git add` 出现以下警告不是提交失败，而是提示工作区字节与下次检出结果不一致：
+
+| 警告（关键片段） | 含义 | 常见来源 |
+| --- | --- | --- |
+| `LF will be replaced by CRLF` | 工作区是 LF，索引/下次检出会是 CRLF | `core.autocrlf=true`、`eol=crlf`，或 `text=auto` 且 `core.eol=crlf` |
+| `CRLF will be replaced by LF` | 工作区是 CRLF，索引/下次检出会是 LF | `text=auto`/`eol=lf`（含 `.gitattributes`），或 `core.autocrlf=input` |
+
+先看实际状态再改，不按警告方向猜：
 
 ```bash
-git add --renormalize .
+git ls-files --eol -- <path>
+git check-attr text eol -- <path>
+git config --show-origin --get core.autocrlf
+git config --show-origin --get core.eol
+git config --show-origin --get core.safecrlf
 ```
 
-- 判别：忽略行尾后差异消失是行尾变化线索；先确认属性/运行要求，不因此自动做全仓操作。UTF-8、BOM、脚本执行权限和中文路径按实际工具验证；PowerShell 5.1 编码差异按 `shell-pitfalls`，不把所有 `.ps1` 强制为 CRLF。
+- **修复**：按仓库目标提交 `.gitattributes` 后用 `git add --renormalize .` 归一化索引；该命令只改索引，工作区仍是 CRLF 时警告会持续到重新检出或克隆。确认没有未暂存改动后用 `git checkout -f -- <path>` 重写工作区，或重新克隆；普通 `git checkout -- <path>` 在 Git 判定工作区已干净时可能不会重写。`.bat`/`.cmd` 必须 CRLF，用 `eol=crlf` 显式声明，不能跟着其他文本一起归一成 LF。
+- **不要静音**：`core.autocrlf=false` 只改变当前用户的转换行为，不替代仓库属性；`core.safecrlf=false` 只静音安全检查，`true` 会在不可逆转换时直接失败，`warn` 只警告，都不替代属性与工作区修正。
+- **属性写了仍警告**：用 `git check-attr` 确认路径命中；工作区 CRLF 需重新检出才消失；`.ps1` 编码问题按 `shell-pitfalls`。
 
 ### .editorconfig：基座与两条例外
 

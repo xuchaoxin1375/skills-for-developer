@@ -56,6 +56,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 - 退出码：`$?` 只看上一条命令；管道默认只取最后一条的状态，需要任一段失败即失败时 `set -o pipefail`，逐段状态看 `PIPESTATUS`。`set -e` 在 `if` 条件、`&&`／`||` 左侧与部分命令替换位置不生效，不能把它当唯一错误处理。
 - 路径：Git Bash 用 `/c/...` 表示盘符，交给原生 Windows 程序时 MSYS 会自动转换；不需要转换时用 `MSYS2_ARG_CONV_EXCL`（旧版 `MSYS_NO_PATHCONV=1`）按参数排除，显式转换用 `cygpath -w`／`-u`。PATH 分隔符在 MSYS 内是 `:`，与 PowerShell 的 `;` 不通用。
 - `.sh` 保持 LF：CRLF 会让 shebang 变成 `/usr/bin/env: 'bash\r': No such file or directory`，heredoc 与函数定义也会带上 `\r`。
+- Git 的 CRLF/LF 警告（`git add` 提示 `next time Git touches it`）不是脚本语法错误，属于仓库行尾策略；按 [repo-gov 的警告判读](../repo-gov/SKILL.md#crlflf-警告判读与修复) 处理，不要用改 `core.autocrlf` 或 `core.safecrlf=false` 代替修复。
 - 编码：Git Bash 一般按 UTF-8 处理文本，但原生 Windows 程序写回控制台的输出仍受代码页影响；中文乱码先分清是文件、locale 还是控制台，再按[编码分层与校准](references/encoding-read.md)定位。Python 同样用 `-X utf8`。
 - 需要 TTY 的程序（交互式解释器、分页器、读取终端尺寸的命令）在非终端环境可能直接失败；`winpty` 只解决交互输入，不能当作自动化通用补丁。
 - rc、路径转换、TTY 与未实测边界见 [bash 与其他 POSIX 壳](references/bash-and-other-shells.md)。

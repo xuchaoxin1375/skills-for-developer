@@ -191,7 +191,7 @@ flowchart TD
 展开见 `references/engineering-standards.md`。
 
 - **路径一律用库**（`pathlib`/`filepath`/`path`），禁手拼 `\`/`/`。
-- **换行统一 LF**：根 `.gitattributes` 写 `* text=auto eol=lf`；`.sh`/`.py` 加 shebang 并保留可执行位；仅 `.ps1`/`.bat` 允许 CRLF。
+- **换行统一 LF**：根 `.gitattributes` 写 `* text=auto eol=lf`；`.sh`/`.py` 加 shebang 并保留可执行位；`.bat`/`.cmd` 必须 CRLF（cmd.exe 解析），`.ps1` 不强制 CRLF。
 - **编码 UTF-8 无 BOM**，读写显式声明；Windows 启动设 `PYTHONUTF8=1` 或重配 stdout。
 - **配置放系统标准目录**（`%APPDATA%` / `~/Library/Application Support` / `~/.config`），用 `platformdirs`/`dirs` 类库，不写安装目录。
 - **日志分两级**：默认简洁，`--verbose` 才详细，落标准目录；输出颜色/进度前判 TTY 与 `NO_COLOR`。

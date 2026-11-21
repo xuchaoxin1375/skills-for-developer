@@ -61,8 +61,8 @@ PowerShell 函数沿用目标仓库的命名、参数、帮助与兼容规范，
 - **推荐：单步长耗时操作也要可见**。下载、解压、安装、克隆这类一步可能耗时数分钟的操作，开始前说明目标与来源（镜像或直连、复用已有产物还是重新下载），结束后报告结果（大小或版本、耗时）；切换来源、重试和跳过都要给出原因与强制入口（如 `--force`）。只按"批量条目"准备进度会漏掉这种单步场景——空屏等待同样无法区分"在跑"和"卡住"。结束时汇总完成、跳过与失败项，并给出一条可重跑的命令。
 - **推荐：资源清理**。临时文件、临时目录、锁文件在正常与异常退出时均被清理（Shell 用 `trap`，Python/Node 用 `try/finally`）。
 - **推荐：配置外置**。路径、URL、端口等环境相关值使用变量、环境变量或配置文件，默认值为常量声明。
-- **推荐：版本控制**。脚本纳入 Git；含 `.sh`/`.bash` 的仓库在 `.gitattributes` 中声明 `*.sh text eol=lf`、`*.bash text eol=lf`，防止 Windows CRLF 导致 `\r: command not found`；`.bat`/`.cmd` 声明 `eol=crlf`。大多数文本文件两种行尾都能运行，优先用仓库级 `* text=auto eol=lf` 统一，只有 Shell、Makefile 等严格类型按运行要求固定；不要逐个文件强制或批量改写行尾。
-- **推荐：行尾检查脚本化**。对严格类型可用 `git ls-files --eol` 抽查，确认属性与工作区实际行尾；只读检查脚本只覆盖这些类型，不扫描全仓，避免把普通文本也纳入强制。需要归一化索引时用 `git add --renormalize .`，先确认范围并与业务改动分开审阅。`core.safecrlf=false` 只静音，不代替规则修正。
+- **推荐：版本控制**。脚本纳入 Git；含 `.sh`/`.bash` 的仓库在 `.gitattributes` 中声明 `*.sh text eol=lf`、`*.bash text eol=lf`，防止 Windows CRLF 导致 `\r: command not found`；`.bat`/`.cmd` 必须声明 `eol=crlf`（cmd.exe 解析），`.ps1` 不强制 CRLF。大多数文本文件两种行尾都能运行，优先用仓库级 `* text=auto eol=lf` 统一，只有 Shell、Makefile 等严格类型按运行要求固定；不要逐个文件强制或批量改写行尾。
+- **推荐：行尾检查脚本化**。对严格类型可用 `git ls-files --eol` 抽查，确认属性与工作区实际行尾；只读检查脚本只覆盖这些类型，不扫描全仓，避免把普通文本也纳入强制。需要归一化索引时用 `git add --renormalize .`，先确认范围并与业务改动分开审阅。`core.safecrlf=false` 只静音，不代替规则修正。遇到 `LF will be replaced by CRLF` / `CRLF will be replaced by LF` 警告，按 [repo-gov 的警告判读](../repo-gov/SKILL.md#crlflf-警告判读与修复) 先看 `git ls-files --eol` 与 `git check-attr`，不靠改 `core.autocrlf` 静音。
 
 ## CLI 语义与命名契约
 
@@ -168,7 +168,7 @@ PowerShell 优先使用原生参数补全，帮助采用注释式帮助。开放
 - [ ] 错误与警告走 stderr，stdout 只放可管道化的结果。
 - [ ] 敏感信息未写入代码、日志或版本库；路径与端口未硬编码为本机专值。
 - [ ] 文本读写显式 UTF-8；从 shell 启动 Python 时执行侧编码已对齐。
-- [ ] 严格类型行尾已检查：`.sh`/`.bash`/Makefile 为 LF，`.bat`/`.cmd` 为 CRLF；其他文本未被无差别强制或批量改写。
+- [ ] 严格类型行尾已检查：`.sh`/`.bash`/Makefile 为 LF，`.bat`/`.cmd` 为 CRLF，`.ps1` 未被强制 CRLF；其他文本未被无差别强制或批量改写。
 - [ ] 临时资源在正常与异常路径都能清理。
 - [ ] 长耗时操作（批量条目，或单步下载、解压、安装）有开始计划、过程进度与结束汇总，失败项给出重跑入口，且进度与结果数据分流。
 - [ ] 批量覆盖保留了无条件覆盖入口；写入前的检查不靠脚本名或子串匹配判定重复，也不能阻断正常更新。

@@ -214,7 +214,7 @@ case "$FORM" in
     ;;
   cli | script | tui)
     if [ "$JSON" -eq 0 ]; then log "${C_BOLD}[命令行专项]${C_RESET}"; fi
-    record info "换行符" "仓库需有 .gitattributes: * text=auto eol=lf" "否则 .sh 在 Windows 检出后不可执行"
+    record info "换行符" "仓库需有 .gitattributes: * text=auto eol=lf；.bat/.cmd 用 eol=crlf" "否则 .sh 在 Windows 检出后不可执行，cmd.exe 解析 .bat/.cmd 需要 CRLF"
     record info "编码" "Python 在 Windows 控制台需显式 UTF-8" "入口处重配 stdout 编码"
     ;;
 esac
