@@ -148,6 +148,14 @@ git config --show-origin --get core.safecrlf
 - **不要静音**：`core.autocrlf=false` 只改变当前用户的转换行为，不替代仓库属性；`core.safecrlf=false` 只静音安全检查，`true` 会在不可逆转换时直接失败，`warn` 只警告，都不替代属性与工作区修正。
 - **属性写了仍警告**：用 `git check-attr` 确认路径命中；工作区 CRLF 需重新检出才消失；`.ps1` 编码问题按 `shell-pitfalls`。
 
+#### 反复警告的处置
+
+`git ls-files --eol` 显示 `i/lf w/crlf`，且 `git diff` 没有内容差异时，警告只说明工作区行尾与索引归一化目标不同，不是新缺陷；不要为此改 `core.autocrlf` 或 `core.safecrlf`。
+
+- **接受现状**：工作区保持 CRLF、索引保持 LF 不影响提交内容；若团队接受这种本机差异，可以继续工作，但每次 `git add` 仍会再提示。
+- **独立归一化**：不要只转换本次改到的文件，否则会留下混合行尾和噪声 diff。要么保持现状，要么在独立提交里整仓归一化：`git add --renormalize .`，先用 `git diff --cached --stat` 审查范围，再跑仓库检查；归一化会影响大量未改文件时，先记录并推迟，不与功能或文档改动混在一个提交。
+- **归一化后**：按仓库约定重新检出（确认无未暂存改动后用 `git checkout -f -- <path>`，或重新克隆），并让编辑器与 `.gitattributes` 保持目标行尾（如 docs 用 LF），否则下次保存又回到 CRLF。
+
 ### .editorconfig：基座与两条例外
 
 ```ini
