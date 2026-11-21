@@ -110,7 +110,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY --
 | 普通网页，直连已知可用且稳定 | 可直接访问，无需读取、发现或验证本机代理 |
 | 国内普通小页面，无可用同站记录 | 可先有界直连；约3–5秒仍未取得有效响应、反复超时或速度明显不稳定时考虑代理加速，不反复等待完整长超时 |
 | 国内 Google、OpenAI 或已知直连不通／不稳的普通站点 | 优先已有登记代理访问原站，免直连预探测；本轮有稳定直连证据或用户指定时可直连 |
-| GitHub公开文件下载 | 国内网络默认先走该资源类型已核验的镜像／加速（raw、Release、archive 各自核验），小文件同样先加速，不为小文件先直连试错；无可用加速时才按登记代理→有界直连回退。直连首响约3秒仍无有效响应即判不可靠，改路且不原路重试 |
+| GitHub公开文件（Release、archive、raw/blob 正文） | 国内网络默认先走该资源类型已核验的镜像／加速（raw、Release、archive 各自核验），小文件与 harness 内置抓取工具（如 `webfetch`）同样先套前缀，不为小文件先直连试错；无可用加速时才按登记代理→有界直连回退。直连首响约3秒仍无有效响应即判不可靠，改路且不原路重试 |
 | 国内包与浏览器制品下载 | 按[依赖下载](references/dependency-downloads.md)与[浏览器安装](references/browser-installation.md)选已核验镜像或原站路线，保留私有源与锁文件；包源不代替浏览器制品源 |
 | 大文件、Release、archive | 优先已核验镜像；无可用镜像时再稳定直连或代理，不默认消耗代理大流量；按大小、进展和带宽设置期限，不套小页面3–5秒阈值。单连接明显低于可用带宽且目标支持 Range 时，按[多连接下载](references/network-access.md#多连接下载)用 aria2c 拆分连接 |
 | GitHub网页／API、私有资源与Git传输 | 网页／API及私有资源通常用代理或稳定直连；只读克隆可选已核验支持Git传输的加速。文件加速不通用于网页、API或Git，私有资源不交公共加速，推送走原站，细则见[Git 客户端](references/network-access.md#github-与-git-客户端) |

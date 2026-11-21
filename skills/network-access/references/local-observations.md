@@ -383,3 +383,12 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 结论：多实例下"端口可用"不等于"实例可用"；先枚举实例，再按实例检查。默认单实例报告不能代表整机。
 
 未验证：其他客户端/平台的多实例行为；逐节点真实出口；各实例策略组的实际轮换效果。
+
+## 2026-11-21 内置 webfetch 套加速前缀与 Release 下载（Windows）
+
+执行环境：国内 Windows 11、PowerShell 7；`gh-proxy.com` 加速前缀；目标为 raw 单文件与 Obscura v0.2.7 Windows stealth 资产（77,011,421 字节）。未做出口回显。
+
+- `webfetch https://gh-proxy.com/https://raw.githubusercontent.com/octocat/Hello-World/master/README` 一次返回 `Hello World!`；同一工具直连 GitHub raw 曾在 2026-11-08 两次超时。内置抓取工具没有代理开关，raw/blob 正文可直接套前缀。
+- 同一 Release 资产：直连约 1.5 分钟只取到约 400 KB（约 2.6 KB/s，随后中断）；改用 `https://gh-proxy.com/https://github.com/...` 后 165.5 s 完成，平均约 454 KB/s，落盘字节数 77,011,421 与资产大小一致。
+- `check_github_mirrors.py --targets raw,release` 当次：gh-proxy 76.6 KB/s、ghfast 60.7 KB/s、ghproxy.net 19.2 KB/s（Release 前 256 KiB）。前缀速度与资源类型、时段相关，不能把本次排名当长期结论。
+- 结论：国内网络下 GitHub 公开只读资源先走已核验前缀；内置抓取工具同样适用，不先直连试错。只描述当次网络。

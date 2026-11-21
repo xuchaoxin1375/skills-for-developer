@@ -184,6 +184,7 @@ aria2c \
 
 GitHub 的网页/raw、git 传输（`clone`/`fetch`/`push`）和 LFS 对象是不同入口，可达性互不推断。加速镜像的 git 传输支持需逐站核验（`ls-remote` 可通不代表 `clone` 稳定），推送一律走原站。
 
+- **内置抓取工具**：没有代理开关的 harness 抓取工具（如 `webfetch`）读取 GitHub raw/blob 正文时，把加速前缀套在原始 URL 前（形如 `https://<加速前缀>/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`）；只用于公开只读文件，不用它访问 API、网页、私有资源或推送。直连已失败过的同一 URL 不原样重试，换前缀或按既有记录改走 jsDelivr 等 CDN 镜像。
 - **代理**：有可用代理时用本次命令的 `-c http.proxy=<代理URL> -c https.proxy=<代理URL>`，不改全局 `http.proxy` 或 `url.*.insteadOf`。git 经 libcurl 读 `http_proxy`/`https_proxy`/`NO_PROXY`，但 `NO_PROXY` 排除目标或客户端自有配置会让它静默改路；URL 级 `http.<url>.proxy` 优先于通用 `http.proxy`，换入口前用 `git config --get-urlmatch http.proxy <目标URL>` 查当前生效值，并用同一 URL 级键覆盖。用 `GIT_TRACE=1` 或 `GIT_CURL_VERBOSE=1` 看实际请求，输出含目标地址与代理，贴出前去掉凭据。代理地址带用户名密码时用进程环境变量传入，避免出现在命令行与进程列表。
 - **SSH**：22 端口在国内常被阻断。先 `ssh -T -p 443 git@ssh.github.com` 验证，可用时用 `GIT_SSH_COMMAND='ssh -p 443 -o HostName=ssh.github.com'` 或本次 `-c core.sshCommand=...`；`~/.ssh/config` 属于全局配置，用户未要求不改。
 - **加速镜像（只读）**：前缀按 git 传输核验后，`git clone --depth 1 https://<加速前缀>/https://github.com/<owner>/<repo> <dir>`；克隆完执行 `git remote set-url origin https://github.com/<owner>/<repo>`，后续 fetch/push 走原站。`ls-remote` 通但 `clone` 报 `early EOF` 时按连接中断换路线，不在同一前缀重试。
