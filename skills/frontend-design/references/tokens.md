@@ -3,7 +3,7 @@
 三层结构，组件只许用语义层：
 
 - 原始层：调色板与尺度，如`--gray-50..950`、`--blue-500: #2563eb`。禁止组件直接引用。
-- 语义层：表达意图，如`--color-bg-surface`、`--color-text-danger`、`--space-inset-md`。主题切换只改这一层。`:root`声明`color-scheme: light dark`，配`<meta name="theme-color">`。
+- 语义层：表达意图，如`--color-bg-surface`、`--color-text-danger`、`--space-inset-md`。主题切换只改这一层。开发期只实现单主题时，`color-scheme` 与实际主题一致（如 `light`），不要声明未实现的 `dark`；交付前主题适配阶段再切 `light dark` 并配 `<meta name="theme-color">`。
 - 组件层（小项目可省）：如`--button-bg: var(--color-primary)`。
 
 DTCG JSON交换格式已到2025.10稳定版。运行时以`tokens.css`为准；只有设计工具需要时才用DTCG JSON。
