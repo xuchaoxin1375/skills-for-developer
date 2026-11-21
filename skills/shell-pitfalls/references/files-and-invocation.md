@@ -180,8 +180,9 @@ $pages = [ordered]@{ a = 'https://example.com' }  # 用业务含义命名，避�
 ### Junction 的创建、删除与实体迁移
 
 - 建 Junction：`New-Item -ItemType Junction -Path <link> -Target <dest>`（Win 无需管理员）。
-- **删 Junction 只删链接本体**：`Remove-Item <junction>`，绝不加 `-Recurse`
- （加了会删目标目录内容）。Linux 对应：`rm <symlink>` 不加 `-r`，路径尾不加 `/`。
+- **删 Junction 只删链接本体**：Windows PowerShell 5.1.26100 的 `Remove-Item` 对 Junction 会抛 `NullReferenceException`，
+  改用 `[System.IO.Directory]::Delete($link, $false)`（非递归删除只移除重解析点），`Remove-Item` 只作后备。
+  绝不加 `-Recurse`（加了会删目标目录内容）。Linux 对应：`rm <symlink>` 不加 `-r`，路径尾不加 `/`。
 - 实体占住了链接位置时：先 `Move-Item` 到备份目录（必须移出 skills 目录，
   否则 harness 会误扫成重复 skill），再建链接。
 
@@ -196,5 +197,6 @@ $pages = [ordered]@{ a = 'https://example.com' }  # 用业务含义命名，避�
 - 使用 Python argv 记录器：两者直接调用均保留带空格参数；5.1 丢掉空参数和内嵌引号，pwsh 的本次调用保留。两者 `Start-Process -ArgumentList` 数组的带空格项都被拆为两个参数。
 - 2026-10-28：`.psm1` 以 CRLF 保存时，here-string 拼出的远端命令带 CR，bash 与 zsh 都拒绝解析（`unexpected end of file` / `parse error near`）；同一份字节交 `bash -n`、`zsh -n` 可复现，去 CR 后通过。同一环境用 argv 记录器对比：5.1.26100 把参数内的双引号全部移除，7.5.4 完整保留。
 - 2026-10-30：`python -X utf8 - "$dir" @"..."@` 在 pwsh 7 下挂住不返回（`-` 读 stdin，here-string 只作参数）；改用 `-c` 或脚本文件后正常。同环境 `$home = [ordered]@{...}` 报 `Cannot overwrite variable HOME because it is read-only or constant`，`< NUL` 报 `The '<' operator is reserved for future use`。
+- 2026-11-21：Windows PowerShell 5.1.26100.9711 对 Junction 执行 `Remove-Item`（带不带 `-Force`）都抛 `NullReferenceException`，链接与目标都不变；`[System.IO.Directory]::Delete($link, $false)` 与 `(Get-Item $link).Delete()` 都能只删链接，目标目录内容完好，悬空 Junction 同样可删。
 
 以上验证本机版本及目标程序，不证明所有包装器、PowerShell 7 小版本或第三方 CLI 有相同参数行为。需要兼容 5.1 的代码也不能直接照抄 `&&`/`||` 等新版本语法。

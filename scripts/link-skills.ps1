@@ -235,6 +235,19 @@ function Get-LinkTarget([string]$Path) {
   return $item.Target
 }
 
+function Remove-LinkOnly([string]$Path) {
+  # 只删链接本体，不碰目标内容。
+  # Windows PowerShell 5.1.26100 的 Remove-Item 对 Junction 抛 NullReferenceException，
+  # 对带 LinkType 的路径改用 .NET 删除：非递归删除只移除重解析点。
+  $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+  if ($null -ne $item -and -not [string]::IsNullOrEmpty($item.LinkType)) {
+    try { [System.IO.Directory]::Delete($Path, $false) }
+    catch { [System.IO.File]::Delete($Path) }
+    return
+  }
+  Remove-Item -LiteralPath $Path -Force
+}
+
 function Remove-StaleRepoLinks([string]$TargetDir) {
   # 清理指向本仓库 skills\ 但目标已不存在的 Junction/Symlink:
   # skill 重命名或删除后, 旧链接不在“仓库现有 skill”名单里, 正常循环不会碰到。
@@ -266,7 +279,7 @@ function Remove-StaleRepoLinks([string]$TargetDir) {
       continue
     }
     if ($PSCmdlet.ShouldProcess($entry.FullName, '清理悬空链接')) {
-      Remove-Item -LiteralPath $entry.FullName -Force
+      Remove-LinkOnly $entry.FullName
       Write-Step "  [$($entry.Name)] 悬空链接已清理 (目标不存在)"
     }
   }
@@ -308,7 +321,7 @@ foreach ($targetDir in $targets) {
           continue
         }
         if ($PSCmdlet.ShouldProcess($link, "移除 Junction -> $dest")) {
-          Remove-Item -LiteralPath $link -Force
+          Remove-LinkOnly $link
           Write-Step "$label 已移除"
         }
       } else {
@@ -349,7 +362,7 @@ foreach ($targetDir in $targets) {
         continue
       }
       if ($PSCmdlet.ShouldProcess($link, "纠正链接 $cur -> $dest")) {
-        Remove-Item -LiteralPath $link -Force
+        Remove-LinkOnly $link
         New-Item -ItemType Junction -Path $link -Target $dest | Out-Null
         Write-Step "$label 已纠正 -> $dest"
       }

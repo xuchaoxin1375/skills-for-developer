@@ -47,7 +47,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 - `.cmd` 包装会把命令行交给 cmd.exe 二次解析：npm 式 `@node "cli.js" %*` 收到未加引号的 `&`、`|`、`<` 时会被截断或当成重定向。cmd 里给参数加引号可避免；PowerShell 的变量参数不会自动带上引号，仍会被截断，改用 `.ps1` 包装、`--%` 或直接调用 Node。细节见[文件与程序调用](references/files-and-invocation.md#cmd-包装与命令行二次解析)。
 - 多段命令、含中文或嵌套引号的复杂命令写成 `.ps1` 再用 `-File` 调用，不在 `-Command` 里拼引号链；行内只保留单条可读命令。
 - 确切文件路径优先 `-LiteralPath`，脚本资源从 `$PSScriptRoot` 定位，写入核对编码、BOM与换行；不把 `>` 与不同版本的 `Set-Content` 当成跨平台等价写法。
-- 删除 Junction 只删链接本身，不用 `-Recurse`；递归操作先核对目标范围。执行策略异常先查来源和生效范围，不默认改全局策略。
+- 删除 Junction 只删链接本身，不用 `-Recurse`；5.1 的 `Remove-Item` 可能抛 `NullReferenceException`，改用 `[IO.Directory]::Delete($path, $false)`（见[文件与程序调用](references/files-and-invocation.md#junction-的创建删除与实体迁移)）。递归操作先核对目标范围。执行策略异常先查来源和生效范围，不默认改全局策略。
 
 ## bash / Git Bash
 
