@@ -44,6 +44,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 - 脚本变量名避开自动变量（`$home`、`$host`、`$pid`、`$input`、`$args`、`$error`、`$profile` 等）：名称不区分大小写，`$home` 与 `$HOME` 冲突，赋值时报 `Cannot overwrite variable ...`，脚本仍会继续执行后面的语句。
 - 必需 cmdlet 操作用 `-ErrorAction Stop`；每个原生程序后立即检查 `$LASTEXITCODE`，失败则按契约退出，不让后一条成功命令掩盖失败。诊断与业务输出分流，不混入 `Format-*` 展示对象。
 - 直接调用优先 `& $exe @argumentList`，不用 `Invoke-Expression` 拼接执行。路径、空参数、JSON 与多层引号不确定时离线核对 argv，不用外部收费请求试错。
+- `.cmd` 包装会把命令行交给 cmd.exe 二次解析：npm 式 `@node "cli.js" %*` 收到未加引号的 `&`、`|`、`<` 时会被截断或当成重定向。cmd 里给参数加引号可避免；PowerShell 的变量参数不会自动带上引号，仍会被截断，改用 `.ps1` 包装、`--%` 或直接调用 Node。细节见[文件与程序调用](references/files-and-invocation.md#cmd-包装与命令行二次解析)。
 - 多段命令、含中文或嵌套引号的复杂命令写成 `.ps1` 再用 `-File` 调用，不在 `-Command` 里拼引号链；行内只保留单条可读命令。
 - 确切文件路径优先 `-LiteralPath`，脚本资源从 `$PSScriptRoot` 定位，写入核对编码、BOM与换行；不把 `>` 与不同版本的 `Set-Content` 当成跨平台等价写法。
 - 删除 Junction 只删链接本身，不用 `-Recurse`；递归操作先核对目标范围。执行策略异常先查来源和生效范围，不默认改全局策略。

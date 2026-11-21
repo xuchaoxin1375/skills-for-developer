@@ -87,6 +87,27 @@ $nativeExit = $LASTEXITCODE
 
 把整段脚本作为**单个参数**交给远端 shell（`ssh host '...'`）时，这条风险最直接：5.1 实测会把参数里的双引号全部移除（argv 中剩余 0 个，7.5.4 完整保留），远端于是报引号未闭合。这类场景改用单引号书写脚本，或改走 `bash -s` 的标准输入、base64 传输，不让引号穿过命令行；路径类参数靠参数校验保证不含空白后，也不必再加引号。
 
+### `.cmd` 包装与命令行二次解析
+
+npm 式包装把参数原样拼进命令行：
+
+```bat
+@node "C:\...\cli.js" %*
+```
+
+调用方没给参数加引号时，`&`、`|`、`<`、`>` 会被 cmd.exe 当成命令分隔符或重定向。典型症状是 URL 只截到第一个 `&`，后半段被当成新命令：
+
+```text
+htmlmini https://example.com/p?origin=&originId=
+'originId' 不是内部或外部命令，也不是可运行的程序
+```
+
+- cmd.exe：给整个 URL 加双引号，引号会随 `%*` 传进包装。
+- PowerShell：变量里的字符串不会因为含 `&` 而自动加引号，`.cmd` 包装仍会截断；改用 `--%` 停止解析、`cmd /c '...'`，或直接调用 `node <cli.js>`。
+- 本仓库 `scripts/link-skills.ps1` 为每个命令同时生成 `.ps1` 包装，PowerShell 优先选 `.ps1`，参数不再经过 cmd.exe。执行策略禁止本地脚本时只装 `.cmd`，此时按上一条绕过。
+
+验证记录：2026-11-21，pwsh 7.7 与 Windows PowerShell 5.1 都优先解析 `.ps1`；`.ps1` 包装下 `a&b` 完整到达 Node，`.cmd` 在 PowerShell 下截断。5.1 的 `.ps1` 包装接管道输入时，PowerShell 仍按 ASCII 编码写入子进程 stdin（与 `.cmd` 默认一致），非 ASCII 内容会变成 `?`；需要时改用文件参数或 pwsh 7。
+
 ### ForEach-Object -Parallel 的 runspace 边界
 
 `-Parallel` 把每一项放进独立 runspace，除显式传入的变量与文本外都拿不到。2026-10-28 在 pwsh 7.5.4 逐项实测：

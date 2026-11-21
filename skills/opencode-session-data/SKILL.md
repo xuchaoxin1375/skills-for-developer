@@ -37,7 +37,7 @@ OpenCode 的会话集中存在一个本地数据库里，与当前工作目录�
 
 `session-search` 是本 skill 的配套 **CLI**(Command-Line Interface, 命令行界面)，用 Node.js 的 `node:sqlite` 直接读库，不需要 OpenCode 服务在线。
 
-- 安装：由 `scripts/link-skills.ps1` / `link-skills.sh` 从 `skills/opencode-session-data/` 注册；Windows 装到 `%USERPROFILE%\.local\bin\session-search.cmd` 与 `session-prune.cmd`，Linux 装到 `~/.local/bin/`。
+- 安装：由 `scripts/link-skills.ps1` / `link-skills.sh` 从 `skills/opencode-session-data/` 注册；Windows 装到 `%USERPROFILE%\.local\bin\`（`session-search`、`session-prune` 各带 `.cmd` + `.ps1` 包装），Linux 装到 `~/.local/bin/`。
 - 要求：Node.js 22.13 及以上（`node:sqlite`；22.5–22.12 仍需 `--experimental-sqlite`）。
 - 命令不可用时，直接运行 `node <skill-dir>/scripts/session-search.js`，参数相同。
 

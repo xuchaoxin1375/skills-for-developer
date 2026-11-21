@@ -443,6 +443,51 @@ function Get-CommandBinDir {
   return (Join-Path $env:USERPROFILE '.local\bin')
 }
 
+function Test-ShimOwned([string]$Path, [string]$Entry) {
+  # 包装内容含真源入口路径才算本仓库安装，避免误删他人同名命令
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+  $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+  return [bool]($raw -and $raw.Contains($Entry))
+}
+
+function Test-PsShimUsable {
+  # .ps1 包装只在持久执行策略允许本地脚本时安装：
+  # PowerShell 会优先选 .ps1，策略禁止时命令在 PowerShell 里直接失败。
+  # 只看持久作用域，不看 Process（安装时可能带 -ExecutionPolicy Bypass）。
+  foreach ($scope in @('MachinePolicy', 'UserPolicy', 'CurrentUser', 'LocalMachine')) {
+    $policy = Get-ExecutionPolicy -Scope $scope -ErrorAction SilentlyContinue
+    if ($null -ne $policy -and $policy -ne 'Undefined') {
+      return ($policy -eq 'RemoteSigned' -or $policy -eq 'Unrestricted' -or $policy -eq 'Bypass')
+    }
+  }
+  return $false
+}
+
+function New-PsShimBody([string]$Command, [string]$Entry) {
+  # PowerShell 包装：参数不经 cmd.exe 二次解析，含 & 的 URL 与含 < > | 的参数保持原样。
+  # 输出按 UTF-8 解码（5.1 默认 OEM 代码页），结束后恢复会话编码。
+  $safeEntry = $Entry.Replace("'", "''")
+  $safeCommand = $Command.Replace("'", "''")
+  return @"
+`$ErrorActionPreference = 'Stop'
+`$cli = '$safeEntry'
+`$node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not `$node) { [Console]::Error.WriteLine('${safeCommand}: node not found in PATH'); exit 127 }
+`$prevOut = `$OutputEncoding
+`$prevConsole = [Console]::OutputEncoding
+try {
+  try { `$OutputEncoding = New-Object System.Text.UTF8Encoding(`$false) } catch { }
+  try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding(`$false) } catch { }
+  if (`$MyInvocation.ExpectingInput) { `$input | & `$node.Path `$cli @args } else { & `$node.Path `$cli @args }
+  `$code = `$LASTEXITCODE
+} finally {
+  try { `$OutputEncoding = `$prevOut } catch { }
+  try { [Console]::OutputEncoding = `$prevConsole } catch { }
+}
+exit `$code
+"@
+}
+
 function Test-CommandReady([string]$Command) {
   # 命令就绪: 当前进程能找到, 或 bin 目录已在用户 PATH (新开终端生效, 本次进程未必继承)
   if (Get-Command $Command -ErrorAction SilentlyContinue) { return $true }
@@ -466,12 +511,15 @@ function Ensure-BinInUserPath([string]$BinDir) {
 }
 
 function Install-SkillCommand([string]$Skill) {
-  # 默认把 CLI 装成 <binDir>\<cmd>.cmd 包装（幂等）；入口路径含非 ASCII 时跳过
+  # 默认把 CLI 装成 <binDir>\<cmd>.cmd + <cmd>.ps1 包装（幂等）；入口路径含非 ASCII 时跳过
   #（cmd 对 shim 编码敏感，报出来比写坏 shim 好）
+  # PowerShell 优先选 .ps1：参数不经 cmd.exe 二次解析，含 & 的 URL 不会被截断。
   $commands = @(Get-SkillCommands $Skill)
   if ($commands.Count -eq 0) { return }
   $binDir = Get-CommandBinDir
   New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+  $withPs1 = Test-PsShimUsable
+  $installedAny = $false
 
   foreach ($command in $commands) {
     $cmd = $command.Name
@@ -485,36 +533,53 @@ function Install-SkillCommand([string]$Skill) {
       Write-Warning "  [$Skill] 入口路径含非 ASCII，跳过命令安装: $entry"
       continue
     }
+    $installedAny = $true
     $shim = Join-Path $binDir "$cmd.cmd"
-    $body = "@node `"$entry`" %*"
-    $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
-      ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
-    if ($isOurs) {
+    $shimPs1 = Join-Path $binDir "$cmd.ps1"
+    $needCmd = -not (Test-ShimOwned $shim $entry)
+    $needPs1 = $withPs1 -and -not (Test-ShimOwned $shimPs1 $entry)
+    if (-not $needCmd -and -not $needPs1) {
       Write-Host "  [$Skill] 命令已就绪: $shim"
-    } elseif ($PSCmdlet.ShouldProcess($shim, "安装 $cmd 命令")) {
-      Set-Content -LiteralPath $shim -Value $body -Encoding ASCII
-      Write-Host "  [$Skill] 命令已安装: $shim"
+      continue
     }
+    if ($PSCmdlet.ShouldProcess($shim, "安装 $cmd 命令")) {
+      $written = @()
+      if ($needCmd) {
+        Set-Content -LiteralPath $shim -Value "@node `"$entry`" %*" -Encoding ASCII
+        $written += '.cmd'
+      }
+      if ($needPs1) {
+        Set-Content -LiteralPath $shimPs1 -Value (New-PsShimBody $cmd $entry) -Encoding ASCII
+        $written += '.ps1'
+      }
+      Write-Host "  [$Skill] 命令已安装: $shim ($($written -join ' + '))"
+    }
+  }
+  if ($installedAny -and -not $withPs1) {
+    Write-Host "  [$Skill] 执行策略不允许本地 .ps1，跳过 PowerShell 包装；PowerShell 中含 & 的参数仍走 .cmd，可改用 --% 或直接调用 node"
   }
   Ensure-BinInUserPath $binDir
 }
 
 function Remove-SkillCommand([string]$Skill) {
   # 只删本仓库安装的包装（内容含真源入口路径），不动他人命令
+  $binDir = Get-CommandBinDir
   foreach ($command in @(Get-SkillCommands $Skill)) {
     $cmd = $command.Name
     $entry = $command.Entry
     if ([string]::IsNullOrWhiteSpace($cmd)) { continue }
-    $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
-    $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
-      ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
-    if ($isOurs) {
-      if ($PSCmdlet.ShouldProcess($shim, "移除 $cmd 命令")) {
-        Remove-Item -LiteralPath $shim -Force
-        Write-Host "  [$Skill] 命令已移除: $shim"
+    $removed = @()
+    foreach ($path in @((Join-Path $binDir "$cmd.cmd"), (Join-Path $binDir "$cmd.ps1"))) {
+      if (-not (Test-ShimOwned $path $entry)) { continue }
+      if ($PSCmdlet.ShouldProcess($path, "移除 $cmd 命令")) {
+        Remove-Item -LiteralPath $path -Force
+        $removed += $path
       }
+    }
+    if ($removed.Count -gt 0) {
+      Write-Host "  [$Skill] 命令已移除: $($removed -join ', ')"
     } else {
-      Write-Host "  [$Skill] 命令不存在或非本仓库安装，不动: $shim"
+      Write-Host "  [$Skill] 命令不存在或非本仓库安装，不动: $cmd"
     }
   }
 }
@@ -584,15 +649,16 @@ function Get-PlanRecState([string]$Skill) {
   $needDeps = (Test-Path (Join-Path $dir 'package.json') -PathType Leaf) -and `
     -not (Test-Path (Join-Path $dir 'node_modules') -PathType Container)
   $needCmd = $false
+  $withPs1 = Test-PsShimUsable
   foreach ($command in @(Get-SkillCommands $Skill)) {
     $cmd = $command.Name
     $entry = $command.Entry
     if ([string]::IsNullOrWhiteSpace($cmd) -or [string]::IsNullOrWhiteSpace($entry)) { continue }
     $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
-    $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
-      ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
+    $shimPs1 = Join-Path (Get-CommandBinDir) "$cmd.ps1"
+    $shimOk = (Test-ShimOwned $shim $entry) -and ((Test-ShimOwned $shimPs1 $entry) -or -not $withPs1)
     $onPath = Test-CommandReady $cmd
-    if (-not ($isOurs -and $onPath)) { $needCmd = $true }
+    if (-not ($shimOk -and $onPath)) { $needCmd = $true }
   }
   return [pscustomobject]@{ Skill = $Skill; NeedDeps = $needDeps; NeedCmd = $needCmd }
 }
@@ -875,10 +941,10 @@ if ($VerifyOnly) {
         $entry = $command.Entry
         if ([string]::IsNullOrWhiteSpace($cmd)) { continue }
         $shim = Join-Path (Get-CommandBinDir) "$cmd.cmd"
-        $isOurs = (Test-Path -LiteralPath $shim -PathType Leaf) -and `
-          ((Get-Content -LiteralPath $shim -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) -match [regex]::Escape($entry))
+        $shimPs1 = Join-Path (Get-CommandBinDir) "$cmd.ps1"
+        $shimOk = (Test-ShimOwned $shim $entry) -and ((Test-ShimOwned $shimPs1 $entry) -or -not (Test-PsShimUsable))
         $onPath = Test-CommandReady $cmd
-        if ($isOurs -and $onPath) {
+        if ($shimOk -and $onPath) {
           Write-Step "推荐 skill [$s] 命令 OK：$cmd"
         } else {
           Write-Warning "推荐 skill [$s] 命令缺失（期望 $shim 可用，重跑链接脚本安装）"

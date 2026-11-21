@@ -253,7 +253,7 @@ git submodule update --init --depth 1
 
 # 推荐 skill（需依赖/命令，名单见 config/recommended-skills.txt）：
 # 依赖交互询问（缺省 Yes），非交互默认跳过；命令默认装成直接可调用
-# （Linux ~/.local/bin，Windows %USERPROFILE%\.local\bin 并补用户 PATH）
+# （Linux ~/.local/bin，Windows %USERPROFILE%\.local\bin：.cmd + .ps1 包装并补用户 PATH）
 ./scripts/link-skills.sh --apply-recommended-skills  # 显式安装依赖（代理执行同一次带上）
 ./scripts/link-skills.sh --skip-recommended-skills   # 依赖与命令都不装（含 verify 中的对应检查）
 
@@ -332,7 +332,8 @@ git submodule update --init --depth 1
    推荐 skill（`config/recommended-skills.txt`）同次一并处理：
    只对未就绪项询问，一次确认是否安装依赖（`pnpm install`）并创建命令，缺省 Yes；
    非交互默认跳过依赖（同一次带 `--apply-recommended-skills` 显式安装），命令仍装成
-   直接可调用（Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH），
+   直接可调用（Linux `~/.local/bin`，Windows `%USERPROFILE%\.local\bin` 并补用户 PATH；
+   Windows 同时生成 `.cmd` 与 `.ps1` 包装，PowerShell 优先用 `.ps1`，参数不经 cmd.exe 二次解析），
    用 `--skip-recommended-skills` 两者都不装。
    第三方 skill（`config/third-party-skills.txt`，当前为 anysearch）交互询问**默认 No**；
    非交互用 `--apply-third-party-skills` 安装，或用 `--sync-third-party-skills` 同步名单版本；实体共享，链接只建到选中的 harness。
