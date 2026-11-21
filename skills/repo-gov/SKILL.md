@@ -79,6 +79,7 @@ Thumbs.db
 .vscode/launch.json
 ```
 
+- 运行期数据库及其 WAL/SHM 通常是本机状态或生成物，默认不入库：按项目实际产物追加 `*.db`、`*.db-wal`、`*.db-shm`、`*.sqlite`、`*.sqlite3`。小型、合成或脱敏、测试确实需要的 fixture 数据库可以保留，但要在路径或 README 中写明用途、生成方式和例外规则（如 `!tests/fixtures/*.db`）；不要因为扩展名一律忽略合法 fixture，也不要把任务账本、浏览器缓存或用户数据当成 fixture。
 - 再按所选主语言追加对应块（Node 追加 `node_modules/`、`dist/`；Python 追加 `__pycache__/`、`*.py[cod]`、`.venv/`；Go 追加 `bin/`（用 `go mod vendor` 则保留 `vendor/`）；Rust 追加 `target/`；Java 追加 `*.class`、`target/`）。单语言仓库不得堆砌全语言模板。
 - 构建产物与缓存（Node 侧常见 `.next/`、`.nuxt/`、`.svelte-kit/`、`.turbo/`、`.vite/`、`coverage/`、`*.tsbuildinfo`，与 `dist/` 同性质）按“隐私与安全红线”默认不入库，并须在 `.gitignore` 明文表达；隐式排除（从未 `git add` 过、规则里没有对应条目）不可审计，后来者会把它当成已有政策。
 - 已追踪的忽略命中先核对是否是合法 fixture 或业务资源，确需移出版本控制时仅点名对应文件（本地内容保留）：
@@ -268,3 +269,4 @@ PR 聚焦一个完整目的，说明问题与结果、影响面、实际验证�
 5. 红线复核：`git commit/push` 须有有效授权（当次明确指示，或用户已给出的长期授权）；敏感或大文件改动核对来源、用途及项目/平台限制，不能仅靠固定大小放行。
 6. 提交信息编码：含非 ASCII 的提交信息禁用 `git commit -m` 经 Windows PowerShell 5.1 命令行或脚本参数传递（5.1 按系统代码页转码，易致入库乱码）；一律先写 UTF-8 信息文件，再执行 `git commit -F <信息文件>`（`--amend` 同理）；提交后复验 `git log` 相应文字可读，乱码即停并报告，不得推送。
 7. 远端核验：声称“已同步/已推送”前，用 `git fetch` 或 `git ls-remote` 直接核对远端分支；`git status -sb` 只反映本地缓存的 remote-tracking ref，不能单独作为对齐证据。多远端时分别核对，不只假设 `origin`。
+8. 运行期数据复核：任务数据库、日志、缓存、浏览器 profile 和可再生成产物不应随提交进入版本库；已追踪的按需 `git rm --cached`（保留本地文件），合法的合成或脱敏 fixture 须写明用途与例外规则。
