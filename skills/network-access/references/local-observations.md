@@ -392,3 +392,21 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - 同一 Release 资产：直连约 1.5 分钟只取到约 400 KB（约 2.6 KB/s，随后中断）；改用 `https://gh-proxy.com/https://github.com/...` 后 165.5 s 完成，平均约 454 KB/s，落盘字节数 77,011,421 与资产大小一致。
 - `check_github_mirrors.py --targets raw,release` 当次：gh-proxy 76.6 KB/s、ghfast 60.7 KB/s、ghproxy.net 19.2 KB/s（Release 前 256 KiB）。前缀速度与资源类型、时段相关，不能把本次排名当长期结论。
 - 结论：国内网络下 GitHub 公开只读资源先走已核验前缀；内置抓取工具同样适用，不先直连试错。只描述当次网络。
+
+## 2026-11-22 GitHub 加速前缀整体失效与更换（Windows）
+
+执行环境：国内 Windows 11、PowerShell 7；`check_github_mirrors.py --timeout 8`（内置种子加若干社区候选），目标为 raw 单文件、archive、Release 前 262144 字节与 `ls-remote`；未做出口回显。
+
+| 前缀 | raw | archive | release | git | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| `https://gh-proxy.com/` | 403 | 403 | 403 | 403 | 全不可用；响应体 65 B，首页仍 200 |
+| `https://ghfast.top/` | ok | ok | ok（约 148 KB/s） | ok（4 refs） | 四类可用 |
+| `https://ghproxy.net/` | ok | timeout | timeout | timeout | 仅 raw 可用 |
+| `https://gh.llkk.cc/`、`https://github.moeyy.xyz/` | timeout | timeout | timeout | timeout | 不可判定 |
+| `https://ghproxy.cc/` | 证书主机名不匹配 | 同左 | 同左 | 同左 | 不可用 |
+| `https://ghproxy.link/` | 返回 HTML | 非 ZIP | 非 ZIP | 重定向异常 | 不可用 |
+| `https://hub.gitmirror.com/`、`https://gh.xxooo.cf/` | DNS 失败 | 同左 | 同左 | 同左 | 不可用 |
+
+- `gh-proxy.com` 的 403 由前缀自身返回：响应体为 `Access to proxy rules is forbidden on this hostname: gh-proxy.com`，带 `Web-Server: gh-proxy.com`，git 侧显示为 `remote:` 消息；请求未到 GitHub。
+- 结论：前缀失效可能只发生在转发层，首页照常可开；当次只有 `ghfast.top` 四类全通，选它作新前缀。
+- 未验证：大文件持续下载速度、clone/fetch 长连接、跨日与其他网络；其余候选未穷举。

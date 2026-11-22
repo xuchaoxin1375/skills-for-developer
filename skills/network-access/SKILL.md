@@ -129,7 +129,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY --
 - **先确认实际出口，再判断“IP 被拒”**：代理客户端的模式、全局模式的分组选择（如 `GLOBAL`）或分流规则可能把目标送到 `DIRECT`；端口可达只证明入口可用，不证明请求走了预期节点。目标返回 403/WAF 拒绝页时，先查客户端日志或连接记录里的规则、组、节点与实际链路，再用同一目标对比直连与代理。确认走了预期节点仍被拒，才考虑出口 IP/地区/信誉或协议指纹；不要把客户端设置成直连造成的拒绝归因于代理 IP。排查顺序见[错误分流](references/network-access.md#错误分流)。
 - **按策略隔离时用独立实例**：轮询、目标粘性、会话粘性等策略需要隔离时，用本机的实例管理脚本（示例名 `mihomo_instance.py`，未随本 skill 分发；从零生成模板与实例可参考公开的 [learnProxy](https://github.com/xuchaoxin1375/learnProxy)）或等价的后台进程管理方式分别启动实例，不靠切换 GUI profile。固定出口只在 `consistent-hashing`、`sticky-sessions` 或 `select` 下成立；`round-robin` 实例本来就会按连接轮换，不能承诺同一 worker 始终一个出口。每个实例独立 `-d`/`-f`、mixed-port、external-controller 和 listeners 端口段，可同时运行；同一实例内再用 `listeners` 按国家/worker 分流。正常会话不用 `round-robin` 每请求换 IP；429 持续时可按需切到轮询/LB 出口做有界验证。TUN 只在一个实例开。
 - **证据范围如实说明**：端口开放不证明代理协议或目标可用；代理可达不证明出口能过站点风控。一次失败不能断言全部候选不可用或源站故障，预算不够就报告尚未核验，不穷举补齐结论。
-- **镜像保留来源与权限边界**：按资源类型核验，保留官方 URL；不向公共加速站转发私有仓库、凭据或签名链接，不关闭证书校验。GitHub 加速前缀（如 `gh-proxy.com`）是只读通道：只用于 clone/fetch 与文件下载，不向镜像推送，也不为镜像域名配置 Git 凭据（`credential.<url>`）或推送地址；推送与凭据只对原站使用。
+- **镜像保留来源与权限边界**：按资源类型核验，保留官方 URL；不向公共加速站转发私有仓库、凭据或签名链接，不关闭证书校验。GitHub 加速前缀（形如 `https://<加速前缀>/`）是只读通道：只用于 clone/fetch 与文件下载，不向镜像推送，也不为镜像域名配置 Git 凭据（`credential.<url>`）或推送地址；推送与凭据只对原站使用。
 
 ## 按需读取
 
@@ -140,7 +140,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY --
 | 部署新机、换网络、确认镜像/源配置、系统代理或装得慢 | `scripts/check_network_env.py` 的帮助；默认只读配置，`--probe` 做有界探测 |
 | 代理登记缺失或失效、需要发现候选 | [代理登记](references/proxy-registry.md)；已有脚本 `scripts/probe_local_proxies.py`，参数查其帮助，不另写扫描器 |
 | 需要看 mihomo/Clash 的 profile、节点池、分组选中与失效节点 | `scripts/inspect_mihomo.py`；多实例先用 `--list-instances` 枚举，再逐个 `--config`/`--controller` 检查；判读与陷阱见[客户端体检](references/mihomo-inspection.md)，只读，`--delay` 才出网 |
-| 需要核验文件加速候选 | `scripts/check_github_mirrors.py` 的帮助；镜像首页可用不代表目标资源可用 |
+| 需要核验、更换或体检 GitHub 加速前缀 | [网络诊断与回退](references/network-access.md#github-加速镜像)的「失效更换与健康检查」；`scripts/check_github_mirrors.py` 的帮助；镜像首页可用不代表目标资源可用 |
 | 大文件单连接慢、考虑 aria2c 多连接 | [多连接下载](references/network-access.md#多连接下载)的适用条件与参数；先确认 Range、单连接瓶颈与并发许可 |
 | 安装 Python／Node.js／conda 依赖 | [依赖下载](references/dependency-downloads.md)，区分索引、包文件与额外下载，按其中“镜像选型顺序”判定；PyPI/uv 候选可先跑 `scripts/bench_pypi_mirrors.py` |
 | 依赖安装报错、版本冲突、无匹配 wheel、PEP 668 或反复超时 | [依赖安装失败分诊](references/dependency-install-recovery.md)，先分段再决定换源、改约束、换工具链或重装 |

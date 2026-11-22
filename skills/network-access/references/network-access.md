@@ -133,7 +133,7 @@ GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-rema
 
 Release 资产换前缀后仍要按官方 digest 校验：`api.github.com` 的 release 元数据里带 `sha256`，直连 API 通常可用；取回文件后比对 `sha256sum` 或 `Get-FileHash`，不一致就丢弃并换通道，不带着未校验的二进制继续安装。
 
-用法：按服务规则把完整原链接放在前缀之后，例如 `https://gh-proxy.com/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`。这是 GitHub 资源加速，不是通用文档代理；Release、archive、raw、网页和 git 传输各自核验，不能从一种推断另一种可用。
+用法：按服务规则把完整原链接放在前缀之后，例如 `https://<加速前缀>/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`。这是 GitHub 资源加速，不是通用文档代理；Release、archive、raw、网页和 git 传输各自核验，不能从一种推断另一种可用。
 
 jsDelivr 的 `gh` 路径（`https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>`）可缓存并直出仓库内单文件，但它不是前缀加速，也不保证绕过 raw：未命中缓存时可能 301 到 `raw.githubusercontent.com`（实测同一仓库有的文件 200、有的 301 到 raw）。它只覆盖仓库文件，不支持 Release 资产、archive 和私有仓库；分支引用可能命中 CDN 缓存，需要与仓库当前内容一致时改用提交 SHA。把它当作 raw 的候选路线，取回后检查最终 URL 与状态；301 到 raw 不算加速成功，不因 CDN 首页可用就推断任意文件可取。
 
@@ -152,6 +152,13 @@ jsDelivr 的 `gh` 路径（`https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<pa
 - 第三方公共服务只用于适合公开分发的资源，不向其转发私有仓库、令牌、Cookie 或签名下载 URL；不关闭 TLS 校验来掩盖证书错误。
 - 403/429 明确限流时遵守冷却；429 可用已核验的另一出口做一次有界验证，不连续轮换镜像或出口绕过；WAF 挑战页按错误分流转 `resilient-browser-fetch`，不默认套加速前缀。
 - 加速取回失败（404、白名单拒绝、超时）先确认原始链接与服务支持范围，再换候选或回退路线；生产环境不依赖第三方公共加速，发布物走官方渠道或自有镜像。
+
+**失效更换与健康检查**
+
+- 判失效看归属：同一前缀的 raw、archive、Release、git 传输都失败，而站点首页仍能打开时，按该前缀当前不可用处理。403 正文是站点自定义拒绝语、带 `remote:` 前缀，或 `Server`/`Web-Server` 指向前缀，说明请求没到目标，换前缀即可，不当成 GitHub、仓库权限或凭据问题；单类失败只否定该类。
+- 体检用 `scripts/check_github_mirrors.py --timeout 3 --targets <本次需要的类型>`：`ok` 才算可用，`timeout` 记不可判定并换候选，`fail` 按失败归属判断。只测本次要用的资源类型，不要求四类全绿；结果只对当次网络与目标有效。
+- 换已有 remote 时先把推送地址指回原站（`git remote set-url --push origin https://github.com/<owner>/<repo>.git`），再把拉取地址换成新前缀（`git remote set-url origin https://<新前缀>/https://github.com/<owner>/<repo>.git`）；已有独立原站 remote 的继续用它推送。换完分别用 `git ls-remote origin` 与原站 remote 核验读写路线；`git status -sb` 用的是本地缓存，不能证明远端状态。
+- 记录：把日期、前缀、资源类型与结果写进 [local-observations.md](local-observations.md) 的带日期条目。那是本机当次事实，不是长期可用清单；隔一段时间、换网络或再次使用前重新体检。
 
 ## 多连接下载
 
