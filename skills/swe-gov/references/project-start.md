@@ -47,9 +47,9 @@
 - 仓库与依赖：目录、许可证、分支与评审、CI、锁文件、密钥不入库；依赖来源与版本核实。
 - **第一里程碑用 walking skeleton**：一条最小端到端路径，连通主要组件，保留真实构建、启动和测试入口；按生产习惯编写、不抛弃。spike/prototype 只验证未知假设，结论入决策记录后可丢弃，不直接产品化。
 - **顺序按风险调整**：数据/报表类先确认数据模型与查询路径，强交互产品先做原型验证体验；确认后的结论回写契约，再进入骨架。
-- **用户界面先有设计轨，再进入实现**：用户面向的页面先产出用户任务、页面清单、主路径、信息层级、关键线框和状态清单（空、加载、错误、无权限、部分结果、提交中）；设计轨与接口契约并行，页面结构由用户任务决定，不由 API schema、数据库字段或接口序列化格式反推。单人或单 agent 也把设计稿当独立工件；方向不唯一时给 2–3 个可预览方案、推荐稿与取舍，由负责人选择。
+- **用户界面先有设计轨，再进入实现**：用户面向的页面先产出目标用户与代表任务、页面清单、主路径、信息层级、关键线框和状态清单（空、加载、错误、无权限、部分结果、提交中）；设计轨与接口契约并行，页面结构由用户任务决定，不由 API schema、数据库字段或接口序列化格式反推。单人或单 agent 也把设计稿当独立工件；方向不唯一时给 2–3 个可预览方案、推荐稿与取舍，由负责人选择。
 
-界面方法按 [frontend-design](../../frontend-design/SKILL.md)；后台控制台按 [admin-console-design](../../admin-console-design/SKILL.md)；响应式与窄屏收纳按 [adaptive-responsive-guide](../../adaptive-responsive-guide/SKILL.md)；视觉方向按 [distinctive-design-director](../../distinctive-design-director/SKILL.md)；存量 UI 缺陷与视觉验收按 [frontend-qa](../../frontend-qa/SKILL.md)。有多语言/多地区用户时，在信息架构阶段确认 locale、回退链、文案长度、日期/货币/时区和 RTL，见 [国际化与本地化](../../frontend-design/references/i18n.md)。单 agent 的顺序、纵向切片与可省略条件见[架构与契约](architecture-and-contracts.md#单人单-agent-的顺序)。
+界面方法按 [frontend-design](../../frontend-design/SKILL.md)；目标用户约束、代表任务与可用性验证按 [用户中心设计与可用性验证](../../frontend-design/references/user-centered-design.md)；后台控制台按 [admin-console-design](../../admin-console-design/SKILL.md)；响应式与窄屏收纳按 [adaptive-responsive-guide](../../adaptive-responsive-guide/SKILL.md)；视觉方向按 [distinctive-design-director](../../distinctive-design-director/SKILL.md)；存量 UI 缺陷与视觉验收按 [frontend-qa](../../frontend-qa/SKILL.md)。有多语言/多地区用户时，在信息架构阶段确认 locale、回退链、文案长度、日期/货币/时区和 RTL，见 [国际化与本地化](../../frontend-design/references/i18n.md)。单 agent 的顺序、纵向切片与可省略条件见[架构与契约](architecture-and-contracts.md#单人单-agent-的顺序)。
 
 后端设计按[后端设计轨](backend-design.md)推进：边界与不变量 → 领域/数据模型 → API 资源与契约 → 鉴权/租户 → 异步任务与副作用 → 错误/幂等 → 缓存/性能 → 可观测性与迁移 → 测试。与前端设计轨共用同一份契约冻结层，不各自发明字段和状态。
 
@@ -88,6 +88,7 @@
 | 安全、隐私与合规 | 信任边界、认证授权、输入校验、敏感数据与日志脱敏、密钥生命周期、数据保留/删除、适用市场与用户类型 | [架构与契约](architecture-and-contracts.md#信任边界与安全需求)、[工程侧合规检查表](compliance-checklist.md)、[repo-gov](../../repo-gov/SKILL.md) |
 | 数据生命周期 | 迁移顺序、备份范围、恢复目标与演练、破坏性操作的回退 | [架构与契约](architecture-and-contracts.md#兼容迁移)、[运行可靠性](reliability-and-operations.md#备份回退和恢复) |
 | 产品度量 | 成功指标、事件 schema、基线、复盘与停止条件、隐私边界 | [产品度量与埋点](product-measurement.md) |
+| 用户与可用性 | 目标用户、代表任务、关键约束、可用性验证与复测计划 | [用户中心设计与可用性验证](../../frontend-design/references/user-centered-design.md) |
 | 多语言与本地化 | locale 列表、回退链、文案长度、日期/货币/时区、RTL、翻译流程 | [国际化与本地化](../../frontend-design/references/i18n.md) |
 | 可观测与发布 | 健康检查、结构化日志、关键指标、错误上报、灰度/回滚、制品晋级 | [运行可靠性](reliability-and-operations.md) |
 | 文档 | README、接口契约、ADR、部署/Runbook、变更说明；与实现同次更新 | [project-docs](../../project-docs/SKILL.md) |
