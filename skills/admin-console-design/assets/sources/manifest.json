@@ -155,5 +155,24 @@
       "build_provenance": "rebuilt from current source on 2026-10-08"
     }
   },
-  "hash_mode": "SHA-256 of file bytes with CRLF normalized to LF (all archived source/build files are text)"
+  "hash_mode": "SHA-256 of file bytes with CRLF normalized to LF (all archived source/build files are text)",
+  "candidate_references": {
+    "vue3-cloudflare-shell": {
+      "kind": "same-stack-port",
+      "archived_on": "2026-11-23",
+      "origin_project": "Vue 3 batch workbench shell port; layout and interactions only",
+      "source_files": {
+        "App.vue": "3d54179a939fda22ffaf603ff92dc4a2e8b4c6498d919b6641b19f07704880a7",
+        "components/Icon.vue": "995e0f489df7d2b6a408d946a51c9a2d930ff2d2583ddcb5c02dd40a20a7fd62",
+        "components/SidebarNav.vue": "dca6c5dc9b06467daf3a010279b1dac577c0ccbdeb2959f03169fec2ebc55e33",
+        "README.md": "ed3807f7ac945ecd054a28c425d545412f38c693aa30164227ffb905ce14f639",
+        "style.css": "7c2d7bced310eed7c73da350172729a9547b87af1159984a9b5cc554e1d9d2ac",
+        "verification.json": "2cc3d51ba36ad85283ca94eed9b013f2f65e6f87a851be80afafc4c8c0e80a30"
+      },
+      "source_bytes": 44338,
+      "notes": "Candidate only: not a fourth primary template and not a Cloudflare official restoration. Colors are host tokens, not a Cloudflare palette. No command palette, account/theme/notification menus or resource switcher.",
+      "verification": "1280/1440/768/390 checked; 264/56 sidebar; peek 264 with slot 56; Esc returns focus to main; drawer at <1024; zero console errors.",
+      "verification_file": "verification.json"
+    }
+  }
 }

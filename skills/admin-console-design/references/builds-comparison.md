@@ -14,6 +14,15 @@
 
 fable命令面板或sonnet状态机可整体迁移；不要仅抄HTML类名留下依赖/状态/焦点悬空。源码的别名、路由、全局CSS、持久化键、图标与校验连同读取，再映射到目标体系。
 
+## 同栈候选：Vue 3 外壳移植（2026-11-23）
+
+三份 React 工程之外另有一份同栈候选：[Vue 3 外壳候选](../assets/sources/vue3-cloudflare-shell/README.md)。它用于 Vue 3 项目直接复用外壳，不是第四套主模板，也不是 Cloudflare 官方还原。
+
+- 覆盖：顶栏、264/56 侧栏、分组、Rail hover/focus peek（槽位不变）、手动收起抑制、Esc 回主内容、1024 以下抽屉与焦点陷阱、容器查询收纳、reduced-motion。
+- 不覆盖：命令面板、账号／主题／通知／资源切换器、DNS 表格与表单。
+- 配色：示例使用宿主深青／中性令牌；迁移时替换为宿主令牌，不能拿本节品牌色做还原对照。
+- 验证：1280／1440／768／390；1280 展开 264、Rail 56、peek 面板 264／槽位 56／主内容 left 56；768／390 抽屉可开可关；控制台 0 错误。记录见 [verification.json](../assets/sources/vue3-cloudflare-shell/verification.json)。
+
 ## 参数原值（非全项目强制收敛）
 
 | 项 | fable | sonnet | gpt |

@@ -4,6 +4,10 @@
 
 若实现依据来自 UI 草稿，先按[草稿到模板](cf-customization-guide.md#草稿到模板)映射到本页的完整外壳单元；页脚控制、peek、Esc、快捷键与槽宽/点击稳定不因草稿未画而省略。
 
+## Vue 3 同栈候选移植
+
+[Vue 3 外壳候选](../assets/sources/vue3-cloudflare-shell/README.md) 是本节参数和交互的 Vue 3 落地样例：264/56、Rail hover／focus peek、手动收起抑制、Esc 回主内容、1024 以下抽屉与焦点陷阱、容器查询收纳和 reduced-motion。它只复刻布局与交互，示例配色为宿主深青／中性令牌，不是 Cloudflare 官方色板；不替代本节状态模型，也不把命令面板、账号／主题／资源切换器带入目标。
+
 ## 结构与参数
 
 `Topbar + SidebarSlot(占位) + SidebarPanel(视觉) + main(min-width:0) + 可选footer`。

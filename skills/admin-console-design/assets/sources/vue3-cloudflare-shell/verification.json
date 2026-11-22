@@ -1,0 +1,76 @@
+{
+  "date": "2026-11-23",
+  "kind": "same-stack-vue-shell-candidate",
+  "source": "Vue 3 batch workbench shell port; layout and interactions only",
+  "not_official": true,
+  "views": [
+    {
+      "viewport": "1280x900",
+      "expanded": {
+        "slot_width": 264,
+        "panel_width": 264,
+        "main_left": 264,
+        "main_width": 1016,
+        "scroll_width": 1280
+      },
+      "rail": {
+        "slot_width": 56,
+        "panel_width": 56,
+        "main_left": 56,
+        "main_width": 1224
+      },
+      "peek": {
+        "slot_width": 56,
+        "panel_width": 264,
+        "main_left": 56,
+        "main_width": 1224,
+        "pushes_content": false
+      },
+      "escape_focus": "main",
+      "manual_collapse_hover_reopen": false
+    },
+    {
+      "viewport": "1440x900",
+      "slot_width": 264,
+      "panel_width": 264,
+      "main_left": 264,
+      "main_width": 1176,
+      "scroll_width": 1440
+    },
+    {
+      "viewport": "768x900",
+      "drawer": true,
+      "drawer_escape_closes": true,
+      "scroll_width": 768,
+      "console_errors": 0
+    },
+    {
+      "viewport": "390x844",
+      "drawer": true,
+      "scroll_width": 390,
+      "console_errors": 0
+    }
+  ],
+  "interaction_checks": {
+    "hover_and_focus_peek": true,
+    "suppress_hover_after_manual_collapse": true,
+    "escape_closes_peek_and_moves_focus": true,
+    "mobile_focus_trap": true,
+    "mobile_scroll_lock": true,
+    "reduced_motion": true
+  },
+  "host_checks": {
+    "backend_tests": 193,
+    "frontend_tests": "Vitest passed",
+    "frontend_build": "vue-tsc + Vite passed",
+    "real_batch_tasks": 2,
+    "real_batch_valid_products": 14,
+    "real_batch_failed_products": 0
+  },
+  "limits": [
+    "Chromium only",
+    "No screen-reader test",
+    "No Firefox/Safari or dark-theme verification",
+    "Colors are host tokens, not a Cloudflare palette reference"
+  ]
+}

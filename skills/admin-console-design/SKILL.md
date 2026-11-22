@@ -41,6 +41,8 @@ description: >
 
 [源码素材](assets/sources/README.md)归档三工程源码、文档与构建配置；[预览快照](references/builds/README.md)提供可运行产物和截图。源码可复制适配，产物用于观察；不要从压缩 bundle 反向抄源码。原工程文档是来源材料，本文和领域 references 才是当前 skill 指引。
 
+同栈候选：[Vue 3 外壳候选](assets/sources/vue3-cloudflare-shell/README.md) 只复刻顶栏、264/56 侧栏、Rail peek、抽屉、焦点回收与内容收纳；示例配色按宿主令牌，不当作 Cloudflare 还原，也不并入三套主模板的能力并集。
+
 选局部模板时读[模板单元与依赖边界](references/template-units.md)，按入口、样式、共享控件、状态与挂载端行为一起取用。现有素材是源码模板，尚不是可独立安装的组件包。
 
 共同栈 React 19、Vite 7、Tailwind v4、Lucide、自研 hash 路由、本地/内存模拟数据；单文件指 **构建输出**，不是源码单文件。目标项目继续沿用其框架、路由、权限和接口；现有UI组件能满足参考外观与行为时复用，不能满足时可在选定区域替换或适配。不为套模板强换栈。
