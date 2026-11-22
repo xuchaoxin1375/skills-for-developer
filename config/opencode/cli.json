@@ -7,7 +7,7 @@
     "wrap": "word"
   },
   "session": {
-    "sidebar": "auto",
+    "sidebar": "hide",
     "scrollbar": true,
     "thinking": "hide",
     "permissions": "autoaccept",
@@ -23,7 +23,7 @@
   },
   "tabs": {
     "layout": "vertical",
-    "indicators": "status",
+    "indicators": "numbers",
     "mode": "auto",
     "scope": "cwd"
   },
@@ -36,7 +36,7 @@
     "notifications": false
   },
   "theme": {
-    "mode": "light"
+    "mode": "system"
   },
   "experimental": {
     "new-designs": true
