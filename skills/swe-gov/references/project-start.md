@@ -51,6 +51,8 @@
 
 界面方法按 [frontend-design](../../frontend-design/SKILL.md)；后台控制台按 [admin-console-design](../../admin-console-design/SKILL.md)；响应式与窄屏收纳按 [adaptive-responsive-guide](../../adaptive-responsive-guide/SKILL.md)；视觉方向按 [distinctive-design-director](../../distinctive-design-director/SKILL.md)；存量 UI 缺陷与视觉验收按 [frontend-qa](../../frontend-qa/SKILL.md)。有多语言/多地区用户时，在信息架构阶段确认 locale、回退链、文案长度、日期/货币/时区和 RTL，见 [国际化与本地化](../../frontend-design/references/i18n.md)。单 agent 的顺序、纵向切片与可省略条件见[架构与契约](architecture-and-contracts.md#单人单-agent-的顺序)。
 
+后端设计按[后端设计轨](backend-design.md)推进：边界与不变量 → 领域/数据模型 → API 资源与契约 → 鉴权/租户 → 异步任务与副作用 → 错误/幂等 → 缓存/性能 → 可观测性与迁移 → 测试。与前端设计轨共用同一份契约冻结层，不各自发明字段和状态。
+
 形态与契约细则见[架构与契约](architecture-and-contracts.md#新建应用的形态与骨架)；仓库与供应链见 [repo-gov](../../repo-gov/SKILL.md)；运行可靠性只在有持续服务承诺时按[运行可靠性](reliability-and-operations.md)建立。
 
 ### 图示取舍
