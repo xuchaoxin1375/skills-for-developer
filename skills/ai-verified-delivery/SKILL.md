@@ -41,7 +41,7 @@ description: >
 
 本 skill 管交付如何证明完整、正确、可运行及适用时可回滚；界面生成、UI 缺陷深查、脚本写法、仓库治理分别由对应 skill 负责。领域细节按需读 references，避免每项任务都加载全部 Web 检查。
 
-需求未定才用 `grilling`，业务语义需澄清才用 `domain-modeling`，模块接口需设计才用 `codebase-design`；测试实施、长期工程约束和代码评审各按 [职责归属](../web-app-testing/references/skill-boundaries.md)条件协作。调用方法时使用 Skill 工具，只补当前缺少的判断，共用已有 AC、检查入口与证据，不重启访谈或整套流程。例外与批准责任见 [例外与责任](references/spec-driven-delivery.md#例外与责任)。
+需求未定才用 `grilling`；只有业务流程文档或非技术用户口述时，先按 `swe-gov` 的[业务流程需求具体化](../swe-gov/references/business-requirements-discovery.md)形成需求基线。业务语义需澄清才用 `domain-modeling`，模块接口需设计才用 `codebase-design`；测试实施、长期工程约束和代码评审各按 [职责归属](../web-app-testing/references/skill-boundaries.md)条件协作。调用方法时使用 Skill 工具，只补当前缺少的判断，共用已有 AC、检查入口与证据，不重启访谈或整套流程。例外与批准责任见 [例外与责任](references/spec-driven-delivery.md#例外与责任)。
 
 ## 先选工作模式
 

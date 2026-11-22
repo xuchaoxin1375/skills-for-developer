@@ -52,7 +52,7 @@
 
 | 维度 | 关键问题 | 典型证据 | 领域入口 |
 |---|---|---|---|
-| 产品与需求 | 目标用户、核心任务、成功判据、非目标、变更规则是否清楚；当前行为是否支持核心任务 | 需求/工单、用户路径、当前行为、支持记录 | `grilling`、`domain-modeling`、[项目启动检查](project-start.md) |
+| 产品与需求 | 目标用户、核心任务、成功判据、非目标、变更规则是否清楚；当前行为是否支持核心任务 | 需求/工单、用户路径、当前行为、支持记录 | [业务流程需求具体化](business-requirements-discovery.md)、`grilling`、`domain-modeling`、[项目启动检查](project-start.md) |
 | UI/交互（用户面向时） | 关键页面与状态、空态/失败态/无权限、响应式、可访问性、表单与导航是否可用 | 实际截图、Playwright 流程、axe/对比度、断点走查 | [frontend-qa](../../frontend-qa/SKILL.md)、[frontend-design](../../frontend-design/SKILL.md) |
 | 架构/契约/数据 | 部署单元、模块边界、数据所有权、对外契约、认证会话、异步/幂等/兼容迁移是否清楚 | 架构图、代码结构、API schema、迁移记录、ADR | [架构与契约](architecture-and-contracts.md)、[技术选型与方案确认](tech-selection.md)、`domain-modeling` |
 | 构建/仓库/依赖 | 一条命令能否构建、启动、测试；锁文件、CI、密钥、大文件、忽略规则、许可证、分支保护、供应链是否受控 | 实际命令、CI 配置、`git status`/`git ls-files`、依赖清单 | [repo-gov](../../repo-gov/SKILL.md)、[项目启动检查](project-start.md#验证与交付基线) |

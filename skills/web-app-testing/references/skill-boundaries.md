@@ -37,6 +37,7 @@
 | 用户主要问题 | 主入口 | 条件触发的协作 |
 |---|---|---|
 | 先问清方案，暂不实现 | grilling | 业务含义不清才加 domain-modeling；技术事实按需查明 |
+| 完整应用只有业务流程文档（SOP）、非技术用户，需要把需求具体化 | [swe-gov 的业务需求具体化](../../swe-gov/references/business-requirements-discovery.md) | 访谈轮次借 grilling，术语借 domain-modeling，原型借 frontend-design，AC 借 ai-verified-delivery |
 | 统一业务术语、关系或记录重要取舍 | domain-modeling | 模块设计与工程约束分别按需协作，不重启完整访谈 |
 | 改进某个模块接口、减少薄包装或修改扩散 | codebase-design | 跨模块契约/兼容迁移才加 swe-gov；不默认改代码 |
 | 检查 PR、分支或提交差异 | 上游 code-review | 未提交/暂存范围按本地快照约定另核；最终交付结论才进入交付侧 |
@@ -64,7 +65,7 @@
 
 | 阶段 | 主入口 | 主要产出 | 边界 |
 |---|---|---|---|
-| 需求与业务含义 | grilling / domain-modeling | 已确认分支、术语与必要决策记录 | 已有明确规格直接复用，不要求所有任务先访谈 |
+| 需求与业务含义 | grilling / domain-modeling / swe-gov 业务需求具体化（业务流程文档） | 已确认分支、术语、需求基线与必要决策记录 | 已有明确规格直接复用，不要求所有任务先访谈 |
 | 模块与接口设计 | codebase-design | 接口契约、调用样例与验证边界 | 有设计疑问才用，不默认扫描全仓 |
 | 形态、选型、打包 | lightweight-app-builder（轻量）/ swe-gov（长期应用） | 需求确认单、技术栈与选型记录、交付形态与安装方式 | 纯调研报告转 tech-learning-research；不在此定交付等级 |
 | 仓库、许可、提交、CI/供应链 | repo-gov | 仓库基线、分支/提交规则、CI 与依赖控制 | 不在此定业务测试覆盖；必需检查按交付矩阵 |
