@@ -91,15 +91,21 @@ $rel.assets | Select-Object name, size, digest
 
 ## 卸载与回滚
 
-可选功能：
+首选脚本入口，它按实际安装方式选卸载路径（MSI 产品、in-box 可选功能、zip 注册的服务），并幂等处理“已经不存在”的情况：
 
 ```powershell
-Stop-Service sshd -ErrorAction SilentlyContinue
-Remove-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0'
-Remove-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue
+pwsh -NoProfile -File ./Uninstall-WindowsSshServer.ps1 -WhatIf    # 先看动作
+pwsh -NoProfile -File ./Uninstall-WindowsSshServer.ps1            # 卸程序与服务，保留配置与主机密钥
+pwsh -NoProfile -File ./Uninstall-WindowsSshServer.ps1 -PurgeData # 连配置、主机密钥、授权公钥一起清
 ```
 
-MSI：`msiexec /x <path-to-openssh.msi>`，或对已安装包用 `Get-Package` 查 ProductCode 后卸载。
+默认保留 `%ProgramData%\ssh`：重装后主机指纹与已授权公钥都能沿用；只有 `-PurgeData` 才删除，删除后主机密钥会重新生成，客户端会提示 host key 变化，批量环境先确认这一点再删。`-KeepFirewallRule` 用于上层的统一放行策略。
+
+手工卸载时的等价步骤：
+
+- 可选功能：`Stop-Service sshd` → `Remove-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0'` → 删防火墙规则。
+- MSI：`msiexec /x <path-to-openssh.msi>`；不知道 ProductCode 时查 `HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall` 下 DisplayName 匹配 OpenSSH 的项。
+- zip：`Stop-Service sshd` → `sc.exe delete sshd` → `sc.exe delete ssh-agent`，再删安装目录。
 
 回滚时要一起清掉这些改动，只删程序会留下半个服务端：
 
@@ -111,4 +117,5 @@ MSI：`msiexec /x <path-to-openssh.msi>`，或对已安装包用 `Get-Package` �
 | 注册表 | `HKLM:\SOFTWARE\OpenSSH` 的 `DefaultShell`、`DefaultShellCommandOption` |
 | 用户侧 | `%USERPROFILE%\.ssh\authorized_keys` 中新增的行 |
 
-`%ProgramData%\ssh` 删除后主机密钥会重新生成，已记录旧指纹的客户端会提示 host key 变化；批量环境先确认这一点再删。
+脚本不动注册表里的 `DefaultShell`：它是 shell 偏好而不是服务端安装产物，卸载后保留无副作用，需要在其他 shell 场景复用时正好。要清除就手工删 `HKLM:\SOFTWARE\OpenSSH`。
+

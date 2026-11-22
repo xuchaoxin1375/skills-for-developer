@@ -105,7 +105,7 @@ function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Error '需要管理员会话：请以“以管理员身份运行”的 PowerShell 重新执行。'
+        [Console]::Error.WriteLine('需要管理员会话：请以“以管理员身份运行”的 PowerShell 重新执行。')
         exit 2
     }
 }

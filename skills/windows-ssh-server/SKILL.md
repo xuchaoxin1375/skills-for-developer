@@ -132,6 +132,7 @@ description: >
 | 改端口、防火墙规则同步、WSL 抢占 22 | [端口与防火墙](references/port-and-firewall.md) |
 | 用 WSL 发行版当服务端，而不是原生 Windows | [WSL 内跑 sshd](references/wsl-sshd.md) |
 | 可选功能装不上（无 Windows Update、内网、离线）或要卸载回滚 | [安装回退与卸载](references/install-fallbacks.md) |
+| 要移除服务端 | `scripts/Uninstall-WindowsSshServer.ps1 -WhatIf` 预览；默认保留配置与主机密钥，`-PurgeData` 才清数据 |
 | 跑 `Test-WindowsSshServer.ps1` 想先知道检查项与退出码含义 | 脚本自身 `Get-Help ./scripts/Test-WindowsSshServer.ps1 -Full` |
 
 ## 依据与维护

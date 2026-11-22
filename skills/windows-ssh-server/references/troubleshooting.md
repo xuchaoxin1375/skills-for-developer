@@ -22,6 +22,16 @@ LogLevel DEBUG3
 
 重启服务后写入 `%ProgramData%\ssh\logs\`。10.x 起日志分两份：`sshd.log` 只记监听进程，认证与会话细节在 `sshd-session.log`；只 grep 前者会看不到任何一次登录。`DEBUG3` 只用于排障，定位完改回 `INFO`：日志会记录每次认证尝试的细节。
 
+文件日志没有轮转，`sshd-session.log` 会持续增长。确认过排障结论后按需归档或清空（先停服务再清，避免句柄占用）：
+
+```powershell
+Stop-Service sshd
+Move-Item "$env:ProgramData\ssh\logs\sshd-session.log" "$env:ProgramData\ssh\logs\sshd-session.$(Get-Date -f yyyyMMdd).log"
+Start-Service sshd
+```
+
+长期保留审计记录时改为定期归档，而不是一直开 `DEBUG3`：`INFO` 已经记录 `Accepted`/`Failed` 与来源地址。
+
 ## 前台抓实时错误
 
 事件日志不够用时，停掉服务、前台运行 sshd，再让客户端连一次：
