@@ -400,13 +400,15 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 | 前缀 | raw | archive | release | git | 结论 |
 | --- | --- | --- | --- | --- | --- |
 | `https://gh-proxy.com/` | 403 | 403 | 403 | 403 | 全不可用；响应体 65 B，首页仍 200 |
-| `https://ghfast.top/` | ok | ok | ok（约 148 KB/s） | ok（4 refs） | 四类可用 |
+| `https://ghfast.top/` | ok | ok | ok（约 148 KB/s） | ok（4 refs） | 四类可用；release 在另一轮 5 s 超时，git 传输稳定 |
 | `https://ghproxy.net/` | ok | timeout | timeout | timeout | 仅 raw 可用 |
+| `https://cdn.crashmc.com/` | ok | ok | ok（约 57 KB/s） | ok | 四类可用，但 git 传输跨域重定向到 `cdn.akaere.online`，已剔除 |
 | `https://gh.llkk.cc/`、`https://github.moeyy.xyz/` | timeout | timeout | timeout | timeout | 不可判定 |
 | `https://ghproxy.cc/` | 证书主机名不匹配 | 同左 | 同左 | 同左 | 不可用 |
 | `https://ghproxy.link/` | 返回 HTML | 非 ZIP | 非 ZIP | 重定向异常 | 不可用 |
 | `https://hub.gitmirror.com/`、`https://gh.xxooo.cf/` | DNS 失败 | 同左 | 同左 | 同左 | 不可用 |
 
 - `gh-proxy.com` 的 403 由前缀自身返回：响应体为 `Access to proxy rules is forbidden on this hostname: gh-proxy.com`，带 `Web-Server: gh-proxy.com`，git 侧显示为 `remote:` 消息；请求未到 GitHub。
-- 结论：前缀失效可能只发生在转发层，首页照常可开；当次只有 `ghfast.top` 四类全通，选它作新前缀。
+- push 保护实测：`pushInsteadOf` 的 base 与 `insteadOf` 的值同为 `https://github.com/` 时，Git 视为无改写，push 仍走镜像；base 改成 `https://github.com:443/` 后才回原站。已有 `remote.*.pushurl` 指向 `https://github.com/...` 时也会先被 `insteadOf` 改写，需改成 `:443` 形式或删除。
+- 结论：前缀失效可能只发生在转发层，首页照常可开；当次 `gh-proxy.org` 四类稳定，`ghfast.top` 的 git 传输最快但 release 有波动。
 - 未验证：大文件持续下载速度、clone/fetch 长连接、跨日与其他网络；其余候选未穷举。

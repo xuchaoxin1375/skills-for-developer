@@ -116,7 +116,7 @@ GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-rema
 
 加速镜像用于公开 GitHub 资源的取回：raw 单文件、Release 资产、archive 压缩包，以及部分服务支持的只读 git 传输。它只解决"取得到、取得快"，不解决权限、私有资源和推送，所以按资源类型与体积选路，不按"哪个站点还活着"选。
 
-加速前缀是只读通道：它不接收推送，也不需要账号凭据。不要为加速域名配置 Git 凭据（`credential.<url>`）或推送地址（`pushurl`），也不要把令牌交给第三方加速站；经加速克隆或拉取后需要推送时，remote 的推送地址必须指回原站（如 `git remote set-url --push origin https://github.com/<owner>/<repo>.git`）。
+加速前缀是只读通道：它不接收推送，也不需要账号凭据。不要为加速域名配置 Git 凭据（`credential.<url>`）或推送地址（`pushurl`），也不要把令牌交给第三方加速站；经加速克隆或拉取后需要推送时，remote 的推送地址必须指回原站（如 `git remote set-url --push origin https://github.com/<owner>/<repo>.git`）。若同时配置了目录级或全局 `insteadOf`，推送地址要用不匹配该规则的形式（如 `https://github.com:443/...`），否则会一并被改写到镜像。
 
 国内网络访问 GitHub 公开资源时，默认第一动作是套用该资源类型已核验的加速，不先直连、不为小文件先试直连；直连只作为加速不可用时的回退。回退直连首响约 3 秒仍无有效响应，即判该路线不可靠，改走加速或代理，不原样重复同一 URL、不靠延长超时等结果。
 
@@ -157,7 +157,7 @@ jsDelivr 的 `gh` 路径（`https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<pa
 
 - 判失效看归属：同一前缀的 raw、archive、Release、git 传输都失败，而站点首页仍能打开时，按该前缀当前不可用处理。403 正文是站点自定义拒绝语、带 `remote:` 前缀，或 `Server`/`Web-Server` 指向前缀，说明请求没到目标，换前缀即可，不当成 GitHub、仓库权限或凭据问题；单类失败只否定该类。
 - 体检用 `scripts/check_github_mirrors.py --timeout 3 --targets <本次需要的类型>`：`ok` 才算可用，`timeout` 记不可判定并换候选，`fail` 按失败归属判断。只测本次要用的资源类型，不要求四类全绿；结果只对当次网络与目标有效。
-- 换已有 remote 时先把推送地址指回原站（`git remote set-url --push origin https://github.com/<owner>/<repo>.git`），再把拉取地址换成新前缀（`git remote set-url origin https://<新前缀>/https://github.com/<owner>/<repo>.git`）；已有独立原站 remote 的继续用它推送。换完分别用 `git ls-remote origin` 与原站 remote 核验读写路线；`git status -sb` 用的是本地缓存，不能证明远端状态。
+- 换已有 remote：拉取地址换成新前缀（`git remote set-url origin https://<新前缀>/https://github.com/<owner>/<repo>.git`），推送仍走原站。用目录级或全局 `insteadOf` 时，`pushInsteadOf` 的 base 不能与 `insteadOf` 的值相同（同值会被当成无改写，push 回退到镜像），改用 `https://github.com:443/` 这类不匹配的写法；已有 `remote.*.pushurl` 指向 `https://github.com/...` 时也会先被 `insteadOf` 改写，需改成 `https://github.com:443/...` 或删除。换完分别用 `git ls-remote origin` 与原站 remote 核验读写路线；`git status -sb` 用的是本地缓存，不能证明远端状态。
 - 记录：把日期、前缀、资源类型与结果写进 [local-observations.md](local-observations.md) 的带日期条目。那是本机当次事实，不是长期可用清单；隔一段时间、换网络或再次使用前重新体检。
 
 ## 多连接下载
