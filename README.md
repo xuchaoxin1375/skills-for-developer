@@ -31,7 +31,7 @@ git remote -v
 | 业务术语、状态或关系说不清 | 上游 `domain-modeling` | 只读术语表不启动建模，不批量改名 |
 | 模块接口难用、薄包装太多、修改扩散 | 上游 `codebase-design` | 本地调用方不因此扩成全仓治理 |
 | 从零规划 Web 应用，纠结技术选型/前后端分离/项目骨架 | [swe-gov](skills/swe-gov/SKILL.md) | 不同时启动全套治理；需求访谈、模块设计、仓库配置、测试与交付按需协作；轻量工具转 lightweight-app-builder |
-| 新建或改版用户界面，纠结布局、状态、视觉与可访问性 | [frontend-design](skills/frontend-design/SKILL.md) | 先接需求链与用户任务；存量 UI 缺陷转 frontend-qa；响应式、动效、后台控制台按需协作；不要等接口定完再画页面 |
+| 新建或改版用户界面，纠结布局、状态、视觉与可访问性 | [frontend-design](skills/frontend-design/SKILL.md) | 先接需求链与用户任务；新建／整体改版先做全局壳、导航和跨页流程；存量 UI 缺陷转 frontend-qa；响应式、动效、后台控制台按需协作；不要等接口定完再画页面 |
 | 设计后端数据模型、API、鉴权、异步任务或缓存 | [swe-gov](skills/swe-gov/SKILL.md) 的 [backend-design](skills/swe-gov/references/backend-design.md) | 先定边界/数据模型/契约；测试、CI 与运维按需协作；不要从数据库表直接生成接口 |
 | 明确要求测试驱动实现 | 上游 `tdd` | 不因引用而安装整套上游流程 |
 | 需要测试覆盖、真实集成与回归 | [web-app-testing](skills/web-app-testing/SKILL.md) | 不另建验收等级或重复计划 |
@@ -48,7 +48,7 @@ git remote -v
 - [项目启动检查](skills/swe-gov/references/project-start.md)：分档、需求、选型、形态、界面设计轨、walking skeleton、开写判据。
 - [业务流程需求具体化](skills/swe-gov/references/business-requirements-discovery.md)：只有 SOP/口述/现有表格时，还原流程、角色、数据、规则与 AC。
 - [后端设计轨](skills/swe-gov/references/backend-design.md)：边界/数据模型、API 契约、鉴权/租户、异步任务、缓存/性能、迁移与测试。
-- [用户中心设计与可用性验证](skills/frontend-design/references/user-centered-design.md)：需求链、目标用户约束、AI 稿任务化评估、3–5 人可用性测试。
+- [用户中心设计与可用性验证](skills/frontend-design/references/user-centered-design.md)：需求链、全局原型优先、目标用户约束、AI 稿任务化评估、3–5 人可用性测试。
 - [产品度量与埋点](skills/swe-gov/references/product-measurement.md)：指标树、事件口径、隐私、上线后复盘。
 - [工程侧合规检查表](skills/swe-gov/references/compliance-checklist.md)：适用义务、数据地图、删除/导出、第三方与 AI 数据。
 - [国际化与本地化](skills/frontend-design/references/i18n.md)：locale、文案长度、格式、RTL、翻译流程。
