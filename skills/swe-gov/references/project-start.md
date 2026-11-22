@@ -2,6 +2,8 @@
 
 启动正式编码前，用本页确认“哪些决策必须先定、哪些可以边做边补”。本页是索引与判据，不复制各域细则：选型见[技术选型与方案确认](tech-selection.md)，形态与契约见[架构与契约](architecture-and-contracts.md)，仓库与依赖见 [repo-gov](../../repo-gov/SKILL.md)，测试与交付见 [web-app-testing](../../web-app-testing/SKILL.md) 与 [ai-verified-delivery](../../ai-verified-delivery/SKILL.md)。
 
+已有代码、已上线或进行中的项目做规范化体检与纠偏时，转[项目健康体检与纠偏](project-health-audit.md)，不把本页当存量审计清单。
+
 ### 先分档
 
 按寿命、影响面、失败代价与维护能力决定检查强度，不把长期应用的治理套给一次性脚本。
