@@ -50,6 +50,9 @@ description: >
 | 新建应用或替换核心技术时的候选调研、复杂度与 AI 协作效率评估、方案确认 | [技术选型与方案确认](references/tech-selection.md) | 候选与取证、评估维度、选择理由、放弃项、重选条件、决策记录 |
 | 模块、数据与状态归属、异步写任务、接口/迁移/副作用 | [架构与契约](references/architecture-and-contracts.md) | 边界、状态与派生展示口径、任务恢复契约和可执行约束 |
 | 服务目标、进程容量与生命周期、可观测性、发布观测、告警、恢复 | [运行可靠性](references/reliability-and-operations.md) | 明确测量口径、资源归属、响应手册和恢复验证 |
+| 产品成功指标、事件埋点、数据口径与上线后度量 | [产品度量与埋点](references/product-measurement.md) | 指标树、事件 schema、隐私边界、基线、复盘与停止条件 |
+| 产品数据合规、隐私义务、删除/导出、第三方与 AI 数据 | [工程侧合规检查表](references/compliance-checklist.md) | 适用义务、数据地图、工程控制、发布前检查与法务触发条件 |
+| 多语言/多地区产品的 locale、文案长度、格式与 RTL | [国际化与本地化](../frontend-design/references/i18n.md) | locale 模型、翻译流程、格式与验收清单 |
 | 文档间／与实现一致性、去重、地图／Skill、技术债及退役 | [维护与改进](references/maintenance-and-feedback.md) | 唯一归属、取舍依据、变更检查、复查周期与退出条件 |
 | 判断材料为何采纳、查证边界与不采纳项 | [来源与取舍](references/sources-and-decisions.md) | 来源可追溯；不将材料主张冒充已核实事实 |
 
