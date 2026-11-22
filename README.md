@@ -31,6 +31,7 @@ git remote -v
 | 业务术语、状态或关系说不清 | 上游 `domain-modeling` | 只读术语表不启动建模，不批量改名 |
 | 模块接口难用、薄包装太多、修改扩散 | 上游 `codebase-design` | 本地调用方不因此扩成全仓治理 |
 | 从零规划 Web 应用，纠结技术选型/前后端分离/项目骨架 | [swe-gov](skills/swe-gov/SKILL.md) | 不同时启动全套治理；需求访谈、模块设计、仓库配置、测试与交付按需协作；轻量工具转 lightweight-app-builder |
+| 新建或改版用户界面，纠结布局、状态、视觉与可访问性 | [frontend-design](skills/frontend-design/SKILL.md) | 存量 UI 缺陷转 frontend-qa；响应式、动效、后台控制台按需协作；不要等接口定完再画页面 |
 | 明确要求测试驱动实现 | 上游 `tdd` | 不因引用而安装整套上游流程 |
 | 需要测试覆盖、真实集成与回归 | [web-app-testing](skills/web-app-testing/SKILL.md) | 不另建验收等级或重复计划 |
 | 难 bug 或性能回归需要定位 | 上游 `diagnosing-bugs` | 不凭猜测直接改实现 |

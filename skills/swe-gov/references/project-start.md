@@ -47,6 +47,9 @@
 - 仓库与依赖：目录、许可证、分支与评审、CI、锁文件、密钥不入库；依赖来源与版本核实。
 - **第一里程碑用 walking skeleton**：一条最小端到端路径，连通主要组件，保留真实构建、启动和测试入口；按生产习惯编写、不抛弃。spike/prototype 只验证未知假设，结论入决策记录后可丢弃，不直接产品化。
 - **顺序按风险调整**：数据/报表类先确认数据模型与查询路径，强交互产品先做原型验证体验；确认后的结论回写契约，再进入骨架。
+- **用户界面先有设计轨，再进入实现**：用户面向的页面先产出用户任务、页面清单、主路径、信息层级、关键线框和状态清单（空、加载、错误、无权限、部分结果、提交中）；设计轨与接口契约并行，页面结构由用户任务决定，不由 API schema、数据库字段或接口序列化格式反推。单人或单 agent 也把设计稿当独立工件；方向不唯一时给 2–3 个可预览方案、推荐稿与取舍，由负责人选择。
+
+界面方法按 [frontend-design](../../frontend-design/SKILL.md)；后台控制台按 [admin-console-design](../../admin-console-design/SKILL.md)；响应式与窄屏收纳按 [adaptive-responsive-guide](../../adaptive-responsive-guide/SKILL.md)；视觉方向按 [distinctive-design-director](../../distinctive-design-director/SKILL.md)；存量 UI 缺陷与视觉验收按 [frontend-qa](../../frontend-qa/SKILL.md)。单 agent 的顺序、纵向切片与可省略条件见[架构与契约](architecture-and-contracts.md#单人单-agent-的顺序)。
 
 形态与契约细则见[架构与契约](architecture-and-contracts.md#新建应用的形态与骨架)；仓库与供应链见 [repo-gov](../../repo-gov/SKILL.md)；运行可靠性只在有持续服务承诺时按[运行可靠性](reliability-and-operations.md)建立。
 
@@ -74,6 +77,20 @@
 
 测试设计与分层见 [web-app-testing](../../web-app-testing/SKILL.md)；等级、DoR/DoD 与证据要求见 [ai-verified-delivery](../../ai-verified-delivery/SKILL.md) 及[等级与门禁](../../ai-verified-delivery/references/levels-and-gates.md#准入与完成条件)。
 
+### 跨阶段检查点
+
+以下事项不会因为“先做功能”而消失；启动时至少确定归属、触发条件和首个可验证结果，详细规则按归属入口执行。
+
+| 检查点 | 启动时应确定 | 归属 |
+|---|---|---|
+| 安全与隐私 | 信任边界、认证授权、输入校验、敏感数据与日志脱敏、密钥生命周期、数据保留/删除 | [架构与契约](architecture-and-contracts.md#信任边界与安全需求)、[repo-gov](../../repo-gov/SKILL.md) |
+| 数据生命周期 | 迁移顺序、备份范围、恢复目标与演练、破坏性操作的回退 | [架构与契约](architecture-and-contracts.md#兼容迁移)、[运行可靠性](reliability-and-operations.md#备份回退和恢复) |
+| 可观测与发布 | 健康检查、结构化日志、关键指标、错误上报、灰度/回滚、制品晋级 | [运行可靠性](reliability-and-operations.md) |
+| 文档 | README、接口契约、ADR、部署/Runbook、变更说明；与实现同次更新 | [project-docs](../../project-docs/SKILL.md) |
+| 运行与迭代 | SLO/告警、事故复盘、技术债、依赖更新、退役条件 | [运行可靠性](reliability-and-operations.md)、[维护与改进](maintenance-and-feedback.md) |
+
+有持续服务承诺时才建立完整运行目标与值守；没有承诺也要保留最小错误可见性和回退路径，不把“先上线再说”当成默认。
+
 ### AI 协作前置
 
 - **AGENTS.md 由人维护**：保持短，只放真实构建/测试命令、模块地图、硬约束和操作边界；代码风格交给 linter，不要让代理批量生成后直接采用。
@@ -93,6 +110,7 @@
 - [ ] 非目标明确，变更规则有人负责
 - [ ] 选型有记录，关键假设有公开证据或小样支撑
 - [ ] 形态、部署单元、数据归属与跨端契约有结论
+- [ ] 用户面向的页面已有设计轨产出（用户任务、页面清单、关键线框、状态清单），或明确记录按风险省略的理由
 - [ ] walking skeleton 已跑通，或明确作为第一个提交
 - [ ] 一条命令能构建、启动、测试
 - [ ] 失败路径、安全基线与恢复边界有设计输入

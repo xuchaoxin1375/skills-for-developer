@@ -43,7 +43,7 @@ description: >
 
 | 当前问题 | 按需读取 | 应形成的结果 |
 |---|---|---|
-| 从零启动项目、开工前确认需求/选型/形态/验证与 AI 协作基线 | [项目启动检查](references/project-start.md) | 分档判据、开写阻断项与各域规则入口 |
+| 从零启动项目、开工前确认需求/选型/形态/验证、界面设计轨与 AI 协作基线 | [项目启动检查](references/project-start.md) | 分档判据、开写阻断项、界面设计轨与各域规则入口 |
 | 只有业务流程文档（SOP）、非技术用户口述或现有表格，需求尚未具体化 | [业务流程需求具体化](references/business-requirements-discovery.md) | 流程还原、角色/数据/规则/例外、MVP、原型、AC 与需求基线 |
 | 存量/已进行项目的规范化、健康体检、缺口检查与纠偏路线图 | [项目健康体检与纠偏](references/project-health-audit.md) | 范围与档位、健康快照、缺口台账、优先级、整改波次与复验 |
 | 从零规划 Web 应用、前后端分离/渲染方式/部署单元/仓库结构、项目骨架 | [架构与契约](references/architecture-and-contracts.md#新建应用的形态与骨架) + [构建应用时的组合顺序](../web-app-testing/references/skill-boundaries.md#构建应用时的组合顺序) | 形态决策、边界与契约、最小工程基线、后续阶段入口 |
@@ -55,7 +55,7 @@ description: >
 
 ### 分阶段落地
 
-优先得到一条可信的核心链路：明确契约与责任、可重复构建和测试、关键权限/数据控制。只有业务流程文档、尚未形成可开发需求时，先按[业务流程需求具体化](references/business-requirements-discovery.md)做流程还原、范围与验收基线，再进入选型和骨架。从零开始时，先按[项目启动检查](references/project-start.md)确认档位与开写条件，再按[技术选型与方案确认](references/tech-selection.md)确认核心技术，再按[新建应用的形态与骨架](references/architecture-and-contracts.md#新建应用的形态与骨架)定形态与最小基线，再进入实现；前后端分离不是默认目标，拆分要有独立价值。再补本次高风险架构/兼容与恢复缺口；存在持续服务承诺时建立运行目标和响应；用实际缺陷、维护成本推动扩展。这个顺序按项目调整，不承诺统一工期，不要求提前采购平台、拆微服务或安装全部工具。
+优先得到一条可信的核心链路：明确契约与责任、可重复构建和测试、关键权限/数据控制。只有业务流程文档、尚未形成可开发需求时，先按[业务流程需求具体化](references/business-requirements-discovery.md)做流程还原、范围与验收基线，再进入选型和骨架。从零开始时，先按[项目启动检查](references/project-start.md)确认档位与开写条件，再按[技术选型与方案确认](references/tech-selection.md)确认核心技术，再按[新建应用的形态与骨架](references/architecture-and-contracts.md#新建应用的形态与骨架)定形态与最小基线，再进入实现；前后端分离不是默认目标，拆分要有独立价值。用户面向的页面与接口契约并行推进设计轨：先有用户任务、信息架构、状态清单和关键线框，再做视觉与组件实现；页面结构不由 API schema 决定。单 agent 的顺序与可省略条件见[架构与契约](references/architecture-and-contracts.md#单人单-agent-的顺序)，界面方法按 [frontend-design](../frontend-design/SKILL.md)。再补本次高风险架构/兼容与恢复缺口；存在持续服务承诺时建立运行目标和响应；用实际缺陷、维护成本推动扩展。这个顺序按项目调整，不承诺统一工期，不要求提前采购平台、拆微服务或安装全部工具。
 
 已有项目不从头重跑：先按[项目健康体检与纠偏](references/project-health-audit.md)确认范围、档位、基线证据和阻断项，再回到对应阶段补齐；不要用新项目清单要求全仓重写。
 
