@@ -74,6 +74,7 @@ PIP_ENV_VARS = (
     "PIP_PROXY",
 )
 UV_ENV_VARS = (
+    "UV_CONFIG_FILE",
     "UV_DEFAULT_INDEX",
     "UV_INDEX",
     "UV_INDEX_URL",
@@ -382,6 +383,24 @@ def pip_info(timeout: float) -> dict[str, Any]:
     return info
 
 
+def uv_config_candidates(platform_name: str | None = None) -> list[Path]:
+    """列出 uv 用户级配置文件候选位置。"""
+    platform_name = platform_name or os.name
+    paths: list[Path] = []
+    if config_file := os.getenv("UV_CONFIG_FILE"):
+        paths.append(Path(config_file))
+    if platform_name == "nt":
+        if appdata := os.getenv("APPDATA"):
+            paths.append(Path(appdata) / "uv" / "uv.toml")
+    else:
+        if config_home := os.getenv("XDG_CONFIG_HOME"):
+            paths.append(Path(config_home) / "uv" / "uv.toml")
+        else:
+            paths.append(Path.home() / ".config" / "uv" / "uv.toml")
+    seen: set[str] = set()
+    return [path for path in paths if not (str(path) in seen or seen.add(str(path)))]
+
+
 def read_uv_config(path: Path, is_pyproject: bool) -> dict[str, Any]:
     """读取 pyproject.toml/uv.toml 中的 uv 索引配置。"""
     text = read_text(path)
@@ -419,19 +438,32 @@ def read_uv_config(path: Path, is_pyproject: bool) -> dict[str, Any]:
     return result
 
 
-def uv_info(project_roots: Sequence[Path]) -> dict[str, Any]:
-    """uv 的环境变量与项目索引；uv 不读取 pip 的配置。"""
+def uv_info(
+    project_roots: Sequence[Path], platform_name: str | None = None
+) -> dict[str, Any]:
+    """uv 的环境变量与用户级/项目级索引；uv 不读取 pip 的配置。"""
     configs = []
+    seen: set[str] = set()
+
+    def add_config(path: Path, is_pyproject: bool, scope: str) -> None:
+        key = str(path)
+        if key in seen or not path.is_file():
+            return
+        seen.add(key)
+        item = read_uv_config(path, is_pyproject)
+        item["scope"] = scope
+        configs.append(item)
+
+    for path in uv_config_candidates(platform_name):
+        add_config(path, False, "user")
     for root in project_roots:
         for name, is_pyproject in (("pyproject.toml", True), ("uv.toml", False)):
-            path = root / name
-            if path.is_file():
-                configs.append(read_uv_config(path, is_pyproject))
+            add_config(root / name, is_pyproject, "project")
     return {
         "available": shutil.which("uv") is not None,
         "env": env_values(UV_ENV_VARS),
         "configFiles": configs,
-        "note": "uv 不读取 pip.conf/PIP_INDEX_URL；未配置时使用官方索引。",
+        "note": "uv 不读取 pip.conf/PIP_INDEX_URL；用户级、项目级与环境变量都未配置时使用官方索引。",
     }
 
 
@@ -1447,7 +1479,10 @@ def render_human(report: dict[str, Any]) -> str:
         if uv.get("env"):
             lines.append("    " + "  ".join(f"{key}={value}" for key, value in uv["env"].items()))
         for item in uv.get("configFiles") or []:
-            lines.append(f"    项目配置: {item.get('path')} {item.get('indexes') or item.get('error') or ''}")
+            label = "用户配置" if item.get("scope") == "user" else "项目配置"
+            lines.append(
+                f"    {label}: {item.get('path')} {item.get('indexes') or item.get('error') or ''}"
+            )
 
     node = report.get("node")
     if node:

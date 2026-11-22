@@ -164,6 +164,47 @@ def test_uv_project_config_parsing() -> None:
         assert parsed["indexes"][0]["url"] == "https://mirror.example/simple"
 
 
+def test_uv_user_config_candidates() -> None:
+    module = load_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        with mock.patch.dict(
+            os.environ, {"APPDATA": tmp, "UV_CONFIG_FILE": ""}, clear=False
+        ):
+            windows = [str(path) for path in module.uv_config_candidates("nt")]
+        assert str(Path(tmp) / "uv" / "uv.toml") in windows
+        with mock.patch.dict(
+            os.environ, {"XDG_CONFIG_HOME": tmp, "UV_CONFIG_FILE": ""}, clear=False
+        ):
+            posix = [str(path) for path in module.uv_config_candidates("posix")]
+        assert str(Path(tmp) / "uv" / "uv.toml") in posix
+        explicit = Path(tmp) / "explicit.toml"
+        with mock.patch.dict(
+            os.environ, {"UV_CONFIG_FILE": str(explicit)}, clear=False
+        ):
+            assert str(explicit) in [
+                str(path) for path in module.uv_config_candidates("posix")
+            ]
+
+
+def test_uv_info_reads_user_config() -> None:
+    module = load_module()
+    if module.tomllib is None:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "uv.toml"
+        path.write_text(
+            '[[index]]\nurl = "https://mirror.example/simple"\ndefault = true\n',
+            encoding="utf-8",
+        )
+        with mock.patch.object(module, "uv_config_candidates", return_value=[path]):
+            info = module.uv_info([])
+        assert info["configFiles"][0]["scope"] == "user"
+        assert (
+            info["configFiles"][0]["indexes"][0]["url"]
+            == "https://mirror.example/simple"
+        )
+
+
 def test_lockfile_hosts_scan_is_bounded() -> None:
     module = load_module()
     with tempfile.TemporaryDirectory() as tmp:
