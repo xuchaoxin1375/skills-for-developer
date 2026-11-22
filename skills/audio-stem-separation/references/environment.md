@@ -56,6 +56,7 @@ python -m pip install -U demucs numpy
 
 - **Apple Silicon**：Demucs 4.1+ 自动使用 MPS（[macOS support](https://github.com/adefossez/demucs/blob/main/docs/mac.md)），不要固定 `-d cpu`；只有 MPS 报错或旧版 Demucs 才回退 `-d cpu`。MPS 已比 CPU 快一个数量级，但仍不如 MLX 原生实现；追求速度用 `demucs-mlx`（4 轨）或 `mlx-audio-separator`（2 轨/RoFormer）。MLX 要 macOS 26.2+ 才能启用 M5 的 GPU Neural Accelerators。
 - **WSL**：装在 WSL 自己的发行版里，别用 `/mnt/c` 下的 Windows 解释器；音频放 WSL 文件系统，放 `/mnt/c` 会有明显 IO 开销。
+- **AMD 核显 / APU**：Windows 原生 ROCm 与 DirectML 的现状、WSL2 + ROCDXG 的条件见下文「Windows + AMD 核显（APU）」，不要因为轮子存在就认定支持。
 - **Linux + NVIDIA**：需要 CUDA 版 torch，`pip install torch --index-url https://download.pytorch.org/whl/cu124` 之后再装 demucs，否则 `-d cuda` 报 `Torch not compiled with CUDA enabled`。
 
 ## 网络与镜像
@@ -114,6 +115,21 @@ M5 的 16GB 是统一内存，系统与浏览器会先占掉一部分；下面�
 - **质量优先且要稳**：`AUDIO_SEPARATOR_MPS_BUFFER_BUDGET_GIB=6 audio-separator song.mp3 --chunk_duration 300`。PowerShell 用 `$env:AUDIO_SEPARATOR_MPS_BUFFER_BUDGET_GIB=6; audio-separator ...`。
 - **5 分钟 MP3**：htdemucs/htdemucs_ft 可整轨；BS-RoFormer 先整轨，OOM/换页再加 `--chunk_duration 180`（分块边界可能有轻微 artifacts）。只听默认 320kbps MP3；要存档、进 DAW 或继续处理再出 16-bit FLAC（Demucs 用 `--flac`，24-bit/float32 只在还要混音时有意义）。MP3 源本身有损，FLAC/24-bit 不会恢复细节；不要上采样到 48/96kHz。分发副本从 FLAC 转一次 320kbps MP3，不要反复转码。
 - **高风险组合**：批量跑 `htdemucs_ft`、长文件 BS-RoFormer、多个分离进程并行；单首 5 分钟可试 `htdemucs_ft --segment 7`，出现 swap、风扇持续满转或进度异常变慢再降级。
+
+## Windows + AMD 核显（APU）
+
+Windows 上 PyTorch 的官方 GPU 后端只有 CUDA；AMD 核显要单独判断，三条路线的可用性差别很大。下列状态核对于 2026-11，模型与驱动换代快，换机或超过半年重查：
+
+| 路线 | 可用性 | 关键限制 |
+| --- | --- | --- |
+| Windows 原生 ROCm | Ryzen APU 的 Windows 支持矩阵（ROCm 7.2.1）只列 `gfx1150`/`gfx1151`（Ryzen AI Max / AI 9 HX 3xx） | Radeon 780M 的 `gfx1103` 不在列；AMD wheel 索引里出现 `gfx1103` 的 win_amd64 包也不等于官方支持 |
+| WSL2 + ROCDXG | Adrenalin 26.2.2 + ROCm 7.2.1 起转生产支持，`gfx1103`（Radeon 780M）已纳入 | 需升级 Windows 显卡驱动并重启；Ubuntu 22.04/24.04；ROCm 7.2.1 + Python 3.12 + `torch 2.9.1+rocm7.2.1`；磁盘约 8–10 GB |
+| Windows + torch-directml | 停更于 2024-09，钉死 `torch==2.4.1` | DirectML 算子覆盖不全，STFT/复数相关操作容易报 not implemented |
+
+- 先确认硬件代号再查兼容矩阵：`Get-CimInstance Win32_VideoController` 看型号，按矩阵里的 `gfx` 代号判断，不按型号名猜。
+- WSL 环境装好后，先用同一段 30 秒音频与 CPU 对照（看进度条 `seconds/s`）；加速比低于 1.5× 就留在 CPU，换 `mdx_extra_q` 等量化模型更省事。
+- 核显与 CPU 共享内存带宽（DDR5 约 100 GB/s 量级），htdemucs 这类 Transformer 模型带宽敏感，提速通常在个位数倍，不指望数量级。
+- CPU 参考实测：Ryzen 7 8745HS（8C/16T，Radeon 780M，15.2 GB，Windows 11，`torch 2.2.2+cpu`）跑 4:16 的 320 kbps MP3，155 秒完成，约 1.66× 实时（≈1.83 seconds/s）；按「0.4× 音频时长」估算偏保守。
 
 ## 清理
 
