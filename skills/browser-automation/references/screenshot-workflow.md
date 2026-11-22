@@ -69,6 +69,21 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 
 国内安装按 [浏览器安装与国内网络](../../network-access/references/browser-installation.md) 区分包源和制品源。本机有 Edge/Chrome 时可只补目标环境的 Playwright 包；不允许补包时可用显式 `--engine oneshot|cdp` 加本机浏览器，仍缺自动化条件时记录自动化未执行。人工仍可通过开发者工具截图，是否满足验收取决于任务要求；Agent 不回退到无期限的裸浏览器命令。
 
+### 长页验收取景
+
+长页（任务详情、设置、导入预览、记录列表）不把一张 full-page／oneshot 当主证据：默认首屏 + 2–3 个关键区段（摘要、主表或明细、操作／危险区／页脚），每张按一个视口采集；段间留少量重叠，文件名带顺序和区段。需要判断单个表格、浮层或错误提示时，再从同一滚动位置补元素或区域特写。
+
+- 用 `--screens` 或 `--to-bottom` 做真实滚动分段；需要指定区段时，用 Playwright／项目 runner 滚动到目标元素再截视口。固定或粘性头部、侧栏只在真实滚动视口准确，整页拼接或坐标切片不能替代滚动行为。
+- 每张分段图在报告里记录 viewport、滚动位置或区段名，以及已看／未覆盖区域；full-page 只作结构索引或缩略总览。
+- 一段超过约一个视口就继续切；不要用缩小后的长图判断文字、边界、焦点或操作是否可达。
+
+```powershell
+# 首屏 + 连续两屏；需要指定区段时改用 Playwright 滚动到目标再截视口
+python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --screens 3 --width 1280 --height 900 --out-dir shots
+```
+
+取景与证据规则见 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md)；本节只说明执行方式。
+
 ### 取页面末屏（`--to-bottom`）
 
 - `--to-bottom` 逐屏下滚、等文档高度稳定后再截最后一张视口。替代"猜一个够大的 `--screens`"：后者既拍满 20 张，也不保证覆盖到真实底部。它与 `--screens` 互斥，可配 `--out` 落单张 PNG；不指定输出时文件名为 `{slug}-bottom-{width}.png`。

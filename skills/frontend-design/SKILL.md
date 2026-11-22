@@ -71,7 +71,7 @@ description: Web/桌面小工具界面设计：布局栅格、渐进式披露、
 独立首屏或滚动视口采集复用 [托管截图入口](../browser-automation/references/screenshot-workflow.md)。本 skill 的 `scripts/screenshot.mjs` 是项目内多宽度/整页采集模板，须置于已有总期限与进程回收的 runner 中使用；`finally` 不等于启动者异常退出也能收尾。
 浮层类（fixed/overlay/portal）页面级断言查不到，须单列断言。
 换元素类型必查元素前缀选择器；dialog 保留原生关闭隐藏机制，退出所需布局不能只依赖 `[open]`，写法见 `web-animation-guide/references/interactions.md`。
-截图触发、取景、采集与实际查看统一按 [视觉验收协议](../ai-verified-delivery/references/visual-acceptance.md)，局部验收优先特写，整体评审按问题选择全景；浮层与滚动关系保留视口上下文。大改/新 UI 覆盖相关交互态（开/关/空/满/错），由 Agent 实际查看；必要的人类设计判断另行记录。DOM 断言不代替视觉验收。
+截图触发、取景、采集与实际查看统一按 [视觉验收协议](../ai-verified-delivery/references/visual-acceptance.md)，局部验收优先特写，整体评审按问题选择全景；浮层与滚动关系保留视口上下文。长页验收默认首屏视口加按实际滚动位置的分段视口（关键摘要、明细／表格、操作或页脚），必要时补组件特写；单张 full-page 只作结构索引，不把缩小后的长图当细节证据。大改/新 UI 覆盖相关交互态（开/关/空/满/错），由 Agent 实际查看；必要的人类设计判断另行记录。DOM 断言不代替视觉验收。
 假按钮/伪装可用、虚假进度、键盘陷阱、对比度失败一律不许放行。
 
 ### NEVER（两种模式通用）
