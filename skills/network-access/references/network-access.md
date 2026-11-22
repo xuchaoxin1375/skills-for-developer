@@ -129,6 +129,10 @@ GitHub REST API 的 403 可能是限流：检查错误正文、`x-ratelimit-rema
 
 没有可用代理不妨碍使用已核验的公开文件加速；没有适用加速时再回退代理或有界直连。大文件优先已核验镜像；不因镜像首页可用就认定raw、Release、archive和Git传输都可用。
 
+前缀自身返回 403/429 时，问题在加速站而不是目标资源：该前缀拒绝或限流，换下一个已登记前缀，不重试同一 URL、不延长超时。先分清两种 403——目标站按自身规则拒绝（换前缀无用），与前缀拒绝转发（换前缀有效）；看响应头与响应体归属（`Server`、`Via`、拦截页特征），以及请求是否根本没到目标。公开前缀的可用性随时变化，同一天内不同前缀、不同前缀对不同资产都可能给出相反结果。
+
+Release 资产换前缀后仍要按官方 digest 校验：`api.github.com` 的 release 元数据里带 `sha256`，直连 API 通常可用；取回文件后比对 `sha256sum` 或 `Get-FileHash`，不一致就丢弃并换通道，不带着未校验的二进制继续安装。
+
 用法：按服务规则把完整原链接放在前缀之后，例如 `https://gh-proxy.com/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`。这是 GitHub 资源加速，不是通用文档代理；Release、archive、raw、网页和 git 传输各自核验，不能从一种推断另一种可用。
 
 jsDelivr 的 `gh` 路径（`https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>`）可缓存并直出仓库内单文件，但它不是前缀加速，也不保证绕过 raw：未命中缓存时可能 301 到 `raw.githubusercontent.com`（实测同一仓库有的文件 200、有的 301 到 raw）。它只覆盖仓库文件，不支持 Release 资产、archive 和私有仓库；分支引用可能命中 CDN 缓存，需要与仓库当前内容一致时改用提交 SHA。把它当作 raw 的候选路线，取回后检查最终 URL 与状态；301 到 raw 不算加速成功，不因 CDN 首页可用就推断任意文件可取。
