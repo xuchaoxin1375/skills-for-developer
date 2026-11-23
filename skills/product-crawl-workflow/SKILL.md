@@ -63,11 +63,11 @@ description: >
 
 ### 一、站点分诊
 
-用少量请求回答“这个站该怎么采”，不要一上来写全站选择器。先查项目已有的站点结论与探针记录，命中就复用；没有时按 robots → sitemap → 首页/分类 → 1 个样页做有界速判。挑战站先按项目预算，没有项目预算时默认不超过 5 次目标请求或 3 分钟，超出停止并记录出口、客户端、请求数和停止原因。至少检查：
+用少量请求回答“这个站该怎么采”，不要一上来写全站选择器。先查项目已有的站点结论与探针记录，命中就复用；没有时按 robots（只取 `Sitemap:` 行）→ sitemap → 首页/分类 → 1 个样页做有界速判。挑战站先按项目预算，没有项目预算时默认不超过 5 次目标请求或 3 分钟，超出停止并记录出口、客户端、请求数和停止原因。至少检查：
 
 | 检查项 | 看什么 | 用途 |
 | --- | --- | --- |
-| robots.txt | 禁止路径、`Crawl-delay`、sitemap 声明 | 决定可访问范围和速率 |
+| robots.txt | 只提取 `Sitemap:` 声明；不读整份、不解析 `Disallow`／`Crawl-delay` | 获得站点主动公布的 sitemap 入口；失败不阻塞 |
 | sitemap | 索引还是 urlset、商品 URL 形态、数量、更新时间 | 首选发现入口与规模线索 |
 | 平台线索 | Shopify、WooCommerce、Magento、BigCommerce、Shopware、SFCC、自建 | 缩小公开数据与模板假设 |
 | 入口／分类／详情样本 | 原始 HTML 是否含名称、价格、正文；渲染后是否变化 | 决定静态 HTTP 还是浏览器 |
@@ -93,7 +93,7 @@ description: >
 | 优先级 | 入口 | 适用与注意 |
 | --- | --- | --- |
 | 1 | XML sitemap／公开 feed | 商品 URL 集中、可分页；检查索引和分片，不只看开头几条 |
-| 2 | HTML sitemap／站点索引 | 无 XML sitemap 时优先；路径名不一定叫 sitemap，也不要请求 robots 明确禁止的路径 |
+| 2 | HTML sitemap／站点索引 | 无 XML sitemap 时优先；路径名不一定叫 sitemap；robots 只用来取 `Sitemap:` 行，不据此排除路径 |
 | 3 | 分类／全量列表页 | 一次给出几百个型号或商品的 `-list`、`all` 页；确认是否真全量，不因没有分页就判不完整 |
 | 4 | 分页／加载更多／游标 | 按实际机制处理，不假定统一 `?page=`；先看交互后 URL 是否可直接取页 |
 | 5 | 站内搜索／公开查询接口 | 仅作有界补充或定点核验，不把搜索结果当全量目录 |
@@ -118,7 +118,7 @@ description: >
 | listing | 型号列表、集合页、搜索结果、全量列表 | 保留；抓行级字段和下一页 |
 | entity | 商品、型号、零件、文档、图纸 | 目标实体；后续按业务键去重 |
 | asset | 图片、PDF、CSS、JS | 记录必要引用，不抓正文 |
-| transactional | 购物车、结算、账户、订单 | 收集链接但不抓；遵守 robots |
+| transactional | 购物车、结算、账户、订单 | 收集链接但不抓；遵守访问控制与 ToS |
 | external | 其他域名 | 记录，不默认抓取 |
 
 - **sitemap 条目不等于商品**：可能混合分类、商品、政策和图片；用页面内容或结构化数据确认，不只看 `<loc>`。同类路由（如 `web_page/<id>`）可能同时装商品、编辑页和政策页，不能按路径形态或条数判商品。
@@ -128,7 +128,7 @@ description: >
 - **没有 JSON-LD 仍可能是商品**：用标题、价格、购买区、重复卡片和父子关系综合判断。
 - **多入口交叉验证**：分别记录 XML sitemap、HTML 索引、分类／全量列表、分页、搜索的贡献和重叠；用并集扩大召回，不把单一入口当全量。
 - **客户端差异先比较一个变量**：同一 URL 在 200／406／403 间变化时，区分 UA、headers、HTTP 客户端和访问控制；不把一次失败当站点不可采，也不靠伪装绕过。
-- **robots 按 UA 组匹配**：`Crawl-delay` 可能只属于特定 user-agent 组；按实际 UA 组和更保守值执行。
+- **robots 只取 Sitemap 行**：机会式抓取一次，只保留大小写不敏感的 `Sitemap:` 值并去重；其他内容立即丢弃，不读完整文件、不解析 `Disallow`／`Allow`／`Crawl-delay`／UA 组，也不据此决定请求范围或速率。404／403／超时／不可读不阻塞，继续入口发现；host 或项目已提供 Sitemap URL 时直接使用，不重复读 robots。
 
 发现预算按“每抓一页新增多少实体 URL”分配：首页／索引、分类／全量列表优先，详情页主要用于补字段。记录入口产出率、实体占比、重复率、入口重叠和部分枚举；只存唯一 URL 集合无法计算重复率。详细策略见 [references/discovery-strategy.md](references/discovery-strategy.md)。
 
@@ -147,7 +147,7 @@ description: >
 
 SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state 常给出 API host／path；站点同域的 `/api/...` 可能被前端路由回退成 HTML。用浏览器抓一次 XHR，记录 `Origin`、`Referer`、`x-app-version` 等客户端头，再用 HTTP 客户端重放；JSON `403 AccessDenied` 多半是缺客户端头，先补齐再判，仍被拒就按权限边界停止，不绕过。公开接口不一定 GET；列表／搜索常用 POST 或 GraphQL，按浏览器实际请求保留查询体和分页参数，不自行简化成 GET。公开 JSON 也可能单独限流（429）；按退避或换出口，不因 API 429 判站点不可采，可用单品 JSON 或 HTML 兜底。商品 JSON 不带币种时，从同一店面／市场的全局配置取 active currency，不凭域名或符号猜。只有 JSON 没有的字段才回退渲染。
 
-内容有效性至少核对：商品标题、当前价格上下文、主图、正文主容器、最终 URL。批量获取时保持并发克制，默认并发 1、请求间隔不小于站点要求；会话复用和挑战处理按 `resilient-browser-fetch`，浏览器交互按 `browser-automation`，网络选路按 `network-access`。
+内容有效性至少核对：商品标题、当前价格上下文、主图、正文主容器、最终 URL。批量获取时保持并发克制，默认并发 1、请求间隔不小于项目固定保守值；会话复用和挑战处理按 `resilient-browser-fetch`，浏览器交互按 `browser-automation`，网络选路按 `network-access`。
 
 有挑战求解引擎（如 Scrapling）时优先使用；普通 Playwright 只作对照或后备，不先用它证明挑战不可过。同站连续取数先预热一个浏览器会话，复用 clearance 和 profile，不逐页重开浏览器。浏览器批量单批控制在 3–5 个标签，不一次开几十个：标签越多资源消耗和限流风险越高；就绪以真实标题 + 目标数据（Product JSON-LD／价格）出现为准，不等图片、广告或 networkidle。
 
