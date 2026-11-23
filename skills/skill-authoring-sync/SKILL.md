@@ -166,6 +166,7 @@ skills-for-developer/
 - **skill 实体与索引**：本机新建或改过的 skill 已落真源，README 检索表与 `description` 语义一致；第三方名单的 `ref` 是否该更新。
 - **提交与远端对齐**：按仓库风格提交，再按「跨机器同步与对齐判定」核对每个远端。
 - **链接与检查**：`-VerifyOnly`、`check-skills.py`、`check-links.py` 通过；harness 侧无实体副本漂移。ZCode 全局 `AGENTS.md` 为 best-effort symlink，创建失败只提示、不阻断。
+- **OpenCode 插件**：检测到 `~/.config/opencode/plugins` 时，运行 `scripts/link-plugins.ps1 -VerifyOnly`（Linux `./scripts/link-plugins.sh --verify-only`），缺失、悬空链接或装载失败按[插件制品](../../docs/plugins.md)处理。插件实体随 `git pull` 更新；默认部署 `agents` 不处理插件，不能由 skills 的 `-VerifyOnly` 代替。
 
 先核对实体、偏好与镜像配置，再提交与推送，最后报告各项事实（含未做项）。
 
