@@ -84,6 +84,15 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 
 取景与证据规则见 [视觉验收](../../ai-verified-delivery/references/visual-acceptance.md)；本节只说明执行方式。
 
+### 瞬态位移与动效
+
+单帧或连续截图只能证明静态状态，不能证明点击、打开浮层或滚动后“没有抖动”。滚动锁、滚动条补偿、`scrollIntoView`、布局插入和 Portal 重定位可能只持续一到几帧，或表现为整个背景和 chrome 的位移，截取被点元素特写尤其容易漏掉。
+
+- 录屏覆盖触发前 0.5–1 秒到触发后 1–2 秒，帧率不低于 25–30fps；需要逐帧判断时提取帧或接触表，取景包含顶栏、侧栏、表格边缘和滚动条。
+- 同时记录 `scrollX/scrollY`、`clientWidth/Height`、`document`/`body` 的 overflow 与 padding、滚动条宽度，以及被点控件、表格、行、固定 chrome 和浮层的矩形。
+- 在内容高于视口的可滚动页面、相同滚动位置、首行和末行分别复测；非滚动视口不能证明滚动锁或滚动条补偿没有问题。
+- 只有截图时把动态位移记为未验证，不写“页面无抖动”。症状对齐、可见元素清单与修复验收按 [frontend-qa 动态异常对齐](../../frontend-qa/references/anomaly-intake.md)。
+
 ### 取页面末屏（`--to-bottom`）
 
 - `--to-bottom` 逐屏下滚、等文档高度稳定后再截最后一张视口。替代"猜一个够大的 `--screens`"：后者既拍满 20 张，也不保证覆盖到真实底部。它与 `--screens` 互斥，可配 `--out` 落单张 PNG；不指定输出时文件名为 `{slug}-bottom-{width}.png`。

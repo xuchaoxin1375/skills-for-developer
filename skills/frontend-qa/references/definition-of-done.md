@@ -40,6 +40,7 @@
 
 - [ ] Changed color pairs measured on actual composed backgrounds across supported themes/states; complex backgrounds and axe incomplete items resolved; readability checked and evidence recorded. [A-01]
 - [ ] Applicable user-flow automation and Agent screenshot review follow the shared [visual acceptance protocol](../../ai-verified-delivery/references/visual-acceptance.md); UI observations include action result, close/cancel/focus return, overlap/compression, clipping and responsive controls. [G-10]
+- [ ] 抖动/跳动/闪烁等动态症状已按 [anomaly-intake](anomaly-intake.md) 写清移动表面、参照物、触发和范围；在可滚动视口、首行/末行用录屏或几何/滚动采样验证，单帧或连续截图不能证明“无位移”。 [V]
 - [ ] Keyboard-only + focus return; 200%/400% + spacing + 400px height. [A-10,L-12]
 - [ ] Focus ring and active/selected border clearance: ring outside = outline-width + outline-offset (default 4px), active border adds 1px; keep >=4px (prefer 6-8px) from adjacent borders/dividers/group titles, and 8-12px above group titles; inset or hoist the ring where rows are clipped or divider-flush. [A-08,D-21]
 - [ ] Supported OS/browser checks selected by impact; iOS input sizing/safe-area/viewport checks when iOS is supported. [P]
