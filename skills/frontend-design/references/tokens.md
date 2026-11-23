@@ -6,6 +6,8 @@
 - 语义层：表达意图，如`--color-bg-surface`、`--color-text-danger`、`--space-inset-md`。主题切换只改这一层。开发期只实现单主题时，`color-scheme` 与实际主题一致（如 `light`），不要声明未实现的 `dark`；交付前主题适配阶段再切 `light dark` 并配 `<meta name="theme-color">`。
 - 组件层（小项目可省）：如`--button-bg: var(--color-primary)`。
 
+Tailwind v4 项目把三层映射到 `@theme`（原始层）、`:root` 与 `.dark`（语义层）和 `@theme inline`（桥接层），组件只用语义工具类；见 [Tailwind 设计系统](tailwind-design-system.md)。
+
 DTCG JSON交换格式已到2025.10稳定版。运行时以`tokens.css`为准；只有设计工具需要时才用DTCG JSON。
 
 ### 推荐默认值（直接填进DESIGN.md）

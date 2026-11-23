@@ -31,7 +31,7 @@ git remote -v
 | 业务术语、状态或关系说不清 | 上游 `domain-modeling` | 只读术语表不启动建模，不批量改名 |
 | 模块接口难用、薄包装太多、修改扩散 | 上游 `codebase-design` | 本地调用方不因此扩成全仓治理 |
 | 从零规划 Web 应用，纠结技术选型/前后端分离/项目骨架 | [swe-gov](skills/swe-gov/SKILL.md) | 不同时启动全套治理；需求访谈、模块设计、仓库配置、测试与交付按需协作；轻量工具转 lightweight-app-builder |
-| 新建或改版用户界面，纠结布局、状态、视觉与可访问性 | [frontend-design](skills/frontend-design/SKILL.md) | 先接需求链与用户任务；新建／整体改版先做全局壳、导航和跨页流程；存量 UI 缺陷转 frontend-qa；响应式、动效、后台控制台按需协作；不要等接口定完再画页面 |
+| 新建或改版用户界面，纠结布局、状态、交互链路、视觉与可访问性 | [frontend-design](skills/frontend-design/SKILL.md) | 先接需求链与用户任务，写设计规格与关键交互链路；新建／整体改版先做全局壳、导航和跨页流程；存量 UI 缺陷转 frontend-qa；响应式、动效、后台控制台按需协作；不要等接口定完再画页面 |
 | 设计后端数据模型、API、鉴权、异步任务或缓存 | [swe-gov](skills/swe-gov/SKILL.md) 的 [backend-design](skills/swe-gov/references/backend-design.md) | 先定边界/数据模型/契约；测试、CI 与运维按需协作；不要从数据库表直接生成接口 |
 | 明确要求测试驱动实现 | 上游 `tdd` | 不因引用而安装整套上游流程 |
 | 需要测试覆盖、真实集成与回归 | [web-app-testing](skills/web-app-testing/SKILL.md) | 不另建验收等级或重复计划 |
@@ -49,6 +49,8 @@ git remote -v
 - [业务流程需求具体化](skills/swe-gov/references/business-requirements-discovery.md)：只有 SOP/口述/现有表格时，还原流程、角色、数据、规则与 AC。
 - [后端设计轨](skills/swe-gov/references/backend-design.md)：边界/数据模型、API 契约、鉴权/租户、异步任务、缓存/性能、迁移与测试。
 - [用户中心设计与可用性验证](skills/frontend-design/references/user-centered-design.md)：需求链、全局原型优先、目标用户约束、AI 稿任务化评估、3–5 人可用性测试。
+- [设计规格](skills/frontend-design/references/design-spec.md)：页面清单、主体区、关键交互链路、组件映射、状态矩阵与验收模板。
+- [Tailwind 设计系统](skills/frontend-design/references/tailwind-design-system.md)：Tailwind v4 令牌桥接、组件变体、目录边界与可维护性门禁。
 - [产品度量与埋点](skills/swe-gov/references/product-measurement.md)：指标树、事件口径、隐私、上线后复盘。
 - [工程侧合规检查表](skills/swe-gov/references/compliance-checklist.md)：适用义务、数据地图、删除/导出、第三方与 AI 数据。
 - [国际化与本地化](skills/frontend-design/references/i18n.md)：locale、文案长度、格式、RTL、翻译流程。
@@ -87,8 +89,8 @@ Matt 的 `to-spec`、`to-tickets`、`implement-spec` 等**用户调用流程入�
 | `skills/swe-gov` | Web 应用与长期应用的工程治理：从零规划的形态/选型/契约骨架，业务流程文档/SOP 转应用需求基线、非技术需求澄清，以及存量项目健康体检、规范化缺口与纠偏路线图；覆盖跨模块约束、数据/状态归属、契约兼容、运行恢复、产品度量、合规检查与维护；局部接口设计归 codebase-design，术语/ADR 记录归 domain-modeling，差异评审归 code-review | 工程治理、新建 Web 应用、业务流程需求、业务流程文档、SOP、需求具体化、非技术需求、需求基线、流程还原、权限矩阵、数据字典、验收基线、存量项目体检、健康检查、规范化、缺口检查、纠偏、整改路线图、技术选型、方案确认、候选评估、前后端分离、渲染方式、部署单元、项目骨架、共享契约、状态归属、兼容迁移、异步任务、SLO、恢复、后端设计、数据模型、API 契约、鉴权、租户、缓存、幂等、产品度量、埋点、事件口径、合规检查、数据地图、技术债、文档生命周期、文档一致性、门禁设计 |
 | `skills/tech-learning-research` | 话题系统讲解、调研与选型：先定产物、读者和成功判据，复用材料、按缺口取证再成文，按需核实工作机制；含 AI 协作适配与证据核验，详略与证据状态独立，核心缺证不确定推荐，可分离缺口交限定范围结果；保留报告交付确认；教学设计与编排归 learning-doc-design，检索执行归 agentic-web-search | 调研、调研报告、技术文章、笔记、方案比较、选型、AI 协作适配、AI 编码效率、做法盘点、工作机制、材料复用、证据缺口、限定范围、报告交付、research、comparison |
 | `skills/markdown-style` | 通用排版正本：纯排版只改形式，写作/改写可复用规则而不套内容零改动门槛；行内代码按位置处理管道符（正文不转义、表格优先数字实体），并优先英文、保留原样引用，教材编号按出版与交叉引用需要例外保留；区分可复制命令与终端记录，图示按需选用与验证，不公开空候选清单；skill指令内容按仓库写作规范 | 排版、风格迁移、格式复用、加粗、标题、教材编号、交叉引用、列表、表格、代码块、行内代码、管道符处理、HTML 实体、表格单元格、复制命令、终端记录、Mermaid、图示选择、状态表、状态快照、本地链接 |
-| `skills/lightweight-app-builder`     | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、Python/TS 默认选型、复杂度预算与 AI 接手效率、打包签名分发，六步流程；编译型按单文件/性能等硬约束例外，安装入口优先跨平台方式，与 repo-gov/swe-gov/ai-verified-delivery 分层组合，已有脚本的编写与重构规范转 scripting-best-practices | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、复杂度预算、AI 接手效率、跨平台选型、Python/TS 优先、安装入口按需、打包分发、轻量应用构建 |
-| `skills/frontend-design`             | Web/桌面小工具界面设计：任务、页面结构、令牌、通用交互、国际化、用户中心与整体交付；共用对比度与截图协议，局部验收优先特写；线框接入 adaptive-responsive-guide，动效设计查 motion.md、技术查 web-animation-guide，存量深查转 frontend-qa；页面代码/配置片段的高亮、行号与复制查 code-display.md                                                                   | 界面丑、布局乱、美化、适配手机、加载动画、文字/图标难辨、对比度、页面可读性、新建改版、交付验收、可用性、可用性测试、用户研究、用户群体、UX、国际化、i18n、本地化、RTL、locale、代码高亮、行号、源码片段、favicon、页面图标                                                                                                   |
+| `skills/lightweight-app-builder`     | 模糊小工具需求落成轻量跨平台可交付程序：分诊代决策、形态判定、Python/TS 默认选型、复杂度预算与 AI 接手效率、打包签名分发，六步流程；编译型按单文件/性能等硬约束例外，安装入口优先跨平台方式，与 repo-gov/swe-gov/ai-verified-delivery 分层组合，已有脚本的编写与重构规范转 scripting-best-practices | 做个工具、写脚本、小软件、CLI、桌面应用、技术选型、复杂度预算、AI 接手效率、跨平台选型、Python/TS 优先、Vue 3、安装入口按需、打包分发、轻量应用构建 |
+| `skills/frontend-design`             | Web/桌面小工具界面设计：设计规格、交互链路、页面结构、令牌、通用交互、国际化、用户中心与整体交付；React/Vue + Tailwind v4 的令牌桥接、组件变体与可维护性；共用对比度与截图协议，局部验收优先特写；线框接入 adaptive-responsive-guide，动效设计查 motion.md、技术查 web-animation-guide，存量深查转 frontend-qa；页面代码/配置片段的高亮、行号与复制查 code-display.md | 设计规格、设计稿、交互链路、入口出口、状态矩阵、界面丑、布局乱、美化、适配手机、加载动画、文字/图标难辨、对比度、页面可读性、新建改版、交付验收、可用性、可用性测试、用户研究、用户群体、UX、国际化、i18n、本地化、RTL、locale、代码高亮、行号、源码片段、favicon、页面图标、React、Vue、Tailwind、设计系统、组件变体、可维护性 |
 | `skills/frontend-qa`              | 存量前端 UI 缺陷诊断与视觉验收：Playwright 用户流程、关键态视觉判断、对比度与可读性、溢出/CLS 及 DoD CI 门禁；截图工具和浏览器操作复用 browser-automation，测试用例与回归体系转 web-app-testing | 布局溢出、弹窗关闭、焦点回归、对比度、页面可读性、UI 截图验收、Agent 视觉理解、Playwright 流程验收、axe、DoD、CI 拦截 |
 | `skills/browser-automation` | 本地浏览器与工具预检、路径定位、浏览器操作方案及测试运行器决策；指导交互、等待、下载与会话所有权，区分新建实例、接管已登录会话与托管浏览器，给出只读发现和含总期限/进程树回收的托管截图，保留旧 QA 截图 CLI 委托 | Chrome/Edge/Chromium、浏览器在哪、安装路径、Scoop、便携浏览器、普通浏览器与 Playwright、Puppeteer、Selenium、MCP、工具/框架选型、浏览器自动化、CDP、远程浏览器、接管已登录会话、浏览器归属、shot-quick、shot_scroll、截图卡住、进程残留、资源回收 |
 | `skills/web-app-testing` | Web 测试覆盖、断言、真实 API/存储与浏览器回归、隔离和 CI 维护；可用的 tdd 管开发循环，code-review 管差异评审，ai-verified-delivery 管最终证据；共用计划不叠加流程 | 测什么、何时写测试、单元/组件/集成/E2E、Playwright、真实集成、Mock 边界、测试隔离、不稳定测试、CI |

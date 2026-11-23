@@ -45,13 +45,15 @@ flowchart LR
 | 用途 | 默认选择 | 理由 |
 | --- | --- | --- |
 | 构建工具 | Vite | 启动快、配置少、生态默认 |
-| 框架 | React 或 Svelte | 资料最多；Svelte 产物更小 |
+| 框架 | React、Vue 3 或 Svelte | React 生态最大；Vue 官方栈省决策；Svelte 产物更小；按团队熟悉度选，不混用 |
 | 样式 | Tailwind CSS v4 | 与组件库配合好，避免手写 CSS 漂移 |
-| 组件库 | shadcn/ui 或 Radix + 自定义样式 | 源码进项目，可改可删，无黑盒依赖 |
-| 路由 | 框架自带（React Router / SvelteKit） | 不引入额外抽象 |
-| 表格 | TanStack Table | 排序、筛选、虚拟滚动开箱可用 |
+| 组件库 | shadcn/ui（React）、shadcn-vue + Reka UI（Vue）或 Radix + 自定义样式 | 源码进项目，可改可删，无黑盒依赖 |
+| 路由 | 框架自带（React Router / Vue Router / SvelteKit） | 不引入额外抽象 |
+| 表格 | TanStack Table | 排序、筛选、虚拟滚动开箱可用；React/Vue 都有绑定 |
 | 图表 | ECharts（中文文档最好）或 Recharts | 本地化需求优先选 ECharts |
-| 状态 | Zustand 或 Svelte store | 小工具不需要 Redux 级别复杂度 |
+| 状态 | Zustand（React）、Pinia（Vue）或 Svelte store | 小工具不需要 Redux 级别复杂度 |
+
+**框架选择**：React 与 Vue 3 都能支撑长期 UI；按团队熟悉度、生态与招聘、现有代码与迁移成本选，不在同一产品混用两套。Vue 3 的官方栈（Vue Router、Pinia、Nuxt）减少决策；React 生态更大，但路由、数据请求和状态需要团队自定规范。UI 会持续增长时，按 [设计规格](../../frontend-design/references/design-spec.md) 先定页面模式、关键交互链路与组件契约，再按 [Tailwind 设计系统](../../frontend-design/references/tailwind-design-system.md) 落令牌与变体；不要用一次性页面拼装代替设计。
 
 **刻意不引入**：GraphQL、微前端、服务端渲染框架（本地工具用不上 SEO）、复杂的状态管理库。每多一个抽象，非技术用户未来找人维护的成本就高一分。
 
