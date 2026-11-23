@@ -106,6 +106,13 @@ git rm --cached -- <file>
 
 - 验证：`git check-ignore -v <path>` 看命中的规则与来源；`git ls-files -c -i --exclude-standard` 检查已追踪命中；`git status --porcelain --ignored` 抽查。命中需定性，不能无差别解除全仓追踪；忽略规则只影响未跟踪文件，不清理历史。
 
+### 生成物与运行证据：默认外部化
+
+采集、抓取、构建和本地服务产生的证据性产物默认不入库：结果 CSV、JSON/JSONL/NDJSON、截图、trace、导出包、运行期数据库和浏览器 profile 都属于这类。仓库只保留源码、规则/配置、脚本、测试、README 和合成 fixture；小样本输入放 `samples/`，测试 fixture 放 `fixtures/` 并写明生成方式。需要长期保留时放仓库目录之外的证据目录或独立私有仓库，保持相对路径，附 `meta.json`（来源仓库、分支、提交、时间）和逐文件校验清单（如 `MANIFEST.sha256`）；文档按相对路径或证据 ID 引用。
+
+- 复跑参数（`--out-root`、`--db`、`--evidence-dir` 等）默认指向证据区或临时目录，不写回仓库。`.gitignore` 按实际产物类型兜底，合法 fixture 用 `!` 例外放行。已跟踪的产物先用 `git rm --cached` 移出当前树，保留本地内容；忽略规则只影响未跟踪文件，不清理历史。
+- 清理历史前先做 bundle/mirror 备份，经授权用 `git filter-repo` 等重写全部相关 ref，再 `gc --prune=now` 并强推；告知协作者重新克隆，不能只删 HEAD 或假设旧对象已消失。运行证据不默认用 LFS 留在仓库；只有必须随仓库分发的静态资源、二进制或发布包才按平台限制选择 LFS、Release 或制品库。
+
 ### .gitattributes：模板与一次归一化
 
 - **必须**：仓库根目录下应放置以下基座（跨平台文本统一 LF；`.bat`/`.cmd` 例外，必须 CRLF 才能被 cmd.exe 正确解析；二进制禁转换）：
