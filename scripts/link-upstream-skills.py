@@ -78,7 +78,7 @@ def sources(
             raise ValueError(f"Not an independent Git clone: {clone}")
         if git(clone, "rev-parse", "HEAD") != revision:
             raise ValueError(f"Upstream revision differs from config: {clone}")
-        if git(clone, "remote", "get-url", "origin") != repository["url"]:
+        if git(clone, "config", "--get", "remote.origin.url") != repository["url"]:
             raise ValueError(f"Upstream origin differs from config: {clone}")
         for name, path in selected:
             if not (path / "SKILL.md").is_file():

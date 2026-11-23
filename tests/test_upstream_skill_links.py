@@ -87,6 +87,18 @@ class UpstreamLinksTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "origin differs"):
             self.linker.sources(self.root, set())
 
+    def test_origin_check_ignores_url_rewrite(self) -> None:
+        self.git(
+            "config", "--local",
+            "url.https://mirror.invalid/https://example.invalid/.insteadOf",
+            "https://example.invalid/",
+        )
+        self.assertIn(
+            "mirror.invalid",
+            self.git("remote", "get-url", "origin"),
+        )
+        self.assertEqual(self.linker.sources(self.root, set()), [("one", self.source)])
+
     def test_changed_upstream_rejected(self) -> None:
         (self.source / "SKILL.md").write_bytes(b"Local patch\n")
         with self.assertRaisesRegex(ValueError, "local changes"):
