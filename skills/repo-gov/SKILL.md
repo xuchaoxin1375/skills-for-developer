@@ -4,7 +4,7 @@ description: >
   代码仓库的规范治理与安全提交，按公开/私有和项目栈裁剪：新建或改造仓库时选配治理文件，包括 LICENSE、
   .gitignore/.gitattributes、CONTRIBUTING、SECURITY、行为准则与 Issue/PR 模板；README 的内容与结构按 project-docs，
   本 skill 只判断 README 的治理要求；提交前检查、历史密钥与大文件审计、分支与评审保护、CI 与依赖/构建供应链控制、
-  AGENTS.md、创建 GitHub/Gitee 远程仓库与 token 发现。
+  CI 失败日志读取、AGENTS.md、创建 GitHub/Gitee 远程仓库与 token 发现。
   当用户要初始化仓库、补治理文件、问许可证怎么选、做提交前安全检查、配置分支保护或创建远程仓库时使用；
   应用架构、契约与运行治理转 swe-gov，文档内容与结构转 project-docs。
 ---
@@ -292,6 +292,15 @@ PR 聚焦一个完整目的，说明问题与结果、影响面、实际验证�
 - 沿用实际 CI 平台和项目入口，运行适用 lint/type/test/build 及必要安全/架构检查；无对应构建环节不能为“三件套”造无效 job。必需集合和汇总政策由交付正本决定，实际取消/跳过不能记通过。
 - 依赖更新沿用已有机器人或人工责任/复查机制，不强制 GitHub、Dependabot 或统一 weekly；按实际生态选择扫描能力，解释发现与例外。
 - Formatter/Linter 按现有栈和项目采用；不把工具清单全部安装。执行权限、非可信 PR、固定依赖和制品证据按 [CI 与供应链](references/ci-and-supply-chain.md)。
+
+### 读取 CI 失败日志（GitHub Actions）
+
+只有失败通知、没有失败测试或 traceback 时，先取日志再判断，不把重跑当诊断。可以只读使用本机已有 GitHub 凭据（发现方式见上文“远程仓库创建与凭据发现”），也可以请用户粘贴失败片段；使用凭据前说明将读取哪个仓库的 run/job 日志，不索要明文 token。
+
+- 用 `GET /repos/<owner>/<repo>/actions/runs?per_page=<n>` 按 `head_sha` 找到本次 run，再 `GET /actions/runs/<run_id>/jobs` 找失败 job；只读 API 走原站，不用 GitHub 文件加速镜像。
+- 下载 `GET /repos/<owner>/<repo>/actions/jobs/<job_id>/logs`，请求头带 `Authorization: Bearer <token>`；未认证通常返回 403。classic token 的 `repo` scope 通常可读，fine-grained token 需要 Actions 读取权限；先 `GET /user` 验证凭据可用，再按实际 403 判断权限，不猜 scope。
+- 日志先落临时文件再检索 `FAIL:`、`ERROR:`、`Traceback`、`Ran ... tests`；只把失败用例、关键 traceback 和运行环境带回分析，不整份回显。日志里的 token、cookie、代理凭据按敏感信息处理。
+- 凭据只在内存中使用，不写入 remote URL、命令历史、仓库文件或日志；读取完成后不保留 token。凭据不可用、只有 Git 权限或用户拒绝使用时，改为请用户粘贴失败片段，或让用户在本机凭据管理器/环境变量中配置有 Actions 读取权限的 token。
 
 ---
 
