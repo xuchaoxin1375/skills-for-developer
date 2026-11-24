@@ -45,7 +45,7 @@ git remote -v
 
 从想法到上线后的阶段地图与横切检查点：
 
-- [项目启动检查](skills/swe-gov/references/project-start.md)：分档、需求、选型、形态、界面设计轨、walking skeleton、开写判据。
+- [项目启动检查](skills/swe-gov/references/project-start.md)：分档、需求、选型、形态、界面设计轨、walking skeleton、agent 入口与 AGENTS.md 路由、开写判据。
 - [业务流程需求具体化](skills/swe-gov/references/business-requirements-discovery.md)：只有 SOP/口述/现有表格时，还原流程、角色、数据、规则与 AC。
 - [后端设计轨](skills/swe-gov/references/backend-design.md)：边界/数据模型、API 契约、鉴权/租户、异步任务、缓存/性能、迁移与测试。
 - [用户中心设计与可用性验证](skills/frontend-design/references/user-centered-design.md)：需求链、全局原型优先、目标用户约束、AI 稿任务化评估、3–5 人可用性测试。

@@ -110,6 +110,47 @@
 - **证据而非自述**：用运行结果、测试、日志、截图判断完成，不以模型自评代替验证。
 - **控制变更半径**：明确允许修改的范围，不把无关重构、改名和格式化混进功能变更。
 
+#### 项目入口与 agent 路由
+
+agent 能看到 skill，不等于会在正确时机加载。按四个维度检查项目入口，缺哪项补哪项：
+
+| 维度 | 检查问题 | 常见缺口 |
+|---|---|---|
+| 可见性 | 当前 harness 实际读取哪个 skill 目录？ | 目录存在但工具不读取；换 harness 后失效 |
+| 冷启动选择 | 用户说“新建项目/继续开发/体检”时，哪个 description 会命中？ | 触发词不覆盖当前任务；常驻技能过多稀释命中 |
+| 项目上下文 | agent 是否知道项目档位、阶段、当前切片、验证命令？ | 每轮重新猜档位和入口 |
+| 执行一致性 | 是否有固定的 spec/tasks/evidence 位置和更新规则？ | 计划只在聊天里，换会话就丢 |
+
+`description` 是模型冷启动选择 skill 的线索，正文里的“何时使用”不参与检索；不要用加长正文补偿弱入口。先修项目侧入口，再考虑改 `description`。
+
+项目档位按本页三档判断，变更等级仍按 [`ai-verified-delivery` 的等级矩阵](../../ai-verified-delivery/references/levels-and-gates.md) 单独判定：项目档位决定治理强度，变更等级决定本次证据量，两者不互相替代。小项目也可能有 L4 改动，大项目改文档也可能是 L0。
+
+项目 `AGENTS.md` 在 [`project-docs` 模板](../../project-docs/references/templates.md#agentsmd) 的构建/目录/禁止事项之上，补以下路由字段，保持一屏内（路径按项目替换）：
+
+```markdown
+## 项目事实
+- 档位：<一次性 / 轻量工具 / 长期应用>
+- 阶段：<新建 / 在建 / 维护>
+- 当前目标与非目标：<...>
+- 验证命令与证据目录：<...>
+
+## Skill 路由
+- 形态、架构、契约、存量体检：`swe-gov`
+- 轻量工具/脚本：`lightweight-app-builder`
+- 规格、任务、验收、证据：`ai-verified-delivery`
+- 测试：`web-app-testing`
+- 界面设计/UI 缺陷：`frontend-design` / `frontend-qa`
+- 仓库/文档：`repo-gov` / `project-docs`
+
+## 工作方式
+- 先读当前 spec 和 `docs/plan/tasks.md`，再改代码。
+- 一次一个切片；结束更新状态、下一步和证据。
+- 没有 AC 和验证方式的功能，先补规格再实现。
+- 在建项目先只读体检，不从头重跑新建流程。
+```
+
+`AGENTS.md` 仍按上面的原则由人维护；agent 可以起草，但要读一遍再定稿。不要把 skill 正文复制进去，复制会漂移。多 harness 逐一确认实际读取目录，不能凭目录存在推断可见；未加载时按当前 harness 的共享 skill 目录读取对应 `SKILL.md`，不要凭记忆猜规则。
+
 参见 [repo-gov 的代理上下文与供应链规则](../../repo-gov/SKILL.md) 与[规格驱动交付](../../ai-verified-delivery/references/spec-driven-delivery.md)。
 
 ### 开写判据
