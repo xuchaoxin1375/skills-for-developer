@@ -46,7 +46,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
   opencode run --standalone -m <providerID>/<modelID> "OK"
 ```
 
-一次性走代理：把变量写进启动 `--standalone`/`serve` 的那条命令；CLI 侧设了代理时，`NO_PROXY` 必须含回环，否则 CLI 到本地服务的连接也会走代理。
+一次性走代理：把变量写进启动 `--standalone`/`serve` 的那条命令；CLI 侧设了代理时，`NO_PROXY` 必须含回环，否则 CLI 到本地服务的连接也会走代理。也可以不清变量，只把目标域名加进该进程的 `NO_PROXY`（逗号分隔、保留回环）。
 
 ```powershell
 pwsh -NoProfile -Command '$env:HTTP_PROXY="http://127.0.0.1:<port>"; $env:HTTPS_PROXY="http://127.0.0.1:<port>"; $env:NO_PROXY="localhost,127.0.0.1,::1"; opencode run --standalone -m <providerID>/<modelID> "OK"'
@@ -55,6 +55,8 @@ pwsh -NoProfile -Command '$env:HTTP_PROXY="http://127.0.0.1:<port>"; $env:HTTPS_
 私有服务 + `--server` 适合多个会话共用一个非默认出口：先按指定 env 启动 `opencode serve --hostname 127.0.0.1 --port <port>`，再用 `opencode run --server http://127.0.0.1:<port> …` 接入；出网由 `serve` 的 env 决定。`opencode service set disabled true` 可让 CLI 默认走私有服务而不是共享服务（`service unset disabled` 恢复），配对依赖共享服务。
 
 `opencode api get /api/info` 只证明 CLI 能连到服务，不证明出网走了代理；要确认出口，跑一次真实请求或查回显。
+
+排查私有服务时加 `--print-logs`（服务日志需要 `--standalone`），日志里能看到实际使用的 `run=` 与请求。
 
 ## 代理的其余前提
 

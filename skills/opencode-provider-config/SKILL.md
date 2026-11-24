@@ -8,115 +8,82 @@ description: 把第三方 AI API（中转站/NewAPI/one-api/自定义兼容网�
 ## 适用范围
 
 - 第三方中转站（NewAPI / one-api / uni-api 等 OpenAI 兼容网关）接入 OpenCode V2。
-- 官方 API key 型端点（Google AI Studio 等）接入内置 provider：不需要自定义 `providers` 条目，凭据走服务端环境变量，模型目录来自 models.dev。
-- 已内置 catalog 的供应商改用自定义 baseURL 时，直接覆盖 `settings.baseURL` 即可，不必新建 provider。
-- 不适用于 OAuth 型供应商（Copilot 等），走 `/connect` 交互流程。
-- 通用用法与 V2 配置形状以 `opencode` skill 和官方 V2 文档为准；本 skill 负责第三方/官方 API key 型接入与模型参数落地，不沿用 V1 字段。
-- 联网搜索工具的可见性与实际调用验收归[harness-web-check](../harness-web-check/SKILL.md)；模型订阅、平台托管搜索与供应商原生工具的归属按[搜索适配说明](../harness-web-check/references/opencode.md#模型订阅与平台托管搜索)分别核实，不从套餐或Responses通路推断。仅当证据指向供应商协议或模型能力配置时，再由本skill局部修复。
+- 官方 API key 型端点接入内置 provider：不写 `providers`，凭据走服务端环境变量，目录来自 models.dev；细节见 [官方 provider](references/official-providers.md)。
+- 已内置 catalog 的供应商改用自定义 baseURL：只覆盖 `settings.baseURL`，不新建 provider。
+- OAuth 型供应商（Copilot 等）不适用，走 `/connect`。
+- V2 配置形状以 `opencode` skill 与官方文档为准；本 skill 只管 API key 型接入、模型参数与协议落地，不沿用 V1 字段。
+- 搜索工具可见性与调用验收归 [harness-web-check](../harness-web-check/SKILL.md)；订阅与平台托管搜索的归属按其适配说明核实，不从套餐或 Responses 通路推断。只有证据指向协议或模型能力时才由本 skill 局部修复。
 
 ## 核心用例
 
 | 目标 | 最短入口 |
 | --- | --- |
-| 新网关接入 | 取实际可用模型 ID → 核实参数 → 选协议并写配置 → 目录校验；真实调用另按授权验证。 |
-| Google AI Studio 免费 key | 内置 `google` provider + `GEMINI_API_KEY` 服务端变量；先用独立实例验证，再重启共享服务。 |
-| 已有模型补模态、工具或思考档位 | 不重接供应商、不重写密钥；按[模型参数配置](references/model-parameters.md)只覆盖目标模型所缺字段。 |
-| 只改上下文或输出上限 | 核对该渠道的真实上限，局部改 `limit`，再核对服务解析后的值。 |
+| 新网关接入 | 第 1 步拉目录 → 第 2 步一次问清 → 第 3 步取参数 → 第 4 步写配置 → 第 5 步写密钥 → 第 6 步验证。 |
+| 已有模型补模态、工具或档位 | 从第 3 步开始，按 [模型参数配置](references/model-parameters.md) 只覆盖目标字段；不重接、不重写密钥。 |
+| 只改上下文或输出上限 | 核对渠道真实上限，只写 `limit`，再核对服务解析值。 |
+| Google AI Studio 免费 key | 内置 `google` provider + `GEMINI_API_KEY`，见 [官方 provider](references/official-providers.md)。 |
 
-联网前用 `network-access` 选路；需搜索时用 `agentic-web-search` 定策略。只补参数时可从第 3 步开始，不强制重新拉带鉴权目录或更改服务环境。真实模型调用与本地抓包均需用户明确授权；未授权就停在文档与目录校验，不将未测写成通过。
+## 主流程
 
-## 工作流程
+按需执行；只补参数时从第 3 步开始，不重拉目录、不改服务环境。联网前按 `network-access` 选路，检索策略按 `agentic-web-search`。
 
-### 1. 获取并筛选模型列表
-
-先用 `curl.exe`（PowerShell 中 `curl` 是 `Invoke-WebRequest` 别名，必须写 `curl.exe`）请求网关：
+### 1. 拉目录
 
 ```bash
 curl.exe -s -m 30 <baseURL>/v1/models -H "Authorization: Bearer <KEY>"
 ```
 
-OpenCode 官方 provider 例外：Console 与 Go 的模型目录免 key 即可查（`/inference/v1/models` 含 `*-free`、`/inference/go/v1/models`，以及 models.dev 的 `opencode` / `opencode-go` 条目——后者还带 cost/limit）；但**你的可用范围**要 key（`GET /console/api/v2/config`，免 key 返回 401）。公开目录 ≠ 可用范围（实测公开 85/37 对工作区 84/29），可用性判定以工作区配置或 `opencode models` 为准。
+- 请求失败（无解析、拒绝连接、证书错误、404）先报实际错误并确认地址；只有超时才按 `network-access` 的诊断顺序判断直连与代理，不静默重试，也不自行替换域名。
+- 再拉网关的 `/api/pricing`（多数 NewAPI 免鉴权，需要就带同一 Authorization）：一次拿到每个模型的 `description`（常见上下文、输出、模态）、`enable_groups`、分组倍率与 `supported_endpoint` 的真实 path。把 key 的模型清单与 `enable_groups` 对照即可确定分组和上限，优先于逐模型搜索；404 或格式不同就跳过。
+- 同域名已有多把 key：各拉一次目录比对。模型组不同就新建 provider + 独立 `env` 名，不覆盖旧 key（覆盖会让旧 provider 静默丢模型）。
+- 只配对话模型：跳过 embed、重写、翻译、内容安全、生图/生视频与审计模型。
+- 大 JSON 先落盘再按模型名过滤，不整段读入上下文。
 
-筛选规则：
+### 2. 定范围（只问一次）
 
-- 对话模型才配进 OpenCode；嵌入（`*-embed*`）、重写、翻译、安全审查（`*content-safety*`）类模型不适合做 agent，直接跳过。
-- 网关常同时暴露多种协议（`supported_endpoint_types` 含 `anthropic`/`openai`/`openai-response`），保留模型 `id` 及协议、能力等元数据，但不将网关原字段直接贴进 OpenCode 配置。协议按模型族优先：GPT/OpenAI 系声明 `openai-response` 时走 Responses，Claude 系声明 `anthropic` 时走 Messages，两者都没有才回落 OpenAI Chat；切换方式见第 4 步。
-- 同一网关域名常并存多把 key，各自对应不同渠道分组、模型目录互不相交：已有该域名的 provider 时，先拿新旧 key 各拉一次 `/v1/models` 比对，再决定新增还是覆盖。新 key 暴露的是既有 provider 里没有的模型组，就新建 provider 并配独立 `env` 变量名（与既有 key 错开），不覆盖既有 key——覆盖会让旧 provider 静默丢掉一半模型。例：同域名旧 key 只暴露通用对话组，新 key 另开专用系列，两组并存。
+- 拉完目录后**一次性问清**：日常用哪个模型、是否授权极小真实调用。不要先查完全部参数再问，也不要替用户挑模型。
+- 用户说“不测/先不测”就停在配置与目录校验，交付写明未验证。
+- 真实模型调用与本地抓包都要明确授权。
 
-### 2. 网络诊断（直连超时时按序排查）
+### 3. 取参数：一次取够
 
-给定地址先做一次快速可用性判定。若已明确不可用（DNS 无解析/NXDOMAIN、连接拒绝、证书错误、404），停止扩大排查，立即把实际错误、已试地址与判定依据反馈给用户，请其确认域名或提供替代入口。用户给的地址可能有误，不默认它一定正确；也不要因为担心误判而反复重试或自行猜测替代域名。若只是超时，按下列顺序做一次对比诊断，仍不通就反馈，不静默延长超时反复试。
+证据优先级与停止条件：
 
-1. 先确认是全局超时还是该域名：测一个国内可达域名（如 `www.baidu.com`）对比。测"直连"必须加 `curl.exe --noproxy "*"`，否则 shell 的 `http_proxy`/`https_proxy` 会让假直连通过——直连"成功"三次，加 `--noproxy "*"` 重测才发现实际一直超时。
-2. 查系统代理线索：注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` 的 `ProxyServer`（即使 `ProxyEnable=0`，其值也常是最近一次使用的代理端口），再 `netstat -ano -p tcp | findstr <端口>` 确认代理进程仍在监听。
-3. 用 DoH 查真实 IP（防 DNS 污染）：`https://cloudflare-dns.com/dns-query?name=<域名>&type=A`（header `accept: application/dns-json`）或 `https://dns.google/resolve?name=<域名>`。污染特征：不同 DNS 服务器返回 Dropbox/Twitter 等无关 IP。
-4. 验证代理可用：`curl.exe -x http://127.0.0.1:<port> https://<域名>/v1/models -H "Authorization: Bearer <KEY>"`，返回 JSON 即通。
-5. 直连与代理都失败时才考虑 `--resolve` 强制 IP，但被阻断时会握手重置，不必强求。
+1. 网关 `/api/pricing` 的 description / tags，代表渠道真实限制。
+2. 聚合目录：`python -X utf8 scripts/model_info.py --source openrouter <系列名>`（Windows 用 `python`，*nix 用 `python3`；一次一个 pattern，命中即停）。脚本只给上下文、模态、工具与布尔推理，不含档位；`reasoning=true` 不代表支持任意档位。
+3. 只在聚合源冲突、或档位缺证据时查官方模型卡 / 发布说明。
 
-**结论：只要本地直连不可达，就必须把代理配置到 OpenCode 服务端**（见第 4 步），只在当前 shell 临时 export 是不够的；反向同样成立——直连可达的设备不设代理变量。
+- 每个模型最多 2 次外部查询；同系列已确认的档位集合可直接复用，交付注明依据。
+- 渠道标称上限低于聚合源时按渠道配，其余按 OpenRouter 类聚合值配；理由写一行，不展开论证。
+- 取不到就留空或只写 `supported: true`，标“未知/未验证”；不猜数值，不拿通用 128K/32K 冒充真实能力。
+- 字段映射、档位集合与验收口径见 [模型参数配置](references/model-parameters.md)。
 
-### 3. 联网查模型参数
+### 4. 写配置并核对目录
 
-先确认网关 ID 对应的上游模型、版本与已知渠道限制，再按下表找参数线索。思考档位按[公开档位配置基线](references/model-parameters.md#公开档位配置基线)处理，不把缺少第三方声明当作缩减依据；窗口、模态等其他参数仍分别核实，聚合目录只作线索。所有大 JSON 一律先落盘、按模型名过滤出目标条目再读，不把整段响应拖进上下文。
-
-**快速查线索**：本 skill 自带零依赖脚本 `scripts/model_info.py`；Windows 用 `python -X utf8 <本skill目录>/scripts/model_info.py <模型名>`，*nix 用 `python3 <本skill目录>/scripts/model_info.py <模型名>`，选项见脚本 `--help`。它只摘要部分目录字段，不列出思考等级、开关、预算或全部定价，也不生成 V2 配置；`reasoning=true` 不能当作支持任意档位。脚本对 models.dev 的解析使用旧字段，遇到 V2 `capabilities` 形状或空字段时要回原条目核对，不能把空值当不支持。脚本不可用或需自定义时再手工取（下表与示例）。
-
-一次要查多个模型时先 `--source openrouter`：全源模式会逐个卡在 litellm/jsdelivr 超时上，几个模型就能跑成分钟级且可能整体超时；openrouter 通常一个文件覆盖多数主流模型，命中即停，只对没命中的模型再补 `--source all` 或官方文档。
-
-| 数据源（按序） | 关键字段 | 可达性与取法 |
-| --- | --- | --- |
-| `https://openrouter.ai/api/v1/models` | `data[]`：`context_length`、`architecture.input_modalities`/`output_modalities`、`top_provider.max_completion_tokens`、`supported_parameters`（含 `tools`/`reasoning`）、定价 | 无需鉴权，单文件约 0.8MB，通常直连最快，以实测为准 |
-| `https://models.dev/api.json` | 先辨版本：V2 关注 `capabilities`（输入输出、工具、reasoning 控制）与 `limit`；旧条目可能是 `modalities`、`tool_call`、布尔 `reasoning`，不能照抄为 V2 配置 | 文件数 MB 常偏慢；慢或 403 时改走代理 |
-| LiteLLM JSON `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json` | 键=模型名（常带 `provider/` 前缀）：`max_input_tokens`、`max_output_tokens`、`mode`、`supports_function_calling`/`supports_vision`/`supports_reasoning`、定价 | raw 直连常超时/截断：走代理，或 jsdelivr 镜像 `https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json`；新模型可能滞后 |
-| 供应商官方文档/发布博客 | 权威兜底；国产供应商站点国内直连可达 | 搜索或按 `network-access` 抓取 |
-
-- 下载统一 `curl -A "Mozilla/5.0"`（脚本 HTTP 库常被 403）；解析前校验 JSON 完整性，截断文件解析报 Unterminated string，重取即可。
-- 平台解析差异：Windows PowerShell 必须写 `curl.exe`（`curl` 是 `Invoke-WebRequest` 别名），用 `ConvertFrom-Json` 过滤（`jq`/`python3` 非默认安装，Windows 上常只有 `py`/`python`）；*nix 用 `curl` + `jq`（或 `python3`）。
-- 新建模型或补全能力时，按[模型参数配置](references/model-parameters.md)完成“证据 → V2 字段 → 解析值”核对，覆盖输入/输出模态、工具、思考控制及 token 上限；定价、采样和协议兼容字段按需补，不为凑齐而猜填。
-- 无可靠规格时明确标未知，向网关查证；不能把通用的 128K/32K 或 OpenCode 自定义模型回退值称为该模型的真实能力。临时限制须说明依据与未验证范围，已有 catalog 的可靠值不因查不到新资料而覆盖。
-
-Windows 过滤示例（PowerShell）：
-
-```powershell
-curl.exe -s -m 30 -A "Mozilla/5.0" -o models.json https://openrouter.ai/api/v1/models
-(Get-Content models.json -Raw | ConvertFrom-Json).data | Where-Object { $_.id -match "glm-5.3" } |
-  Select-Object id, context_length, @{n="max_out";e={$_.top_provider.max_completion_tokens}},
-    @{n="io";e={($_.architecture.input_modalities -join "+") + "->" + ($_.architecture.output_modalities -join "+")}},
-    @{n="tools";e={$_.supported_parameters -contains "tools"}} | ConvertTo-Json
-```
-
-*nix 过滤示例（jq）：
-
-```bash
-curl -s -m 30 -A "Mozilla/5.0" https://openrouter.ai/api/v1/models \
-  | jq '[.data[] | select(.id | test("glm-5.3")) | {id, context_length, max_out: .top_provider.max_completion_tokens, io: (.architecture.input_modalities | join("+")), tools: (.supported_parameters | index("tools")) != null}]'
-```
-
-### 4. 写配置与设置服务环境变量
-
-**配置文件**（全局 `~/.config/opencode/opencode.json`，保留已有内容只增不删）：
+全局 `%USERPROFILE%/.config/opencode/opencode.json`（Linux `~/.config/opencode/`；本机可能是 `opencode.jsonc`）。先读全文，只增不删。
 
 ```jsonc
 {
-  "$schema": "https://opencode.ai/config.json",
-  "model": "<providerID>/<modelID>",       // 默认模型
   "providers": {
-    "<providerID>": {                       // 模型引用前缀
-      "name": "展示名",
-      "env": ["<PROVIDER>_API_KEY"],        // 密钥环境变量名
+    "<providerID>": {
+      "name": "<展示名>",
+      "env": ["<PROVIDER>_API_KEY"],
       "package": "@opencode/ai/providers/openai-compatible",
       "settings": { "baseURL": "https://<域名>/v1" },
       "models": {
-        "<modelID>": {                      // 键 = opencode 模型 ID
-          "name": "展示名",
-          "modelID": "<网关侧模型名>",       // 与键不同时才写
-          // 以下仅示范结构；须按该模型与渠道的已核实规格替换
+        "<modelID>": {
+          "name": "<展示名>",
+          "modelID": "<网关侧 ID>",
           "capabilities": {
             "tools": true,
-            "input": ["text"],
-            "output": ["text"]
+            "input": ["text", "image"],
+            "output": ["text"],
+            "reasoning": {
+              "supported": true,
+              "effort": ["low", "medium", "high", "xhigh", "max"]
+            }
           },
-          "limit": { "context": 1048576, "output": 131072 }
+          "limit": { "context": 1050000, "output": 128000 }
         }
       }
     }
@@ -124,197 +91,80 @@ curl -s -m 30 -A "Mozilla/5.0" https://openrouter.ai/api/v1/models \
 }
 ```
 
-**只改已有模型的上下文/limit**（含内置 catalog 与官方套餐模型）：模型已存在时，配置条目只写要覆盖的字段，不必重复 `name`/`modelID`/`package`，写全反而容易盖错。改上下文只写 `limit.context`：
-
-```jsonc
-{
-  "providers": {
-    "opencode": {                        // 已内置的 provider ID，直接覆盖，不新建 provider
-      "models": {
-        "<modelID>": { "limit": { "context": 1048576 } }
-      }
-    }
-  }
-}
-```
-
-例：把官方免费模型 `opencode/deepseek-v4.1-flash-free` 的上下文提到 1M，只需在 `providers.opencode.models` 加上述条目，其他字段一概不动。`limit` 只是 OpenCode 侧声明的容量上限，不改变网关/供应商的真实能力——超出其支持范围仍会报错或截断；数值取自数据源或供应商文档，不臆造。改完 `opencode reload` 热加载，进行中的请求仍用旧值，下一请求起生效。
-
-**Responses 协议走模型级 `package` 覆盖**：网关 `supported_endpoint_types` 含 `openai-response`、且直连该路由实测可用时，把目标模型切到 `@opencode/ai/providers/openai-compatible/responses`。写在模型级 `package`，不要改 provider 级——同一 provider 下的其它模型未必支持 Responses，provider 级会连带把它们也切过去（`/v1/models` 里逐个模型的 `supported_endpoint_types` 才是准据，不能用一个模型的结果推断整组）：
-
-```jsonc
-{
-  "providers": {
-    "<providerID>": {
-      "models": {
-        "<modelID>": {
-          "package": "@opencode/ai/providers/openai-compatible/responses",
-          "limit": { "context": 1048576, "output": 131072 }
-        }
-      }
-    }
-  }
-}
-```
-
-判据与验证分三步：① 先直连 `POST <baseURL>/v1/responses`（body 用 `{"model":…,"input":…,"max_output_tokens":…}`，照第 5 步走请求体文件）确认 200 且 `output[].content[].type=output_text` 非空；② 改完 `opencode reload` 后 `opencode api get /api/model` 核对目标模型 `package` 已是 responses 版本（`opencode models` 只列 ID，看不到协议）；③ 协议是否真的切换，用本地抓包服务（返回 400 即可）看请求 path：responses 模型只应打 `/v1/responses`、同 provider 的 chat 模型只应打 `/v1/chat/completions`。回复内容正常**不能**证明协议已切换，两套路由都能产出同样的文本。
-
-Responses 路由的默认值与 Chat 不同（`store`、`include` 等），`opencode run` 回 `OK` 只说明文本通路可用；要做 agent 还必须补一次工具调用验证（让模型读一个内容含唯一标记的文件回显该标记），不能据 Chat 路由的旧结论推断。
-
-**Claude 走 Anthropic Messages**：网关声明 `anthropic` 时，provider 级 `package` 用 `@opencode/ai/providers/anthropic-compatible`（同组 Claude 模型共用，不必逐个覆盖）：
-
-```jsonc
-{
-  "providers": {
-    "<providerID>": {
-      "package": "@opencode/ai/providers/anthropic-compatible",
-      "settings": { "baseURL": "https://<域名>/v1" }
-    }
-  }
-}
-```
-
-该客户端只在 baseURL 后拼 `/messages`，所以 `baseURL` 必须自带 `/v1`——写成裸域名会打到 `/messages` 而 404。鉴权用 `x-api-key` 并自动带 `anthropic-version`。切换后同样用抓包法确认落在 `/v1/messages`，再直连 `/v1/messages` 验证（用户要求经 harness 时才用 `opencode run`）。
-
-**服务端环境变量**（密钥与代理必须持久化到服务，`opencode run`/TUI 才能用；改之前先 `opencode service get env` 抄下既有值——该命令只读，读 `service.json` 的 `env` 块，与 live 进程快照、shell 变量分属三层，细节见 [references/service-env.md](references/service-env.md)）：
-
-代理优先用脚本，密钥仍用内置命令。内置 `set env` 接受任意变量名，`HPPTS_PROXY` 这类笔误同样"写入成功"、`get env` 与进程环境里都看得到，但没有任何 HTTP 客户端会读取，表现为"配了代理却全程直连"；脚本在写盘前审计变量名与分隔符，并把多次重启压成一次：
+- `modelID` 只在与键不同时写；已有模型只补一个字段时，条目只写该字段。
+- `toggle: true` 在当前版本可能不生成 `none` variant；要“关闭思考”档位时用显式 `variants`：`[{ "id": "none", "settings": { "reasoningEffort": "none" } }]`。
+- 保存后自动热加载。校验：
 
 ```bash
-python3 -X utf8 <本skill目录>/scripts/opencode_proxy.py status                   # 三层对照 + 拼写审计 + TCP 探活，退出码 0/1
-python3 -X utf8 <本skill目录>/scripts/opencode_proxy.py set http://127.0.0.1:<port>   # 写 HTTP(S)_PROXY、合并 NO_PROXY、重启并核验
-python3 -X utf8 <本skill目录>/scripts/opencode_proxy.py unset                    # 移除代理变量，默认保留 NO_PROXY；--all 一并清理
+opencode models | findstr <providerID>
+opencode api get /api/model
 ```
 
-脚本只改代理类变量：其他 env（含密钥）原样保留且不打印；`set` 会顺手清掉拼错的代理变量名；`--no-restart` 只写存储层。在 OpenCode 会话内执行时用 `--no-restart`，另开会话外终端 `opencode service restart` 后跑 `status` 复核，避免重启打断当前命令。
+按 `providerID` 过滤核对 `package`、能力、`limit` 与 variants。服务刚重启时该接口可能返回空数组，等 2 秒重试一次，不据此判定配置失败。
+
+### 5. 写密钥
 
 ```bash
+opencode service get env
 opencode service set env <PROVIDER>_API_KEY <KEY>
-
-# 以下三行仅当该网关直连不可达才执行：先 get env 读既有值，合并后回写，不照模板覆盖；
-# 端口来自实测/登记/用户告知，设备上没有可用代理就不设，不臆造端口
-opencode service set env HTTPS_PROXY http://127.0.0.1:<port>
-opencode service set env HTTP_PROXY http://127.0.0.1:<port>
-opencode service set env NO_PROXY "localhost,127.0.0.1,::1,<既有放行域名>"   # 回环必须绕过；逗号分隔，合并既有值；含逗号的值加引号（PowerShell 否则拆成数组）
-opencode service start   # set env 本身也会重启服务
 ```
 
-服务端 env 的高频底线：`set env` 会重启服务，变量名与取值定稿后一次合并写入；改前先 `opencode service get env` 抄下既有值，代理变量只增合并不覆盖；`NO_PROXY` 保持逗号分隔并含回环。按域名分流、密钥错位、变量名占用、大小写代理变量、写入丢失、存储与生效分离、live 未生效等排障细节，见 [references/service-env.md](references/service-env.md)。
+- `set env` 会重启后台服务，当前命令常以 `Tool execution interrupted` 结束；变量已落盘，不要重试，用只读 `get env` 确认（展示打码）。
+- 变量名与配置的 `env` 逐字一致；写错也能写入成功，但请求会报缺 key。
+- 密钥只放服务端 env，不进配置文件。定稿后一次写入，减少重启。
+- 只有本地直连确实不通时才配代理，并持久化到服务端：直连/代理诊断按 `network-access`，持久化、变量名、`NO_PROXY` 与一次性覆盖见 [服务端 env 与代理](references/service-env.md)。
 
-### 5. 端到端验证（按序）
+### 6. 验证
 
-本节真实请求仅在用户明确授权验证时执行；仅补参数或未授权时，只做相关的配置/目录校验，并按[参数验收](references/model-parameters.md#验收与交付)报告未测范围。本节及协议切换段落中的请求、工具调用和抓包检查均受此边界约束；所谓必需调用只适用于已授权的通路验证，不是修改配置的前提。
+默认只测用户点名的模型：
 
-先定测哪个模型再动手：请求里已点名模型就只测它；用户只给了地址和密钥时，拉完 `/v1/models` 后**问一次**要测哪个 id，不要自行挑一个代他决定，更不要按分组顺序逐个试。候选按成本升序排列并标出最便宜的一档——只验可用性时选最便宜的即可；用户明说要用作日常主模型时，才把能力旗舰放首位。用户说"都不测/先不测"就停在配置与目录校验，并在交付里写明未做真实调用验证。
+1. `get env`：密钥与代理齐全（打码）。
+2. `opencode models | findstr <providerID>`：目标模型都在。
+3. 直连极小请求（唯一必需）：`/v1/chat/completions`，单轮 `OK`，`max_tokens` 16–64，请求体写文件后 `--data-binary "@<文件>"`，限时 10 秒（最多 15）。HTTP 200 且输出 tokens 非零即通；推理模型 `content` 为 null 但 usage 有输出也判可用。
+4. `opencode run -m <provider>/<model> "OK"`：仅用户明确要求经 harness 验证时执行；会注入全局上下文，单次上万 token。
+5. `api get /api/model`：改过参数时核对解析值。
 
-1. `opencode service get env` —— 密钥、代理变量齐全（打码展示）。
-2. `opencode models | findstr <providerID>` —— 配置被识别、模型全部列出。
-3. 直连轻量请求（默认，也是唯一的必需调用）：直接打 `/v1/chat/completions`（该模型已切 Responses 协议时改打 `/v1/responses`，参数换成 `max_output_tokens`；`anthropic-compatible` 打 `/v1/messages`，body 用 `messages[].content` 与 `max_tokens`），只测本次接入要用的模型，不逐一遍历分组全量（默认限时 10 秒，可酌情放宽到 15 秒）。请求体只放一条单轮 user 消息（一句话问候或 `OK`），不带 system、历史与工具定义；`max_tokens` 取够产出短答的最小值（如 16–64），可用性抽查不套 512 的大预算。核对 HTTP 200 与 `usage` 有输出 tokens；内容核验以 `choices[0].message.content`（Messages 协议为 `content[].text`）非空为准，推理模型小预算会 `length` 且 content 为 null（思考占用了输出预算），此时 HTTP 200 且 `usage` 输出 tokens 非零即判通路可用。直连不经 harness，不携带 AGENTS.md、skill 清单等上下文，token 消耗只有个位数到几十。
-   - 请求体先写成文件再用 `--data-binary "@<文件>"`：PowerShell 里内联 `-d "{\"model\":…}"` 经转义常被拆坏，网关回 400 `invalid JSON request body`，看起来像密钥或协议问题，实际只是引号被吃掉。
-   - 限时用执行器的超时参数（或 curl 的 `-m`）施加；Windows 下别写成 `timeout 10 <命令>`——那里的 `timeout` 是系统自带的等待命令，不认这种用法，直接报 "Invalid syntax. Default option is not allowed more than '1' time(s)"，命令根本没跑。
-4. `opencode run -m <provider>/<model> "OK"`（**可选**，仅用户明确要求经 agent harness 验证时；或官方 Console 免费模型必须按客户端身份放行）：它会注入全局 `AGENTS.md`、skill 清单与工具定义，单次实测约上万 token（缓存读 + 输出），不要拿它当默认可用性抽查。执行时放在空临时目录并只发一个词，默认限时 10 秒（可酌情放宽到 15 秒）；超时即判该模型当前时段可靠性不佳，不换长超时重试翻案（见约束/规范），同时查 `opencode.log`（`~/.local/share/opencode/log/`）确认请求已发出、无 4xx。官方免费档直连一律 403 `FreeTierError`，Go 模型直连需带 `x-opencode-session`。
+超时即记“该时段不可用”，换时段复测，不改配置也不延长超时硬试。报告分开写“配置已识别 / 目录已核对 / 真实调用已验证”，未测项（工具、图片、各档位、最大窗口）单独列出。
 
-改过模型参数时追加一步：`opencode api get /api/model` 取服务解析后的目录，只筛目标模型，核对本次变更的能力、上限、variants、settings 与 package，具体判据见[参数验收](references/model-parameters.md#验收与交付)。`opencode models` 只列 ID，不能证明参数正确；目录校验也不能证明网关实际接受这些参数。
+## 协议选择
 
-## 代理作用域与一次性覆盖
+| 模型族 | 网关声明 | 配置 |
+| --- | --- | --- |
+| GPT / OpenAI 系 | `openai-response` 且直连 200 | 模型级 `@opencode/ai/providers/openai-compatible/responses` |
+| Claude 系 | `anthropic` | provider 级 `@opencode/ai/providers/anthropic-compatible`，`baseURL` 带 `/v1` |
+| 其余或未实测 | `openai` | 默认 `@opencode/ai/providers/openai-compatible` |
 
-OpenCode 没有配置文件级的代理字段，出网代理只认**进程环境变量**（`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`）。同一个变量对该进程内所有 provider 生效，不能按 provider 配置；要按域名分流，用 `NO_PROXY`（见 [references/service-env.md](references/service-env.md#按域名分流代理)）。默认是否走代理取决于服务进程启动时的 env：没有代理变量就直连，有就走代理；系统代理设置不会自动变成这些变量，不要以“系统代理已开”推断 opencode 已走代理。
+- 没有实测证据就留在 Chat Completions；不能只凭 `/v1/models` 的声明切协议。
+- Responses 只覆盖目标模型，不改 provider 级。
+- 切换步骤、最小请求与抓包确认见 [协议切换](references/protocols.md)。
 
-| 运行方式 | 谁发起模型请求 | 代理 env 来源 | 适用场景 |
-| --- | --- | --- | --- |
-| 默认（共享后台服务） | 后台服务进程 | 服务启动时继承的 shell env，叠加 `service set env` 持久化值 | 日常使用；持久化改动对设备上所有会话生效 |
-| `opencode --standalone` / `opencode run --standalone` | 本次新建的私有服务进程 | 当前命令/shell 的 env | 一次性验证、临时换路线；不读 `service set env`，不打扰共享服务 |
-| `opencode serve` | 该前台服务进程 | 启动 `serve` 那条命令的 env | 自建常驻私有服务 |
-| `opencode --server <URL>` | 目标服务进程 | 目标服务的 env | 接入已按指定 env 启动的服务；CLI 侧 env 不决定出网 |
+## 约束
 
-- **必须**：`--standalone` 与 `serve` 读自身进程环境，`service set env` 只对托管的后台服务生效；反过来，服务端 env 也不会进入 `--standalone` 进程。临时验证要什么路线，就在启动那条命令里设对应 env。
-- **必须**：`--server` 只改 CLI 连接的目标，出网仍由目标服务的 env 决定；要换出口就重启那个服务并改它的 env，改 CLI 的 env 无效。
-- **必须**：CLI 与服务之间走本机回环；CLI 侧设了代理变量时，`NO_PROXY` 必须含 `localhost,127.0.0.1,::1`，否则本地连接也被送进代理。
-- `opencode service set disabled true` 可让 CLI 命令默认使用私有服务而不是共享服务（`service unset disabled` 恢复）；配对依赖共享服务，禁用期间不可用。
-- 排查私有服务时加 `--print-logs`（服务日志需要 `--standalone`），日志里能看到实际使用的 `run=` 与请求。
-
-**一次性不走代理**（目标域名直连可达，或要绕开当前服务端代理）：
-
-```powershell
-pwsh -NoProfile -Command 'Remove-Item Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:ALL_PROXY -ErrorAction SilentlyContinue; opencode run --standalone -m <provider>/<model> "OK"'
-```
-
-```bash
-env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
-  opencode run --standalone -m <provider>/<model> "OK"
-```
-
-也可以不清变量，只把目标域名加进该进程的 `NO_PROXY`；`NO_PROXY` 必须逗号分隔并保留回环。
-
-**一次性走代理**（共享服务是直连，或要换一条出口）：
-
-```powershell
-pwsh -NoProfile -Command '$env:HTTP_PROXY="http://127.0.0.1:<port>"; $env:HTTPS_PROXY="http://127.0.0.1:<port>"; $env:NO_PROXY="localhost,127.0.0.1,::1"; opencode run --standalone -m <provider>/<model> "OK"'
-```
-
-多个会话共用一个私有出口时，用 `serve` + `--server` 固定服务端 env：`HTTPS_PROXY=… NO_PROXY=… opencode serve --hostname 127.0.0.1 --port <port>`，再 `opencode run --server http://127.0.0.1:<port> …`。PowerShell 下改用 `$env:` 赋值后再启动 `serve`。
-
-设置成功不等于走了代理：`opencode api get /api/info` 只证明 CLI 能连到服务；要确认出口，跑一次真实请求，或用回显服务核对该进程的实际出口。
-
-## OpenCode 官方套餐（opencode / opencode-go）
-
-- 官方免费与 Go 订阅是现成 provider：凭据由 `/connect`（TUI）或 `opencode auth login` 保存到**服务端 SQLite**（路径用 `opencode debug paths db` 查；`~/.local/share/opencode/auth.json` 只在 V2 迁移时导入一次，之后改它无效），管理用 `opencode auth list/export/switch/logout`。模型引用 `opencode/<id>`、`opencode-go/<id>`；opencode.ai 不放行 `NO_PROXY` 即自动走服务端代理。
-- **一把工作区凭据同时授权 `opencode` 与 `opencode-go` 两个 provider**（工作区配置里两者共用同一凭据，`env` 均为 `OPENCODE_CONSOLE_TOKEN`）；只订阅 Go 时不必另填 Console key，`opencode/<id>-free` 会随同一份工作区配置出现。报 `api_key_expired`（"Create a new API key in OpenCode Console…"）说明凭据是旧格式或已过期：`sk-…` 旧 key 已失效，须在 Console → **Keys** → Add Service Account 建 `oc_sk_…`（可设权限与有效期）后重新连接，**重新登录不会续期旧 key**。
-- 同名模型先枚举再选 ID：`opencode models | findstr <系列名>`。例：免费变体带 `-free` 后缀，普通变体报 "Insufficient account funds" 需 Console 余额；`Contributor` 变体低价但提示词会用于模型训练。
-
-## 官方 API key 型供应商（Google AI Studio）
-
-Google AI Studio 的 key 走内置 `google` provider，不需要在 `opencode.json` 写 `providers`；models.dev 目录已包含 `gemini-4-hydrogen` 等条目，服务端识别凭据后自动出现。需要覆盖目录参数时，只写 `providers.google.models.<modelID>` 的目标字段，不新建 provider。
-
-- 凭据变量按 `GEMINI_API_KEY`、`GOOGLE_API_KEY`、`GOOGLE_GENERATIVE_AI_API_KEY` 识别，写一个即可。先直连或经代理做一次最小 `generateContent`，确认 key、目标模型和链路都通，再写服务端 env。
-- 国内直连 `generativelanguage.googleapis.com` 通常超时，代理按第 2、4 节持久化到服务端。验证配置时可先用独立实例，避免重启共享服务：把 key 与 `HTTP(S)_PROXY` 放进当前进程环境，运行 `opencode run --standalone -m google/<model> "OK"`；通过后再写服务端 env，由会话外终端重启并核对 `opencode models | findstr google`。
-- 免费档按 project 限流，具体 RPM/TPM/RPD 只在 AI Studio 限流页可见；429 表示触限，不靠换 key 绕过。免费档提示词会被用于改进 Google 产品，不要放隐私或客户数据。
-- Gemini 3/4 默认开思考，思考 token 计入输出预算；`maxOutputTokens` 太小会出现 `finishReason=MAX_TOKENS` 且文本为空，按任务给足预算或调低思考档位。
-
-## 约束/规范
-
-- 密钥只写入 `service set env` 与配置引用（`env` 变量名），**不写进 `opencode.json` 明文**（`settings.apiKey` 仅在用户明确要求时才考虑）。
-- 修改既有 `opencode.json` 前先读全文，保留无关配置。
-- `service set env`、`mcp add` 等会重启服务的操作不要连排在同一条命令里，逐条执行。
-- **必须**：`NO_PROXY` 必须逗号分隔；PowerShell 下含逗号的值必须加双引号，否则逗号被解析为数组、落盘变成空格分隔，例：`opencode service set env NO_PROXY "localhost,127.0.0.1,::1,<既有放行域名>"`。接手既有配置先核验分隔符，空格分隔一律改正。例：`localhost 127.0.0.1 ::1` 的空格写法可能不被 HTTP 客户端解析，放行域名静默走代理。
-- **必须**：代理变量名只能是 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`（大小写均可，同名并存时大写优先）；其他名字不报错也不生效。`HPPTS_PROXY`、`HPPT_PROXY` 这类笔误会完整落盘、出现在 `get env` 与进程环境里，容易被误判为"已配置"。写入前后用 `scripts/opencode_proxy.py status` 审计，或逐个核对变量名。
-- **必须**：改服务级 env 前先 `opencode service get env` 抄下既有值；`HTTP(S)_PROXY`/`NO_PROXY` 对设备上所有 provider 全局生效，只增合并不覆盖。例：设备原有模型靠既有代理变量连通，新接入照模板覆盖后旧模型静默断链。
-- **必须**：重启 opencode 服务前先双查代理环境（`get env` ＋ live 进程 environ），只在旧进程快照里的代理一重启就丢；重启用 detached 方式，事后核验新进程 environ 里 PROXY 仍在。例：模型靠 HTTPS_PROXY 连网，裸 restart 后集体断链，查 environ 才发现新进程没继承。
-- **必须**：只实测本次接入要用的模型（用户点名的那个），分组内其余模型不逐一验可用性与速度。用户没点名就先问一次，不自行代表他选。例：分组 20 个模型只用 2 个，就只测那 2 个，不跑完 20 个。
-- 验证成本按目的分层：默认用直连极简请求，不经 agent harness（`opencode run` 会注入全局 AGENTS.md 与 skill 清单，单次约上万 token）；只验可用性时选分组里最便宜的对话模型，单轮极简 prompt、小 `max_tokens`，不拿旗舰模型做连通性抽查、不扩大输出预算。例：同一分组里旗舰与轻量档并存，连通性抽查用轻量档即可。
-- **必须**：单模型验证默认限时 10 秒，可酌情放宽到 15 秒；超时即判该模型当前时段可靠性不佳，不改配置不删条目，换时段复测即可。例：12 秒回的模型放宽到 15 秒重测；仍超时也不动配置，其他时段可能就通了。
-- skill 正文与示例中不得出现真实密钥、真实域名（用 `<…>` 占位）与本机绝对路径。
+- 密钥不进 `opencode.json`；`settings.apiKey` 只在用户明确要求时考虑。
+- 改配置前读全文；不覆盖无关 provider、MCP 与既有 env。
+- 同域名多 key 不合并、不覆盖；providerID 与 env 名先查占用。
+- 服务端 env 全局生效：代理变量只增合并不覆盖；`NO_PROXY` 逗号分隔、含回环，PowerShell 下含逗号的值加引号并核对落盘格式。
+- `set env` / `restart` 会重启服务，逐条执行，不与其它重启类命令串排。
+- 只实测用户点名的模型；纯连通性抽查用组内最便宜的一档。
+- 目录出现档位不等于网关接受该档位；未验证的能力不写成已验证。
 
 ## 自检
 
-按本次修改范围检查；真实请求与抓包项目仅适用于已获授权的验证，未执行项标明未测，不为勾齐清单擅自调用。
+按改动范围勾选；真实请求项仅在授权后执行，未执行就标未测。
 
-- [ ] 模型列表经过筛选，只配对话模型。
-- [ ] 本地直连不通时代理已持久化到服务端，不是只在当前 shell export。
-- [ ] 代理变量名拼写已核对（`HTTP(S)_PROXY`/`ALL_PROXY`/`NO_PROXY`），没有 `HPPTS_PROXY` 一类笔误；`opencode_proxy.py status` 通过或已说明未核验原因。
-- [ ] `NO_PROXY` 为逗号分隔、含回环；多入口分流时直连域名已加入，代理端口来自实测或用户告知。
-- [ ] 一次性/私有进程的代理来自其自身 env（`--standalone`/`serve`/`--server` 的目标服务），未用 `service set env` 推断；临时不走代理的进程已在子 shell 里清掉代理变量，未改动共享服务。
-- [ ] `--server` 已确认目标服务的 env，未用 CLI 侧 env 判断出口；设了代理的 CLI/服务，`NO_PROXY` 含回环。
-- [ ] 改服务级 env 前已 `get env` 抄下既有值，代理变量只增合并不覆盖。
-- [ ] `env` 变量名与 `providerID` 未占用既有名称；同名不同值已换名。
-- [ ] 同域名多把 key 时已各自拉 `/v1/models` 比对分组，模型组不同时新增 provider 用独立 `env` 名，未覆盖既有 key。
-- [ ] `set env` 次数已压到最少；含逗号的值已加引号并核验落盘格式。
-- [ ] `get env` 与 live 服务进程环境一致：无陈旧密钥，大写代理变量齐全。
-- [ ] 重启生效已用端口/`run=` 变化或新进程 environ 确认；重启后以 `STARTED` 时间最新的进程为准；live 陈旧时已用 `--standalone` 隔离验证。
-- [ ] 直连测试用了 `--noproxy "*"`，未被 shell 代理 env 污染。
-- [ ] 给定地址在快速检查后确认不可用（无解析、连接拒绝、证书错误、404）或连续超时时，已反馈具体错误并确认地址，没有静默重试或自行替换域名。
-- [ ] 官方套餐同名模型先 `opencode models | findstr` 枚举变体；`api_key_expired` 按 Console 新建 `oc_sk_…` 处理，未去改 `auth.json`。
-- [ ] 官方免费模型用 `opencode run` 验证，未据直连 curl 的 403 判接入失败。
-- [ ] 思考档位按[公开档位配置基线](references/model-parameters.md#公开档位配置基线)配置；其他参数有对应依据，未知值未猜填；已有模型只覆盖目标字段，并按[参数验收](references/model-parameters.md#验收与交付)核对服务解析值。
-- [ ] 只实测本次接入要用的模型，默认限时 10 秒（最多放宽到 15 秒）；用户未点名时已问过一次，未自行挑模型、未逐组遍历。
-- [ ] 只验可用性时选了候选里最便宜的一档，未拿旗舰模型做连通性抽查。
-- [ ] 验证请求为单轮极简 prompt（无 system/历史）；默认只走直连，未在用户未要求时跑 `opencode run` 的 harness 测试。
-- [ ] 需要 Responses 协议时只对目标模型写 `package`，未改 provider 级；已直连 `/v1/responses` 确认 200，且 `opencode api get /api/model` 解析到 responses 包。
-- [ ] 声明 `anthropic` 的网关已用 `anthropic-compatible`，`baseURL` 带 `/v1`，抓包确认请求落在 `/v1/messages`。
-- [ ] 切协议的模型已用请求 path（抓包）或等价手段确认真的打 `/v1/responses`，未仅凭回复文本相同判成功；agent 场景另做过一次工具调用验证。
-- [ ] 直连验证的请求体走文件（`--data-binary "@…"`），限时用执行器超时参数而非 `timeout` 前缀。
-- [ ] 本次相关的配置与目录校验已完成，原有无关内容未被覆盖；真实请求仅在授权后执行，未测能力与窗口极限已明确说明。
+- [ ] 已筛掉非对话模型；同域名多 key 已比对。
+- [ ] 参数有来源，未知项未猜填；渠道上限冲突按渠道值处理。
+- [ ] 配置只增改目标项，无关内容未被覆盖。
+- [ ] `opencode models` 与 `/api/model` 已核对，或说明未核验原因。
+- [ ] `get env` 有目标变量且拼写一致；代理变量名只含 `HTTP(S)_PROXY`/`ALL_PROXY`/`NO_PROXY`。
+- [ ] 只测点名模型，单轮极简，限时 10–15 秒。
+- [ ] 协议切换有直连 200 证据；未测则仍是默认协议。
+- [ ] 交付区分“配置 / 目录 / 真实调用”，并列出未测项。
 
 ## 验证协议
 
-先区分完成范围：仅补参数时，按[参数验收](references/model-parameters.md#验收与交付)核对配置及目录，并报告未做真实调用；新接入未获调用授权时，只能报告“配置已识别、通路未验证”。获准验证通路后，确认 `opencode models` 出现目标 ID，并对本次指定模型做直连极简请求，按第 5 步判定，不扩大到整组模型。`opencode run` 仍需授权，不作为默认抽查。通路通过不等于模态、工具、所有思考档位与最大窗口均已验证。后台服务 live 陈旧且会话内重启无效时，区分存储侧与 live 状态；只有获准执行的 `--standalone` 同配置验证实际通过时才报告其结果，后台侧待外部重启后重验。
+1. `opencode models | findstr <providerID>` 出现目标 ID。
+2. `/api/model` 中目标条目与本次改动一致。
+3. 获准时对点名模型做一次直连极简请求，按第 6 步判定；`opencode run` 仍需单独授权，不作为默认抽查。
+4. 通路通过不代表模态、工具、全部档位与最大窗口已验证。
+5. 后台服务 live 陈旧时区分存储层与 live；只有获准的 `--standalone` 同配置验证通过才报告该结果。
