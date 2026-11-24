@@ -295,7 +295,7 @@ PR 聚焦一个完整目的，说明问题与结果、影响面、实际验证�
 
 ### 读取 CI 失败日志（GitHub Actions）
 
-只有失败通知、没有失败测试或 traceback 时，先取日志再判断，不把重跑当诊断。可以只读使用本机已有 GitHub 凭据（发现方式见上文“远程仓库创建与凭据发现”），也可以请用户粘贴失败片段；使用凭据前说明将读取哪个仓库的 run/job 日志，不索要明文 token。
+只有失败通知、没有失败测试或 traceback 时，先取日志再判断，不把重跑当诊断。先询问用户选择：只读使用本机已有 GitHub 凭据（发现方式见上文“远程仓库创建与凭据发现”），或由用户粘贴失败片段；使用凭据前说明将读取哪个仓库的 run/job 日志，不索要明文 token。
 
 - 用 `GET /repos/<owner>/<repo>/actions/runs?per_page=<n>` 按 `head_sha` 找到本次 run，再 `GET /actions/runs/<run_id>/jobs` 找失败 job；只读 API 走原站，不用 GitHub 文件加速镜像。
 - 下载 `GET /repos/<owner>/<repo>/actions/jobs/<job_id>/logs`，请求头带 `Authorization: Bearer <token>`；未认证通常返回 403。classic token 的 `repo` scope 通常可读，fine-grained token 需要 Actions 读取权限；先 `GET /user` 验证凭据可用，再按实际 403 判断权限，不猜 scope。
