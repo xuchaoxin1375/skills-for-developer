@@ -60,8 +60,8 @@ drawer      = narrow && drawerOpen
 - 大位移不要用 `ease-out`：`cubic-bezier(0, 0, 0.2, 1)` 在 25% 时间已走约 58% 位移，观感是“先弹一下再爬”。上面的 S 曲线在 25%/50%/75% 时间约走 5%/60%/96%，起步慢、落点软，适合 200px 以上的侧栏/面板。
 - 标签不要用 `opacity` 抢先出现：透明度会在面板还没让出空间时完成，文字先亮再被裁。用裁切 + 4px 位移，并让标签盒随容器收缩；要做过渡就不要 `display:none`，会瞬切。
 - 分组标题不要条件挂载：会让下方导航在动画第一帧整段跳动。保留节点：要么用 `grid-template-rows: 0fr↔1fr` 收缩行高（允许受控纵向错位），要么保留固定标题槽只切换标题与分隔线；两种都把行高与宽度放在同一时间轴，分隔线单独过渡。
-- 减弱动效时面板与 track 都要关。CF 只给 panel 关了 `transition-none`、外层 grid 仍保留 250ms，属于实现缺口，不要照抄；统一令牌或 `motion-reduce:transition-none` 覆盖两层。
-- 验收：用 WAAPI 在 25%/50%/75% 时间点 `pause()` 并设 `currentTime` 冻结画面，检查标签无残影、分组行连续、主区与面板同帧到位；再跑 reduce、快速反复切换与中途反向。
+- 减弱动效时面板与 track 都要关。CF 只给 panel 关了 `transition-none`、外层 grid 仍保留 250ms（90ms 冻结时面板已 260、grid 才 87），属于实现缺口，不要照抄；统一令牌或 `motion-reduce:transition-none` 覆盖两层。
+- 验收：先在 Rendering 面板确认 `prefers-reduced-motion` 与应用全局覆盖，别在瞬切上评判；用 DevTools Animations 以 10% 慢放看标签/分组/品牌是否同帧，再用 WAAPI 在 25%/50%/75% 时间点 `pause()` 并设 `currentTime` 冻结画面，检查标签无残影、分组行连续、主区与面板同帧到位；最后跑 reduce、正常速度、快速反复切换与中途反向。流程见 [动画排查](../../web-animation-guide/references/inspecting-motion.md)。
 
 ## 标签、分组与可访问名称
 

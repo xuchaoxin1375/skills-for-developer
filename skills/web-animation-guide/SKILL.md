@@ -1,6 +1,6 @@
 ---
 name: web-animation-guide
-description: Web 动画的技术选型、实现与排障：CSS Transition/Animation、WAAPI、requestAnimationFrame、FLIP、scroll-driven、View Transitions、SVG/Canvas、GSAP/Motion/Lottie；含打断与清理、性能与卡顿、prefers-reduced-motion 合规。当用户要做动效、排查动画卡顿或减弱动效，或评审动画代码时使用；反馈目的与设计预算走 frontend-design，响应式布局走 adaptive-responsive-guide。
+description: Web 动画的技术选型、实现与排障：CSS Transition/Animation、WAAPI、requestAnimationFrame、FLIP、scroll-driven、View Transitions、SVG/Canvas、GSAP/Motion/Lottie；含打断与清理、性能与卡顿、prefers-reduced-motion 合规。当用户要做动效、排查动画卡顿或减弱动效、动画没生效，或评审/慢放分析动画时使用；反馈目的与设计预算走 frontend-design，响应式布局走 adaptive-responsive-guide。
 ---
 
 # Web Animation Guide
@@ -12,6 +12,8 @@ description: Web 动画的技术选型、实现与排障：CSS Transition/Animat
 本 skill 集中维护动效技术选型、示例、打断与清理、兼容、性能和减弱处理。与 `frontend-design` 同用时，反馈目的和工具界面预算读取其 `references/motion.md`；实际时长/缓动读取项目令牌。本 skill 示例值只用于演示，不覆盖项目设计预算；单独使用时根据场景定令牌，不要求加载整个前端设计流程。
 
 ## 工作流程
+
+动手前先确认动画真的在播放：系统/浏览器 reduce 与应用全局 0.01ms 覆盖都会造成瞬切；先查 `matchMedia('(prefers-reduced-motion: reduce)')` 和触发后的 `document.getAnimations()`。是环境抑制就先告诉用户，不在瞬切画面上调曲线。慢放与逐帧方法见 `references/inspecting-motion.md`。
 
 1. **三问先行**：什么触发（状态/时间/滚动）？什么定进度（时钟/scroll/view）？谁绘制（合成器/WAAPI/rAF/Canvas）？先给选型结论。
 2. **查表选型**：见 `references/selection.md`。区分滚动**驱动**（跟进度，可反向）vs 滚动**触发**（越过播一次，用 IntersectionObserver）。
@@ -66,6 +68,7 @@ description: Web 动画的技术选型、实现与排障：CSS Transition/Animat
 - SVG 原点加 `transform-box:fill-box`；SMIL 暂停须 `pauseAnimations()`，CSS 停不住它。
 - SVG 同一元素不同时承载 `transform` 属性与 CSS `transform` 动画：运行中的动画替换该元素自身的属性位移（静态祖先的位移保留），部件会被画到未位移处或屏外。外层 `g` 用属性定位置，内层 `g` 跑 `@keyframes`；`transform-box` 只定动画原点，不恢复被替换的位移。写法见 `references/snippets.md`“SVG 定位与动画分层”。
 - 减弱策略统一见 `references/performance-a11y.md`；关闭非必要位移/循环，保留静态信息，JS 动画也处理偏好变化。例：保存中的 spinner 停转，文字仍说明正在保存。
+- 调参/评审前先排除 reduce 与全局 0.01ms 覆盖；DevTools Animations 以 10% 慢放看子元素是否同步，正常速度验体感。半套实现（容器 none、布局轨仍动）不算参照，见 `references/inspecting-motion.md`。
 - 中文逐字用 chars 或 `Intl.Segmenter('zh')`；竖排注意轴对调；npm/CDN 走 npmmirror（用前验证）；微信/X5/iOS 实测。
 
 ## 实现示例输出模板
@@ -81,6 +84,7 @@ description: Web 动画的技术选型、实现与排障：CSS Transition/Animat
 - `references/selection.md`：完整技术边界 + 库体积对比 + 决策细节
 - `references/snippets.md`：局部技术片段（过渡/首值不补间/高度展开/steps/@property/全局暂停/读写分批/React/弹簧/WAAPI/rAF/FLIP/滚动/VT/SVG/Canvas）；集成时按对应技术补齐回退、减弱与清理
 - `references/interactions.md`：可独立运行的弹窗、按钮忙态与下拉示例；实现用户交互时读，含关闭、焦点、防重入、取消和无动画路径
+- `references/inspecting-motion.md`：先确认动画在播放（系统/浏览器 reduce、全局覆盖）、DevTools Animations 10% 慢放、rAF 采样与冻结；调参与评审前读
 - `references/performance-a11y.md`：性能/无障碍/兼容/国内/中文清单
 
 ## 自检与示例回归
@@ -91,6 +95,7 @@ description: Web 动画的技术选型、实现与排障：CSS Transition/Animat
 - 严格 SVG（多部件联动、接触或跟随约束）是否冻结典型相位、用包围盒换算回 SVG 坐标核对了关键锚点，而非只看全屏截图（被裁在屏外的缺件肉眼易漏）？
 - 定向运动（行进/旋转/流动）是否过了一遍方向链：主体朝向→旋转件转向→传动与尾迹走向→背景退行及视差方向，有一处相反即返工？
 - reduce 初始与运行中切换时是否保留静态信息，清理是否覆盖 JS 动画与监听？
+- 是否先确认动画真实播放（reduce/全局覆盖），再用 10% 慢放与正常速度各验一遍，而不是在瞬切或单帧上判断？
 - 时长是否读取项目令牌，示例默认值是否没有变成第二套设计预算？
 
 改交互示例后，在仓库根目录用已有 Python Playwright 与 Chromium 运行 `python skills/web-animation-guide/tests/test_interactions.py --artifacts .workspaces/motion-check`。测试直接提取 Markdown 代码，覆盖退出中间帧布局、正常/reduce、取消/零时长/缺 API、焦点、防重入与错误恢复；结果与截图是本地评估产物，不放入 skill。通过范围以实际浏览器为准，其他技术片段按需另验。
