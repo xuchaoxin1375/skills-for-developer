@@ -93,7 +93,7 @@ description: >
 
 **CHANGELOG**：采用此文件时，`Unreleased` 置顶；按 Added、Changed、Deprecated、Removed、Fixed、Security 归类；最新版本在前并标日期，声明沿用的版本方案。突出弃用、移除与破坏性变更，给迁移方式与计划移除版本；弃用先公告再移除。发布说明从权威变更记录派生，不贴未经整理的 `git log`。
 
-**架构与 ADR**：C4 前两层（系统上下文、可独立部署单元）通常够用，一张图配一段文字，说明职责、接口、数据归属与启动依赖；按定位需求补关键流程、数据模型与横切约定，不强制画所有层。图示的阶段取舍见 [项目启动检查](../swe-gov/references/project-start.md#图示取舍)；排版与 Mermaid 写法按 `markdown-style`。主动建模使用上游 `domain-modeling`，本地历史维护与可选结构化模板见 [决策记录](../swe-gov/references/decision-records.md)，不在此另定一套政策。
+**架构与 ADR**：C4 前两层（系统上下文、可独立部署单元）通常够用，一张图配一段文字，说明职责、接口、数据归属与启动依赖；按定位需求补关键流程、数据模型与横切约定，不强制画所有层。图示的阶段取舍见 [项目启动检查](../swe-gov/references/project-start.md#图示取舍)；排版与 Mermaid 写法按 `markdown-style`。新增功能模块或跨边界改动进入实现前，设计说明/ADR 至少配一张机制图（时序、流程或状态）论证关键路径，并写清目标、非目标、替代方案、失败/回滚和验证；图为论证工具，不画装饰性示意图。主动建模使用上游 `domain-modeling`，本地历史维护与可选结构化模板见 [决策记录](../swe-gov/references/decision-records.md)，不在此另定一套政策。
 
 **CONTRIBUTING**：优先一条命令搭好环境并列出工具版本，做不到时列清步骤；测试、lint、格式化命令与 CI 检查项；提交、评审与发布约定；把"改行为、配置或接口要同步文档与适用的变更记录"写进完成定义。
 
