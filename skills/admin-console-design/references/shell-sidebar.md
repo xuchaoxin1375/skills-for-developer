@@ -44,6 +44,25 @@ drawer      = narrow && drawerOpen
 - 触屏不能依赖 hover：中等布局有临时展开按钮，外部点击/Esc/导航后关；窄屏有汉堡与抽屉关闭入口。
 - 默认可用768/1024两个断点；fable 平板行为受存储偏好影响，不是已实现的强制Rail。CSS、JS、测试采用同单位/边界，检查767/768和1023/1024，无需特殊小数rem。
 
+## 折叠/展开的动效编排（CF 实况）
+
+2026-11-25 登录态取样（Edge 157，1440×900，light）：rail 56px（含 1px 边框实测 57）、展开 260px。容器宽与外壳 grid track 同为 **250ms / `cubic-bezier(0.77, 0, 0.175, 1)`**，标签、品牌、内边距用 **250ms / `cubic-bezier(0.4, 0, 0.2, 1)`**。
+
+| 层 | 属性 | 折叠 ↔ 展开 |
+| --- | --- | --- |
+| 外壳与面板 | `grid-template-columns`、`width` | 56 ↔ 260；固定开关推开内容，peek 槽位不动、面板只覆盖 |
+| 标签 | `transform` + 容器裁切 | `translateX(-4px) ↔ 0`；宽度由容器让出，透明度始终为 1 |
+| 分组标题 | `grid-template-rows` | `0fr ↔ 1fr`，外层 `overflow: hidden`；分隔线用颜色/透明度过渡 |
+| 品牌 | `scale` | `0.833 ↔ 1`，`origin-left`；文字随槽宽裁切 |
+| 内边距 | `padding` / `margin` | 11 ↔ 14/16px，与上面同时长 |
+
+- 宽度过渡只让一个布局属性承担（外壳 track 或面板 `width`），其余元素跟随同一时长。不要 aside width、main margin、顶栏品牌槽各写一套；无法合并时至少共用 duration/easing，并实测三者在同一帧到位。CF 在外壳 grid 上常驻 `will-change: grid-template-columns`；自建时按 `web-animation-guide` 的临时提示规则处理，不照抄常驻。
+- 大位移不要用 `ease-out`：`cubic-bezier(0, 0, 0.2, 1)` 在 25% 时间已走约 58% 位移，观感是“先弹一下再爬”。上面的 S 曲线在 25%/50%/75% 时间约走 5%/60%/96%，起步慢、落点软，适合 200px 以上的侧栏/面板。
+- 标签不要用 `opacity` 抢先出现：透明度会在面板还没让出空间时完成，文字先亮再被裁。用裁切 + 4px 位移，并让标签盒随容器收缩；要做过渡就不要 `display:none`，会瞬切。
+- 分组标题不要条件挂载：会让下方导航在动画第一帧整段跳动。保留节点：要么用 `grid-template-rows: 0fr↔1fr` 收缩行高（允许受控纵向错位），要么保留固定标题槽只切换标题与分隔线；两种都把行高与宽度放在同一时间轴，分隔线单独过渡。
+- 减弱动效时面板与 track 都要关。CF 只给 panel 关了 `transition-none`、外层 grid 仍保留 250ms，属于实现缺口，不要照抄；统一令牌或 `motion-reduce:transition-none` 覆盖两层。
+- 验收：用 WAAPI 在 25%/50%/75% 时间点 `pause()` 并设 `currentTime` 冻结画面，检查标签无残影、分组行连续、主区与面板同帧到位；再跑 reduce、快速反复切换与中途反向。
+
 ## 标签、分组与可访问名称
 
 - Rail 主入口保留 Tab 和名称，可用 aria-label 或视觉隐藏标签；视觉隐藏标签时同时提供 title/tooltip，让鼠标用户也能发现入口。opacity:0 通常仍在可访问树；visibility:hidden/display:none 会隐藏名称来源，需补独立名称。不能声称“在DOM中就仍可读”。

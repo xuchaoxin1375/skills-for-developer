@@ -81,7 +81,8 @@ body { padding-left: var(--rail-cw); }                       /* 默认 68px 图�
 - 折叠不靠 `transform` 时可用**变量列宽**：`grid-template-columns: var(--col-sidebar, var(--sidebar-w)) minmax(0,1fr)`，
   折叠时 `--col-sidebar: 0px` 并 `visibility:hidden`，相邻列平滑接管，主区不位移（适合“侧栏折叠但内容不动”）。
 - 手机抽屉与图标轨共用同一套展开键：图标轨里**展开键必须常驻**（触屏/键盘无悬停，它是唯一入口），
-  标签文字整颗 `display:none` 而不是挤成竖排。
+  标签文字整颗 `display:none` 而不是挤成竖排。需要宽度/展开过渡时不要用 `display:none`（会瞬切），
+  改 0 宽收缩 + 裁切 + 4px 位移，见 `admin-console-design/references/shell-sidebar.md` 的“折叠/展开的动效编排”。
 
 ### 可访问抽屉（窄屏滑入/大屏常驻）
 
