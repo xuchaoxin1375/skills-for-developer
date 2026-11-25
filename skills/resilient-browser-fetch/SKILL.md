@@ -18,7 +18,7 @@ description: >
 
 - 静态 HTTP 已含目标正文 → 结束，不启动浏览器。
 - 无头被挑战或 403 → 先 `--headful`（必要时 `--real-chrome`），用同一出口对照用户自己的浏览器；不要先轮换代理或叠加引擎。
-- 同一出口用户浏览器能开、自动化仍被拒 → 用 `chrome-late` 或 `cdp-attach`，让挑战先跑完再接入。
+- 同一出口用户浏览器能开、自动化仍被拒 → 用 `chrome-late` 或 `cdp-attach`，让挑战先跑完再接入；若 harness 已有配对好的真实浏览器扩展 relay，可直接用该桥接打开专用标签页读取，不必再开调试端口（边界见 [检测层与引擎选择](references/detection-layers.md) 的“扩展 relay”）。
 - headful 仍是裸 403／`Access Denied`／`Reference #18.…` → 先换客户端栈（挑战求解引擎、另一浏览器品牌或真实浏览器）复测，再判边缘封禁；确认是边缘封禁才换出口，挑战求解器对它无效。
 - 单次 403／444／5xx、连接重置、空响应或 200 软错误页都不判站点不可达：先核对正文、标题与最终 URL，再按出口、客户端栈、请求参数（UA／语言／Referer／cookie）各变一个变量做有界复测；非服务区域 IP 可能被 444，CDN 可能把它包装成 5xx。
 - 同一站挑战探测先读项目预算；没有项目预算时默认不超过 5 次目标请求或 3 分钟，超出停止并记录出口、客户端、请求数和停止原因。
@@ -50,6 +50,7 @@ HTML 快照里的图片、字体和外部样式表/脚本仍指向原站；内�
 | 任务 | 入口 | 该读 |
 | --- | --- | --- |
 | 抓单个页面、诊断未知站点 | CLI `scripts/resilient_fetch.py`（默认 `--engine auto`；`--help` 给短版、`--help full` 给完整选项表） | 本文件"工作流"与"引擎分层与选择" |
+| harness 已接真实浏览器扩展，用户在场，目标页需要真实会话 | 该 harness 的浏览器 MCP/扩展工具（如 OpenCode 的 browse 扩展） | 本文件"引擎分层与选择"与 [检测层与引擎选择](references/detection-layers.md) 的“扩展 relay” |
 | 高频开关想少打字 | 长选项是主名，短选项给最常用的几个：`-o/--out`、`-p/--proxy`、`-e/--engine`、`-b/--browser-brand`（`example_save_page.py` 同款） | 本文件"引擎分层与选择"与 `scripting-best-practices` 的命令行选项约定 |
 | 保存 HTML 快照、图片等保留原 URL | CLI `--out` 或 `save_page` | 本文件"先定交付物"与"示例脚本"；细节见 [HTML 快照与序列化](references/html-snapshot.md) |
 | 只要标题/状态码/字节数，或供其他语言调用 | `scripts/example_extract_page_info.py`（stdout JSON） | 本文件"示例脚本" |
@@ -202,7 +203,7 @@ python <skill-dir>/scripts/example_greentradingxxl_batch.py \
 
 ## 引擎分层与选择
 
-还有两条不属于引擎层的路线：站点放行凭据在用户自己的浏览器里时，复用那个会话比继续升层更有效；生态里的其他实现怎么比，见 [检测层与引擎选择](references/detection-layers.md) 的“另一条路线：复用真实浏览器会话”与“同类方案对比”。对比表里的方案**不是本 skill 的依赖**，不进 `auto` 阶梯。
+还有两条不属于引擎层的路线：站点放行凭据在用户自己的浏览器里时，复用那个会话比继续升层更有效；落地方式有脚本化的 `cdp-attach` 和 agent 侧的扩展 relay，后者依赖已安装并配对的浏览器扩展，适合交互式单页/取证，不适合无人值守批处理。生态里的其他实现怎么比，见 [检测层与引擎选择](references/detection-layers.md) 的“另一条路线：复用真实浏览器会话”与“同类方案对比”。对比表里的方案**不是本 skill 的依赖**，不进 `auto` 阶梯。
 
 | 层 | engine | 能力 | 依赖 | 不做什么 |
 | --- | --- | --- | --- | --- |
