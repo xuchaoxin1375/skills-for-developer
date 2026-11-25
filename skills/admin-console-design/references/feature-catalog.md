@@ -40,7 +40,7 @@
 
 细节和限制在对应目录中；不要只凭本表实现。Auto TTL 的数据表示也不同：fable 为数值 `1`，sonnet 为数值 `0`，gpt 为字符串 `auto`；应在数据适配层转换，不能直接混用。
 
-Cloudflare 实况的表格几何（40/40、白表头、10px 列宽热区、摘要卡）见[实况基线](cf-live-baseline.md)；列顺序是新增的增强项，三套模板均未实现，要求见[表格](tables.md#列顺序)。
+Cloudflare 实况的表格几何（40/40、浅色白/深色 surface 表头、10px 列宽热区、摘要卡）见[实况基线](cf-live-baseline.md)；列顺序是新增的增强项，三套模板均未实现，要求见[表格](tables.md#列顺序)。DOM 形态也不同：CF 用 div 组合的 ARIA table，三套模板用原生 table；语义选型见[表格](tables.md#dom-与语义选型)。
 
 ## 用目录防止细节累计丢失
 

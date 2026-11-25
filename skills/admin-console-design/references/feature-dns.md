@@ -2,7 +2,9 @@
 
 默认对象为 fable 当前归档源码；这里逐项记录设计、操作和实现边界。sonnet/gpt 的分页、离开保护和导入增强另见[补充功能](feature-supplements.md)，不能当作 fable 已有能力。目标应满足的规范见[表格](tables.md)、[表单](forms.md)。
 
-表格视觉几何以 [Cloudflare 实况基线](cf-live-baseline.md) 校准；本页的列宽原值、灰表头和卡片阈值是 fable 的实现，不再作为跨模板默认。
+默认表格单元采用 [Cloudflare 实况基线](cf-live-baseline.md) + sonnet 列宽交互 + gpt/本地增强的混合基线；本页记录 fable 整页的实现。若项目明确采用 fable 整页（含表格），按本页值实现并在交付中说明未采用默认表格基线；否则不要直接拿本页原值当跨模板默认。
+
+本页 fable 用原生 `<table>`；Cloudflare 实况用 `div` 组合的 ARIA table。本文的视觉与交互规范同样适用于二者，元素选型按[表格的 DOM 与语义选型](tables.md#dom-与语义选型)。
 
 视觉对照可看已归档的 [1440px DNS](builds/shots/fable-dns-1440-2026-10-08.webp) 与 [390px DNS](builds/shots/fable-dns-390-2026-10-08.webp)；编辑、错误和浮层等其他状态仍需实际打开预览。
 
@@ -32,7 +34,7 @@
 
 | 功能 | 设计细节 | 操作与结果 | 边界 / 入口 |
 |---|---|---|---|
-| 默认表格 | 选择、警告、Name、Type、Content、Proxy、TTL、Comment、Details、Actions；功能列固定 | colgroup + fixed layout；表最小宽度由当前可见列之和决定，局部横滚 | 保留真实 table 语义；不能为了塞进容器把全部列任意压扁，D1 |
+| 默认表格 | 选择、警告、Name、Type、Content、Proxy、TTL、Comment、Details、Actions；功能列固定 | colgroup + fixed layout；表最小宽度由当前可见列之和决定，局部横滚 | 保留表格语义（原生 table 或完整 ARIA table）；不能为了塞进容器把全部列任意压扁，D1 |
 | 记录阅读 | 名称及淡色域名后缀；等宽 Content 截断且有 title；橙云/文字代理状态；TTL/评论/优先级详情 | 警告图标有 Tooltip；编辑动作与长数据分离 | title 不是完整触屏长内容查看方案；代理不是只靠颜色，D1/D3 |
 | 排序 | Name/Type/Content 表头按钮带当前方向图标 | 首次升序 → 降序 → 关闭；字符串 localeCompare | 状态数按 tables.md 的用途判断，不默认照抄参考稿的三态；非 TTL/Modified 数值排序；源码 aria-sort 放在 button，目标应放在列头，D1 |
 | 固定操作列 | 右侧表头与单元格粘性、实色背景；还有右方内容时显示边缘阴影 | 横滚仍可点 Edit | 与父滚动层/背景一起复用；不要声称已冻住所有列，D1 |
@@ -44,7 +46,7 @@
 
 列宽原值用于保留此稿的密度，不作为所有表格的要求：Name 默认 240、范围 140–520；Type 90/70–160；Content 300/160–720；Proxy 140/110–220；TTL 90/70–160；Comment 180/100–400；Details 120/90–240；Select/Warnings/Actions 固定 48/32/88。改字段或改单位时同步检查列和、横滚、粘性背景与窄屏形态。
 
-与实况的差异：fable 是灰表头、640 以下堆叠字段卡片；实况是白表头、约 750px 视口/700–730px 内容宽，卡片只放摘要并可展开。跨模板统一时以[实况基线](cf-live-baseline.md)为准，fable 原值只在本页视觉语言内成立。
+与实况的差异：fable 是灰表头、视口 640 以下堆叠字段卡片；实况是浅色白／深色 surface 表头、752–760px 视口（约 720–728px 内容宽）切卡片，卡片只放摘要并可展开。跨模板统一时以[实况基线](cf-live-baseline.md)为准，fable 原值只在本页视觉语言内成立。
 
 ## 选择、批量与编辑容器
 
