@@ -12,7 +12,7 @@ description: >
 
 把已调整的参考稿作为可复用模板：新建与风格迁移默认保留所选模板的设计和交互，通过内容、配置与业务接线适配。可选整体主题，也可仅选侧栏、可编辑列表或表单等完整单元；选中的部分仍按模板复用，不逐处重新设计。三工程是 **Cloudflare-inspired 独立设计样例**，不是 Cloudflare 官方组件或规范，也不是通过生产验收的成品。
 
-默认偏好：**fable 外壳、导航区域与 DNS 页面整体设计**；列宽和本地 Undo 可参考 sonnet，导入校验及验收案例可参考 gpt。保持一套视觉语言，明确补充模块与适配理由；不要逐个按钮随意拼出第四种风格。用户指定的模板和任务范围优先；指定模板区域内按模板复用，范围外沿用既有设计系统。
+默认偏好：**fable 外壳、导航区域与 DNS 页面整体设计**；列表单元的视觉几何以 [Cloudflare 实况基线](references/cf-live-baseline.md) 校准，列宽、键盘与持久化参考 sonnet，导入校验及验收案例参考 gpt；勾选列粘左、列顺序等增强按[表格](references/tables.md)。保持一套视觉语言，明确补充模块与适配理由；不要逐个按钮随意拼出第四种风格。用户指定的模板和任务范围优先；指定模板区域内按模板复用，范围外沿用既有设计系统。
 
 ## 按任务选工作量
 
@@ -35,7 +35,7 @@ description: >
 |---|---|---|
 | 外壳、顶栏、折叠/悬停/抽屉 | [外壳与侧栏](references/shell-sidebar.md) | fable `src/components/shell/`；完整状态模型看 sonnet `src/dashboard/Sidebar.tsx` |
 | 视觉、深浅主题、层级 | [令牌](references/tokens.md) | 所选工程的 `src/index.css` 与主题模块 |
-| 列表、列宽、编辑、选择、批量、导入 | [表格](references/tables.md) | fable DNS 页；sonnet `ui/columns.tsx`、`dashboard/data.tsx`；gpt `DnsConsole.tsx` |
+| 列表、列宽、编辑、选择、批量、导入 | [表格](references/tables.md)、[Cloudflare 实况基线](references/cf-live-baseline.md) | fable DNS 页；sonnet `ui/columns.tsx`、`dashboard/data.tsx`；gpt `DnsConsole.tsx` |
 | 表单、设置、向导与真实接口 | [表单](references/forms.md) + [定制与接线](references/cf-customization-guide.md) | 所选工程的表单、校验与数据层 |
 | 验证或缺陷评审 | [响应式与验证](references/responsive-a11y.md) + [反例](references/anti-patterns.md) | gpt `tests/acceptance.spec.ts` 作为可改造案例 |
 
