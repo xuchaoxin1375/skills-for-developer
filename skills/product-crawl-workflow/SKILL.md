@@ -33,6 +33,7 @@ description: >
 - **按策略隔离时用独立实例**：轮询、粘性、会话策略需要隔离时，由实例管理脚本或等价的后台进程管理方式分别启动，不靠切 GUI profile；固定出口只属于 `consistent-hashing`/`sticky-sessions`/`select`，`round-robin` 实例按连接轮换，适合 429 或分散请求，不承诺同一 worker 固定出口。两种策略按目标选，不预设哪种更好；同一实例内再用 listeners 按国家/worker 分流。
 - **框架选型按约束与同条件证据**：静态批量、动态/挑战、队列/状态各有主选；没有同一样本、同预算的小对照，不引用框架排名。候选画像和对照底线见 [references/framework-selection.md](references/framework-selection.md)。
 - **分阶段默认**：分诊 1 个入口请求 → 发现 sitemap／公开 API／列表 → 获取含基础字段的最便宜来源 → 详情只补缺 → 10–30 个分层样本校验；效率按每有效商品请求数／字节数衡量。详见 [references/stage-strategy.md](references/stage-strategy.md)。
+- **方法名不是规则字段**：本 skill 的 sitemap／listing／html_index 等是发现方法；落成某个 runtime 的可执行规则前先读该 runtime 契约，按它支持的字段表达，不能把方法名直接当字段值。
 - **结构化数据优先**：JSON-LD、嵌入 JSON、公开商品接口优先于 CSS 选择器，选择器优先于文本兜底；记录每个字段实际使用的来源。
 - **2xx 不等于有效内容**：商品身份、报价上下文、正文完整性和最终 URL 要分别核对，空壳页、软错误页和挑战页都可能是 200。
 - **预算与停止条件先行**：先定商品页上限、时间上限、并发和重试；请求数、网址数不等于商品数，没有可靠分母时不编造百分比。
@@ -152,6 +153,8 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 
 有挑战求解引擎（如 Scrapling）时优先使用；普通 Playwright 只作对照或后备，不先用它证明挑战不可过。同站连续取数先预热一个浏览器会话，复用 clearance 和 profile，不逐页重开浏览器。浏览器批量单批控制在 3–5 个标签，不一次开几十个：标签越多资源消耗和限流风险越高；就绪以真实标题 + 目标数据（Product JSON-LD／价格）出现为准，不等图片、广告或 networkidle。
 
+同一客户端连续两次拿到 challenge 页后，停止该路线：能验证 browser engine 或已放行会话时切过去，否则按 ACCESS 停止并记录；不要用剩余预算反复重试，也不把 200 的挑战页当内容。
+
 ### 四、字段提取与页面层级
 
 先按页面层级选源，再按来源类型选源：
@@ -260,7 +263,7 @@ SPA 空壳先找公开 JSON：`init_config`、`__NEXT_DATA__` 或内联 state �
 
 | 平台线索 | 先看哪里 | 常见坑 |
 | --- | --- | --- |
-| Shopify | sitemap、商品页、公开商品 JSON（`/products.json` 的 `page`／`limit`）、`Shopify.currency` | 多市场／多币种、价格单位（分）、公开接口限流、隐藏／捆绑商品、变体价在 `variants`；公开 JSON 价格可能随出口／`?country=` 本地化，先固定市场并用商品页币种抽检；可能重复 Product JSON-LD（主题块 vs 富摘要 app 块），AggregateOffer 可能无 availability；完整描述看 `span.description`／JSON-LD，宽泛 `.rte` 可能只取 intro |
+| Shopify | sitemap、商品页、公开商品 JSON（`/products.json` 的 `page`／`limit`、商品 `.js`／`.json`）、`Shopify.currency` | 优先公开 JSON 取价格、币种、变体和描述；只有 JSON 描述为空或明显少于渲染页时才回退 HTML／浏览器，回退时控制并发。多市场／多币种、价格单位（分）、公开接口限流、隐藏／捆绑商品、变体价在 `variants`；商品页 JSON-LD 可能是 `ProductGroup`，报价和库存看 `hasVariant[].offers`，不要只看顶层 `offers`；公开 JSON 价格可能随出口／`?country=` 本地化，先固定市场并用商品页币种抽检；可能重复 Product JSON-LD（主题块 vs 富摘要 app 块），AggregateOffer 可能无 availability；完整描述看 `span.description`／JSON-LD，宽泛 `.rte` 可能只取 intro |
 | WooCommerce | 分类、分页、Product 结构化数据、`data-product_variations` | 主题和插件改写页面与目录；变体价格常为十进制；父级 JSON-LD availability 可能不反映变体 |
 | PrestaShop | 分类／商品 `.html`、`product:price:amount`／`itemprop="price"`、`#description`、`meta itemprop="GTIN13"` | 常无 JSON-LD；价格按 locale；颜色变体可能是独立商品 URL，可能各自自指 canonical、无 selects；按型号＋颜色、SKU／GTIN 归并；描述颜色词可能有误 |
 | Magento／Adobe Commerce | 分类网格、规范链接、sitemap、swatch 的 `jsonConfig`、dropdown 的 `super_attribute`／`spConfig` | 前后端形状不同，不猜认证接口；`salable` 可能为空；价格常为十进制；商品页描述常拆成 `.product.attribute.overview`（营销）与 `.product.attribute.description`（单位／短说明），按 DOM 顺序合并，短块被更长块包含时去重 |
