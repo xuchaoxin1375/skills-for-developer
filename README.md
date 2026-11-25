@@ -31,13 +31,13 @@ git remote -v
 | 业务术语、状态或关系说不清 | 上游 `domain-modeling` | 只读术语表不启动建模，不批量改名 |
 | 模块接口难用、薄包装太多、修改扩散 | 上游 `codebase-design` | 本地调用方不因此扩成全仓治理 |
 | 从零规划 Web 应用，纠结技术选型/前后端分离/项目骨架 | [swe-gov](skills/swe-gov/SKILL.md) | 不同时启动全套治理；需求访谈、模块设计、仓库配置、测试与交付按需协作；轻量工具转 lightweight-app-builder |
-| 新建或改版用户界面，纠结布局、状态、交互链路、视觉与可访问性 | [frontend-design](skills/frontend-design/SKILL.md) | 先接需求链与用户任务，写设计规格与关键交互链路；新建／整体改版先做全局壳、导航和跨页流程；存量 UI 缺陷转 frontend-qa；响应式、动效、后台控制台按需协作；不要等接口定完再画页面 |
+| 新建或改版用户界面，纠结布局、状态、交互链路、视觉与可访问性 | [frontend-design](skills/frontend-design/SKILL.md) | 先接需求链与用户任务，写设计规格与关键交互链路；新建／整体改版先做全局壳、导航和跨页流程；给旧系统加功能先区分用户任务与旧载体约束；存量 UI 缺陷转 frontend-qa；响应式、动效、后台控制台按需协作；不要等接口定完再画页面 |
 | 设计后端数据模型、API、鉴权、异步任务或缓存 | [swe-gov](skills/swe-gov/SKILL.md) 的 [backend-design](skills/swe-gov/references/backend-design.md) | 先定边界/数据模型/契约；测试、CI 与运维按需协作；不要从数据库表直接生成接口 |
 | 明确要求测试驱动实现 | 上游 `tdd` | 不因引用而安装整套上游流程 |
 | 需要测试覆盖、真实集成与回归 | [web-app-testing](skills/web-app-testing/SKILL.md) | 不另建验收等级或重复计划 |
 | 难 bug 或性能回归需要定位 | 上游 `diagnosing-bugs` | 不凭猜测直接改实现 |
 | 评审提交差异 | 上游 `code-review` | 未提交/暂存范围按本地快照约定另核；评审不等于验收 |
-| 判断是否真的做完、证据是否足够 | [ai-verified-delivery](skills/ai-verified-delivery/SKILL.md) | 不重跑版本与范围匹配的评审/测试 |
+| 判断是否真的做完、证据是否足够 | [ai-verified-delivery](skills/ai-verified-delivery/SKILL.md) | 首次使用与继承约束也要有 AC 和真实走查；不重跑版本与范围匹配的评审/测试 |
 
 跨模块工程约束和长期运行用 `swe-gov`，仓库配置用 `repo-gov`，项目配套文档用 `project-docs`，通用技术文档用 `general-doc-writing`；前端、网络与环境问题仍按下方领域索引选取。详细职责只在 [共用边界表](skills/web-app-testing/references/skill-boundaries.md)维护。
 
@@ -46,7 +46,7 @@ git remote -v
 从想法到上线后的阶段地图与横切检查点：
 
 - [项目启动检查](skills/swe-gov/references/project-start.md)：分档、需求、选型、形态、界面设计轨、walking skeleton、agent 入口与 AGENTS.md 路由、开写判据。
-- [业务流程需求具体化](skills/swe-gov/references/business-requirements-discovery.md)：只有 SOP/口述/现有表格时，还原流程、角色、数据、规则与 AC。
+- [业务流程需求具体化](skills/swe-gov/references/business-requirements-discovery.md)：只有 SOP/口述/现有表格时，还原流程、角色、数据、规则与 AC；含首次使用与旧约束甄别。
 - [后端设计轨](skills/swe-gov/references/backend-design.md)：边界/数据模型、API 契约、鉴权/租户、异步任务、缓存/性能、迁移与测试。
 - [用户中心设计与可用性验证](skills/frontend-design/references/user-centered-design.md)：需求链、全局原型优先、目标用户约束、AI 稿任务化评估、3–5 人可用性测试。
 - [设计规格](skills/frontend-design/references/design-spec.md)：页面清单、主体区、关键交互链路、组件映射、状态矩阵与验收模板。
