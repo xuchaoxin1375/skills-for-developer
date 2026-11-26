@@ -46,6 +46,7 @@
 | `site:` 定向 | 直达一手来源 | `site:docs.python.org asyncio` |
 | 排除站点 | 过滤低质聚合页 | `-site:csdn.net`（视需要） |
 | 竞品发现 | 发现替代方案 | `Tavily alternative`、`Tavily vs Exa` |
+| 生态与客户端兼容 | 查第三方/通用方案是否支持目标客户端 | `<tool> supported clients`、`<tool> install -a <target>`、`<target> MCP`、`<target> browser extension`、`site:github.com <target> <tool>` |
 | 反向验证 | 发现问题与改进方向 | `[产品] limitations`、`[产品] criticism`、`[产品] 踩坑` |
 | 假前提检查 | 先验证前提 | 先搜“X 是否发生过”，再搜“X 的影响” |
 
