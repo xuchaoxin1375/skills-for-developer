@@ -47,6 +47,21 @@
 
 两者都不复制、不导出用户 profile 或 cookie，只用于公开或获授权页面。扩展 relay 新开专用标签页，结束只关闭自己开的标签页；CDP attach 只连接、只读、断开，不关闭用户浏览器。需要挑战求解或抓取策略时转 [resilient-browser-fetch](../../resilient-browser-fetch/SKILL.md)。
 
+#### Playwright MCP 的 profile 模式
+
+Playwright MCP 的浏览器归属由启动参数决定，不要按产品名推断“一定开新浏览器”或“一定用你的浏览器”：
+
+| 模式 | 浏览器归属 | 登录态 | 适用 |
+| --- | --- | --- | --- |
+| 默认（持久 profile） | MCP 自建，按 workspace 持久 | 保留 | 日常探索、保留登录 |
+| `--isolated` | MCP 自建，内存 profile | 每次全新；可用 `--storage-state` 注入 | 测试、干净状态 |
+| `--extension` | 用户现有 Chrome/Edge 标签页 | 复用现有 Cookie/SSO | 日常浏览器操作、已登录后台 |
+| `--cdp-endpoint` | 已运行 Chromium | 取决于该实例 | 调试、接管可调试实例 |
+
+`--extension` 以标签页/标签组为单位，首次连接需用户批准；能读浏览器级 Cookie，但不能修改浏览器级状态。`--cdp-endpoint` 仅适用于 Chromium，Chrome 136+ 对默认 profile 的调试端口有限制，日常浏览器优先用扩展。
+
+控制用户日常浏览器时，优先扩展 relay（OpenCode Browse 或 Playwright MCP `--extension`）；Chrome DevTools MCP `--autoConnect` 更适合调试，不作为日常操作首选；默认 profile 和 `--isolated` 都不是用户日常浏览器。Playwright CLI 默认内存 profile（`--persistent` 才落盘），不要与 MCP 默认持久 profile 混用。
+
 ### 测试运行器决策
 
 浏览器操作脚本可以只产出截图或数据；需要长期回归时，才把操作组织为用例、断言、夹具和报告。
@@ -63,4 +78,4 @@
 
 ### 交付一个可执行决定
 
-用简短说明回答：在哪运行、发现了哪些实际可用能力、选择什么及理由、缺哪些前置条件、下一条命令或操作是什么。区分**文件已发现、工具可调用、实际启动、业务验证**；未执行的步骤明确标注，不把推荐方案写成已验证结果。
+用简短说明回答：在哪运行、发现了哪些实际可用能力、选择什么及理由、缺哪些前置条件、下一条命令或操作是什么。说明是新建 profile 还是接管用户当前会话；不要把 MCP 默认 profile 写成用户的日常浏览器。区分**文件已发现、工具可调用、实际启动、业务验证**；未执行的步骤明确标注，不把推荐方案写成已验证结果。

@@ -44,6 +44,7 @@ python -X utf8 <skill-dir>/scripts/shot_scroll.py --url 'https://example.com' --
 | 浏览器在哪、系统版本怎么复用、包装器能否直接运行 | [浏览器发现](references/browser-discovery.md) |
 | 选现有浏览器工具、Playwright/Puppeteer/Selenium，或测试运行器 | [工具与框架决策](references/tool-and-framework-choice.md) |
 | 浏览器由谁持有、新建实例还是接管用户已登录的会话 | [浏览器归属三态](references/tool-and-framework-choice.md#浏览器归属三态) |
+| 控制用户日常浏览器还是新建 profile，Playwright MCP 各模式怎么选 | [Playwright MCP 的 profile 模式](references/tool-and-framework-choice.md#playwright-mcp-的-profile-模式) |
 | 自动点击填写、状态等待、CDP、下载和会话所有权 | [自动化操作](references/browser-operations.md) |
 | 截图命令、期限、调用端异常退出、残留进程及旧入口迁移 | [托管截图工作流](references/screenshot-workflow.md) |
 | 浏览器包/制品下载、代理、镜像和系统依赖 | [network-access 安装参考](../network-access/references/browser-installation.md) |
