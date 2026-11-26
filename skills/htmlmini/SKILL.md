@@ -41,6 +41,7 @@ description: >
 ## 使用边界
 
 - **与 `web_fetch` 的分层**：二者都能接 URL，但 `web_fetch` 是通用取回层 (HTTP + 格式转换)，htmlmini 是内容提取层 (抓取 + 去样板 + 多视图)。同一页面任务默认先用 htmlmini，不必先抓一遍再转交；不可用、用户指定其他工具或需要非 HTML／原始响应时，回退内建抓取或 HTTP 客户端；不为一次简单读取自动安装依赖。
+- **托管提取备选**：已配置 Tavily 时，`tvly extract "<url>" --json` 可直接取回 Markdown（默认 `--format markdown`，支持 JS 渲染页面，一次最多 20 个 URL），适合本机提取不可用或不便的公开页面；URL 会交给第三方并按账户额度／套餐计费，登录态、内网和带会话参数的链接不上传，细节见[辅助读取渠道](references/aux-readers.md)。
 - **选路不等于强制代理**：htmlmini 可能继承环境代理，不读取本机登记。需要绕过显式代理时用 `--proxy direct`，确需代理时才显式传入；不要将省略参数等同于直连。
 - **渲染通路的出口是它自己选的**：未显式传 `--proxy` 而进入渲染时，渲染子脚本会读本机登记并取第一个能建立 TCP 连接的候选（见日志 `render script discovers its own`；`--quiet` 下用 `--verbose` 重跑确认）。端口连通不代表该出口能过站点风控，命中 403 时不要据此判定站点不可达——站点对出口敏感时显式指定 `--proxy`，渲染仍失败就先确认日志里实际使用的出口。
 - **SVG 与图标默认不保留**：`<svg>` 元素与 `data:image/svg+xml` 图片视为非正文，默认删除；`<img>` 有 `alt` 时保留 `alt` 文本。图表、信息图或需要矢量结构时用 `--keep-svg`（作用于 markdown/json/html 等结构模式；`text` 模式仍按纯文本删除）。`--extractor passthrough` 与 `--save-html` 是显式原样路径，不受影响。

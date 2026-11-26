@@ -425,3 +425,11 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 
 - 该站直连返回 403，代理路线正常；内置抓取工具的 403 是路线失败，不能据此判定来源不可用。
 - 单站单次观测，不外推到所有 OpenAI/ChatGPT 路径；代理入口按登记取用，不在 skill 中固化为固定端口。
+
+## 2026-11-26 Tavily CLI 提取可用（Windows）
+
+执行环境：国内 Windows 11、PowerShell 7；`tvly` 1.0.2，OAuth 认证（`tvly auth --json` 返回 `authenticated: true`）。`tvly extract "https://example.com" --json` 返回 `raw_content` 与空 `failed_results`，`auth_mode` 为 `keyed`；`--help` 显示一次最多 20 个 URL，`--format markdown|text`。
+
+- 这是远程提取服务：不经过本机回环代理，URL 会交给 Tavily；登录态、内网与带会话参数的链接不上传。
+- 2026-10-10 记录中的 401 是当时 OAuth 会话刷新失败；本次重新登录后可用，旧记录不代表当前认证状态。
+- 未验证：大页、JS 重页面、批量 20 URL、额度与计费；使用前按账户额度确认。

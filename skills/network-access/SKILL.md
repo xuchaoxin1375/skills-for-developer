@@ -122,7 +122,7 @@ python -X utf8 <skill>/scripts/inspect_mihomo.py --json --delay --group PROXY --
 
 - **需要代理时才查登记**：先读本机标准位置 `~/.config/proxy-resources.json`；登记只是线索，以经该入口的一次目标请求验证，不另发探针。本轮已确认的同环境入口可复用。登记失效才按[代理发现与登记](references/proxy-registry.md)有界查找；仍无可用入口时询问用户，不盲扫端口。
 - **省略代理不等于直连**：工具可能继承环境变量或自有配置。要绕过显式代理时使用客户端的直连开关，例如 curl 的 `--noproxy '*'`、htmlmini 的 `--proxy direct`；不能据此声称绕过了透明路由。仅在出口诊断需要时查出口，不为每个网页额外请求回显服务。
-- **内置抓取工具可能没有代理开关**：`webfetch` 这类 harness 工具若只接受 URL 且实测不读 `HTTP(S)_PROXY`，访问 OpenAI/ChatGPT 等已知需代理站点时不要直连试错；改用支持 `--proxy` 的 `htmlmini`、`curl.exe` 或浏览器路径。直连的 403、超时或挑战空壳按路线失败处理，不据此判定来源不可用；需要正文提取时直接让 `htmlmini --proxy` 抓取，需要登录态或渲染时转 [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md)。
+- **内置抓取工具可能没有代理开关**：`webfetch` 这类 harness 工具若只接受 URL 且实测不读 `HTTP(S)_PROXY`，访问 OpenAI/ChatGPT 等已知需代理站点时不要直连试错；改用支持 `--proxy` 的 `htmlmini`、`curl.exe` 或浏览器路径。直连的 403、超时或挑战空壳按路线失败处理，不据此判定来源不可用；需要正文提取时直接让 `htmlmini --proxy` 抓取，需要登录态或渲染时转 [resilient-browser-fetch](../resilient-browser-fetch/SKILL.md)。若本机出口无法访问且页面为公开可抓内容，可评估已配置的 `tvly extract` 作为远程取回路线（URL 会交给 Tavily，按额度计费；登录态、内网与私有链接不用），细节见 [htmlmini 的辅助读取渠道](../htmlmini/references/aux-readers.md)。
 - **配置只影响本次任务**：代理按消费者环境传入，不在会话开头无条件设置全局代理；优先命令级参数或必要的进程变量，不改系统设置和全局 Git 配置。Windows 与 *nix 的配置和协议差异见[跨平台代理配置](references/network-access.md#跨平台代理配置)。
 - **代理不加速渲染**：渲染耗时在浏览器启动、等待与引擎阶梯，不在带宽；不要用全局代理"加速"渲染。代理按源选：普通网页直连优先，OpenAI 等已知直连不通的站点用代理。
 - **推送依赖的代理失败即改路或报告**：GitHub 推送走原站并通常依赖可用代理。实际生效的代理入口失败时，用一次经该入口的目标请求判断可用性（如 `git ls-remote`），失败立即换其他已登记或已核验入口；候选都不可用就报告失败与已试路线，不对同一 `git push` 反复重试。凭据、权限或非快进错误换代理无效，按错误类型处理。

@@ -1,6 +1,6 @@
 # 第三方与归档辅助路线
 
-本地提取（Defuddle / Trafilatura / UI 清单）与本地渲染（`resilient-browser-fetch`）都拿不到页面时，才考虑这里。按顺序往外走，每往外一步都要说明代价。
+本地提取（Defuddle / Trafilatura / UI 清单）与本地渲染（`resilient-browser-fetch`）都拿不到页面，或本机路线不便且页面允许第三方读取时，才考虑这里。按顺序往外走，每往外一步都要说明代价。
 
 ## 使用前提
 
@@ -26,16 +26,22 @@
 
 3. **托管 reader 服务（需用户同意）**
 
-   | 服务 | 免费额度（2026-10-20 核验） | 适合 | 注意 |
+   | 服务 | 额度／计费 | 适合 | 注意 |
    | --- | --- | --- | --- |
+   | Tavily Extract `tvly extract` | 已配置时按账户额度／套餐；未配置可用 keyless（受速率限制） | 指定 URL 转 Markdown、JS 渲染页面；一次最多 20 个 URL | URL 会交给 Tavily；登录态、内网、带会话参数的链接不上传；`--format markdown`（默认）或 `text`，JS/表格页用 `--extract-depth advanced`；检查 `failed_results` |
    | Jina Reader `r.jina.ai` | 不带 Key 20 RPM（按 IP）；注册 Key 赠 1000 万 token，之后按输出 token 计费 | 单页转 Markdown、PDF、指定选择器或自带代理 | 同一 URL 5 分钟缓存；失败请求不扣费；付费**不解锁**被拦站点，也不主动绕过反爬 |
    | Crawl4AI Cloud | 每月 1000 credits，10 次/分钟、2 并发 | 需要 JS 渲染或多页抓取又不想自己跑浏览器 | 软启动期定价可能调整，用前核对 |
    | Wayback Machine | 快照读取免费；Save Page Now 需登录且有限额 | 取历史版本、绕开当前拦截 | 只反映归档时刻，不等于当前页面 |
 
+   Jina / Crawl4AI / Wayback 的额度为 2026-10-20 核验；Tavily 行为 2026-11-26 本机 CLI 实测，套餐与限额以账户为准。
+
    ```bash
+   tvly extract 'https://example.com/article' --json
    curl -s 'https://r.jina.ai/https://example.com/product' | head -50
    curl -s 'https://archive.org/wayback/available?url=example.com'
    ```
+
+   `tvly extract` 默认返回 `raw_content`（Markdown）；一次放多个 URL 时逐个检查 `failed_results`。
 
    Jina 的常用请求头：`X-Target-Selector` / `X-Remove-Selector`（只留或去掉指定节点）、`X-Retain-Links`、`X-Timeout`、`X-Proxy-Url`（用你自己的代理）；带 cookie 的请求不缓存。
 
