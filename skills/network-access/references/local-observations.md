@@ -412,3 +412,16 @@ pip/uv/npm/pnpm/Yarn 与 Playwright 相关官方页面经本地代理读取并�
 - push 保护实测：`pushInsteadOf` 的 base 与 `insteadOf` 的值同为 `https://github.com/` 时，Git 视为无改写，push 仍走镜像；base 改成 `https://github.com:443/` 后才回原站。已有 `remote.*.pushurl` 指向 `https://github.com/...` 时也会先被 `insteadOf` 改写，需改成 `:443` 形式或删除。
 - 结论：前缀失效可能只发生在转发层，首页照常可开；当次 `gh-proxy.org` 四类稳定，`ghfast.top` 的 git 传输最快但 release 有波动。
 - 未验证：大文件持续下载速度、clone/fetch 长连接、跨日与其他网络；其余候选未穷举。
+
+## 2026-11-26 OpenAI 文档站：内置 webfetch 直连 403，代理路线可取回（Windows）
+
+执行环境：国内 Windows 11、PowerShell 7；OpenCode 内置 `webfetch`（无代理开关）与 `curl.exe`/`htmlmini`（显式 `--proxy http://127.0.0.1:<port>`），单次有界请求，未做出口回显。
+
+| 路线 | 目标 | 结果 |
+| --- | --- | --- |
+| 内置 `webfetch` | `https://developers.openai.com/codex/browser` | 403，未取得正文 |
+| `curl.exe -L --proxy …` | 同上 | 200，重定向到 `https://learn.chatgpt.com/docs/browser`，545,547 B |
+| `htmlmini --proxy …` | 同上 | 取得完整正文，未启用渲染 |
+
+- 该站直连返回 403，代理路线正常；内置抓取工具的 403 是路线失败，不能据此判定来源不可用。
+- 单站单次观测，不外推到所有 OpenAI/ChatGPT 路径；代理入口按登记取用，不在 skill 中固化为固定端口。
