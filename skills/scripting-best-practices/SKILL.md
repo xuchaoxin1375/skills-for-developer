@@ -85,7 +85,7 @@ PowerShell 函数沿用目标仓库的命名、参数、帮助与兼容规范，
 面向本机跑的工具脚本/小服务（扫文件、调构建工具、读命令输出）。语言无关，Node/Python/Shell 同理：
 
 - **遍历先剪枝**。依赖目录（`node_modules`）、构建产物（`dist`/`build`）、版本库（`.git`）不进业务遍历——它们数量级最大（万级文件），又最不可能含业务信号。改后回归验证输出一致（逐字节比对或行数 + 抽查），并量化前后耗时。
-- **Windows 下用户触发的子进程默认无窗口**。构建、解压这类点一下跑几分钟的命令，不许闪控制台窗口（Node 用 `windowsHide`，Python 用 `STARTUPINFO(dwFlags|=STARTF_USESHOWWINDOW)`，C# 用 `CreateNoWindow`）。
+- **Windows 下后台命令默认无窗口**。Node 用 `windowsHide`，Python 启动控制台程序时用 `creationflags=subprocess.CREATE_NO_WINDOW`，C# 用 `CreateNoWindow`。`DETACHED_PROCESS` 会使 `CREATE_NO_WINDOW` 失效。经启动器运行时（例如 Windows 虚拟环境的 `python.exe`），还要验证实际工作进程。从用户平时使用的终端触发，确认没有新增窗口或标签页；常驻进程还要验证启动命令退出后仍可用，并能通过停止命令回收。
 - **命令输出按系统编码双解码**。中文 Windows 的控制台默认输出系统编码（如 GBK），按 UTF-8 硬解必出乱码：按字节攒、按行切分（不断多字节字符），每行先 UTF-8 严格解码，失败回落系统编码后再用。
 - **日志入库前剥离 ANSI 控制序列**。构建工具爱发着色码（SGR/CSI/OSC），展示与落盘都要干净文本；剥完变空行的直接丢弃，不存空白噪音。
 - **自研 CLI 按 UTF-8 写字节，但别指望 shell 转码**。`cmd > file` 会按 .NET 的输出编码重新解读子进程输出，落盘文件仍是合法 UTF-8、内容却已错位（详见 [shell-pitfalls 的编码排障](../shell-pitfalls/references/encoding-read.md#链式-cli-处理的推荐做法实测对照)）。要把输出当**数据**传（落盘、逐字节比对、喂给另一个程序），就自己写字节：Node 写 `Buffer`、Python 写 `bytes`，不经 shell 文本层。**多段 CLI 串成链时优先做"文件接力"**（每段自己 `--out` 落盘，下一段读文件）；必须走管道时先在同一次调用里设好 `[Console]::OutputEncoding` 与 `$OutputEncoding`，或在管道中插一个按字节读写的"闸门"。给人读的中文输出优先提供文件参数（如 `--output`）而不是让人从控制台拷。
